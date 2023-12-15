@@ -14,3 +14,4 @@ jobs:
         run: python scraper.py
         env: 
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          BOT_CHATID: ${{ secrets.BOT_CHATID }}
