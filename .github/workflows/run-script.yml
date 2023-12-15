@@ -15,6 +15,8 @@ jobs:
       - name: Install dependencies
         run: pip install selenium
       - name: Install dependencies
+        run: pip install bs4
+      - name: Install dependencies
         run: pip install --upgrade pandas
 
       - name: Run script
