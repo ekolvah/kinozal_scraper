@@ -2,10 +2,11 @@ from bs4 import BeautifulSoup
 import requests
 import re
 import pandas as pd
+import os
 
 def telegram_bot_sendtext(bot_message):
-  bot_token = secret.bot_token
-  bot_chatID = secret.bot_chatID
+  bot_token = os.environ['BOT_TOKEN']
+  bot_chatID = os.environ['BOT_CHATID']
   send_text = 'https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + bot_message
 
   response = requests.get(send_text)
