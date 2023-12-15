@@ -1,7 +1,5 @@
 name: Run python script
 on:
-  schedule:
-  - cron: "0 2 * * 1-5"
   workflow_dispatch:
 jobs:
   run-script:
