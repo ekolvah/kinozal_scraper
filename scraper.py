@@ -3,6 +3,8 @@ import requests
 import re
 import pandas as pd
 import os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 def telegram_bot_sendtext(bot_message):
   bot_token = os.environ['BOT_TOKEN']
@@ -29,7 +31,14 @@ def get_soup(URL):
   return soup
 
 def run_kinozal_scrapper():
-  file_name='links.xlsx'
+  scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
+  credentials = os.environ['CREDENTIALS']
+  credentials_dict = json.loads(credentials)
+  creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+  client = gspread.authorize(creds)
+  heet = client.open_by_url('https://docs.google.com/spreadsheets/d/1Et0qZnqYJTHCfk5FlFO9hcmNdF5o18_F/edit?usp=sharing&ouid=113359730219847558026&rtpof=true&sd=true')
+  worksheet = sheet.get_worksheet(0)
+  
   data = []
   soup = get_soup("https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0")
   for link in soup.select('a[href^="/details.php"]'):
@@ -39,7 +48,7 @@ def run_kinozal_scrapper():
   #df_prev = pd.DataFrame(['1', '2', '3', '4'], columns=['films'])
   #df = pd.DataFrame(['5', '2', '3', '4'], columns=['films'])
   
-  df_prev = pd.read_excel(file_name)
+  df_prev = worksheet.get_all_values()
   df = pd.DataFrame(data, columns=['films'])
   diff = df.merge(df_prev, on='films', how='outer', indicator=True)
   diff = diff[diff['_merge'] == 'left_only']
@@ -49,7 +58,6 @@ def run_kinozal_scrapper():
   if not diff.empty:
     telegram_bot_sendtext(diff.to_string())
 
-  with pd.ExcelWriter(file_name, engine='openpyxl', mode='w') as writer:
-      df.to_excel(writer, index=False, sheet_name='films')
+  worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
 run_kinozal_scrapper()
