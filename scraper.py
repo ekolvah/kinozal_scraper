@@ -29,23 +29,27 @@ def get_soup(URL):
   return soup
 
 def run_kinozal_scrapper():
-  file_name='/content/drive/MyDrive/Colab Notebooks/links.xlsx'
+  file_name='links.xlsx'
   data = []
   soup = get_soup("https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0")
   for link in soup.select('a[href^="/details.php"]'):
     title = str(link.get('title'))
     data.append(title)
-  df_prev = pd.DataFrame(['1', '2', '3', '4'], columns=['films'])
-  df = pd.DataFrame(['5', '2', '3', '4'], columns=['films'])
-  #df_prev = pd.read_excel(file_name)
-  #df = pd.DataFrame(data, columns=['films'])
+  
+  #df_prev = pd.DataFrame(['1', '2', '3', '4'], columns=['films'])
+  #df = pd.DataFrame(['5', '2', '3', '4'], columns=['films'])
+  
+  df_prev = pd.read_excel(file_name)
+  df = pd.DataFrame(data, columns=['films'])
   diff = df.merge(df_prev, on='films', how='outer', indicator=True)
   diff = diff[diff['_merge'] == 'left_only']
+  
   #print(diff['films'].to_list())
+  
   if not diff.empty:
     telegram_bot_sendtext(diff.to_string())
 
-  #with pd.ExcelWriter(file_name, engine='openpyxl', mode='w') as writer:
-  #    df.to_excel(writer, index=False, sheet_name='films')
+  with pd.ExcelWriter(file_name, engine='openpyxl', mode='w') as writer:
+      df.to_excel(writer, index=False, sheet_name='films')
 
 run_kinozal_scrapper()
