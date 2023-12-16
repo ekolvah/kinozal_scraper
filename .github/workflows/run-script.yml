@@ -30,3 +30,4 @@ jobs:
         env: 
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           BOT_CHATID: ${{ secrets.BOT_CHATID }}
+          CREDENTIALS: ${{ secrets.CREDENTIALS }}
