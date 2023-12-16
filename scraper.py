@@ -37,7 +37,7 @@ def run_kinozal_scrapper():
   credentials_dict = json.loads(credentials)
   creds = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
   client = gspread.authorize(creds)
-  sheet = client.open_by_url('https://docs.google.com/spreadsheets/d/1Et0qZnqYJTHCfk5FlFO9hcmNdF5o18_F/edit?usp=sharing&ouid=113359730219847558026&rtpof=true&sd=true')
+  sheet = client.open_by_url('https://docs.google.com/spreadsheets/d/12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing')
   worksheet = sheet.get_worksheet(0)
   
   data = []
