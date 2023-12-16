@@ -50,6 +50,8 @@ def run_kinozal_scrapper():
   #df = pd.DataFrame(['5', '2', '3', '4'], columns=['films'])
   
   df_prev = worksheet.get_all_values()
+  df_prev = pd.DataFrame(df_prev, columns=['films'])
+  
   df = pd.DataFrame(data, columns=['films'])
   diff = df.merge(df_prev, on='films', how='outer', indicator=True)
   diff = diff[diff['_merge'] == 'left_only']
