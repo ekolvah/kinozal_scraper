@@ -24,6 +24,10 @@ jobs:
         run: pip install --upgrade pandas
       - name: Install dependencies
         run: pip install openpyxl
+      - name: Install dependencies
+        run: pip install gspread
+      - name: Install dependencies
+        run: pip install oauth2client
 
       - name: Run script
         run: python scraper.py
