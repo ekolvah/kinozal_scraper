@@ -20,6 +20,8 @@ jobs:
         run: pip install requests
       - name: Install dependencies
         run: pip install --upgrade pandas
+      - name: Install dependencies
+        run: pip install openpyxl
 
       - name: Run script
         run: python scraper.py
