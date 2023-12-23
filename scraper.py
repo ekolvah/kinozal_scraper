@@ -77,9 +77,8 @@ def run_kinozal_scrapper():
   send_message_with_new_movies(new_movies)
 
   #notified_movies = pd.concat([notified_movies['films'], new_movies['films']])
-  print(new_movies['films'])
   
-  save_notified_movies(notified_movies_worksheet, new_movies['films'])
+  save_notified_movies(notified_movies_worksheet, [[film] for film in new_movies['films'].tolist()]])
   
   save_kinozal_top_movies(kinozal_top_movies_worksheet, kinozal_top_movies)
   
