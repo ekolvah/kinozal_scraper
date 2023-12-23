@@ -74,7 +74,7 @@ def run_kinozal_scrapper():
   new_movies = kinozal_top_movies.merge(notified_movies, on='films', how='outer', indicator=True)
   new_movies = new_movies[new_movies['_merge'] == 'left_only']
   new_movies = new_movies.drop('_merge', axis=1)
-  notified_movies = pd.concat(notified_movies, new_movies)
+  notified_movies = pd.concat([notified_movies, new_movies])
   
   send_message_with_new_movies(new_movies)
   save_notified_movies(notified_movies_worksheet, notified_movies)
