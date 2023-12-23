@@ -76,7 +76,7 @@ def run_kinozal_scrapper():
 
   send_message_with_new_movies(new_movies)
 
-  if not notified_movies.empty and not new_movies.empty:
+  if not (notified_movies.empty or new_movies.empty):
     notified_movies = pd.concat([notified_movies, new_movies])
     save_notified_movies(notified_movies_worksheet, notified_movies)
   
