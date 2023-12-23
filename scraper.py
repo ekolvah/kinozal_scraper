@@ -22,7 +22,6 @@ def save_kinozal_top_movies(worksheet, kinozal_top_movies):
 def save_notified_movies(worksheet, notified_movies):
   worksheet.update(notified_movies.values.tolist())
   
-#def save_kinozal_top_movies(kinozal_top_movies):
 #def get_kinozal_top_movies():
 #def get_notified_movies():
 #def compare_movie_lists(kinozal_top_movies, notified_movies):
@@ -77,6 +76,8 @@ def run_kinozal_scrapper():
   
   send_message_with_new_movies(new_movies)
   save_kinozal_top_movies(kinozal_top_movies_worksheet, kinozal_top_movies)
-  save_notified_movies(notified_movies_worksheet, notified_movies.append(new_movies))
+  
+  notified_movies = notified_movies.append(new_movies)
+  save_notified_movies(notified_movies_worksheet, notified_movies)
 
 run_kinozal_scrapper()
