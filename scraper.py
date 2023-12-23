@@ -17,7 +17,7 @@ def get_worksheet():
   return sheet.get_worksheet(0)
 
 def save_kinozal_top_movies(worksheet, kinozal_top_movies):
-  worksheet.update([kinozal_top_movies.columns.values.tolist()] + kinozal_top_movies.values.tolist())
+  worksheet.update(kinozal_top_movies.values.tolist())
   
 #def save_kinozal_top_movies(kinozal_top_movies):
 #def update_notified_movies(new_movies):
