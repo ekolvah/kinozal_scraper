@@ -7,6 +7,17 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
 
+#def save_kinozal_top_movies(kinozal_top_movies):
+#def save_kinozal_top_movies(kinozal_top_movies):
+#def update_notified_movies(new_movies):
+#def get_kinozal_top_movies():
+#def get_notified_movies():
+#def compare_movie_lists(kinozal_top_movies, notified_movies):
+
+def send_message_with_new_movies(new_movies):
+  if not new_movies.empty:
+    telegram_bot_sendtext(new_movies.to_string())
+
 def telegram_bot_sendtext(bot_message):
   bot_token = os.environ['BOT_TOKEN']
   bot_chatID = os.environ['BOT_CHATID']
@@ -32,6 +43,10 @@ def get_soup(URL):
   return soup
 
 def run_kinozal_scrapper():
+  #kinozal_top_movies = get_kinozal_top_movies()
+  #notified_movies = get_notified_movies()
+  #new_movies = compare_movie_lists(kinozal_top_movies, notified_movies)
+  
   scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
   credentials = os.environ['CREDENTIALS']
   credentials_dict = json.loads(credentials)
@@ -57,9 +72,10 @@ def run_kinozal_scrapper():
   diff = diff[diff['_merge'] == 'left_only']
   
   #print(diff['films'].to_list())
-  
-  if not diff.empty:
-    telegram_bot_sendtext(diff.to_string())
+
+  send_message_with_new_movies(diff)
+  #save_kinozal_top_movies(kinozal_top_movies)
+  #update_notified_movies(new_movies)
 
   worksheet.update([df.columns.values.tolist()] + df.values.tolist())
 
