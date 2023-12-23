@@ -19,8 +19,10 @@ def get_sheet():
 def save_kinozal_top_movies(worksheet, kinozal_top_movies):
   worksheet.update(kinozal_top_movies.values.tolist())
   
+def save_notified_movies(worksheet, notified_movies):
+  worksheet.update(notified_movies.values.tolist())
+  
 #def save_kinozal_top_movies(kinozal_top_movies):
-#def update_notified_movies(new_movies):
 #def get_kinozal_top_movies():
 #def get_notified_movies():
 #def compare_movie_lists(kinozal_top_movies, notified_movies):
@@ -57,26 +59,24 @@ def run_kinozal_scrapper():
   #kinozal_top_movies = get_kinozal_top_movies()
   #notified_movies = get_notified_movies()
   #new_movies = compare_movie_lists(kinozal_top_movies, notified_movies)
-
   sheet = get_sheet()
-  kinozal_top_movies_worksheet = sheet.get_worksheet(0)
   
+  kinozal_top_movies_worksheet = sheet.get_worksheet(0)
   data = []
   soup = get_soup("https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0")
   for link in soup.select('a[href^="/details.php"]'):
     title = str(link.get('title'))
     data.append(title)
-  
-  notified_movies = pd.DataFrame(kinozal_top_movies_worksheet.get_all_values(), columns=['films'])
-  
   kinozal_top_movies = pd.DataFrame(data, columns=['films'])
-  diff = kinozal_top_movies.merge(notified_movies, on='films', how='outer', indicator=True)
-  diff = diff[diff['_merge'] == 'left_only']
   
-  #print(diff['films'].to_list())
-
-  send_message_with_new_movies(diff)
+  notified_movies_worksheet = sheet.get_worksheet(1)
+  notified_movies = pd.DataFrame(notified_movies_worksheet.get_all_values(), columns=['films'])
+  
+  new_movies = kinozal_top_movies.merge(notified_movies, on='films', how='outer', indicator=True)
+  new_movies = new_movies[new_movies['_merge'] == 'left_only']
+  
+  send_message_with_new_movies(new_movies)
   save_kinozal_top_movies(kinozal_top_movies_worksheet, kinozal_top_movies)
-  #update_notified_movies(new_movies)
+  save_notified_movies(notified_movies_worksheet, notified_movies.append(new_movies))
 
 run_kinozal_scrapper()
