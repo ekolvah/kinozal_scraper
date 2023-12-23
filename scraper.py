@@ -66,11 +66,10 @@ def run_kinozal_scrapper():
     title = str(link.get('title'))
     data.append(title)
   
-  kinozal_top_movies = worksheet.get_all_values()
-  kinozal_top_movies = pd.DataFrame(kinozal_top_movies, columns=['films'])
+  notified_movies = pd.DataFrame(worksheet.get_all_values(), columns=['films'])
   
-  df = pd.DataFrame(data, columns=['films'])
-  diff = df.merge(kinozal_top_movies, on='films', how='outer', indicator=True)
+  kinozal_top_movies = pd.DataFrame(data, columns=['films'])
+  diff = kinozal_top_movies.merge(notified_movies, on='films', how='outer', indicator=True)
   diff = diff[diff['_merge'] == 'left_only']
   
   #print(diff['films'].to_list())
