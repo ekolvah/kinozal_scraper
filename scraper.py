@@ -16,41 +16,49 @@ def get_sheet():
   sheet = client.open_by_url('https://docs.google.com/spreadsheets/d/12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing')
   return sheet
 
-def save_kinozal_top_movies(worksheet, kinozal_top_movies):
-  worksheet.update(values=kinozal_top_movies.values.tolist(), range_name=None)
-  
 def save_notified_movies(worksheet, notified_movies):
   worksheet.update(values=notified_movies.values.tolist(), range_name=None)
   
-def get_kinozal_top_movies():
+def get_kinozal_top_movies_and_images():
   data = []
   soup = get_soup("https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0")
   for link in soup.select('a[href^="/details.php"]'):
     title = str(link.get('title'))
-    data.append(title)
-  return pd.DataFrame(data, columns=['films'])
+    poster = link.find('img').get('src')
+    data.append([title, poster])
+  return pd.DataFrame(data, columns=['films', 'posters'])
 
 def get_notified_movies(notified_movies_worksheet):
-  notified_movies = pd.DataFrame(notified_movies_worksheet.get_all_values(), columns=['films'])
+  notified_movies = pd.DataFrame(notified_movies_worksheet.get_all_values(), columns=['films', 'posters'])
   return notified_movies
-  
+
+def add_prefix(link):
+  if link.startswith('http'):
+    return link
+  else:
+    return 'https://kinozal.tv' + link
+
 def get_new_movies(kinozal_top_movies, notified_movies):
   new_movies = kinozal_top_movies.merge(notified_movies, on='films', how='outer', indicator=True)
   new_movies = new_movies[new_movies['_merge'] == 'left_only']
+  new_movies = new_movies.drop('posters_y', axis=1)
   new_movies = new_movies.drop('_merge', axis=1)
+  new_movies = new_movies.rename(columns={'posters_x': 'posters'})
+  new_movies['posters'] = new_movies['posters'].apply(add_prefix)
   return new_movies
 
 def send_message_with_new_movies(new_movies):
-  if not new_movies.empty:
-    telegram_bot_sendtext(new_movies.to_string())
+  for index, row in new_movies.iterrows():
+    film = row['films']
+    poster = row['posters']
+    telegram_bot_send_poster(film, poster)
 
-def telegram_bot_sendtext(bot_message):
+def telegram_bot_send_poster(film, poster):
   bot_token = os.environ['BOT_TOKEN']
   bot_chatID = os.environ['BOT_CHATID']
-  send_text = 'https://api.telegram.org/bot' + bot_token + '/sendMessage?chat_id=' + bot_chatID + '&parse_mode=Markdown&text=' + bot_message
-
-  response = requests.get(send_text)
-  #print(response.text)
+  data = {'chat_id': bot_chatID, 'photo': poster, 'caption': film}
+  send_photo = 'https://api.telegram.org/bot' + bot_token + '/sendPhoto'
+  response = requests.post(send_photo, data=data)
   return response.json()
 
 def get_soup(URL):
@@ -69,16 +77,16 @@ def get_soup(URL):
   return soup
 
 def run_kinozal_scrapper():
-  sheet = get_sheet()
-  kinozal_top_movies_worksheet = sheet.get_worksheet(0)
-  notified_movies_worksheet = sheet.get_worksheet(1)
+  notified_movies_worksheet = get_sheet().get_worksheet(0)
   
-  kinozal_top_movies = get_kinozal_top_movies()
-  notified_movies = get_notified_movies(notified_movies_worksheet)
-  new_movies = get_new_movies(kinozal_top_movies, notified_movies)
+  kinozal_top_movies_and_images = get_kinozal_top_movies_and_images()
+
+  notified_movies_and_images = get_notified_movies(notified_movies_worksheet)
+  new_movies = get_new_movies(kinozal_top_movies_and_images, notified_movies_and_images)
   send_message_with_new_movies(new_movies)
   
-  save_notified_movies(notified_movies_worksheet, pd.concat([notified_movies, new_movies]))
-  save_kinozal_top_movies(kinozal_top_movies_worksheet, kinozal_top_movies)
+  notified_movies_and_images = pd.concat([notified_movies_and_images, new_movies])
+  
+  save_notified_movies(notified_movies_worksheet, notified_movies_and_images)
   
 run_kinozal_scrapper()
