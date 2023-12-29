@@ -27,6 +27,12 @@ def get_kinozal_top_movies():
     href = str(link.get('href'))
     poster = link.find('img').get('src')
     data.append([title, poster, href])
+  soup = get_soup("https://kinozal.tv/top.php?t=0&d=12&f=0&c=0&k=0&j=&s=0&w=0&page=1")
+  for link in soup.select('a[href^="/details.php"]'):
+    title = str(link.get('title'))
+    href = str(link.get('href'))
+    poster = link.find('img').get('src')
+    data.append([title, poster, href])
   df = pd.DataFrame(data, columns=['films', 'posters', 'href'])
   df['posters'] = df['posters'].apply(add_prefix)
   df['href'] = df['href'].apply(add_prefix)
