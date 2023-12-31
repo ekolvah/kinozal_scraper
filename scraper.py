@@ -18,22 +18,21 @@ def get_sheet():
 
 def save_notified_movies(worksheet, notified_movies):
   worksheet.update(values=notified_movies.values.tolist(), range_name=None)
-  
+
 def get_kinozal_top_movies():
+  urls = ["https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0", 
+          "https://kinozal.tv/top.php?t=0&d=12&f=0&c=0&k=0&j=&s=0&w=0&page=1", 
+          "https://kinozal.tv/top.php?j=&t=7&d=12&k=0&f=0&w=0&s=0"]  
   data = []
-  soup = get_soup("https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0")
-  for link in soup.select('a[href^="/details.php"]'):
-    title = str(link.get('title'))
-    href = str(link.get('href'))
-    poster = link.find('img').get('src')
-    data.append([title, poster, href])
-  soup = get_soup("https://kinozal.tv/top.php?t=0&d=12&f=0&c=0&k=0&j=&s=0&w=0&page=1")
-  for link in soup.select('a[href^="/details.php"]'):
-    title = str(link.get('title'))
-    href = str(link.get('href'))
-    poster = link.find('img').get('src')
-    data.append([title, poster, href])
+  for url in urls:
+    soup = get_soup(url)
+    for link in soup.select('a[href^="/details.php"]'):
+      title = str(link.get('title'))
+      href = str(link.get('href'))
+      poster = link.find('img').get('src')
+      data.append([title, poster, href])
   df = pd.DataFrame(data, columns=['films', 'posters', 'href'])
+  df = df.drop_duplicates()
   df['posters'] = df['posters'].apply(add_prefix)
   df['href'] = df['href'].apply(add_prefix)
   return df
