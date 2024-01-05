@@ -6,6 +6,7 @@ import os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import json
+from googleapiclient.discovery import build
 
 def get_sheet():
   scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
@@ -59,17 +60,36 @@ def get_new_movies(kinozal_top_movies, notified_movies):
   new_movies['href'] = new_movies['href'].apply(add_prefix)
   return new_movies
 
+def get_trailer_url(film):
+    credentials = os.environ['API_KEY']
+    youtube = build('youtube', 'v3', developerKey=credentials)
+    request = youtube.search().list(
+        q=film + ' trailer',
+        part='id',
+        maxResults=1
+    )
+    response = request.execute()
+
+    if response['items']:
+        video_id = response['items'][0]['id']['videoId']
+        trailer_url = f'https://www.youtube.com/watch?v={video_id}'
+        return trailer_url
+
+    return None
+
 def send_message_with_new_movies(new_movies):
   for index, row in new_movies.iterrows():
-    film = row['films']
+    film = row['films'].split('/')[0].strip()
     poster = row['posters']
     href = row['href']
-    telegram_bot_send_poster(film, poster, href)
+    trailer = get_trailer_url(film)
+    telegram_bot_send_poster(film, poster, href, trailer)
 
-def telegram_bot_send_poster(film, poster, href):
+def telegram_bot_send_poster(film, poster, href, trailer):
   bot_token = os.environ['BOT_TOKEN']
   bot_chatID = os.environ['BOT_CHATID']
-  data = {'chat_id': bot_chatID, 'photo': poster, 'parse_mode': 'HTML','caption': '<a href="' + href + '">' + film + '</a>'}
+  caption = '<a href="' + href + '">' + film + '</a>' + '\n\n' + '<a href="' + trailer + '">Trailer</a>'
+  data = {'chat_id': bot_chatID, 'photo': poster, 'parse_mode': 'HTML', 'caption': caption}
   send_photo = 'https://api.telegram.org/bot' + bot_token + '/sendPhoto'
   response = requests.post(send_photo, data=data)
   return response.json()
