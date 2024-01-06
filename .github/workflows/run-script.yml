@@ -15,19 +15,7 @@ jobs:
         with:
           python-version: '3.x'
       - name: Install dependencies
-        run: pip install selenium
-      - name: Install dependencies
-        run: pip install bs4
-      - name: Install dependencies
-        run: pip install requests
-      - name: Install dependencies
-        run: pip install --upgrade pandas
-      - name: Install dependencies
-        run: pip install openpyxl
-      - name: Install dependencies
-        run: pip install gspread
-      - name: Install dependencies
-        run: pip install oauth2client
+        run: pip install -r requirements.txt
 
       - name: Run script
         run: python scraper.py
