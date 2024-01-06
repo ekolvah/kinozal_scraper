@@ -82,7 +82,7 @@ def send_message_with_new_movies(new_movies):
     film = row['films'].split('/')[0].strip()
     poster = row['posters']
     href = row['href']
-    trailer = get_trailer_url(film)
+    trailer = get_trailer_url(film.split('(')[0].strip())
     telegram_bot_send_poster(film, poster, href, trailer)
 
 def telegram_bot_send_poster(film, poster, href, trailer):
