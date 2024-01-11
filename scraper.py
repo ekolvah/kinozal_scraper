@@ -22,6 +22,7 @@ def save_notified_movies(worksheet, notified_movies):
 
 def get_kinozal_top_movies():
   urls = ["https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0", 
+          "https://kinozal.tv/top.php?j=&t=0&d=0&k=0&f=0&w=0&s=0", 
           "https://kinozal.tv/top.php?t=0&d=12&f=0&c=0&k=0&j=&s=0&w=0&page=1", 
           "https://kinozal.tv/top.php?j=&t=7&d=12&k=0&f=0&w=0&s=0"]  
   data = []
