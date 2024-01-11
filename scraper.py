@@ -69,6 +69,7 @@ def get_trailer_url(film):
         maxResults=1
     )
     response = request.execute()
+    print(response)
 
     if response['items']:
         video_id = response['items'][0]['id'].get('videoId')
