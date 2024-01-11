@@ -61,7 +61,6 @@ def get_new_movies(kinozal_top_movies, notified_movies):
   return new_movies
 
 def get_trailer_url(film):
-    print(film)
     credentials = os.environ['API_KEY']
     youtube = build('youtube', 'v3', developerKey=credentials)
     request = youtube.search().list(
@@ -72,12 +71,9 @@ def get_trailer_url(film):
     response = request.execute()
 
     if response['items']:
-        video_id = response['items'][0]['id']['videoId']
-        if video_id:
-            trailer_url = f'https://www.youtube.com/watch?v={video_id}'
-            return trailer_url
-        else:
-          print('No video id for ' + film)
+        video_id = response['items'][0]['id'].get('videoId')
+        trailer_url = f'https://www.youtube.com/watch?v={video_id}'
+        return trailer_url
 
     return None
 
