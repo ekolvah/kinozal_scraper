@@ -73,8 +73,11 @@ def get_trailer_url(film):
 
     if response['items']:
         video_id = response['items'][0]['id']['videoId']
-        trailer_url = f'https://www.youtube.com/watch?v={video_id}'
-        return trailer_url
+        if video_id:
+            trailer_url = f'https://www.youtube.com/watch?v={video_id}'
+            return trailer_url
+        else:
+          print('No video id for ' + film)
 
     return None
 
