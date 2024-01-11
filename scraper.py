@@ -61,22 +61,23 @@ def get_new_movies(kinozal_top_movies, notified_movies):
   return new_movies
 
 def get_trailer_url(film):
-    credentials = os.environ['API_KEY']
-    youtube = build('youtube', 'v3', developerKey=credentials)
-    request = youtube.search().list(
-        q=film + ' trailer',
-        part='id',
-        maxResults=1
-    )
-    response = request.execute()
-    print(response)
+  credentials = os.environ['API_KEY']
+  youtube = build('youtube', 'v3', developerKey=credentials)
+  request = youtube.search().list(
+    q=film + ' trailer',
+    part='id',
+    maxResults=5 
+  )
+  response = request.execute()
+  print(response)
 
-    if response['items']:
-        video_id = response['items'][0]['id'].get('videoId')
-        trailer_url = f'https://www.youtube.com/watch?v={video_id}'
-        return trailer_url
+  for item in response['items']:
+    if item['id'].get('kind') == 'youtube#video': 
+      video_id = item['id'].get('videoId')
+      trailer_url = f'https://www.youtube.com/watch?v={video_id}'
+      return trailer_url
 
-    return None
+  return None
 
 def send_message_with_new_movies(new_movies):
   for index, row in new_movies.iterrows():
