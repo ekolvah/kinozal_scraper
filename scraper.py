@@ -61,6 +61,7 @@ def get_new_movies(kinozal_top_movies, notified_movies):
   return new_movies
 
 def get_trailer_url(film):
+    print(film)
     credentials = os.environ['API_KEY']
     youtube = build('youtube', 'v3', developerKey=credentials)
     request = youtube.search().list(
