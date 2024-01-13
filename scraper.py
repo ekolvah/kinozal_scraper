@@ -18,7 +18,7 @@ def get_sheet():
   return sheet
 
 def save_notified_movies(worksheet, notified_movies):
-  worksheet.update(values=notified_movies.values.tolist(), range_name=None)
+  worksheet.update(notified_movies.values.tolist())
 
 def get_kinozal_top_movies():
   urls = ["https://kinozal.tv/top.php?j=&t=0&d=12&k=0&f=0&w=0&s=0", 
