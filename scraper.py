@@ -8,12 +8,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 import json
 from googleapiclient.discovery import build
 
-URLS = [
-    "https://kinozal.tv/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0", # топ избранных раздач за 2023-2024
-    "https://kinozal.tv/top.php?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=1", # # топ избранных раздач за 2023-2024, вторая страница
-    "https://kinozal.tv/top.php?j=&t=0&d=0&k=0&f=0&w=0&s=0", # топ избранных раздач за все года
-    "https://kinozal.tv/top.php?j=&t=7&d=12&k=0&f=0&w=0&s=0" # топ избранных игр за все года
-]
 def get_sheet():
   scope = ['https://spreadsheets.google.com/feeds','https://www.googleapis.com/auth/drive']
   credentials = os.environ['CREDENTIALS']
@@ -28,6 +22,13 @@ def save_notified_movies(worksheet, notified_movies):
 
 def get_kinozal_top_movies():
   data = []
+  URLS_COMMENTS_STR = os.getenv('URLS')
+  PAIRS = URLS_COMMENTS_STR.split(";")
+  URLS = [pair.split("|")[1] for pair in PAIRS]
+
+  print("-----URLS-----")
+  print(URLS)
+
   for url in URLS:
     soup = get_soup(url)
     for link in soup.select('a[href^="/details.php"]'):
