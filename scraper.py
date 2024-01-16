@@ -77,6 +77,8 @@ def get_trailer_url(film):
     maxResults=5 
   )
   response = request.execute()
+
+  print("-----Get trailer response-----")
   print(response)
 
   for item in response['items']:
@@ -93,6 +95,10 @@ def send_message_with_new_movies(new_movies):
     poster = row['posters']
     href = row['href']
     trailer = get_trailer_url(film.split('(')[0].strip())
+
+    print("-----Send message-----")
+    print(film, poster, href, trailer)
+
     telegram_bot_send_poster(film, poster, href, trailer)
 
 def telegram_bot_send_poster(film, poster, href, trailer):
@@ -102,7 +108,15 @@ def telegram_bot_send_poster(film, poster, href, trailer):
   data = {'chat_id': bot_chatID, 'photo': poster, 'parse_mode': 'HTML', 'caption': caption}
   send_photo = 'https://api.telegram.org/bot' + bot_token + '/sendPhoto'
   response = requests.post(send_photo, data=data)
-  return response.json()
+
+  try:
+    response.raise_for_status()
+  except requests.exceptions.HTTPError as err:
+    print("HTTP error occurred:", err)
+    print("Details:", response.text)
+    send_message = 'https://api.telegram.org/bot' + bot_token + '/sendMessage'
+    message_data = {'chat_id': bot_chatID, 'text': f"Film: {film}\nPoster: {poster}\nLink: {href}\nTrailer: {trailer}\nОшибка: {str(err)}\nПодробности: {response.text}"}
+    requests.post(send_message, data=message_data)
 
 def get_soup(URL):
   headers = {
@@ -125,7 +139,10 @@ def run_kinozal_scrapper():
   kinozal_top_movies = get_kinozal_top_movies()
   notified_movies = get_notified_movies(notified_movies_worksheet)
   new_movies = get_new_movies(kinozal_top_movies, notified_movies)
-  
+
+  print("-----New movies-----")
+  print(new_movies)
+
   send_message_with_new_movies(new_movies)
   
   notified_movies = pd.concat([notified_movies, new_movies])
