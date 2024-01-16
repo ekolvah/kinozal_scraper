@@ -24,4 +24,4 @@ jobs:
           BOT_CHATID: ${{ secrets.BOT_CHATID }}
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           API_KEY: ${{ secrets.API_KEY }}
-          URLS: ${{ env.URLS }}
+          URLS: ${{ secrets.URLS }}
