@@ -22,7 +22,7 @@ def save_notified_movies(worksheet, notified_movies):
 
 def get_kinozal_top_movies():
   data = []
-  URLS_COMMENTS_STR = os.environ('URLS')
+  URLS_COMMENTS_STR = os.getenv('URLS')
 
   print("-----URLS_COMMENTS_STR-----")
   print(URLS_COMMENTS_STR)
