@@ -6,7 +6,8 @@ from googleapiclient.discovery import build
 from oauth2client.service_account import ServiceAccountCredentials
 import gspread
 import json
-
+from langdetect import detect
+from abc import ABC, abstractmethod
 
 class GoogleSpreadsheet:
     def __init__(self):
@@ -66,13 +67,56 @@ class TelegramBot:
             requests.post(send_message, data=message_data)
 
 
-class MovieScraper:
-
+class Scraper(ABC):
     def __init__(self, spreadsheet: GoogleSpreadsheet, youtube: Youtube, telegram_bot: TelegramBot):
         self.spreadsheet = spreadsheet
         self.youtube = youtube
         self.telegram_bot = telegram_bot
+        self.notified_events = self.get_notified_events()
 
+        print("-----Notified Events-----")
+        print(self.notified_events)
+
+        self.top_events = self.get_top_events()
+
+        print("-----Top Events-----")
+        print(self.top_events)
+
+        self.new_events = self.get_new_events()
+
+        print("-----New Events-----")
+        print(self.new_events)
+
+
+    @abstractmethod
+    def add_prefix(self, link):
+        pass
+
+    def get_notified_events(self):
+        worksheet = self.spreadsheet.get_worksheet(0)
+        return pd.DataFrame(worksheet.get_all_values(), columns=['events', 'posters', 'href'])
+
+    @abstractmethod
+    def get_top_events(self):
+        pass
+
+    def get_new_events(self):
+        new_events = self.top_events[~self.top_events['events'].isin(self.notified_events['events'])]
+        return new_events
+
+    def run(self):
+        for index in self.new_events.index:
+            entity_name = self.new_events.loc[index, 'events']
+            poster = self.new_events.loc[index, 'posters']
+            href = self.new_events.loc[index, 'href']
+            trailer = self.youtube.get_trailer_url(entity_name)
+            self.telegram_bot.send_poster(entity_name, poster, href, trailer)
+
+        self.notified_events = pd.concat([self.notified_events, self.new_events])
+        self.spreadsheet.update_worksheet(self.spreadsheet.get_worksheet(0), self.notified_events)
+
+
+class MovieScraper(Scraper):
     @staticmethod
     def add_prefix(link):
         if link.startswith('http'):
@@ -80,7 +124,7 @@ class MovieScraper:
         else:
             return 'https://kinozal.tv' + link
 
-    def get_top_movies(self):
+    def get_top_events(self):
 
         data = []
         URLS_COMMENTS_STR = os.getenv('URLS')
@@ -100,32 +144,66 @@ class MovieScraper:
                 poster = self.add_prefix(link.find('img').get('src'))
                 data.append([title, poster, href])
 
-        df = pd.DataFrame(data, columns=['films', 'posters', 'href'])
+        df = pd.DataFrame(data, columns=['events', 'posters', 'href'])
         return df.drop_duplicates()
 
     def run(self):
+        for index in self.new_events.index:
+            event = self.new_events.loc[index, 'events'].split('/')[0].strip()
+            poster = self.new_events.loc[index, 'posters']
+            href = self.new_events.loc[index, 'href']
+            trailer = self.youtube.get_trailer_url(event.split('(')[0].strip())
+            self.telegram_bot.send_poster(event, poster, href, trailer)
 
-        notified_movies_worksheet = self.spreadsheet.get_worksheet(0)
-        top_movies = self.get_top_movies()
+        self.notified_events = pd.concat([self.notified_events, self.new_events])
+        self.spreadsheet.update_worksheet(self.spreadsheet.get_worksheet(0), self.notified_events)
 
-        notified_movies = pd.DataFrame(notified_movies_worksheet.get_all_values(), columns=['films', 'posters', 'href'])
-        new_movies = top_movies.merge(notified_movies, on='films', how='outer', indicator=True)
-        new_movies = new_movies[new_movies['_merge'] == 'left_only']
-        new_movies = new_movies.drop(columns=['posters_y', 'href_y', '_merge'])
-        new_movies = new_movies.rename(columns={'posters_x': 'posters', 'href_x': 'href'})
-        new_movies['posters'] = new_movies['posters'].apply(self.add_prefix)
-        new_movies['href'] = new_movies['href'].apply(self.add_prefix)
 
-        for index, row in new_movies.iterrows():
-            film = row['films'].split('/')[0].strip()
-            poster = row['posters']
-            href = row['href']
-            trailer = self.youtube.get_trailer_url(film.split('(')[0].strip())
-            self.telegram_bot.send_poster(film, poster, href, trailer)
+class EventsScraper(Scraper):
+    @staticmethod
+    def add_prefix(link):
+        if link.startswith('http'):
+            return link
+        else:
+            return 'https://www.soldoutticketbox.com' + link
 
-        notified_movies = pd.concat([notified_movies, new_movies])
-        self.spreadsheet.update_worksheet(notified_movies_worksheet, notified_movies)
+    def get_top_events(self):
+        URLS_EVENTS_STR = os.getenv('URLS_EVENTS')
+        PAIRS_EVENTS = URLS_EVENTS_STR.split(";")
+        URLS_EVENTS = [pair.split("|")[1] for pair in PAIRS_EVENTS]
 
+        print('-----URLS_EVENTS-----')
+        print(URLS_EVENTS)
+
+        data = []
+        for url in URLS_EVENTS:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
+                'Content-Type': 'text/html',
+            }
+            response = requests.get(url, headers=headers)
+
+            #print('-----response-----')
+            #print(response.text)
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+            for box in soup.find_all('div', class_='homeBoxEvent'):
+                event = box.select_one('h2 a').text
+                poster = self.add_prefix(str(box.select_one('.imgEvent')['src']))
+                href = self.add_prefix(str(box.select_one('.homeBoxEventTop a')['href']))
+
+                try:
+                    # Определяем язык события
+                    lang = detect(event)
+                except:
+                    lang = 'unknown'
+
+                # Если событие на русском языке, добавляем информацию в наш список
+                if lang == 'ru':
+                    data.append([event, poster, href])
+
+        df = pd.DataFrame(data, columns=['events', 'posters', 'href'])
+        return df.drop_duplicates()
 
 if __name__ == "__main__":
     spreadsheet = GoogleSpreadsheet()
@@ -133,3 +211,6 @@ if __name__ == "__main__":
     telegram_bot = TelegramBot()
     movie_scraper = MovieScraper(spreadsheet, youtube, telegram_bot)
     movie_scraper.run()
+
+    events_scraper = EventsScraper(spreadsheet, youtube, telegram_bot)
+    events_scraper.run()

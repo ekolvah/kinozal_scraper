@@ -25,3 +25,4 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           API_KEY: ${{ secrets.API_KEY }}
           URLS: ${{ vars.URLS }}
+          URLS_EVENTS: ${{ vars.URLS_EVENTS }}
