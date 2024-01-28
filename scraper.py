@@ -8,6 +8,7 @@ import gspread
 import json
 from langdetect import detect
 from abc import ABC, abstractmethod
+import re
 
 class GoogleSpreadsheet:
     def __init__(self):
@@ -172,9 +173,6 @@ class EventsScraper(Scraper):
         PAIRS_EVENTS = URLS_EVENTS_STR.split(";")
         URLS_EVENTS = [pair.split("|")[1] for pair in PAIRS_EVENTS]
 
-        print('-----URLS_EVENTS-----')
-        print(URLS_EVENTS)
-
         data = []
         for url in URLS_EVENTS:
             headers = {
@@ -183,20 +181,16 @@ class EventsScraper(Scraper):
             }
             response = requests.get(url, headers=headers)
 
-            #print('-----response-----')
-            #print(response.text)
-
             soup = BeautifulSoup(response.text, 'html.parser')
             for box in soup.find_all('div', class_='homeBoxEvent'):
                 event = box.select_one('h2 a').text
                 poster = self.add_prefix(str(box.select_one('.imgEvent')['src']))
                 href = self.add_prefix(str(box.select_one('.homeBoxEventTop a')['href']))
 
-                try:
-                    # Определяем язык события
-                    lang = detect(event)
-                except:
-                    lang = 'unknown'
+                if re.search('[а-яА-Я]', event):
+                    lang = 'ru'
+                else:
+                    lang = ''
 
                 # Если событие на русском языке, добавляем информацию в наш список
                 if lang == 'ru':
