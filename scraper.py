@@ -212,6 +212,7 @@ class TelegramChannelSummarizer:
     channel_urls = os.getenv('CHANNEL_URL')
     GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     phone_number = os.getenv('PHONE_NUMBER')
+    auth_code = os.getenv('AUTH_CODE')
     genai.configure(api_key=GOOGLE_API_KEY)
 
     @staticmethod
@@ -236,7 +237,7 @@ class TelegramChannelSummarizer:
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
         client = TelegramClient('anon', TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
-        await client.start(TelegramChannelSummarizer.phone_number)
+        await client.start(TelegramChannelSummarizer.phone_number, code_callback=lambda: TelegramChannelSummarizer.auth_code)
         async with client:
             entity = await client.get_entity(channel_url)
             posts = await client(GetHistoryRequest(
