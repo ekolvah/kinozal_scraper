@@ -26,3 +26,7 @@ jobs:
           API_KEY: ${{ secrets.API_KEY }}
           URLS: ${{ vars.URLS }}
           URLS_EVENTS: ${{ vars.URLS_EVENTS }}
+          CHANNEL_URL: ${{ vars.CHANNEL_URL }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          API_HASH: ${{ secrets.API_HASH }}
+          API_ID: ${{ secrets.API_ID }}
