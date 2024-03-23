@@ -17,6 +17,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Create anon.session file
+        run: echo "${{ secrets.TELETHON_SESSION }}" > anon.session
+
       - name: Run script
         run: python scraper.py
         env: 
@@ -29,6 +32,6 @@ jobs:
           CHANNEL_URL: ${{ vars.CHANNEL_URL }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           API_HASH: ${{ secrets.API_HASH }}
-          API_ID: ${{ secrets.API_ID }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}

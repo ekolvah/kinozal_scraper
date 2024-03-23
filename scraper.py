@@ -207,12 +207,12 @@ class EventsScraper(Scraper):
         return df.drop_duplicates()
 
 class TelegramChannelSummarizer:
-    api_id = os.getenv('API_ID')
+    telegram_api_id = os.getenv('TELEGRAM_API_ID')
     api_hash = os.getenv('API_HASH')
     channel_urls = os.getenv('CHANNEL_URL')
     GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     phone_number = os.getenv('PHONE_NUMBER')
-    session_string = os.getenv('TELETHON_SESSION')
+    TELETHON_SESSION = os.getenv('TELETHON_SESSION')
 
     genai.configure(api_key=GOOGLE_API_KEY)
 
@@ -224,7 +224,14 @@ class TelegramChannelSummarizer:
                           "Проанализируй этот текст и выдели ключевые темы. "
                           "Ограничь ответ 100 символами.")
         response = model.generate_content(request)
-        return(response.text)
+        if response.candidates:
+            #print("------Summarization------")
+            #print(response.text)
+            return response.text
+        else:
+            #print("------Summarization------")
+            #print("No candidates were returned for the prompt.")
+            return ""
 
     @staticmethod
     def summarization():
@@ -233,17 +240,19 @@ class TelegramChannelSummarizer:
         result = ''
         for url in channel_urls_list:
             text = loop.run_until_complete(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
+            #print("-----Telegram channel: ", url, "-----")
+            #print(text)
             result += f"\n-----Telegram channel: {url} -----\n" + TelegramChannelSummarizer.summarization_text(text)
         return result
 
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
-        if TelegramChannelSummarizer.session_string:
-            client = TelegramClient(StringSession(TelegramChannelSummarizer.session_string), TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
+        if TelegramChannelSummarizer.TELETHON_SESSION:
+            client = TelegramClient(StringSession(TelegramChannelSummarizer.TELETHON_SESSION), TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
         else:
-            client = TelegramClient('anon', TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
+            client = TelegramClient('anon', TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
         await client.connect()
-        if not client.is_user_authorized():
+        if not await client.is_user_authorized():
             await client.send_code_request(TelegramChannelSummarizer.phone_number)
             await client.sign_in(TelegramChannelSummarizer.phone_number, input('Enter the code: '))
         async with client:
