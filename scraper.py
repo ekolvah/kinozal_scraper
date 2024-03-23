@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 import pytz
 import google.generativeai as genai
 import asyncio
-
+from telethon.sessions import StringSession
 
 class GoogleSpreadsheet:
     def __init__(self):
@@ -212,8 +212,10 @@ class TelegramChannelSummarizer:
     channel_urls = os.getenv('CHANNEL_URL')
     GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     phone_number = os.getenv('PHONE_NUMBER')
-    auth_code = os.getenv('AUTH_CODE')
+    session_string = os.getenv('TELETHON_SESSION')
+
     genai.configure(api_key=GOOGLE_API_KEY)
+
 
     @staticmethod
     def summarization_text(text):
@@ -236,8 +238,14 @@ class TelegramChannelSummarizer:
 
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
-        client = TelegramClient('anon', TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
-        await client.start(TelegramChannelSummarizer.phone_number, code_callback=lambda: TelegramChannelSummarizer.auth_code)
+        if TelegramChannelSummarizer.session_string:
+            client = TelegramClient(StringSession(TelegramChannelSummarizer.session_string), TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
+        else:
+            client = TelegramClient('anon', TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
+        await client.connect()
+        if not client.is_user_authorized():
+            await client.send_code_request(TelegramChannelSummarizer.phone_number)
+            await client.sign_in(TelegramChannelSummarizer.phone_number, input('Enter the code: '))
         async with client:
             entity = await client.get_entity(channel_url)
             posts = await client(GetHistoryRequest(

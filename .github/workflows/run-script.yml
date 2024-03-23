@@ -31,4 +31,4 @@ jobs:
           API_HASH: ${{ secrets.API_HASH }}
           API_ID: ${{ secrets.API_ID }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
-          AUTH_CODE: ${{ secrets.AUTH_CODE }}
+          TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
