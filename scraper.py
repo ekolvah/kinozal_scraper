@@ -239,6 +239,8 @@ class TelegramChannelSummarizer:
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
         if TelegramChannelSummarizer.session_string:
+            print("-----session_string-----")
+            print(TelegramChannelSummarizer.session_string)
             client = TelegramClient(StringSession(TelegramChannelSummarizer.session_string), TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
         else:
             client = TelegramClient('anon', TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
