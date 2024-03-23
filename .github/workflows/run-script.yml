@@ -30,3 +30,4 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           API_HASH: ${{ secrets.API_HASH }}
           API_ID: ${{ secrets.API_ID }}
+          PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
