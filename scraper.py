@@ -9,6 +9,13 @@ import json
 from langdetect import detect
 from abc import ABC, abstractmethod
 import re
+from telethon.sync import TelegramClient
+from telethon.tl.functions.messages import GetHistoryRequest
+from datetime import datetime, timedelta
+import pytz
+import google.generativeai as genai
+import asyncio
+
 
 class GoogleSpreadsheet:
     def __init__(self):
@@ -199,7 +206,54 @@ class EventsScraper(Scraper):
         df = pd.DataFrame(data, columns=['events', 'posters', 'href'])
         return df.drop_duplicates()
 
+class TelegramChannelSummarizer:
+    api_id = os.getenv('API_ID')
+    api_hash = os.getenv('API_HASH')
+    channel_urls = os.getenv('CHANNEL_URL')
+    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
+    genai.configure(api_key=GOOGLE_API_KEY)
+
+    @staticmethod
+    def summarization_text(text):
+        model = genai.GenerativeModel('gemini-pro')
+        request = text + (" Это текст сообщений из чата. "
+                          "Проанализируй этот текст и выдели ключевые темы. "
+                          "Ограничь ответ 100 символами.")
+        response = model.generate_content(request)
+        return(response.text)
+
+    @staticmethod
+    def summarization():
+        loop = asyncio.get_event_loop()
+        channel_urls_list = TelegramChannelSummarizer.channel_urls.split(';')
+        result = ''
+        for url in channel_urls_list:
+            text = loop.run_until_complete(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
+            result += f"\n-----Telegram channel: {url} -----\n" + TelegramChannelSummarizer.summarization_text(text)
+        return result
+
+    @staticmethod
+    async def get_news_from_telegram_channel(channel_url):
+        client = TelegramClient('anon', TelegramChannelSummarizer.api_id, TelegramChannelSummarizer.api_hash)
+        async with client:
+            entity = await client.get_entity(channel_url)
+            posts = await client(GetHistoryRequest(
+                peer=entity,
+                limit=100,
+                offset_date=None,
+                offset_id=0,
+                max_id=0,
+                min_id=0,
+                add_offset=0,
+                hash=0))
+            one_day_ago = datetime.now(pytz.UTC) - timedelta(days=1)
+            recent_messages = [message for message in posts.messages if message.date > one_day_ago]
+            recent_messages.reverse()
+            result = '\n'.join([message.message for message in recent_messages])
+            return result
+
 if __name__ == "__main__":
+    """
     spreadsheet = GoogleSpreadsheet()
     youtube = Youtube()
     telegram_bot = TelegramBot()
@@ -208,3 +262,6 @@ if __name__ == "__main__":
 
     events_scraper = EventsScraper(spreadsheet, youtube, telegram_bot)
     events_scraper.run()
+    """
+    summary = TelegramChannelSummarizer.summarization()
+    print(summary)
