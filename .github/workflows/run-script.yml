@@ -18,7 +18,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Create anon.session file
-        run: echo "${{ secrets.TELETHON_SESSION }}" > anon.session
+        run: printf "%s" "${{ secrets.TELETHON_SESSION }}" > anon.session
 
       - name: Run script
         run: python scraper.py
