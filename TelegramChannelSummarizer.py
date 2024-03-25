@@ -22,20 +22,24 @@ class TelegramChannelSummarizer:
 
     @staticmethod
     def summarization_text(text):
+        if not text:
+            return ""
+
         model = genai.GenerativeModel('gemini-pro')
         request = text + (" Это текст сообщений из чата. "
                           "Проанализируй этот текст и выдели ключевые темы. "
-                          "Ограничь ответ 100 символами.")
+                          "Будь лаконичным.")
         response = model.generate_content(request)
 
         print("------Original text------")
         print(text)
         print("------Summarization------")
-        if response.candidates:
-            print(response.text)
-            return response.text
-        else:
+
+        if not response.candidates:
             return ""
+
+        print(response.text)
+        return response.text
 
     @staticmethod
     def summarization():
