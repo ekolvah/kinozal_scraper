@@ -27,13 +27,14 @@ class TelegramChannelSummarizer:
                           "Проанализируй этот текст и выдели ключевые темы. "
                           "Ограничь ответ 100 символами.")
         response = model.generate_content(request)
+
+        print("------Original text------")
+        print(text)
+        print("------Summarization------")
         if response.candidates:
-            #print("------Summarization------")
-            #print(response.text)
+            print(response.text)
             return response.text
         else:
-            #print("------Summarization------")
-            #print("No candidates were returned for the prompt.")
             return ""
 
     @staticmethod
