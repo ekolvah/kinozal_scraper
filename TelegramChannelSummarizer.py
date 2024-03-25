@@ -48,9 +48,10 @@ class TelegramChannelSummarizer:
         result = ''
         for url in channel_urls_list:
             text = loop.run_until_complete(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
-            #print("-----Telegram channel: ", url, "-----")
-            #print(text)
-            result += f"\n-----Telegram channel: {url} -----\n" + TelegramChannelSummarizer.summarization_text(text)
+            print("-----Telegram channel: ", url, "-----")
+            print(text)
+            if text:
+                result += f"\n-----Telegram channel: {url} -----\n" + TelegramChannelSummarizer.summarization_text(text)
         return result
 
     @staticmethod
