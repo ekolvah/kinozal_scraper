@@ -53,6 +53,16 @@ class TelegramBot:
         self.bot_token = os.environ['BOT_TOKEN']
         self.bot_chatID = os.environ['BOT_CHATID']
 
+    def send_text(self, text):
+        send_message = 'https://api.telegram.org/bot' + self.bot_token + '/sendMessage'
+        message_data = {'chat_id': self.bot_chatID, 'text': text}
+        response = requests.post(send_message, data=message_data)
+
+        try:
+            response.raise_for_status()
+        except requests.exceptions.HTTPError as err:
+            print(f"Failed to send message: {str(err)}")
+
     def send_poster(self, film, poster, href, trailer):
         caption = '<a href="' + href + '">' + film + '</a>' + '\n\n' + '<a href="' + trailer + '">Trailer</a>'
         send_photo = 'https://api.telegram.org/bot' + self.bot_token + '/sendPhoto'
@@ -201,7 +211,6 @@ class EventsScraper(Scraper):
         return df.drop_duplicates()
 
 if __name__ == "__main__":
-    """
     spreadsheet = GoogleSpreadsheet()
     youtube = Youtube()
     telegram_bot = TelegramBot()
@@ -210,6 +219,5 @@ if __name__ == "__main__":
 
     events_scraper = EventsScraper(spreadsheet, youtube, telegram_bot)
     events_scraper.run()
-    """
-    summary = TelegramChannelSummarizer.summarization()
-    print(summary)
+
+    telegram_bot.send_text(TelegramChannelSummarizer.summarization())

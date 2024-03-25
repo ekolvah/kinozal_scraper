@@ -16,7 +16,6 @@ class TelegramChannelSummarizer:
     phone_number = os.getenv('PHONE_NUMBER')
     TELETHON_SESSION = os.getenv('TELETHON_SESSION')
 
-    print("-----Telegram Channel Summarizer Initialization-----")
     crypto.load_encrypter_session()
     genai.configure(api_key=GOOGLE_API_KEY)
 
