@@ -17,9 +17,6 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Create anon.session file
-        run: printf "%s" "$(echo "${{ secrets.TELETHON_SESSION }}" | base64 --decode)" > anon.session
-
       - name: Run script
         run: python scraper.py
         env: 
