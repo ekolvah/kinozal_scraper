@@ -18,7 +18,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Create anon.session file
-        run: printf "%s" "${{ secrets.TELETHON_SESSION }}" > anon.session
+        run: printf "%s" "$(echo "${{ secrets.TELETHON_SESSION }}" | base64 --decode)" > anon.session
 
       - name: Run script
         run: python scraper.py
@@ -35,3 +35,4 @@ jobs:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
+          SECRET_KEY: ${{ secrets.SECRET_KEY }}

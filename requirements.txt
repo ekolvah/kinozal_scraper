@@ -11,3 +11,4 @@ protobuf
 telethon
 pytz
 google-generativeai
+cryptography
