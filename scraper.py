@@ -1,4 +1,6 @@
 import os
+import logging
+from datetime import datetime
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -8,6 +10,10 @@ import gspread
 import json
 from abc import ABC, abstractmethod
 import re
+from gspread.exceptions import APIError
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 from TelegramChannelSummarizer import TelegramChannelSummarizer
 
@@ -22,10 +28,57 @@ class GoogleSpreadsheet:
             'https://docs.google.com/spreadsheets/d/12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing')
 
     def get_worksheet(self, index):
-        return self.sheet.get_worksheet(index)
+        logger.info(f"Attempting to get worksheet at index {index}")
+        try:
+            start_time = datetime.now()
+            worksheet = self.sheet.get_worksheet(index)
+            end_time = datetime.now()
+            logger.info(f"Successfully retrieved worksheet. Time taken: {end_time - start_time}")
+            return worksheet
+        except APIError as e:
+            logger.error(f"APIError occurred while getting worksheet: {str(e)}")
+            logger.error(f"Response content: {e.response.content}")
+            logger.error(f"Response status code: {e.response.status_code}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error occurred while getting worksheet: {str(e)}")
+            raise
 
     def update_worksheet(self, worksheet, notified_movies):
-        worksheet.update(notified_movies.values.tolist())
+        logger.info(f"Attempting to update worksheet")
+        try:
+            start_time = datetime.now()
+            result = worksheet.update(notified_movies.values.tolist())
+            end_time = datetime.now()
+            logger.info(f"Successfully updated worksheet. Time taken: {end_time - start_time}")
+            logger.info(f"Update result: {result}")
+        except APIError as e:
+            logger.error(f"APIError occurred while updating worksheet: {str(e)}")
+            logger.error(f"Response content: {e.response.content}")
+            logger.error(f"Response status code: {e.response.status_code}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error occurred while updating worksheet: {str(e)}")
+            raise
+
+    def log_request(self, request):
+        logger.info(f"Request URL: {request.url}")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request headers: {request.headers}")
+        logger.info(f"Request body: {request.body}")
+
+    def log_response(self, response):
+        logger.info(f"Response status code: {response.status_code}")
+        logger.info(f"Response headers: {response.headers}")
+        logger.info(f"Response content: {response.content}")
+
+    # Переопределяем метод request класса gspread.Client для логирования
+    def request(self, method, endpoint, **kwargs):
+        logger.info(f"Making request to {endpoint}")
+        self.log_request(requests.Request(method, endpoint, **kwargs).prepare())
+        response = super(gspread.Client, self.client).request(method, endpoint, **kwargs)
+        self.log_response(response)
+        return response
 
 
 class Youtube:
