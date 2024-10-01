@@ -12,3 +12,4 @@ telethon
 pytz
 google-generativeai
 cryptography
+tenacity

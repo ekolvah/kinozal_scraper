@@ -11,6 +11,7 @@ import json
 from abc import ABC, abstractmethod
 import re
 from gspread.exceptions import APIError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -27,6 +28,10 @@ class GoogleSpreadsheet:
         self.sheet = self.client.open_by_url(
             'https://docs.google.com/spreadsheets/d/12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing')
 
+    @retry(stop=stop_after_attempt(3),
+           wait=wait_exponential(multiplier=1, min=4, max=60),
+           retry=retry_if_exception_type((APIError, requests.exceptions.RequestException)),
+           before=lambda retry_state: logger.info(f"Attempt {retry_state.attempt_number} to get worksheet"))
     def get_worksheet(self, index):
         logger.info(f"Attempting to get worksheet at index {index}")
         try:
@@ -40,10 +45,17 @@ class GoogleSpreadsheet:
             logger.error(f"Response content: {e.response.content}")
             logger.error(f"Response status code: {e.response.status_code}")
             raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error occurred while getting worksheet: {str(e)}")
+            raise
         except Exception as e:
             logger.error(f"Unexpected error occurred while getting worksheet: {str(e)}")
             raise
 
+    @retry(stop=stop_after_attempt(3),
+           wait=wait_exponential(multiplier=1, min=4, max=60),
+           retry=retry_if_exception_type((APIError, requests.exceptions.RequestException)),
+           before=lambda retry_state: logger.info(f"Attempt {retry_state.attempt_number} to update worksheet"))
     def update_worksheet(self, worksheet, notified_movies):
         logger.info(f"Attempting to update worksheet")
         try:
@@ -56,6 +68,9 @@ class GoogleSpreadsheet:
             logger.error(f"APIError occurred while updating worksheet: {str(e)}")
             logger.error(f"Response content: {e.response.content}")
             logger.error(f"Response status code: {e.response.status_code}")
+            raise
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error occurred while updating worksheet: {str(e)}")
             raise
         except Exception as e:
             logger.error(f"Unexpected error occurred while updating worksheet: {str(e)}")
@@ -72,13 +87,23 @@ class GoogleSpreadsheet:
         logger.info(f"Response headers: {response.headers}")
         logger.info(f"Response content: {response.content}")
 
-    # Переопределяем метод request класса gspread.Client для логирования
+    @retry(stop=stop_after_attempt(3),
+           wait=wait_exponential(multiplier=1, min=4, max=60),
+           retry=retry_if_exception_type((APIError, requests.exceptions.RequestException)),
+           before=lambda retry_state: logger.info(f"Attempt {retry_state.attempt_number} to make request"))
     def request(self, method, endpoint, **kwargs):
         logger.info(f"Making request to {endpoint}")
         self.log_request(requests.Request(method, endpoint, **kwargs).prepare())
-        response = super(gspread.Client, self.client).request(method, endpoint, **kwargs)
-        self.log_response(response)
-        return response
+        try:
+            response = super(gspread.Client, self.client).request(method, endpoint, **kwargs)
+            self.log_response(response)
+            return response
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Network error occurred during request: {str(e)}")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error occurred during request: {str(e)}")
+            raise
 
 
 class Youtube:
