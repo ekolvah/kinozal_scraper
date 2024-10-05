@@ -8,6 +8,7 @@ from telethon.sessions import StringSession
 import os
 from crypto import crypto  # Import the crypto module
 
+
 class TelegramChannelSummarizer:
     telegram_api_id = os.getenv('TELEGRAM_API_ID')
     api_hash = os.getenv('API_HASH')
@@ -18,7 +19,6 @@ class TelegramChannelSummarizer:
 
     crypto.load_encrypter_session()
     genai.configure(api_key=GOOGLE_API_KEY)
-
 
     @staticmethod
     def summarization_text(text):
@@ -57,14 +57,18 @@ class TelegramChannelSummarizer:
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
         if TelegramChannelSummarizer.TELETHON_SESSION:
-            client = TelegramClient(StringSession(TelegramChannelSummarizer.TELETHON_SESSION), TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
+            client = TelegramClient(StringSession(TelegramChannelSummarizer.TELETHON_SESSION),
+                                    TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
         else:
-            client = TelegramClient('anon', TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
-        await client.connect()
-        if not await client.is_user_authorized():
-            await client.send_code_request(TelegramChannelSummarizer.phone_number)
-            await client.sign_in(TelegramChannelSummarizer.phone_number, input('Enter the code: '))
-        async with client:
+            client = TelegramClient('anon', TelegramChannelSummarizer.telegram_api_id,
+                                    TelegramChannelSummarizer.api_hash)
+
+        try:
+            await client.start()
+            if not await client.is_user_authorized():
+                await client.send_code_request(TelegramChannelSummarizer.phone_number)
+                await client.sign_in(TelegramChannelSummarizer.phone_number, input('Enter the code: '))
+
             entity = await client.get_entity(channel_url)
             posts = await client(GetHistoryRequest(
                 peer=entity,
@@ -75,8 +79,22 @@ class TelegramChannelSummarizer:
                 min_id=0,
                 add_offset=0,
                 hash=0))
+
             one_day_ago = datetime.now(pytz.UTC) - timedelta(days=1)
             recent_messages = [message for message in posts.messages if message.date > one_day_ago]
             recent_messages.reverse()
-            result = '\n'.join([message.message for message in recent_messages])
+
+            # Фильтруем сообщения, оставляя только те, которые содержат текст
+            text_messages = [message.message for message in recent_messages if message.message]
+
+            if not text_messages:
+                print(f"No text messages found in channel: {channel_url}")
+                return ""
+
+            result = '\n'.join(text_messages)
             return result
+        except Exception as e:
+            print(f"Error processing channel {channel_url}: {str(e)}")
+            return ""
+        finally:
+            await client.disconnect()
