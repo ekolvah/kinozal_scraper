@@ -7,6 +7,10 @@ import asyncio
 from telethon.sessions import StringSession
 import os
 from crypto import crypto  # Import the crypto module
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 
 class TelegramChannelSummarizer:
@@ -19,27 +23,34 @@ class TelegramChannelSummarizer:
 
     crypto.load_encrypter_session()
     genai.configure(api_key=GOOGLE_API_KEY)
+    models = genai.list_models()
+    for model in models:
+        print(model.name)
 
     @staticmethod
     def summarization_text(text):
         if not text:
             return ""
 
-        model = genai.GenerativeModel('gemini-pro')
-        request = text + (" Это текст сообщений из чата. "
-                          "Проанализируй этот текст и выдели ключевые темы. "
-                          "Будь лаконичным.")
-        response = model.generate_content(request)
+        try:
+            model = genai.GenerativeModel('gemini-1.5-pro')
+            request = text + (" Это текст сообщений из чата. "
+                              "Проанализируй этот текст и выдели ключевые темы. "
+                              "Будь лаконичным.")
+            response = model.generate_content(request)
 
-        print("------Original text------")
-        print(text)
-        print("------Summarization------")
+            logger.info("------Original text------")
+            logger.info(text)
+            logger.info("------Summarization------")
 
-        if not response.candidates:
+            if not response.candidates:
+                return ""
+
+            logger.info(response.text)
+            return response.text
+        except Exception as e:
+            logger.error(f"Error in summarization_text: {e}")
             return ""
-
-        print(response.text)
-        return response.text
 
     @staticmethod
     def summarization():
@@ -48,8 +59,8 @@ class TelegramChannelSummarizer:
         result = ''
         for url in channel_urls_list:
             text = loop.run_until_complete(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
-            print("-----Telegram channel: ", url, "-----")
-            print(text)
+            logger.info(f"-----Telegram channel: {url} -----")
+            logger.info(text)
             if text:
                 result += f"\n-----Telegram channel: {url} -----\n" + TelegramChannelSummarizer.summarization_text(text)
         return result
@@ -88,13 +99,13 @@ class TelegramChannelSummarizer:
             text_messages = [message.message for message in recent_messages if message.message]
 
             if not text_messages:
-                print(f"No text messages found in channel: {channel_url}")
+                logger.info(f"No text messages found in channel: {channel_url}")
                 return ""
 
             result = '\n'.join(text_messages)
             return result
         except Exception as e:
-            print(f"Error processing channel {channel_url}: {str(e)}")
+            logger.error(f"Error processing channel {channel_url}: {str(e)}")
             return ""
         finally:
             await client.disconnect()
