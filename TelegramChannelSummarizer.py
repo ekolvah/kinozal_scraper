@@ -8,6 +8,8 @@ from telethon.sessions import StringSession
 import os
 from crypto import crypto  # Import the crypto module
 import logging
+from tenacity import retry, wait_fixed, retry_if_exception_type, stop_after_attempt
+import google.api_core.exceptions
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -21,11 +23,23 @@ class TelegramChannelSummarizer:
     phone_number = os.getenv('PHONE_NUMBER')
     TELETHON_SESSION = os.getenv('TELETHON_SESSION')
 
+    # to comment it to be able to debug if you have no SECRET_KEY
     crypto.load_encrypter_session()
     genai.configure(api_key=GOOGLE_API_KEY)
     models = genai.list_models()
     for model in models:
         print(model.name)
+
+    @staticmethod
+    @retry(
+        wait=wait_fixed(60),  # Ожидание 60 секунд (1 минута) между попытками
+        retry=retry_if_exception_type(google.api_core.exceptions.ResourceExhausted),
+        stop=stop_after_attempt(3),  # Максимальное количество попыток
+        before_sleep=lambda retry_state: logger.warning(
+            f"Повторная попытка через 1 минуту. Ошибка: {retry_state.outcome.exception()}")
+    )
+    def generate_with_retry(model, request):
+        return model.generate_content(request)
 
     @staticmethod
     def summarization_text(text):
@@ -34,14 +48,18 @@ class TelegramChannelSummarizer:
 
         try:
             model = genai.GenerativeModel('gemini-1.5-pro')
-            request = text + (" Это текст сообщений из чата. "
-                              "Проанализируй этот текст и выдели ключевые темы. "
-                              "Будь лаконичным.")
-            response = model.generate_content(request)
+            request = text + (
+                " Это текст сообщений из чата. "
+                "Проанализируй этот текст и выдели ключевые темы. "
+                "Будь лаконичным."
+            )
 
-            logger.info("------Original text------")
+            # Используем функцию с повторными попытками
+            response = TelegramChannelSummarizer.generate_with_retry(model, request)
+
+            logger.info("------Оригинальный текст------")
             logger.info(text)
-            logger.info("------Summarization------")
+            logger.info("------Саммаризация------")
 
             if not response.candidates:
                 return ""
