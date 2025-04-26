@@ -121,11 +121,11 @@ class TelegramBot:
         self.bot_token = os.environ['BOT_TOKEN']
         self.bot_chatID = os.environ['BOT_CHATID']
 
-    def send_text(self, text):
+    def send_text(self, text, is_error_message=False):
         """Отправляет текстовое сообщение."""
         send_message = f'https://api.telegram.org/bot{self.bot_token}/sendMessage'
         message_data = {'chat_id': self.bot_chatID, 'text': text}
-        self._send_request(send_message, message_data)
+        self._send_request(send_message, message_data, is_error_message)
 
     def send_poster(self, film, poster, href, trailer):
         """Отправляет постер фильма."""
@@ -134,7 +134,7 @@ class TelegramBot:
         data = {'chat_id': self.bot_chatID, 'photo': poster, 'parse_mode': 'HTML', 'caption': caption}
         self._send_request(send_photo, data)
 
-    def _send_request(self, url, data):
+    def _send_request(self, url, data, is_error_message=False):
         """Отправляет запрос к Telegram API."""
         response = None
         try:
@@ -142,7 +142,10 @@ class TelegramBot:
             response.raise_for_status()
         except requests.exceptions.HTTPError as err:
             logger.error(f"Ошибка при отправке сообщения: {str(err)}")
-            self._send_error_message(data, err, response.text if response else "Нет ответа")
+            if not is_error_message:  # Предотвращаем рекурсию
+                self._send_error_message(data, err, response.text if response else "Нет ответа")
+            else:
+                logger.error(f"Не удалось отправить сообщение об ошибке. Детали ошибки: {str(err)}")
 
     def _send_error_message(self, data, error, details):
         """Отправляет сообщение об ошибке."""
@@ -276,4 +279,17 @@ if __name__ == "__main__":
     events_scraper = EventsScraper(spreadsheet, youtube, telegram_bot)
     events_scraper.run()
 
-    telegram_bot.send_text(TelegramChannelSummarizer.summarization())
+    # Изменение: обрабатываем каждый канал отдельно
+    summaries = TelegramChannelSummarizer.summarization()
+    if summaries:
+        # Отправляем заголовок
+        telegram_bot.send_text("🔍 Обзор сообщений в каналах за последние сутки:")
+
+        # Отправляем каждое саммари отдельным сообщением
+        for summary_item in summaries:
+            channel = summary_item["channel"]
+            summary_text = summary_item["summary"]
+            message = f"📢 Канал: {channel}\n\n{summary_text}"
+            telegram_bot.send_text(message)
+    else:
+        telegram_bot.send_text("За последние сутки в отслеживаемых каналах не было новых сообщений.")
