@@ -47,7 +47,7 @@ class TelegramChannelSummarizer:
             return ""
 
         try:
-            model = genai.GenerativeModel('gemini-1.5-pro')
+            model = genai.GenerativeModel('gemini-2.0-flash-lite')
             request = text + (
                 " Это текст сообщений из чата. "
                 "Проанализируй этот текст и выдели ключевые темы. "
