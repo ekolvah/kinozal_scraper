@@ -72,12 +72,12 @@ class TelegramChannelSummarizer:
 
     @staticmethod
     def summarization():
-        loop = asyncio.get_event_loop()
         channel_urls_list = TelegramChannelSummarizer.channel_urls.split(';')
         results = []  # Сохраняем результаты для каждого канала отдельно
 
         for url in channel_urls_list:
-            text = loop.run_until_complete(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
+            # Используем asyncio.run для создания/закрытия event loop для каждого top-level async вызова.
+            text = asyncio.run(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
             logger.info(f"-----Telegram channel: {url} -----")
             logger.info(text)
             if text:
