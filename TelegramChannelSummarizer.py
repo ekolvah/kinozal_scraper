@@ -49,9 +49,9 @@ class TelegramChannelSummarizer:
         try:
             model = genai.GenerativeModel('gemini-2.0-flash-lite')
             request = text + (
-                " Это текст сообщений из чата. "
+                " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
                 "Проанализируй этот текст и выдели ключевые темы. "
-                "Будь лаконичным."
+                "Указывай авторов ключевых мнений или идей. Будь лаконичным."
             )
 
             # Используем функцию с повторными попытками
@@ -123,14 +123,34 @@ class TelegramChannelSummarizer:
             recent_messages = [message for message in posts.messages if message.date > one_day_ago]
             recent_messages.reverse()
 
-            # Фильтруем сообщения, оставляя только те, которые содержат текст
-            text_messages = [message.message for message in recent_messages if message.message]
+            # Создаем словарь пользователей для быстрого поиска по ID
+            users = {user.id: user for user in posts.users}
 
-            if not text_messages:
+            formatted_messages = []
+            for message in recent_messages:
+                if message.message:
+                    sender_name = "Unknown"
+                    # Пытаемся найти имя отправителя
+                    if message.sender_id:
+                        sender = users.get(message.sender_id)
+                        if sender:
+                            first_name = sender.first_name or ""
+                            last_name = sender.last_name or ""
+                            sender_name = f"{first_name} {last_name}".strip()
+                            # Если нет имени, берем юзернейм, если нет юзернейма - ID
+                            if not sender_name and sender.username:
+                                sender_name = sender.username
+                            if not sender_name:
+                                sender_name = str(sender.id)
+                    
+                    # Добавляем в список в формате "Имя: Сообщение"
+                    formatted_messages.append(f"{sender_name}: {message.message}")
+
+            if not formatted_messages:
                 logger.info(f"No text messages found in channel: {channel_url}")
                 return ""
 
-            result = '\n'.join(text_messages)
+            result = '\n'.join(formatted_messages)
             return result
         except Exception as e:
             logger.error(f"Error processing channel {channel_url}: {str(e)}")
