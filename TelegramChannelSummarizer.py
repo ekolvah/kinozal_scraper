@@ -92,6 +92,9 @@ class TelegramChannelSummarizer:
 
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
+        # 1. Если channel_url - это строка с числом (например, "-1001537004903"), конвертируем в int
+        if isinstance(channel_url, str) and channel_url.lstrip('-').isdigit():
+            channel_url = int(channel_url)
         if TelegramChannelSummarizer.TELETHON_SESSION:
             client = TelegramClient(StringSession(TelegramChannelSummarizer.TELETHON_SESSION),
                                     TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
