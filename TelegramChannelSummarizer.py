@@ -77,19 +77,24 @@ class TelegramChannelSummarizer:
 
         for url in channel_urls_list:
             # Используем asyncio.run для создания/закрытия event loop для каждого top-level async вызова.
-            text = asyncio.run(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
-            logger.info(f"-----Telegram channel: {url} -----")
+            # ПОЛУЧАЕМ ДВА ЗНАЧЕНИЯ: channel_title и text
+            channel_title, text = asyncio.run(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
+            
+            # Если название не удалось определить, используем URL или ID
+            display_name = channel_title if channel_title else url
+
+            logger.info(f"-----Telegram channel: {display_name} -----")
             logger.info(text)
             if text:
                 summary = TelegramChannelSummarizer.summarization_text(text)
                 if summary:
                     results.append({
-                        "channel": url,
+                        "channel": display_name, # Используем красивое имя
                         "summary": summary
                     })
 
         return results  # Возвращаем список с результатами для каждого канала
-
+        
     @staticmethod
     async def get_news_from_telegram_channel(channel_url):
         # 1. Если channel_url - это строка с числом (например, "-1001537004903"), конвертируем в int
@@ -109,6 +114,7 @@ class TelegramChannelSummarizer:
                 await client.sign_in(TelegramChannelSummarizer.phone_number, input('Enter the code: '))
 
             entity = await client.get_entity(channel_url)
+            channel_title = getattr(entity, 'title', str(channel_url)) 
             posts = await client(GetHistoryRequest(
                 peer=entity,
                 limit=100,
@@ -148,12 +154,12 @@ class TelegramChannelSummarizer:
 
             if not formatted_messages:
                 logger.info(f"No text messages found in channel: {channel_url}")
-                return ""
+                return channel_title, "" # Возвращаем кортеж
 
             result = '\n'.join(formatted_messages)
-            return result
+            return channel_title, result # Возвращаем название и текст
         except Exception as e:
             logger.error(f"Error processing channel {channel_url}: {str(e)}")
-            return ""
+            return None, "" # Возвращаем None при ошибке
         finally:
             await client.disconnect()
