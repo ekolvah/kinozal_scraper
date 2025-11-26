@@ -133,24 +133,28 @@ class TelegramChannelSummarizer:
             users = {user.id: user for user in posts.users}
 
             formatted_messages = []
+            is_broadcast = getattr(entity, 'broadcast', False)
             for message in recent_messages:
                 if message.message:
-                    sender_name = "Unknown"
-                    # Пытаемся найти имя отправителя
-                    if message.sender_id:
-                        sender = users.get(message.sender_id)
-                        if sender:
-                            first_name = sender.first_name or ""
-                            last_name = sender.last_name or ""
-                            sender_name = f"{first_name} {last_name}".strip()
-                            # Если нет имени, берем юзернейм, если нет юзернейма - ID
-                            if not sender_name and sender.username:
-                                sender_name = sender.username
-                            if not sender_name:
-                                sender_name = str(sender.id)
-                    
-                    # Добавляем в список в формате "Имя: Сообщение"
-                    formatted_messages.append(f"{sender_name}: {message.message}")
+                    if is_broadcast:
+                        formatted_messages.append(message.message)
+                    else:
+                        sender_name = "Unknown"
+                        # Пытаемся найти имя отправителя
+                        if message.sender_id:
+                            sender = users.get(message.sender_id)
+                            if sender:
+                                first_name = sender.first_name or ""
+                                last_name = sender.last_name or ""
+                                sender_name = f"{first_name} {last_name}".strip()
+                                # Если нет имени, берем юзернейм, если нет юзернейма - ID
+                                if not sender_name and sender.username:
+                                    sender_name = sender.username
+                                if not sender_name:
+                                    sender_name = str(sender.id)
+                        
+                        # Добавляем в список в формате "Имя: Сообщение"
+                        formatted_messages.append(f"{sender_name}: {message.message}")
 
             if not formatted_messages:
                 logger.info(f"No text messages found in channel: {channel_url}")
