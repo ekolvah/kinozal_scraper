@@ -42,17 +42,26 @@ class TelegramChannelSummarizer:
         return model.generate_content(request)
 
     @staticmethod
-    def summarization_text(text):
+    def summarization_text(text, is_broadcast=False):
         if not text:
             return ""
 
         try:
             model = genai.GenerativeModel('gemini-2.0-flash-lite')
-            request = text + (
-                " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
-                "Проанализируй этот текст и выдели ключевые темы. "
-                "Указывай авторов ключевых мнений или идей. Будь лаконичным."
-            )
+            if is_broadcast:
+                prompt = (
+                    " Это текст постов из телеграм канала. "
+                    "Проанализируй этот текст и выдели ключевые темы. "
+                    "Будь лаконичным."
+                )
+            else:
+                prompt = (
+                    " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
+                    "Проанализируй этот текст и выдели ключевые идеи и предложения. "
+                    "Описывай суть предложенного, а не просто тему. "
+                    "Указывай авторов ключевых мнений. Будь лаконичным."
+                )
+            request = text + prompt
 
             # Используем функцию с повторными попытками
             response = TelegramChannelSummarizer.generate_with_retry(model, request)
@@ -77,8 +86,8 @@ class TelegramChannelSummarizer:
 
         for url in channel_urls_list:
             # Используем asyncio.run для создания/закрытия event loop для каждого top-level async вызова.
-            # ПОЛУЧАЕМ ДВА ЗНАЧЕНИЯ: channel_title и text
-            channel_title, text = asyncio.run(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
+            # ПОЛУЧАЕМ ТРИ ЗНАЧЕНИЯ: channel_title, text, is_broadcast
+            channel_title, text, is_broadcast = asyncio.run(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
             
             # Если название не удалось определить, используем URL или ID
             display_name = channel_title if channel_title else url
@@ -86,7 +95,7 @@ class TelegramChannelSummarizer:
             logger.info(f"-----Telegram channel: {display_name} -----")
             logger.info(text)
             if text:
-                summary = TelegramChannelSummarizer.summarization_text(text)
+                summary = TelegramChannelSummarizer.summarization_text(text, is_broadcast)
                 if summary:
                     results.append({
                         "channel": display_name, # Используем красивое имя
@@ -159,12 +168,12 @@ class TelegramChannelSummarizer:
 
             if not formatted_messages:
                 logger.info(f"No text messages found in channel: {channel_url}")
-                return channel_title, "" # Возвращаем кортеж
+                return channel_title, "", is_broadcast # Возвращаем кортеж
 
             result = '\n'.join(formatted_messages)
-            return channel_title, result # Возвращаем название и текст
+            return channel_title, result, is_broadcast # Возвращаем название и текст
         except Exception as e:
             logger.error(f"Error processing channel {channel_url}: {str(e)}")
-            return None, "" # Возвращаем None при ошибке
+            return None, "", False # Возвращаем None при ошибке
         finally:
             await client.disconnect()
