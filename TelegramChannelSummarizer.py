@@ -134,6 +134,7 @@ class TelegramChannelSummarizer:
 
             formatted_messages = []
             is_broadcast = getattr(entity, 'broadcast', False)
+            logger.info(f"Channel '{channel_title}' is_broadcast: {is_broadcast}")
             for message in recent_messages:
                 if message.message:
                     if is_broadcast:
