@@ -33,3 +33,4 @@ jobs:
           PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
