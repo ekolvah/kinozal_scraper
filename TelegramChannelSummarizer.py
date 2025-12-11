@@ -82,6 +82,7 @@ class TelegramChannelSummarizer:
 
     @staticmethod
     def summarization():
+        logger.info(f"Environment variable LLM_MODEL: {TelegramChannelSummarizer.LLM_MODEL}")
         channel_urls_list = TelegramChannelSummarizer.channel_urls.split(';')
         results = []  # Сохраняем результаты для каждого канала отдельно
 
