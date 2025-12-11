@@ -22,6 +22,7 @@ class TelegramChannelSummarizer:
     GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
     phone_number = os.getenv('PHONE_NUMBER')
     TELETHON_SESSION = os.getenv('TELETHON_SESSION')
+    LLM_MODEL = os.getenv('LLM_MODEL')
 
     # to comment it to be able to debug if you have no SECRET_KEY
     crypto.load_encrypter_session()
@@ -47,7 +48,7 @@ class TelegramChannelSummarizer:
             return ""
 
         try:
-            model = genai.GenerativeModel('gemini-2.0-flash-lite')
+            model = genai.GenerativeModel(TelegramChannelSummarizer.LLM_MODEL)
             if is_broadcast:
                 prompt = (
                     " Это текст постов из телеграм канала. "
