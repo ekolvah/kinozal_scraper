@@ -123,6 +123,10 @@ class TelegramBot:
 
     def send_text(self, text, is_error_message=False):
         """Отправляет текстовое сообщение."""
+        if len(text) > 4096:
+            logger.warning("Message too long, truncating to 4096 characters.")
+            text = text[:4096]
+
         send_message = f'https://api.telegram.org/bot{self.bot_token}/sendMessage'
         message_data = {'chat_id': self.bot_chatID, 'text': text}
         self._send_request(send_message, message_data, is_error_message)
@@ -152,7 +156,7 @@ class TelegramBot:
         error_message = f"Ошибка: {str(error)}\nПодробности: {details}"
         for key, value in data.items():
             error_message += f"\n{key}: {value}"
-        self.send_text(error_message)
+        self.send_text(error_message, is_error_message=True)
 
 
 class Scraper(ABC):
