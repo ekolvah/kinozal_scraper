@@ -23,6 +23,8 @@ class TelegramChannelSummarizer:
     phone_number = os.getenv('PHONE_NUMBER')
     TELETHON_SESSION = os.getenv('TELETHON_SESSION')
     LLM_MODEL = os.getenv('LLM_MODEL')
+    CHAT_PROMPT = os.getenv('CHAT_PROMPT')
+    BROADCAST_PROMPT = os.getenv('BROADCAST_PROMPT')
 
     # to comment it to be able to debug if you have no SECRET_KEY
     crypto.load_encrypter_session()
@@ -50,17 +52,17 @@ class TelegramChannelSummarizer:
         try:
             model = genai.GenerativeModel(TelegramChannelSummarizer.LLM_MODEL)
             if is_broadcast:
-                prompt = (
+                prompt = TelegramChannelSummarizer.BROADCAST_PROMPT or (
                     " Это текст постов из телеграм канала. "
                     "Проанализируй этот текст и выдели ключевые темы. "
                     "Будь лаконичным."
                 )
             else:
-                prompt = (
+                prompt = TelegramChannelSummarizer.CHAT_PROMPT or (
                     " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
-                    "Проанализируй этот текст и выдели ключевые идеи и предложения. "
-                    "Описывай суть предложенного, а не просто тему. "
-                    "Указывай авторов ключевых мнений. Будь лаконичным."
+                    "Проанализируй этот текст и выдели только основные обсуждаемые темы. "
+                    "Не пиши детали, кто что сказал, не указывай имена. "
+                    "Просто перечисли заголовки обсуждаемых тем. Будь максимально лаконичным."
                 )
             request = text + prompt
 

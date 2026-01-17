@@ -134,18 +134,48 @@ class TelegramBot:
     def send_poster(self, film, poster, href, trailer):
         """Отправляет постер фильма."""
         caption = f'<a href="{href}">{film}</a>\n\n<a href="{trailer}">Trailer</a>'
-        send_photo = f'https://api.telegram.org/bot{self.bot_token}/sendPhoto'
+        send_photo_url = f'https://api.telegram.org/bot{self.bot_token}/sendPhoto'
         data = {'chat_id': self.bot_chatID, 'photo': poster, 'parse_mode': 'HTML', 'caption': caption}
-        self._send_request(send_photo, data)
 
-    def _send_request(self, url, data, is_error_message=False):
+        try:
+            # Попытка отправить по ссылке
+            self._send_request(send_photo_url, data, raise_on_error=True)
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Не удалось отправить постер по ссылке: {poster}. Ошибка: {e}. Попытка загрузить файл.")
+            try:
+                # Скачиваем изображение
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                img_response = requests.get(poster, headers=headers)
+                img_response.raise_for_status()
+
+                # Подготовка данных для отправки файла (удаляем ссылку на фото из данных)
+                data_upload = data.copy()
+                del data_upload['photo']
+
+                # 'photo' - это имя поля для файла в API Telegram
+                files = {'photo': ('image.jpg', img_response.content, 'image/jpeg')}
+
+                # Отправка с файлом. Если это тоже не удастся, _send_request обработает ошибку.
+                self._send_request(send_photo_url, data_upload, files=files)
+
+            except Exception as download_error:
+                logger.error(f"Не удалось скачать и отправить изображение: {download_error}")
+                # Отправляем сообщение об ошибке, так как первая попытка была подавлена, а вторая не удалась
+                self._send_error_message(data, download_error, f"Failed to download image after URL send failed. Original error: {e}")
+
+    def _send_request(self, url, data, is_error_message=False, files=None, raise_on_error=False):
         """Отправляет запрос к Telegram API."""
         response = None
         try:
-            response = requests.post(url, data=data)
+            response = requests.post(url, data=data, files=files)
             response.raise_for_status()
+            return response
         except requests.exceptions.HTTPError as err:
             logger.error(f"Ошибка при отправке сообщения: {str(err)}")
+            if raise_on_error:
+                raise err
             if not is_error_message:  # Предотвращаем рекурсию
                 self._send_error_message(data, err, response.text if response else "Нет ответа")
             else:
