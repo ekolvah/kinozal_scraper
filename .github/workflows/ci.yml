@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - "codex-*"
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Check formatting
+        run: python -m ruff format --check .
+
+      - name: Lint
+        run: python -m ruff check .
+
+      - name: Run tests
+        run: python -m pytest
+
+      - name: Type check new pipeline modules
+        run: |
+          modules=()
+          for module in pipeline_config.py generic_pipeline.py sheets_storage.py telegram_notifier.py; do
+            if [ -f "$module" ]; then
+              modules+=("$module")
+            fi
+          done
+
+          if [ "${#modules[@]}" -eq 0 ]; then
+            echo "No new pipeline modules exist yet; skipping mypy."
+          else
+            python -m mypy "${modules[@]}"
+          fi
+
+      - name: Dependency audit
+        continue-on-error: true
+        run: python -m pip_audit -r requirements.txt
