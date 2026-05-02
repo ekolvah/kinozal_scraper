@@ -27,7 +27,7 @@ colorama==0.4.6
     #   pytest
 coverage==7.13.5
     # via pytest-cov
-cyclonedx-python-lib==7.6.2
+cyclonedx-python-lib==11.7.0
     # via pip-audit
 defusedxml==0.7.1
     # via py-serializable
@@ -40,14 +40,14 @@ filelock==3.29.0
     #   cachecontrol
     #   python-discovery
     #   virtualenv
-html5lib==1.1
-    # via pip-audit
 identify==2.6.19
     # via pre-commit
 idna==3.13
     # via requests
 iniconfig==2.3.0
     # via pytest
+librt==0.9.0
+    # via mypy
 license-expression==30.4.4
     # via cyclonedx-python-lib
 markdown-it-py==4.0.0
@@ -56,7 +56,7 @@ mdurl==0.1.2
     # via markdown-it-py
 msgpack==1.1.2
     # via cachecontrol
-mypy==1.13.0
+mypy==1.20.2
     # via -r requirements-dev.in
 mypy-extensions==1.1.0
     # via mypy
@@ -71,37 +71,44 @@ packaging==26.2
     #   pip-requirements-parser
     #   pytest
     #   wheel
+pathspec==1.1.1
+    # via mypy
 pip-api==0.0.34
     # via pip-audit
-pip-audit==2.7.3
+pip-audit==2.10.0
     # via -r requirements-dev.in
 pip-requirements-parser==32.0.1
     # via pip-audit
-pip-tools==7.4.1
+pip-tools==7.5.3
     # via -r requirements-dev.in
 platformdirs==4.9.6
     # via
+    #   pip-audit
     #   python-discovery
     #   virtualenv
 pluggy==1.6.0
-    # via pytest
-pre-commit==4.0.1
+    # via
+    #   pytest
+    #   pytest-cov
+pre-commit==4.6.0
     # via -r requirements-dev.in
-py-serializable==1.1.2
+py-serializable==2.1.0
     # via cyclonedx-python-lib
 pygments==2.20.0
-    # via rich
+    # via
+    #   pytest
+    #   rich
 pyparsing==3.3.2
     # via pip-requirements-parser
 pyproject-hooks==1.2.0
     # via
     #   build
     #   pip-tools
-pytest==8.3.4
+pytest==9.0.3
     # via
     #   -r requirements-dev.in
     #   pytest-cov
-pytest-cov==6.0.0
+pytest-cov==7.1.0
     # via -r requirements-dev.in
 python-discovery==1.2.2
     # via virtualenv
@@ -109,29 +116,29 @@ pyyaml==6.0.3
     # via
     #   detect-secrets
     #   pre-commit
-requests==2.32.3
+requests==2.33.1
     # via
     #   cachecontrol
     #   detect-secrets
     #   pip-audit
 rich==15.0.0
     # via pip-audit
-ruff==0.8.4
+ruff==0.15.12
     # via -r requirements-dev.in
-six==1.17.0
-    # via html5lib
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
-toml==0.10.2
+tomli==2.4.1
+    # via pip-audit
+tomli-w==1.2.0
     # via pip-audit
 typing-extensions==4.15.0
-    # via mypy
+    # via
+    #   cyclonedx-python-lib
+    #   mypy
 urllib3==2.6.3
     # via requests
 virtualenv==21.3.0
     # via pre-commit
-webencodings==0.5.1
-    # via html5lib
 wheel==0.47.0
     # via pip-tools
 
