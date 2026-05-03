@@ -1,6 +1,12 @@
 import unittest
 
-from generic_pipeline import PipelineResult, extract_from_html, extract_from_json
+from generic_pipeline import (
+    NormalizedItem,
+    PipelineResult,
+    build_notification,
+    extract_from_html,
+    extract_from_json,
+)
 
 _JSON_CONFIG = {
     "id": "test_src",
@@ -165,6 +171,32 @@ class TestPipelineResult(unittest.TestCase):
     def test_ok_false_when_errors(self) -> None:
         r = PipelineResult(source_id="s", errors=["bad"])
         self.assertFalse(r.ok)
+
+
+class TestBuildNotificationRawFallback(unittest.TestCase):
+    def test_raw_field_resolved_in_template(self) -> None:
+        item = NormalizedItem(
+            dedupe_key="user/repo",
+            title="user/repo",
+            source_id="test",
+            url="https://github.com/user/repo",
+            metric="42",
+            raw={"language": "Python", "forks": 10},
+        )
+        note = build_notification(item, "<b>{title}</b> | {language} | {forks}")
+        self.assertIn("Python", note.text)
+        self.assertIn("10", note.text)
+
+    def test_missing_raw_key_resolves_to_empty(self) -> None:
+        item = NormalizedItem(dedupe_key="x", title="x", source_id="t", raw={})
+        note = build_notification(item, "{title} | {nonexistent}")
+        self.assertIn("x |", note.text)
+        self.assertNotIn("nonexistent", note.text)
+
+    def test_none_raw_value_resolves_to_empty(self) -> None:
+        item = NormalizedItem(dedupe_key="x", title="x", source_id="t", raw={"language": None})
+        note = build_notification(item, "{title} | {language}")
+        self.assertNotIn("None", note.text)
 
 
 if __name__ == "__main__":
