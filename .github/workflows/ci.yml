@@ -38,21 +38,18 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
-      - name: Type check new pipeline modules
+      - name: Type check
         run: |
-          modules=()
-          for module in pipeline_config.py generic_pipeline.py sheets_storage.py telegram_notifier.py; do
-            if [ -f "$module" ]; then
-              modules+=("$module")
-            fi
-          done
-
+          mapfile -t modules < <(find . -name "*.py" \
+            ! -path "./.venv/*" ! -path "./.git/*" ! -path "./__pycache__/*" \
+            ! -name "scraper.py" \
+            ! -name "TelegramChannelSummarizer.py" \
+            ! -name "crypto.py")
           if [ "${#modules[@]}" -eq 0 ]; then
-            echo "No new pipeline modules exist yet; skipping mypy."
+            echo "No modules to type-check; skipping."
           else
             python -m mypy "${modules[@]}"
           fi
 
       - name: Dependency audit
-        continue-on-error: true
         run: python -m pip_audit -r requirements.txt
