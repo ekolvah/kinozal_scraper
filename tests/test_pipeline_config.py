@@ -4,7 +4,13 @@ from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from pipeline_config import ConfigError, build_macro_context, expand_macros, load_sources_config, validate_sources_config
+from pipeline_config import (
+    ConfigError,
+    build_macro_context,
+    expand_macros,
+    load_sources_config,
+    validate_sources_config,
+)
 
 _MINIMAL_SOURCE = {
     "id": "test_src",
@@ -23,10 +29,9 @@ def _make_config(sources: list | None = None) -> dict:
 
 
 def _write_tmp(data: object) -> Path:
-    f = NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
-    json.dump(data, f)
-    f.flush()
-    return Path(f.name)
+    with NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+        json.dump(data, f)
+        return Path(f.name)
 
 
 class TestBuildMacroContext(unittest.TestCase):
@@ -41,7 +46,9 @@ class TestBuildMacroContext(unittest.TestCase):
         self.assertEqual(ctx["STEAM_TOP_LIMIT"], "10")
 
     def test_env_macro_overrides(self) -> None:
-        ctx = build_macro_context(today=date(2024, 1, 1), env={"GITHUB_TOP_LIMIT": "25", "STEAM_TOP_LIMIT": "50"})
+        ctx = build_macro_context(
+            today=date(2024, 1, 1), env={"GITHUB_TOP_LIMIT": "25", "STEAM_TOP_LIMIT": "50"}
+        )
         self.assertEqual(ctx["GITHUB_TOP_LIMIT"], "25")
         self.assertEqual(ctx["STEAM_TOP_LIMIT"], "50")
 
@@ -139,11 +146,11 @@ class TestLoadSourcesConfig(unittest.TestCase):
             load_sources_config("nonexistent_file.json")
 
     def test_invalid_json(self) -> None:
-        f = NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8")
-        f.write("{bad json")
-        f.flush()
+        with NamedTemporaryFile(mode="w", suffix=".json", delete=False, encoding="utf-8") as f:
+            f.write("{bad json")
+            tmp_path = Path(f.name)
         with self.assertRaises(ConfigError):
-            load_sources_config(Path(f.name))
+            load_sources_config(tmp_path)
 
     def test_loads_actual_sources_json(self) -> None:
         sources_path = Path(__file__).resolve().parents[1] / "sources.json"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -10,7 +11,16 @@ from typing import Any
 _MACRO_RE = re.compile(r"\{\{(\w+)\}\}")
 
 _SUPPORTED_VERSIONS = {1}
-_REQUIRED_SOURCE_FIELDS = {"id", "type", "url", "limit", "sheet_tab", "dedupe_key", "fields", "message_template"}
+_REQUIRED_SOURCE_FIELDS = {
+    "id",
+    "type",
+    "url",
+    "limit",
+    "sheet_tab",
+    "dedupe_key",
+    "fields",
+    "message_template",
+}
 _SUPPORTED_TYPES = {"json", "html"}
 
 
@@ -18,7 +28,9 @@ class ConfigError(ValueError):
     pass
 
 
-def build_macro_context(today: date | None = None, env: dict[str, str] | None = None) -> dict[str, str]:
+def build_macro_context(
+    today: date | None = None, env: dict[str, str] | None = None
+) -> dict[str, str]:
     if today is None:
         today = date.today()
     if env is None:
@@ -48,7 +60,9 @@ def validate_sources_config(config: Any) -> None:
 
     version = config.get("version")
     if version not in _SUPPORTED_VERSIONS:
-        raise ConfigError(f"Unsupported config version: {version!r}. Supported: {_SUPPORTED_VERSIONS}")
+        raise ConfigError(
+            f"Unsupported config version: {version!r}. Supported: {_SUPPORTED_VERSIONS}"
+        )
 
     sources = config.get("sources")
     if not isinstance(sources, list):
@@ -69,17 +83,21 @@ def validate_sources_config(config: Any) -> None:
 
         try:
             limit = int(source["limit"])
-        except (TypeError, ValueError):
-            raise ConfigError(f"Source '{source_id}': 'limit' must be an integer, got {source['limit']!r}")
+        except (TypeError, ValueError) as exc:
+            raise ConfigError(
+                f"Source '{source_id}': 'limit' must be an integer, got {source['limit']!r}"
+            ) from exc
         if limit <= 0:
-            raise ConfigError(f"Source '{source_id}': 'limit' must be a positive integer, got {limit}")
+            raise ConfigError(
+                f"Source '{source_id}': 'limit' must be a positive integer, got {limit}"
+            )
 
 
 def load_sources_config(path: str | Path = "sources.json") -> dict[str, Any]:
     try:
         raw = Path(path).read_text(encoding="utf-8")
-    except FileNotFoundError:
-        raise ConfigError(f"Config file not found: {path}")
+    except FileNotFoundError as exc:
+        raise ConfigError(f"Config file not found: {path}") from exc
 
     try:
         config = json.loads(raw)
@@ -89,13 +107,10 @@ def load_sources_config(path: str | Path = "sources.json") -> dict[str, Any]:
     context = build_macro_context()
     config = expand_macros(config, context)
 
-    # convert limit to int after macro expansion
     for source in config.get("sources", []):
         if isinstance(source, dict) and "limit" in source:
-            try:
+            with contextlib.suppress(TypeError, ValueError):
                 source["limit"] = int(source["limit"])
-            except (TypeError, ValueError):
-                pass  # validation will catch this
 
     validate_sources_config(config)
     return config
