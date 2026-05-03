@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+from collections import defaultdict
+from typing import Any, Protocol, runtime_checkable
+
+import gspread
+import gspread.exceptions
+
+from generic_pipeline import ROW_HEADERS
+
+
+@runtime_checkable
+class Storage(Protocol):
+    def get_existing_keys(self, tab_name: str) -> set[str]: ...
+
+    def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None: ...
+
+
+class SheetsStorage:
+    """Google Sheets backed storage. Accepts an already-authenticated gspread.Client."""
+
+    def __init__(self, client: gspread.Client, spreadsheet_url: str) -> None:
+        self._spreadsheet = client.open_by_url(spreadsheet_url)
+
+    def _get_or_create_worksheet(self, tab_name: str) -> gspread.Worksheet:
+        try:
+            return self._spreadsheet.worksheet(tab_name)
+        except gspread.exceptions.WorksheetNotFound:
+            ws = self._spreadsheet.add_worksheet(title=tab_name, rows=1000, cols=len(ROW_HEADERS))
+            ws.append_row(ROW_HEADERS)
+            return ws
+
+    def get_existing_keys(self, tab_name: str) -> set[str]:
+        ws = self._get_or_create_worksheet(tab_name)
+        # read header row to find dedupe_key column index dynamically
+        headers = ws.row_values(1)
+        try:
+            key_col = headers.index("dedupe_key") + 1  # 1-based
+        except ValueError:
+            return set()
+        col_values = ws.col_values(key_col)
+        # skip header
+        return {str(v).strip() for v in col_values[1:] if v and str(v).strip()}
+
+    def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None:
+        if not rows:
+            return
+        ws = self._get_or_create_worksheet(tab_name)
+        ws.append_rows(rows, value_input_option=gspread.utils.ValueInputOption.user_entered)
+
+
+class InMemoryStorage:
+    """In-memory Storage for use in tests and dry runs."""
+
+    def __init__(self) -> None:
+        self._keys: dict[str, set[str]] = defaultdict(set)
+        self._rows: dict[str, list[list[Any]]] = defaultdict(list)
+
+    def get_existing_keys(self, tab_name: str) -> set[str]:
+        return set(self._keys[tab_name])
+
+    def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None:
+        for row in rows:
+            self._rows[tab_name].append(row)
+            if row:
+                self._keys[tab_name].add(str(row[0]))
+
+    def stored_rows(self, tab_name: str) -> list[list[Any]]:
+        return list(self._rows[tab_name])

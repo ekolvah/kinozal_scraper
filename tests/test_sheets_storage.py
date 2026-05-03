@@ -1,0 +1,88 @@
+import unittest
+from datetime import UTC, datetime
+
+from generic_pipeline import ROW_HEADERS, NormalizedItem
+from sheets_storage import InMemoryStorage, Storage
+
+
+def _item(dedupe_key: str = "k1", source_id: str = "src") -> NormalizedItem:
+    return NormalizedItem(
+        dedupe_key=dedupe_key,
+        title="Title",
+        source_id=source_id,
+        url="https://example.com",
+        metric="42",
+    )
+
+
+class TestToRow(unittest.TestCase):
+    def test_row_length_matches_headers(self) -> None:
+        row = _item().to_row()
+        self.assertEqual(len(row), len(ROW_HEADERS))
+
+    def test_row_fields_order(self) -> None:
+        item = _item(dedupe_key="dk")
+        row = item.to_row()
+        self.assertEqual(row[ROW_HEADERS.index("dedupe_key")], "dk")
+        self.assertEqual(row[ROW_HEADERS.index("title")], "Title")
+        self.assertEqual(row[ROW_HEADERS.index("url")], "https://example.com")
+        self.assertEqual(row[ROW_HEADERS.index("metric")], "42")
+        self.assertEqual(row[ROW_HEADERS.index("source_id")], "src")
+
+    def test_notified_at_injected(self) -> None:
+        ts = datetime(2024, 3, 15, 12, 0, 0, tzinfo=UTC)
+        row = _item().to_row(notified_at=ts)
+        self.assertIn("2024-03-15", row[ROW_HEADERS.index("notified_at")])
+
+    def test_notified_at_defaults_to_now(self) -> None:
+        row = _item().to_row()
+        notified_at = row[ROW_HEADERS.index("notified_at")]
+        self.assertIsInstance(notified_at, str)
+        self.assertTrue(notified_at)
+
+
+class TestInMemoryStorage(unittest.TestCase):
+    def setUp(self) -> None:
+        self.storage = InMemoryStorage()
+
+    def test_implements_storage_protocol(self) -> None:
+        self.assertIsInstance(self.storage, Storage)
+
+    def test_empty_tab_returns_empty_set(self) -> None:
+        self.assertEqual(self.storage.get_existing_keys("movies"), set())
+
+    def test_append_then_get_keys(self) -> None:
+        rows = [_item("k1").to_row(), _item("k2").to_row()]
+        self.storage.append_rows("movies", rows)
+        keys = self.storage.get_existing_keys("movies")
+        self.assertIn("k1", keys)
+        self.assertIn("k2", keys)
+
+    def test_existing_key_lookup(self) -> None:
+        self.storage.append_rows("movies", [_item("existing").to_row()])
+        self.assertIn("existing", self.storage.get_existing_keys("movies"))
+        self.assertNotIn("new", self.storage.get_existing_keys("movies"))
+
+    def test_tabs_are_isolated(self) -> None:
+        self.storage.append_rows("tab_a", [_item("k1").to_row()])
+        self.storage.append_rows("tab_b", [_item("k2").to_row()])
+        self.assertNotIn("k2", self.storage.get_existing_keys("tab_a"))
+        self.assertNotIn("k1", self.storage.get_existing_keys("tab_b"))
+
+    def test_append_empty_rows_noop(self) -> None:
+        self.storage.append_rows("movies", [])
+        self.assertEqual(self.storage.stored_rows("movies"), [])
+
+    def test_stored_rows_accessible(self) -> None:
+        row = _item("k1").to_row()
+        self.storage.append_rows("movies", [row])
+        self.assertEqual(self.storage.stored_rows("movies"), [row])
+
+    def test_multiple_appends_accumulate(self) -> None:
+        self.storage.append_rows("movies", [_item("k1").to_row()])
+        self.storage.append_rows("movies", [_item("k2").to_row()])
+        self.assertEqual(len(self.storage.stored_rows("movies")), 2)
+
+
+if __name__ == "__main__":
+    unittest.main()
