@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
+
+ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]
 
 
 @dataclass
@@ -16,6 +19,10 @@ class NormalizedItem:
     metric: str = ""
     image_url: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
+
+    def to_row(self, notified_at: datetime | None = None) -> list[Any]:
+        ts = (notified_at or datetime.now(UTC)).isoformat()
+        return [self.dedupe_key, self.title, self.url, self.metric, self.source_id, ts]
 
 
 @dataclass
