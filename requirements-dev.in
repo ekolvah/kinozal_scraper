@@ -1,0 +1,8 @@
+detect-secrets
+mypy
+pip-audit
+pip-tools
+pre-commit
+pytest
+pytest-cov
+ruff
