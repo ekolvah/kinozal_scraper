@@ -15,10 +15,17 @@ missing fields).
 - Integration tests against real external services belong in a separate test
   suite, run manually against a dedicated test document/channel.
 
+## Known gap: no automated E2E tests
+
+CI only runs unit tests. If a Google Sheets API contract changes or a token
+expires, unit tests with `InMemoryStorage` will pass while production fails.
+Mitigation: a separate manual integration test suite against a dedicated
+test spreadsheet and Telegram channel. Automating this in CI is a future issue.
+
 ## What gets unit-tested
 
 - All pure transformation logic: macro expansion, field mapping, normalization,
-  row construction, deduplication key lookups.
+  row construction, deduplication key lookups, schema validation.
 - Protocol contract: `InMemoryStorage` tests verify the `Storage` interface.
 
 ## What does NOT get unit-tested in this repo

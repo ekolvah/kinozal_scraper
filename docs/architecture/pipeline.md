@@ -11,23 +11,37 @@ telegram_notifier.py  send items, return confirmed list  [issue #4]
 scraper.py            legacy runtime — untouched until issue #5
 ```
 
-## Key principle: new source = config, not code
+## Key principle: new source = config, not code (with known limitation)
 
 Adding GitHub, Steam, or any future source requires only a new entry in
-`sources.json`. No new Python class, no new extractor.
+`sources.json` for extraction and normalization. No new Python class needed.
+
+**Known limitation:** HTTP fetching (pagination, auth headers, rate limits) is
+not declarative. Each new source requires a small fetch function in the caller.
 
 ## Data flow (issues #2–#5)
+
+**Order is intentional: Sheets write BEFORE Telegram send.**
+If Telegram fails after Sheets write → item is deduped on next run (skipped
+notification). If Sheets fails after Telegram send → duplicate notification.
+Duplicates are worse than skipped notifications.
 
 ```
 load_sources_config()
   → for each enabled source:
       fetch payload (HTTP, done by caller)
       extract_from_json / extract_from_html  → PipelineResult
-      storage.get_existing_keys(sheet_tab)   → set[str]
-      filter new items (dedupe_key not in existing keys)
-      notifier.send(new_items)               → confirmed_items
-      storage.append_rows(sheet_tab, [item.to_row() for item in confirmed_items])
+      storage.get_existing_keys(sheet_tab)   → set[str]  ← raises SchemaError on mismatch
+      new_items = [i for i if i.dedupe_key not in existing_keys]
+      storage.append_rows(sheet_tab, [i.to_row() for i in new_items])
+      notifier.send(new_items)
 ```
+
+## Error policy
+
+`PipelineResult` carries `errors` and `warnings`; caller decides what to do.
+Future: `on_error: skip_item | fail_source` field in `sources.json` — deferred
+to issues #6/#7 when sources become real.
 
 ## NormalizedItem
 
