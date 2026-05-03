@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Runs full CI checks before every push. Install once with:
+#   git config core.hooksPath .githooks
+set -euo pipefail
+
+bash scripts/ci-check.sh
