@@ -22,7 +22,7 @@
         "metric": "stargazers_count",
         "image_url": null
       },
-      "message_template": "*{title}*\n{description}\nStars: {metric}\n{url}"
+      "message_template": "<b>{title}</b>\n{description}\nStars: {metric}\n{url}"
     },
     {
       "id": "steam_top_games",
@@ -42,7 +42,7 @@
         "metric": "ccu",
         "image_url": null
       },
-      "message_template": "*{title}*\nDeveloper: {description}\nPlayers: {metric}\n{url}"
+      "message_template": "<b>{title}</b>\nDeveloper: {description}\nPlayers: {metric}\n{url}"
     },
     {
       "id": "kinozal_movies",
@@ -60,7 +60,7 @@
         "metric": null,
         "image_url": null
       },
-      "message_template": "*{title}*\n{url}"
+      "message_template": "<b>{title}</b>\n{url}"
     }
   ]
 }

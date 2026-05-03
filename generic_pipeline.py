@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html as _html
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -179,3 +180,40 @@ def extract_from_html(
         result.errors.append(f"[{source_id}] extraction produced zero items")
 
     return result
+
+
+_URL_FIELDS: frozenset[str] = frozenset({"url", "image_url"})
+_NUMBER_FIELDS: frozenset[str] = frozenset({"metric"})
+
+
+@dataclass
+class Notification:
+    id: str  # = NormalizedItem.dedupe_key
+    text: str  # готовый HTML-текст для Telegram
+
+
+def _format_field(field_name: str, value: Any) -> str:
+    if value is None:
+        return ""
+    value_str = str(value)
+    if field_name in _URL_FIELDS:
+        if value_str.startswith(("http://", "https://")):
+            return value_str
+        return _html.escape(value_str, quote=False)
+    if field_name in _NUMBER_FIELDS:
+        return value_str
+    return _html.escape(value_str, quote=False)
+
+
+def build_notification(item: NormalizedItem, template: str) -> Notification:
+    values: dict[str, Any] = {
+        "title": item.title,
+        "url": item.url,
+        "description": item.description,
+        "metric": item.metric,
+        "dedupe_key": item.dedupe_key,
+    }
+    text = template
+    for field_name, raw_value in values.items():
+        text = text.replace(f"{{{field_name}}}", _format_field(field_name, raw_value))
+    return Notification(id=item.dedupe_key, text=text)
