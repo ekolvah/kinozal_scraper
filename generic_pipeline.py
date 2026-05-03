@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html as _html
+import re
 import urllib.parse
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -195,6 +196,7 @@ def extract_from_html(
 
 _URL_FIELDS: frozenset[str] = frozenset({"url", "image_url", "trailer_url"})
 _NUMBER_FIELDS: frozenset[str] = frozenset({"metric"})
+_PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
 
 @dataclass
@@ -229,4 +231,9 @@ def build_notification(item: NormalizedItem, template: str) -> Notification:
     text = template
     for field_name, raw_value in values.items():
         text = text.replace(f"{{{field_name}}}", _format_field(field_name, raw_value))
+    for match in _PLACEHOLDER_RE.finditer(text):
+        field_name = match.group(1)
+        if field_name not in values:
+            raw_value = item.raw.get(field_name)
+            text = text.replace(f"{{{field_name}}}", _format_field(field_name, raw_value))
     return Notification(id=item.dedupe_key, text=text.strip(), image_url=item.image_url)

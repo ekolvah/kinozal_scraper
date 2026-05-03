@@ -3,9 +3,14 @@
   "sources": [
     {
       "id": "github_new_popular",
-      "enabled": false,
+      "enabled": true,
       "type": "json",
       "url": "https://api.github.com/search/repositories",
+      "json_path": "items",
+      "headers": {
+        "Accept": "application/vnd.github.v3+json",
+        "Authorization": "Bearer {{GITHUB_TOKEN}}"
+      },
       "params": {
         "q": "created:>={{DATE_MINUS_7_DAYS}}",
         "sort": "stars",
@@ -22,7 +27,7 @@
         "metric": "stargazers_count",
         "image_url": null
       },
-      "message_template": "<b>{title}</b>\n{description}\nStars: {metric}\n{url}"
+      "message_template": "<b>{title}</b>\n{description}\n⭐ {metric} | {language}\n{url}"
     },
     {
       "id": "steam_top_games",
