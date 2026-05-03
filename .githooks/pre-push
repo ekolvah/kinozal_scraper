@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+python scripts/ci_check.py
