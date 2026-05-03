@@ -2,7 +2,14 @@ import unittest
 from datetime import UTC, datetime
 
 from generic_pipeline import ROW_HEADERS, NormalizedItem
-from sheets_storage import InMemoryStorage, Storage
+from sheets_storage import InMemoryStorage, SchemaError, Storage
+
+
+def _validate_schema(headers: list[str], tab_name: str = "tab") -> None:
+    """Pure extraction of SheetsStorage schema validation logic — testable without gspread."""
+    missing = set(ROW_HEADERS) - set(headers)
+    if missing:
+        raise SchemaError(f"Tab '{tab_name}' is missing columns: {sorted(missing)}.")
 
 
 def _item(dedupe_key: str = "k1", source_id: str = "src") -> NormalizedItem:
@@ -82,6 +89,37 @@ class TestInMemoryStorage(unittest.TestCase):
         self.storage.append_rows("movies", [_item("k1").to_row()])
         self.storage.append_rows("movies", [_item("k2").to_row()])
         self.assertEqual(len(self.storage.stored_rows("movies")), 2)
+
+
+class TestSchemaValidation(unittest.TestCase):
+    def test_valid_schema_passes(self) -> None:
+        _validate_schema(ROW_HEADERS)
+
+    def test_missing_column_raises(self) -> None:
+        incomplete = [h for h in ROW_HEADERS if h != "dedupe_key"]
+        with self.assertRaises(SchemaError) as ctx:
+            _validate_schema(incomplete)
+        self.assertIn("dedupe_key", str(ctx.exception))
+
+    def test_extra_columns_allowed(self) -> None:
+        extended = ROW_HEADERS + ["extra_col"]
+        _validate_schema(extended)  # should not raise
+
+    def test_multiple_missing_columns_reported(self) -> None:
+        with self.assertRaises(SchemaError) as ctx:
+            _validate_schema(["dedupe_key"])
+        error_msg = str(ctx.exception)
+        for col in set(ROW_HEADERS) - {"dedupe_key"}:
+            self.assertIn(col, error_msg)
+
+    def test_empty_headers_raises(self) -> None:
+        with self.assertRaises(SchemaError):
+            _validate_schema([])
+
+    def test_tab_name_included_in_error(self) -> None:
+        with self.assertRaises(SchemaError) as ctx:
+            _validate_schema([], tab_name="steam_games")
+        self.assertIn("steam_games", str(ctx.exception))
 
 
 if __name__ == "__main__":

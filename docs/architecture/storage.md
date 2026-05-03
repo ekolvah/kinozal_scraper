@@ -44,6 +44,15 @@ except WorksheetNotFound:
     ws.append_row(ROW_HEADERS)
 ```
 
+## Schema validation
+
+`get_existing_keys` validates that existing worksheet headers contain all
+`ROW_HEADERS` columns. Raises `SchemaError` on mismatch — fails fast instead
+of silently writing rows with wrong column count.
+
+When `_get_or_create_worksheet` creates a new tab, it writes `ROW_HEADERS`
+as the first row — new tabs always have a valid schema.
+
 ## Dedupe key column lookup
 
 Column index is found dynamically by reading the header row and searching
@@ -54,5 +63,8 @@ for `"dedupe_key"`. Never hardcode column A or index 0.
 `ROW_HEADERS` in `generic_pipeline.py`:
 `["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]`
 
-Only append rows for items confirmed sent by Telegram. Never persist
-items that failed to send.
+## Write ordering
+
+Always write to Sheets BEFORE sending to Telegram. See `pipeline.md`.
+This prevents duplicate Telegram notifications if the process crashes
+between the two operations.

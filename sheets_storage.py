@@ -9,6 +9,10 @@ import gspread.exceptions
 from generic_pipeline import ROW_HEADERS
 
 
+class SchemaError(ValueError):
+    """Raised when an existing worksheet has an incompatible column schema."""
+
+
 @runtime_checkable
 class Storage(Protocol):
     def get_existing_keys(self, tab_name: str) -> set[str]: ...
@@ -32,14 +36,17 @@ class SheetsStorage:
 
     def get_existing_keys(self, tab_name: str) -> set[str]:
         ws = self._get_or_create_worksheet(tab_name)
-        # read header row to find dedupe_key column index dynamically
         headers = ws.row_values(1)
-        try:
-            key_col = headers.index("dedupe_key") + 1  # 1-based
-        except ValueError:
-            return set()
+
+        missing = set(ROW_HEADERS) - set(headers)
+        if missing:
+            raise SchemaError(
+                f"Tab '{tab_name}' is missing columns: {sorted(missing)}. "
+                f"Expected: {ROW_HEADERS}. Found: {headers}"
+            )
+
+        key_col = headers.index("dedupe_key") + 1  # 1-based
         col_values = ws.col_values(key_col)
-        # skip header
         return {str(v).strip() for v in col_values[1:] if v and str(v).strip()}
 
     def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None:
