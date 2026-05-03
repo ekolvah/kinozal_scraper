@@ -38,6 +38,14 @@ python scripts/ci_check.py
 ```
 Pre-push hook активирован через `git config core.hooksPath .githooks` — запускается автоматически при пуше.
 
+## Architecture decisions
+
+Key decisions recorded here; details in separate files to keep this file short.
+
+- [Testing](docs/architecture/testing.md) — no mocks on external APIs, use Protocol + InMemoryStorage
+- [Pipeline](docs/architecture/pipeline.md) — layers, NormalizedItem, extract_from_* contracts
+- [Storage](docs/architecture/storage.md) — Storage Protocol, DI, EAFP, row schema
+
 ## Установка окружения
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
