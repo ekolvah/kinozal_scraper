@@ -12,8 +12,9 @@ echo "==> pytest"
 python -m pytest
 
 echo "==> mypy"
-mapfile -t modules < <(find . -name "*.py" \
+mapfile -t modules < <(find . -name "*.py" 2>/dev/null \
   ! -path "./.venv/*" ! -path "./.git/*" ! -path "./__pycache__/*" \
+  ! -path "./pytest-cache-files-*" ! -path "./.audit-tmp/*" \
   ! -name "scraper.py" \
   ! -name "TelegramChannelSummarizer.py" \
   ! -name "crypto.py")
