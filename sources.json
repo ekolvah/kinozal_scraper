@@ -31,12 +31,14 @@
     },
     {
       "id": "steam_top_games",
-      "enabled": false,
+      "enabled": true,
       "type": "json",
       "url": "https://steamspy.com/api.php",
       "params": {
         "request": "top100in2weeks"
       },
+      "sort_by": "ccu",
+      "sort_reverse": true,
       "limit": "{{STEAM_TOP_LIMIT}}",
       "sheet_tab": "steam_games",
       "dedupe_key": "appid",
@@ -47,7 +49,7 @@
         "metric": "ccu",
         "image_url": null
       },
-      "message_template": "<b>{title}</b>\nDeveloper: {description}\nPlayers: {metric}\n{url}"
+      "message_template": "<b>{title}</b>\nDeveloper: {description}\nPlayers: {metric}\nhttps://store.steampowered.com/app/{appid}"
     },
     {
       "id": "kinozal_movies",
