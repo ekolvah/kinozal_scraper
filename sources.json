@@ -48,19 +48,21 @@
       "id": "kinozal_movies",
       "enabled": false,
       "type": "html",
-      "url": "{{KINOZAL_URL}}",
+      "url": "{{KINOZAL_TOP_URL}}",
+      "base_url": "https://kinozal.tv",
       "params": {},
+      "row_selector": "a[href^='/details.php']",
       "limit": 10,
       "sheet_tab": "movies",
-      "dedupe_key": "title",
+      "dedupe_key": "@title",
       "fields": {
-        "title": "td.nam a",
-        "url": "td.nam a",
+        "title": "@title",
+        "url": "@href",
         "description": null,
         "metric": null,
-        "image_url": null
+        "image_url": "img@src"
       },
-      "message_template": "<b>{title}</b>\n{url}"
+      "message_template": "<b>{title}</b>\n{url}\n{trailer_url}"
     }
   ]
 }

@@ -60,34 +60,34 @@ class TestInMemoryStorage(unittest.TestCase):
 
     def test_append_then_get_keys(self) -> None:
         rows = [_item("k1").to_row(), _item("k2").to_row()]
-        self.storage.append_rows("movies", rows)
+        self.storage.append_rows("movies", ROW_HEADERS, rows)
         keys = self.storage.get_existing_keys("movies")
         self.assertIn("k1", keys)
         self.assertIn("k2", keys)
 
     def test_existing_key_lookup(self) -> None:
-        self.storage.append_rows("movies", [_item("existing").to_row()])
+        self.storage.append_rows("movies", ROW_HEADERS, [_item("existing").to_row()])
         self.assertIn("existing", self.storage.get_existing_keys("movies"))
         self.assertNotIn("new", self.storage.get_existing_keys("movies"))
 
     def test_tabs_are_isolated(self) -> None:
-        self.storage.append_rows("tab_a", [_item("k1").to_row()])
-        self.storage.append_rows("tab_b", [_item("k2").to_row()])
+        self.storage.append_rows("tab_a", ROW_HEADERS, [_item("k1").to_row()])
+        self.storage.append_rows("tab_b", ROW_HEADERS, [_item("k2").to_row()])
         self.assertNotIn("k2", self.storage.get_existing_keys("tab_a"))
         self.assertNotIn("k1", self.storage.get_existing_keys("tab_b"))
 
     def test_append_empty_rows_noop(self) -> None:
-        self.storage.append_rows("movies", [])
+        self.storage.append_rows("movies", ROW_HEADERS, [])
         self.assertEqual(self.storage.stored_rows("movies"), [])
 
     def test_stored_rows_accessible(self) -> None:
         row = _item("k1").to_row()
-        self.storage.append_rows("movies", [row])
+        self.storage.append_rows("movies", ROW_HEADERS, [row])
         self.assertEqual(self.storage.stored_rows("movies"), [row])
 
     def test_multiple_appends_accumulate(self) -> None:
-        self.storage.append_rows("movies", [_item("k1").to_row()])
-        self.storage.append_rows("movies", [_item("k2").to_row()])
+        self.storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
+        self.storage.append_rows("movies", ROW_HEADERS, [_item("k2").to_row()])
         self.assertEqual(len(self.storage.stored_rows("movies")), 2)
 
 

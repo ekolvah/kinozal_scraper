@@ -307,8 +307,21 @@ if __name__ == "__main__":
     youtube = Youtube()
     telegram_bot = TelegramBot()
 
-    movie_scraper = MovieScraper(spreadsheet, youtube, telegram_bot)
-    movie_scraper.run()
+    if os.getenv("USE_GENERIC_KINOZAL", "false").lower() == "true":
+        from kinozal_pipeline import run_kinozal_pipeline
+        from sheets_storage import SheetsStorage
+        from telegram_notifier import TelegramNotifier
+
+        _SPREADSHEET_URL = (
+            "https://docs.google.com/spreadsheets/d/"
+            "12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing"
+        )
+        _storage = SheetsStorage(spreadsheet.client, _SPREADSHEET_URL)
+        _notifier = TelegramNotifier(telegram_bot.bot_token, telegram_bot.bot_chatID)
+        run_kinozal_pipeline(_storage, _notifier, youtube)
+    else:
+        movie_scraper = MovieScraper(spreadsheet, youtube, telegram_bot)
+        movie_scraper.run()
 
     events_scraper = EventsScraper(spreadsheet, youtube, telegram_bot)
     events_scraper.run()

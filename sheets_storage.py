@@ -17,7 +17,7 @@ class SchemaError(ValueError):
 class Storage(Protocol):
     def get_existing_keys(self, tab_name: str) -> set[str]: ...
 
-    def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None: ...
+    def append_rows(self, tab_name: str, headers: list[str], rows: list[list[Any]]) -> None: ...
 
 
 class SheetsStorage:
@@ -26,16 +26,16 @@ class SheetsStorage:
     def __init__(self, client: gspread.Client, spreadsheet_url: str) -> None:
         self._spreadsheet = client.open_by_url(spreadsheet_url)
 
-    def _get_or_create_worksheet(self, tab_name: str) -> gspread.Worksheet:
+    def _get_or_create_worksheet(self, tab_name: str, headers: list[str]) -> gspread.Worksheet:
         try:
             return self._spreadsheet.worksheet(tab_name)
         except gspread.exceptions.WorksheetNotFound:
-            ws = self._spreadsheet.add_worksheet(title=tab_name, rows=1000, cols=len(ROW_HEADERS))
-            ws.append_row(ROW_HEADERS)
+            ws = self._spreadsheet.add_worksheet(title=tab_name, rows=1000, cols=len(headers))
+            ws.append_row(headers)
             return ws
 
     def get_existing_keys(self, tab_name: str) -> set[str]:
-        ws = self._get_or_create_worksheet(tab_name)
+        ws = self._get_or_create_worksheet(tab_name, ROW_HEADERS)
         headers = ws.row_values(1)
 
         missing = set(ROW_HEADERS) - set(headers)
@@ -49,10 +49,10 @@ class SheetsStorage:
         col_values = ws.col_values(key_col)
         return {str(v).strip() for v in col_values[1:] if v and str(v).strip()}
 
-    def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None:
+    def append_rows(self, tab_name: str, headers: list[str], rows: list[list[Any]]) -> None:
         if not rows:
             return
-        ws = self._get_or_create_worksheet(tab_name)
+        ws = self._get_or_create_worksheet(tab_name, headers)
         ws.append_rows(rows, value_input_option=gspread.utils.ValueInputOption.user_entered)
 
 
@@ -66,7 +66,7 @@ class InMemoryStorage:
     def get_existing_keys(self, tab_name: str) -> set[str]:
         return set(self._keys[tab_name])
 
-    def append_rows(self, tab_name: str, rows: list[list[Any]]) -> None:
+    def append_rows(self, tab_name: str, headers: list[str], rows: list[list[Any]]) -> None:
         for row in rows:
             self._rows[tab_name].append(row)
             if row:

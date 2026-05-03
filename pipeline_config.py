@@ -41,6 +41,7 @@ def build_macro_context(
         "DATE_MINUS_7_DAYS": (today - timedelta(days=7)).isoformat(),
         "GITHUB_TOP_LIMIT": env.get("GITHUB_TOP_LIMIT", "10"),
         "STEAM_TOP_LIMIT": env.get("STEAM_TOP_LIMIT", "10"),
+        "KINOZAL_TOP_URL": env.get("KINOZAL_TOP_URL", ""),
     }
 
 
