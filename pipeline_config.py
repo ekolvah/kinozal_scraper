@@ -6,7 +6,7 @@ import os
 import re
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 _MACRO_RE = re.compile(r"\{\{(\w+)\}\}")
 
@@ -105,7 +105,7 @@ def load_sources_config(path: str | Path = "sources.json") -> dict[str, Any]:
         raise ConfigError(f"Invalid JSON in {path}: {exc}") from exc
 
     context = build_macro_context()
-    config = expand_macros(config, context)
+    config = cast(dict[str, Any], expand_macros(config, context))
 
     for source in config.get("sources", []):
         if isinstance(source, dict) and "limit" in source:
