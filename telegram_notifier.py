@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import time
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 import requests
 
@@ -28,6 +28,7 @@ class TelegramNotifier:
         session: requests.Session | None = None,
     ) -> None:
         self._url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+        self._photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
         self._chat_id = chat_id
         self._inter_message_delay = inter_message_delay
         self._max_retries = max_retries
@@ -40,7 +41,7 @@ class TelegramNotifier:
         sent: list[Notification] = []
         failed: list[Notification] = []
         for i, notif in enumerate(notifications):
-            if self._send_one(notif.text):
+            if self._send_one(notif.text, notif.image_url):
                 sent.append(notif)
             else:
                 failed.append(notif)
@@ -48,17 +49,41 @@ class TelegramNotifier:
                 time.sleep(self._inter_message_delay)
         return sent, failed
 
-    def _send_one(self, text: str) -> bool:
-        payload: dict[str, Any] = {
-            "chat_id": self._chat_id,
-            "text": text,
-            "parse_mode": "HTML",
-        }
+    def _send_one(self, text: str, image_url: str = "") -> bool:
         for _ in range(self._max_retries):
             try:
-                resp = self._session.post(self._url, json=payload)
+                if image_url:
+                    resp = self._session.post(
+                        self._photo_url,
+                        json={
+                            "chat_id": self._chat_id,
+                            "photo": image_url,
+                            "caption": text,
+                            "parse_mode": "HTML",
+                        },
+                    )
+                    if resp.status_code == 400:
+                        # fallback: broken image URL or caption issue → plain text
+                        resp = self._session.post(
+                            self._url,
+                            json={
+                                "chat_id": self._chat_id,
+                                "text": text,
+                                "parse_mode": "HTML",
+                            },
+                        )
+                else:
+                    resp = self._session.post(
+                        self._url,
+                        json={
+                            "chat_id": self._chat_id,
+                            "text": text,
+                            "parse_mode": "HTML",
+                        },
+                    )
             except requests.RequestException:
                 return False
+
             if resp.status_code == 200:
                 return True
             if resp.status_code == 429:

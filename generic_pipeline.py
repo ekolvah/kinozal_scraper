@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html as _html
+import urllib.parse
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -19,6 +20,7 @@ class NormalizedItem:
     description: str = ""
     metric: str = ""
     image_url: str = ""
+    trailer_url: str = ""  # enriched by caller; not stored in Sheets
     raw: dict[str, Any] = field(default_factory=dict)
 
     def to_row(self, notified_at: datetime | None = None) -> list[Any]:
@@ -126,6 +128,11 @@ def extract_from_json(
     return result
 
 
+def _resolve_url(value: str, base_url: str) -> str:
+    """Join value against base_url if value is relative; absolute URLs pass through."""
+    return urllib.parse.urljoin(base_url, value) if base_url and value else value
+
+
 def extract_from_html(
     html: str,
     source_config: dict[str, Any],
@@ -136,11 +143,15 @@ def extract_from_html(
       row_selector  – CSS selector for the repeating item container
       dedupe_key    – CSS selector (with optional @attr) for the dedup key
       fields.title  – CSS selector (with optional @attr) for the title
+
+    Optional:
+      base_url      – prefix for resolving relative url/image_url values
     """
     source_id: str = source_config["id"]
     fields: dict[str, Any] = source_config.get("fields", {})
     limit: int = int(source_config.get("limit", 0))
     row_selector: str = source_config.get("row_selector", "")
+    base_url: str = source_config.get("base_url", "")
     result = PipelineResult(source_id=source_id)
 
     if not row_selector:
@@ -168,10 +179,10 @@ def extract_from_html(
                 source_id=source_id,
                 dedupe_key=dedupe_key,
                 title=title,
-                url=_html_field(row, fields.get("url")),
+                url=_resolve_url(_html_field(row, fields.get("url")), base_url),
                 description=_html_field(row, fields.get("description")),
                 metric=_html_field(row, fields.get("metric")),
-                image_url=_html_field(row, fields.get("image_url")),
+                image_url=_resolve_url(_html_field(row, fields.get("image_url")), base_url),
                 raw={},
             )
         )
@@ -182,7 +193,7 @@ def extract_from_html(
     return result
 
 
-_URL_FIELDS: frozenset[str] = frozenset({"url", "image_url"})
+_URL_FIELDS: frozenset[str] = frozenset({"url", "image_url", "trailer_url"})
 _NUMBER_FIELDS: frozenset[str] = frozenset({"metric"})
 
 
@@ -190,6 +201,7 @@ _NUMBER_FIELDS: frozenset[str] = frozenset({"metric"})
 class Notification:
     id: str  # = NormalizedItem.dedupe_key
     text: str  # готовый HTML-текст для Telegram
+    image_url: str = ""
 
 
 def _format_field(field_name: str, value: Any) -> str:
@@ -212,8 +224,9 @@ def build_notification(item: NormalizedItem, template: str) -> Notification:
         "description": item.description,
         "metric": item.metric,
         "dedupe_key": item.dedupe_key,
+        "trailer_url": item.trailer_url,
     }
     text = template
     for field_name, raw_value in values.items():
         text = text.replace(f"{{{field_name}}}", _format_field(field_name, raw_value))
-    return Notification(id=item.dedupe_key, text=text)
+    return Notification(id=item.dedupe_key, text=text.strip(), image_url=item.image_url)
