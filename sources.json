@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "sources": [
+    {
+      "id": "github_new_popular",
+      "enabled": false,
+      "type": "json",
+      "url": "https://api.github.com/search/repositories",
+      "params": {
+        "q": "created:>={{DATE_MINUS_7_DAYS}}",
+        "sort": "stars",
+        "order": "desc",
+        "per_page": "{{GITHUB_TOP_LIMIT}}"
+      },
+      "limit": "{{GITHUB_TOP_LIMIT}}",
+      "sheet_tab": "github_projects",
+      "dedupe_key": "full_name",
+      "fields": {
+        "title": "full_name",
+        "url": "html_url",
+        "description": "description",
+        "metric": "stargazers_count",
+        "image_url": null
+      },
+      "message_template": "*{title}*\n{description}\nStars: {metric}\n{url}"
+    },
+    {
+      "id": "steam_top_games",
+      "enabled": false,
+      "type": "json",
+      "url": "https://steamspy.com/api.php",
+      "params": {
+        "request": "top100in2weeks"
+      },
+      "limit": "{{STEAM_TOP_LIMIT}}",
+      "sheet_tab": "steam_games",
+      "dedupe_key": "appid",
+      "fields": {
+        "title": "name",
+        "url": null,
+        "description": "developer",
+        "metric": "ccu",
+        "image_url": null
+      },
+      "message_template": "*{title}*\nDeveloper: {description}\nPlayers: {metric}\n{url}"
+    },
+    {
+      "id": "kinozal_movies",
+      "enabled": false,
+      "type": "html",
+      "url": "{{KINOZAL_URL}}",
+      "params": {},
+      "limit": 10,
+      "sheet_tab": "movies",
+      "dedupe_key": "title",
+      "fields": {
+        "title": "td.nam a",
+        "url": "td.nam a",
+        "description": null,
+        "metric": null,
+        "image_url": null
+      },
+      "message_template": "*{title}*\n{url}"
+    }
+  ]
+}
