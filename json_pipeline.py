@@ -67,6 +67,13 @@ def _run_single_source(source: dict[str, Any], storage: Storage, notifier: Notif
     )
 
     records = _unwrap_records(data, source.get("json_path"))
+
+    sort_key = source.get("sort_by")
+    if sort_key:
+        records.sort(
+            key=lambda r: int(r.get(sort_key) or 0), reverse=source.get("sort_reverse", False)
+        )
+
     result = extract_from_json(records, source)
     if not result.ok:
         logger.error("[%s] extraction errors: %s", source_id, result.errors)
