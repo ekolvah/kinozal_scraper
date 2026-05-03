@@ -34,9 +34,9 @@
 
 ## Перед каждым коммитом
 ```bash
-bash scripts/ci-check.sh
+python scripts/ci_check.py
 ```
-Или настроить pre-push hook (уже активирован через `git config core.hooksPath .githooks`).
+Pre-push hook активирован через `git config core.hooksPath .githooks` — запускается автоматически при пуше.
 
 ## Установка окружения
 ```bash
