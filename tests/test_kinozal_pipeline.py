@@ -1,8 +1,9 @@
 import unittest
+import unittest.mock
 from typing import Any
 
 from generic_pipeline import ROW_HEADERS, NormalizedItem, Notification, extract_from_html
-from kinozal_pipeline import enrich_with_trailer
+from kinozal_pipeline import _kinozal_urls, enrich_with_trailer
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 
@@ -104,6 +105,50 @@ class TestEnrichWithTrailer(unittest.TestCase):
         item = self._item("Some Film")
         trailer = enrich_with_trailer(item, _RaisingYoutube())
         self.assertEqual(trailer, "")
+
+
+# ── _kinozal_urls ─────────────────────────────────────────────────────────────
+
+
+class TestKinozalUrls(unittest.TestCase):
+    def test_reads_existing_URLS_variable(self) -> None:
+        import os
+
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"URLS": "топ|https://kinozal.tv/top.php;новинки|https://kinozal.tv/new.php"},
+            clear=False,
+        ):
+            urls = _kinozal_urls()
+        self.assertEqual(urls, ["https://kinozal.tv/top.php", "https://kinozal.tv/new.php"])
+
+    def test_falls_back_to_KINOZAL_TOP_URL(self) -> None:
+        import os
+
+        env = {"KINOZAL_TOP_URL": "https://kinozal.tv/top.php"}
+        with unittest.mock.patch.dict(os.environ, env, clear=False):
+            # ensure URLS is absent
+            os.environ.pop("URLS", None)
+            urls = _kinozal_urls()
+        self.assertEqual(urls, ["https://kinozal.tv/top.php"])
+
+    def test_returns_empty_when_nothing_configured(self) -> None:
+        import os
+
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            urls = _kinozal_urls()
+        self.assertEqual(urls, [])
+
+    def test_URLS_takes_priority_over_KINOZAL_TOP_URL(self) -> None:
+        import os
+
+        env = {
+            "URLS": "label|https://kinozal.tv/top.php",
+            "KINOZAL_TOP_URL": "https://other.example.com",
+        }
+        with unittest.mock.patch.dict(os.environ, env, clear=False):
+            urls = _kinozal_urls()
+        self.assertEqual(urls, ["https://kinozal.tv/top.php"])
 
 
 # ── run_kinozal_pipeline ──────────────────────────────────────────────────────

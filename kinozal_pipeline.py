@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import requests
@@ -34,6 +35,19 @@ def _fetch_html(url: str) -> str:
     return resp.text
 
 
+def _kinozal_urls() -> list[str]:
+    """Read Kinozal URLs from the existing URLS env variable (format: 'label|url;...').
+
+    Falls back to KINOZAL_TOP_URL if URLS is not set, so the runner works both
+    in production (URLS already configured) and in local testing.
+    """
+    urls_env = os.environ.get("URLS", "")
+    if urls_env:
+        return [pair.split("|")[1] for pair in urls_env.split(";") if "|" in pair]
+    fallback = os.environ.get("KINOZAL_TOP_URL", "")
+    return [fallback] if fallback else []
+
+
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     """Clean title and look up a YouTube trailer URL. Returns '' on any failure."""
     try:
@@ -60,18 +74,26 @@ def run_kinozal_pipeline(
 
     source_map = {s["id"]: s for s in kinozal_sources}
 
+    # URLs come from the existing URLS env variable (same format as legacy scraper).
+    # sources.json url field is only a schema placeholder / local fallback.
+    urls = _kinozal_urls()
+    if not urls:
+        logger.error("kinozal pipeline: no URLs configured (set URLS or KINOZAL_TOP_URL)")
+        return
+
     all_items: list[NormalizedItem] = []
     for source in kinozal_sources:
-        try:
-            html_text = _fetch_html(source["url"])
-        except Exception as exc:
-            logger.error("[%s] fetch failed: %s", source["id"], exc)
-            continue
-        result = extract_from_html(html_text, source)
-        if not result.ok:
-            logger.error("[%s] extraction errors: %s", source["id"], result.errors)
-            continue
-        all_items.extend(result.items)
+        for url in urls:
+            try:
+                html_text = _fetch_html(url)
+            except Exception as exc:
+                logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
+                continue
+            result = extract_from_html(html_text, source)
+            if not result.ok:
+                logger.error("[%s] extraction errors: %s", source["id"], result.errors)
+                continue
+            all_items.extend(result.items)
 
     if not all_items:
         logger.info("kinozal pipeline: no items extracted")
