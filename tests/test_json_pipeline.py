@@ -346,5 +346,69 @@ class TestSorting(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 3)
 
 
+# ── Enricher integration tests ─────────────────────────────────────────────────
+
+_GITHUB_SOURCE_WITH_ENRICH: dict[str, Any] = {
+    **_GITHUB_SOURCE,
+    "enrich": {
+        "field": "summary_ru",
+        "prompt": "Describe $title in Russian",
+        "parameters": {"temperature": 0.2, "max_tokens": 150},
+        "on_error": "",
+    },
+    "message_template": "<b>{title}</b>\n{summary_ru}\n⭐ {metric} | {language}\n{url}",
+}
+
+_ENRICH_CONFIG: dict[str, Any] = {"version": 1, "sources": [_GITHUB_SOURCE_WITH_ENRICH]}
+
+
+class _FakeEnricher:
+    def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+        return f"Описание: {item.title}"
+
+
+class TestEnricherIntegration(unittest.TestCase):
+    def test_null_enricher_sets_empty_field(self) -> None:
+        from gemini_enricher import NullEnricher
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+
+        with _patch_fetch(_GITHUB_RESPONSE):
+            run_json_pipeline(
+                storage, notifier, enricher=NullEnricher(), sources_config=_ENRICH_CONFIG
+            )
+
+        self.assertEqual(len(notifier.sent), 3)
+        self.assertNotIn("None", notifier.sent[0].text)
+
+    def test_fake_enricher_field_in_notification(self) -> None:
+        import copy
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
+
+        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+            run_json_pipeline(
+                storage, notifier, enricher=_FakeEnricher(), sources_config=_ENRICH_CONFIG
+            )
+
+        self.assertIn("Описание: user/repo-alpha", notifier.sent[0].text)
+
+    def test_no_enricher_skips_enrich_step(self) -> None:
+        import copy
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
+
+        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+            run_json_pipeline(storage, notifier, enricher=None, sources_config=_ENRICH_CONFIG)
+
+        self.assertEqual(len(notifier.sent), 3)
+        self.assertNotIn("Описание", notifier.sent[0].text)
+
+
 if __name__ == "__main__":
     unittest.main()

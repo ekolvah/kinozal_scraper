@@ -236,4 +236,5 @@ def build_notification(item: NormalizedItem, template: str) -> Notification:
         if field_name not in values:
             raw_value = item.raw.get(field_name)
             text = text.replace(f"{{{field_name}}}", _format_field(field_name, raw_value))
+    text = re.sub(r"\n{2,}", "\n", text)
     return Notification(id=item.dedupe_key, text=text.strip(), image_url=item.image_url)

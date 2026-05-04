@@ -199,5 +199,36 @@ class TestBuildNotificationRawFallback(unittest.TestCase):
         self.assertNotIn("None", note.text)
 
 
+class TestBuildNotificationNewlineCollapse(unittest.TestCase):
+    def test_empty_field_does_not_leave_double_newline(self) -> None:
+        item = NormalizedItem(
+            dedupe_key="user/repo",
+            title="user/repo",
+            source_id="test",
+            url="https://github.com/user/repo",
+            metric="42",
+            raw={"summary_ru": "", "language": "Go"},
+        )
+        note = build_notification(
+            item, "<b>{title}</b>\n{summary_ru}\n⭐ {metric} | {language}\n{url}"
+        )
+        self.assertNotIn("\n\n", note.text)
+        self.assertIn("⭐ 42 | Go", note.text)
+
+    def test_filled_field_preserves_single_newlines(self) -> None:
+        item = NormalizedItem(
+            dedupe_key="user/repo",
+            title="user/repo",
+            source_id="test",
+            url="https://github.com/user/repo",
+            metric="42",
+            raw={"summary_ru": "Крутой проект", "language": "Go"},
+        )
+        note = build_notification(
+            item, "<b>{title}</b>\n{summary_ru}\n⭐ {metric} | {language}\n{url}"
+        )
+        self.assertIn("Крутой проект\n⭐ 42", note.text)
+
+
 if __name__ == "__main__":
     unittest.main()
