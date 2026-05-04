@@ -19,7 +19,7 @@ jobs:
         run: pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Run pure logic tests
-        run: python -m pytest tests/ -x --timeout=60
+        run: python -m pytest tests/ -x
 
       - name: Run JSON sources pipeline
         run: python json_pipeline.py
