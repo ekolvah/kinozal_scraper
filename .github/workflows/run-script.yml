@@ -31,6 +31,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
 
       - name: Run legacy Kinozal scraper
         run: python scraper.py
