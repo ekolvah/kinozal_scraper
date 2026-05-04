@@ -8,18 +8,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
-        
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+        uses: actions/checkout@v4
 
-      - name: Run script
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pure logic tests
+        run: python -m pytest tests/ -x --timeout=60
+
+      - name: Run JSON sources pipeline
+        run: python json_pipeline.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOP_LIMIT: ${{ vars.GITHUB_TOP_LIMIT }}
+          STEAM_TOP_LIMIT: ${{ vars.STEAM_TOP_LIMIT }}
+          SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
+          CREDENTIALS: ${{ secrets.CREDENTIALS }}
+
+      - name: Run legacy Kinozal scraper
         run: python scraper.py
-        env: 
+        env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           BOT_CHATID: ${{ secrets.BOT_CHATID }}
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
