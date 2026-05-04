@@ -13,6 +13,10 @@ from generic_pipeline import NormalizedItem
 logger = logging.getLogger(__name__)
 
 
+class QuotaExhausted(Exception):
+    """Raised once to signal the caller to stop sending requests."""
+
+
 @runtime_checkable
 class Enricher(Protocol):
     def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str: ...
@@ -55,7 +59,10 @@ class GeminiEnricher:
         try:
             return self._generate(prompt, generation_config)
         except Exception as exc:
-            logger.error("[%s] Gemini enrichment failed: %s", item.dedupe_key, exc)
+            is_quota = isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted)
+            if is_quota:
+                raise QuotaExhausted from exc
+            logger.error("[%s] enrichment failed: %s", item.dedupe_key, exc)
             return on_error
 
     @retry(

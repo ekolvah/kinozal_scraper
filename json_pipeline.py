@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from gemini_enricher import Enricher, NullEnricher
+from gemini_enricher import Enricher, NullEnricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     build_notification,
@@ -93,12 +93,32 @@ def _run_single_source(
         logger.info("[%s] no new items", source_id)
         return
 
-    # Enrich items in-place (filter-mutator step) before building notifications
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
         field = enrich_config["field"]
+        fallback: str = enrich_config.get("on_error", "")
+        enriched, skipped = 0, 0
         for item in new_items:
-            item.raw[field] = enricher.enrich(item, enrich_config)
+            try:
+                item.raw[field] = enricher.enrich(item, enrich_config)
+                enriched += 1
+            except QuotaExhausted:
+                item.raw[field] = fallback
+                skipped += 1
+                for remaining in new_items[new_items.index(item) + 1 :]:
+                    remaining.raw[field] = fallback
+                    skipped += 1
+                break
+        if skipped:
+            logger.warning(
+                "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
+                source_id,
+                enriched,
+                enriched + skipped,
+                skipped,
+            )
+        elif enriched:
+            logger.info("[%s] enriched %d items", source_id, enriched)
 
     template = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
