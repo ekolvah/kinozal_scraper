@@ -27,7 +27,16 @@
         "metric": "stargazers_count",
         "image_url": null
       },
-      "message_template": "<b>{title}</b>\n{description}\n⭐ {metric} | {language}\n{url}"
+      "enrich": {
+        "field": "summary_ru",
+        "prompt": "Напиши краткое описание на русском (1–2 предложения, до 150 символов) для GitHub репозитория.\nНазвание: $title\nОписание: $description\nЯзык: $language",
+        "parameters": {
+          "temperature": 0.2,
+          "max_tokens": 150
+        },
+        "on_error": ""
+      },
+      "message_template": "<b>{title}</b>\n{summary_ru}\n⭐ {metric} | {language}\n{url}"
     },
     {
       "id": "steam_top_games",

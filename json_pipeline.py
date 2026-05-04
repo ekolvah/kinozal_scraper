@@ -5,6 +5,7 @@ from typing import Any
 
 import requests
 
+from gemini_enricher import Enricher, NullEnricher
 from generic_pipeline import (
     ROW_HEADERS,
     build_notification,
@@ -41,6 +42,7 @@ def _unwrap_records(data: Any, json_path: str | None) -> list[dict[str, Any]]:
 def run_json_pipeline(
     storage: Storage,
     notifier: Notifier,
+    enricher: Enricher | None = None,
     sources_config: dict[str, Any] | None = None,
 ) -> None:
     config = sources_config or load_sources_config()
@@ -51,13 +53,18 @@ def run_json_pipeline(
 
     for source in json_sources:
         try:
-            _run_single_source(source, storage, notifier)
+            _run_single_source(source, storage, notifier, enricher)
         except Exception as exc:
             logger.error("[%s] unhandled error: %s", source["id"], exc)
             continue
 
 
-def _run_single_source(source: dict[str, Any], storage: Storage, notifier: Notifier) -> None:
+def _run_single_source(
+    source: dict[str, Any],
+    storage: Storage,
+    notifier: Notifier,
+    enricher: Enricher | None,
+) -> None:
     source_id = source["id"]
 
     data = _fetch_json(
@@ -86,6 +93,13 @@ def _run_single_source(source: dict[str, Any], storage: Storage, notifier: Notif
         logger.info("[%s] no new items", source_id)
         return
 
+    # Enrich items in-place (filter-mutator step) before building notifications
+    enrich_config = source.get("enrich")
+    if enrich_config and enricher is not None:
+        field = enrich_config["field"]
+        for item in new_items:
+            item.raw[field] = enricher.enrich(item, enrich_config)
+
     template = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
     sent, failed = notifier.send_items(notifications)
@@ -105,8 +119,10 @@ if __name__ == "__main__":
     import json
     import os
 
+    import google.generativeai as genai
     import gspread
 
+    from gemini_enricher import GeminiEnricher
     from sheets_storage import SheetsStorage
     from telegram_notifier import TelegramNotifier
 
@@ -116,4 +132,14 @@ if __name__ == "__main__":
         bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
         chat_id=os.environ["TELEGRAM_CHAT_ID"],
     )
-    run_json_pipeline(prod_storage, prod_notifier)
+
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    model_name = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
+    prod_enricher: Enricher
+    if api_key:
+        genai.configure(api_key=api_key)
+        prod_enricher = GeminiEnricher(model_name)
+    else:
+        prod_enricher = NullEnricher()
+
+    run_json_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
