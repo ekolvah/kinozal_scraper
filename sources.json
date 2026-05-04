@@ -15,9 +15,9 @@
         "q": "created:>={{DATE_MINUS_7_DAYS}}",
         "sort": "stars",
         "order": "desc",
-        "per_page": "{{GITHUB_TOP_LIMIT}}"
+        "per_page": "{{GH_TOP_LIMIT}}"
       },
-      "limit": "{{GITHUB_TOP_LIMIT}}",
+      "limit": "{{GH_TOP_LIMIT}}",
       "sheet_tab": "github_projects",
       "dedupe_key": "full_name",
       "fields": {

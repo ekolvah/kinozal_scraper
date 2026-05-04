@@ -25,7 +25,7 @@ jobs:
         run: python json_pipeline.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_TOP_LIMIT: ${{ vars.GITHUB_TOP_LIMIT }}
+          GH_TOP_LIMIT: ${{ vars.GH_TOP_LIMIT }}
           STEAM_TOP_LIMIT: ${{ vars.STEAM_TOP_LIMIT }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
