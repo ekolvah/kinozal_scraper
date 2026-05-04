@@ -102,6 +102,7 @@ def _run_single_source(source: dict[str, Any], storage: Storage, notifier: Notif
 
 
 if __name__ == "__main__":
+    import json
     import os
 
     import gspread
@@ -109,7 +110,7 @@ if __name__ == "__main__":
     from sheets_storage import SheetsStorage
     from telegram_notifier import TelegramNotifier
 
-    gc = gspread.service_account()
+    gc = gspread.service_account_from_dict(json.loads(os.environ["CREDENTIALS"]))
     prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
     prod_notifier = TelegramNotifier(
         bot_token=os.environ["TELEGRAM_BOT_TOKEN"],
