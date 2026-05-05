@@ -78,8 +78,19 @@ class GeminiEnricher:
         return text
 
 
+def _model_version_key(name: str) -> tuple[float, str]:
+    """Extract version number for sorting: 'models/gemini-2.5-flash' → (2.5, 'flash')."""
+    import re
+
+    match = re.search(r"gemini-(\d+)\.(\d+)", name)
+    if match:
+        version = float(f"{match.group(1)}.{match.group(2)}")
+        return (version, name)
+    return (0.0, name)
+
+
 def get_generation_models(preferred: str) -> list[str]:
-    """Return model names with generateContent support, preferred first."""
+    """Return model names with generateContent support, newer first, preferred first."""
     try:
         names = [
             m.name
@@ -89,6 +100,8 @@ def get_generation_models(preferred: str) -> list[str]:
     except Exception:
         logger.warning("cannot list models, using only: %s", preferred)
         return [preferred]
+
+    names.sort(key=_model_version_key, reverse=True)
 
     full = preferred if preferred.startswith("models/") else f"models/{preferred}"
     ordered: list[str] = []

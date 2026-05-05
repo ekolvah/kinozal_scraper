@@ -79,6 +79,33 @@ class TestGeminiEnricherQuota(unittest.TestCase):
         self.assertEqual(result, "fallback")
 
 
+class TestModelVersionSorting(unittest.TestCase):
+    def test_newer_models_first(self) -> None:
+        from gemini_enricher import _model_version_key
+
+        names = [
+            "models/gemini-1.0-pro",
+            "models/gemini-2.5-flash-preview",
+            "models/gemini-1.5-flash",
+            "models/gemini-2.0-flash",
+        ]
+        result = sorted(names, key=_model_version_key, reverse=True)
+        self.assertEqual(
+            result,
+            [
+                "models/gemini-2.5-flash-preview",
+                "models/gemini-2.0-flash",
+                "models/gemini-1.5-flash",
+                "models/gemini-1.0-pro",
+            ],
+        )
+
+    def test_unknown_format_gets_zero_version(self) -> None:
+        from gemini_enricher import _model_version_key
+
+        self.assertEqual(_model_version_key("models/chat-bison-001")[0], 0.0)
+
+
 class TestRotatingGeminiEnricher(unittest.TestCase):
     def test_implements_enricher_protocol(self) -> None:
         self.assertIsInstance(RotatingGeminiEnricher(["m1"]), Enricher)
