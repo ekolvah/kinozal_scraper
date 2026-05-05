@@ -106,6 +106,32 @@ class TestModelVersionSorting(unittest.TestCase):
         self.assertEqual(_model_version_key("models/chat-bison-001")[0], 0.0)
 
 
+class TestIsTextGemini(unittest.TestCase):
+    def test_accepts_text_models(self) -> None:
+        from gemini_enricher import _is_text_gemini
+
+        self.assertTrue(_is_text_gemini("models/gemini-2.5-flash"))
+        self.assertTrue(_is_text_gemini("models/gemini-2.0-flash-lite"))
+        self.assertTrue(_is_text_gemini("models/gemini-3.1-pro-preview"))
+        self.assertTrue(_is_text_gemini("models/gemini-2.5-flash-lite"))
+
+    def test_rejects_specialized_models(self) -> None:
+        from gemini_enricher import _is_text_gemini
+
+        self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-tts-preview"))
+        self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-image-preview"))
+        self.assertFalse(_is_text_gemini("models/gemini-3.1-pro-preview-customtools"))
+        self.assertFalse(_is_text_gemini("models/gemini-2.5-computer-use-preview-10-2025"))
+        self.assertFalse(_is_text_gemini("models/gemini-robotics-er-1.6-preview"))
+
+    def test_rejects_non_gemini(self) -> None:
+        from gemini_enricher import _is_text_gemini
+
+        self.assertFalse(_is_text_gemini("models/gemma-3-27b-it"))
+        self.assertFalse(_is_text_gemini("models/lyria-3-pro-preview"))
+        self.assertFalse(_is_text_gemini("models/nano-banana-pro-preview"))
+
+
 class TestRotatingGeminiEnricher(unittest.TestCase):
     def test_implements_enricher_protocol(self) -> None:
         self.assertIsInstance(RotatingGeminiEnricher(["m1"]), Enricher)

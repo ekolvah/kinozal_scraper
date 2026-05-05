@@ -89,13 +89,23 @@ def _model_version_key(name: str) -> tuple[float, str]:
     return (0.0, name)
 
 
+_EXCLUDED_SUFFIXES = ("-tts", "-image", "-customtools", "-computer-use", "-robotics")
+
+
+def _is_text_gemini(name: str) -> bool:
+    """Filter to pure text-generation Gemini models only."""
+    if not name.startswith("models/gemini-"):
+        return False
+    return not any(s in name for s in _EXCLUDED_SUFFIXES)
+
+
 def get_generation_models() -> list[str]:
-    """Return model names with generateContent support, newer versions first."""
+    """Return text-generation Gemini model names, newer versions first."""
     try:
         names = [
             m.name
             for m in genai.list_models()
-            if "generateContent" in m.supported_generation_methods
+            if "generateContent" in m.supported_generation_methods and _is_text_gemini(m.name)
         ]
     except Exception:
         logger.warning("cannot list models")
