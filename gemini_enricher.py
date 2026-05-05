@@ -89,8 +89,8 @@ def _model_version_key(name: str) -> tuple[float, str]:
     return (0.0, name)
 
 
-def get_generation_models(preferred: str) -> list[str]:
-    """Return model names with generateContent support, newer first, preferred first."""
+def get_generation_models() -> list[str]:
+    """Return model names with generateContent support, newer versions first."""
     try:
         names = [
             m.name
@@ -98,19 +98,11 @@ def get_generation_models(preferred: str) -> list[str]:
             if "generateContent" in m.supported_generation_methods
         ]
     except Exception:
-        logger.warning("cannot list models, using only: %s", preferred)
-        return [preferred]
+        logger.warning("cannot list models")
+        return []
 
     names.sort(key=_model_version_key, reverse=True)
-
-    full = preferred if preferred.startswith("models/") else f"models/{preferred}"
-    ordered: list[str] = []
-    if full in names:
-        ordered.append(full)
-    else:
-        ordered.append(preferred)
-    ordered.extend(n for n in names if n not in ordered)
-    return ordered
+    return names
 
 
 class RotatingGeminiEnricher:

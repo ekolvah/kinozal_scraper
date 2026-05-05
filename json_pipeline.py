@@ -156,13 +156,16 @@ if __name__ == "__main__":
     )
 
     api_key = os.environ.get("GOOGLE_API_KEY", "")
-    model_name = os.environ.get("LLM_MODEL", "gemini-2.0-flash")
     prod_enricher: Enricher
     if api_key:
         genai.configure(api_key=api_key)
-        available_models = get_generation_models(model_name)
+        available_models = get_generation_models()
         logger.info("available generation models: %s", available_models)
-        prod_enricher = RotatingGeminiEnricher(available_models)
+        if available_models:
+            prod_enricher = RotatingGeminiEnricher(available_models)
+        else:
+            logger.warning("no generation models found, enrichment disabled")
+            prod_enricher = NullEnricher()
     else:
         prod_enricher = NullEnricher()
 
