@@ -410,5 +410,37 @@ class TestEnricherIntegration(unittest.TestCase):
         self.assertNotIn("Описание", notifier.sent[0].text)
 
 
+class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
+    def test_quota_stops_enrichment_but_sends_all(self) -> None:
+        import copy
+
+        from gemini_enricher import QuotaExhausted
+
+        call_count = 0
+
+        class _QuotaEnricher:
+            def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    return f"OK: {item.title}"
+                raise QuotaExhausted
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
+
+        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+            run_json_pipeline(
+                storage, notifier, enricher=_QuotaEnricher(), sources_config=_ENRICH_CONFIG
+            )
+
+        self.assertEqual(len(notifier.sent), 3)
+        self.assertIn("OK: user/repo-alpha", notifier.sent[0].text)
+        self.assertNotIn("OK:", notifier.sent[1].text)
+        self.assertNotIn("OK:", notifier.sent[2].text)
+        self.assertEqual(call_count, 2)
+
+
 if __name__ == "__main__":
     unittest.main()
