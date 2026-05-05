@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import string
+import time
 from typing import Any, Protocol, runtime_checkable
 
 import google.api_core.exceptions
@@ -11,6 +12,10 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 from generic_pipeline import NormalizedItem
 
 logger = logging.getLogger(__name__)
+
+
+class QuotaExhausted(Exception):
+    """All retry attempts hit ResourceExhausted — caller should stop or switch models."""
 
 
 @runtime_checkable
@@ -55,7 +60,10 @@ class GeminiEnricher:
         try:
             return self._generate(prompt, generation_config)
         except Exception as exc:
-            logger.error("[%s] Gemini enrichment failed: %s", item.dedupe_key, exc)
+            is_quota = isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted)
+            if is_quota:
+                raise QuotaExhausted from exc
+            logger.error("[%s] enrichment failed: %s", item.dedupe_key, exc)
             return on_error
 
     @retry(
@@ -68,3 +76,61 @@ class GeminiEnricher:
         response = model.generate_content(prompt, generation_config=generation_config)
         text: str = response.text.strip()
         return text
+
+
+def get_generation_models(preferred: str) -> list[str]:
+    """Return model names with generateContent support, preferred first."""
+    try:
+        names = [
+            m.name
+            for m in genai.list_models()
+            if "generateContent" in m.supported_generation_methods
+        ]
+    except Exception:
+        logger.warning("cannot list models, using only: %s", preferred)
+        return [preferred]
+
+    full = preferred if preferred.startswith("models/") else f"models/{preferred}"
+    ordered: list[str] = []
+    if full in names:
+        ordered.append(full)
+    else:
+        ordered.append(preferred)
+    ordered.extend(n for n in names if n not in ordered)
+    return ordered
+
+
+class RotatingGeminiEnricher:
+    """Tries multiple Gemini models before giving up on quota exhaustion."""
+
+    _COOLDOWN = 60
+
+    def __init__(self, model_names: list[str]) -> None:
+        if not model_names:
+            raise ValueError("model_names must not be empty")
+        self._enrichers = [GeminiEnricher(n) for n in model_names]
+        self._current = 0
+
+    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+        last_exc: Exception | None = None
+        for rotation in range(2):
+            if rotation == 1:
+                logger.warning(
+                    "all %d models exhausted, waiting %ds",
+                    len(self._enrichers),
+                    self._COOLDOWN,
+                )
+                time.sleep(self._COOLDOWN)
+                self._current = 0
+
+            for _ in range(len(self._enrichers)):
+                try:
+                    return self._enrichers[self._current].enrich(item, enrich_config)
+                except QuotaExhausted as exc:
+                    prev = self._enrichers[self._current]._model_name
+                    self._current = (self._current + 1) % len(self._enrichers)
+                    nxt = self._enrichers[self._current]._model_name
+                    logger.warning("model %s quota exhausted, trying %s", prev, nxt)
+                    last_exc = exc
+
+        raise QuotaExhausted from last_exc

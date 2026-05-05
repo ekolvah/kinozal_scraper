@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from gemini_enricher import Enricher, NullEnricher
+from gemini_enricher import Enricher, NullEnricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     build_notification,
@@ -93,12 +93,32 @@ def _run_single_source(
         logger.info("[%s] no new items", source_id)
         return
 
-    # Enrich items in-place (filter-mutator step) before building notifications
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
         field = enrich_config["field"]
+        fallback: str = enrich_config.get("on_error", "")
+        enriched, skipped = 0, 0
         for item in new_items:
-            item.raw[field] = enricher.enrich(item, enrich_config)
+            try:
+                item.raw[field] = enricher.enrich(item, enrich_config)
+                enriched += 1
+            except QuotaExhausted:
+                item.raw[field] = fallback
+                skipped += 1
+                for remaining in new_items[new_items.index(item) + 1 :]:
+                    remaining.raw[field] = fallback
+                    skipped += 1
+                break
+        if skipped:
+            logger.warning(
+                "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
+                source_id,
+                enriched,
+                enriched + skipped,
+                skipped,
+            )
+        elif enriched:
+            logger.info("[%s] enriched %d items", source_id, enriched)
 
     template = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
@@ -122,9 +142,11 @@ if __name__ == "__main__":
     import google.generativeai as genai
     import gspread
 
-    from gemini_enricher import GeminiEnricher
+    from gemini_enricher import RotatingGeminiEnricher, get_generation_models
     from sheets_storage import SheetsStorage
     from telegram_notifier import TelegramNotifier
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
     gc = gspread.service_account_from_dict(json.loads(os.environ["CREDENTIALS"]))
     prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
@@ -138,7 +160,9 @@ if __name__ == "__main__":
     prod_enricher: Enricher
     if api_key:
         genai.configure(api_key=api_key)
-        prod_enricher = GeminiEnricher(model_name)
+        available_models = get_generation_models(model_name)
+        logger.info("available generation models: %s", available_models)
+        prod_enricher = RotatingGeminiEnricher(available_models)
     else:
         prod_enricher = NullEnricher()
 
