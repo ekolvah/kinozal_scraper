@@ -38,7 +38,7 @@ class TestBuildMacroContext(unittest.TestCase):
     def test_date_macros_iso_format(self) -> None:
         ctx = build_macro_context(today=date(2024, 3, 15))
         self.assertEqual(ctx["TODAY"], "2024-03-15")
-        self.assertEqual(ctx["DATE_MINUS_7_DAYS"], "2024-03-08")
+        self.assertEqual(ctx["DATE_MINUS_30_DAYS"], "2024-02-14")
 
     def test_env_macro_defaults(self) -> None:
         ctx = build_macro_context(today=date(2024, 1, 1), env={})
@@ -127,7 +127,7 @@ class TestLoadSourcesConfig(unittest.TestCase):
         self.assertEqual(len(config["sources"]), 1)
 
     def test_macro_expansion_in_url(self) -> None:
-        source = {**_MINIMAL_SOURCE, "url": "https://api.example.com?since={{DATE_MINUS_7_DAYS}}"}
+        source = {**_MINIMAL_SOURCE, "url": "https://api.example.com?since={{DATE_MINUS_30_DAYS}}"}
         path = _write_tmp(_make_config([source]))
         config = load_sources_config(path)
         url = config["sources"][0]["url"]
