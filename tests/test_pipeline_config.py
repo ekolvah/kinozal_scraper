@@ -44,6 +44,13 @@ class TestBuildMacroContext(unittest.TestCase):
         ctx = build_macro_context(today=date(2024, 1, 1), env={})
         self.assertEqual(ctx["GH_TOP_LIMIT"], "10")
         self.assertEqual(ctx["STEAM_TOP_LIMIT"], "10")
+        self.assertEqual(ctx["SOLDOUT_URL"], "")
+
+    def test_soldout_url_override(self) -> None:
+        ctx = build_macro_context(
+            today=date(2024, 1, 1), env={"SOLDOUT_URL": "https://example.com/events"}
+        )
+        self.assertEqual(ctx["SOLDOUT_URL"], "https://example.com/events")
 
     def test_env_macro_overrides(self) -> None:
         ctx = build_macro_context(

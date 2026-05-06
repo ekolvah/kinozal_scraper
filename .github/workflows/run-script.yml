@@ -34,6 +34,15 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 
+      - name: Run events pipeline
+        run: python events_pipeline.py
+        env:
+          SOLDOUT_URL: ${{ vars.SOLDOUT_URL }}
+          SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
+          CREDENTIALS: ${{ secrets.CREDENTIALS }}
+
       - name: Run legacy Kinozal scraper
         run: python scraper.py
         env:
@@ -42,7 +51,6 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           API_KEY: ${{ secrets.API_KEY }}
           URLS: ${{ vars.URLS }}
-          URLS_EVENTS: ${{ vars.URLS_EVENTS }}
           CHANNEL_URL: ${{ vars.CHANNEL_URL }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           API_HASH: ${{ secrets.API_HASH }}

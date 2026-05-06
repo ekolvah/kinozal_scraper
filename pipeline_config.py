@@ -43,6 +43,7 @@ def build_macro_context(
         "GITHUB_TOKEN": env.get("GITHUB_TOKEN", ""),
         "STEAM_TOP_LIMIT": env.get("STEAM_TOP_LIMIT", "10"),
         "KINOZAL_TOP_URL": env.get("KINOZAL_TOP_URL", ""),
+        "SOLDOUT_URL": env.get("SOLDOUT_URL", ""),
     }
 
 
