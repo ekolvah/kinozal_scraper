@@ -273,35 +273,6 @@ class MovieScraper(Scraper):
             self.telegram_bot.send_poster(movie_title, event['posters'], event['href'], trailer)
         self._update_notified_events()
 
-class EventsScraper(Scraper):
-    """Скрапер для событий."""
-
-    @staticmethod
-    def add_prefix(link: str) -> str:
-        """Добавляет префикс к ссылке на событие."""
-        return link if link.startswith('http') else f'https://www.soldoutticketbox.com{link}'
-
-    def get_top_events(self):
-        """Получает топовые события."""
-        data = []
-        urls = [pair.split("|")[1] for pair in os.getenv('URLS_EVENTS').split(";")]
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
-            'Content-Type': 'text/html',
-        }
-        for url in urls:
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for box in soup.find_all('div', class_='homeBoxEvent'):
-                event = box.select_one('h2 a').text
-                if re.search('[а-яА-Я]', event):
-                    data.append([
-                        event,
-                        self.add_prefix(str(box.select_one('.imgEvent')['src'])),
-                        self.add_prefix(str(box.select_one('.homeBoxEventTop a')['href']))
-                    ])
-        return pd.DataFrame(data, columns=['events', 'posters', 'href']).drop_duplicates()
-
 if __name__ == "__main__":
     spreadsheet = GoogleSpreadsheet()
     youtube = Youtube()
