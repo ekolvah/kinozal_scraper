@@ -13,4 +13,3 @@ pytz
 google-generativeai
 cryptography
 tenacity
-curl_cffi

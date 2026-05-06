@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from curl_cffi import requests
+import requests
 
 from generic_pipeline import (
     ROW_HEADERS,
@@ -17,8 +17,18 @@ from telegram_notifier import Notifier
 logger = logging.getLogger(__name__)
 
 
+_FETCH_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 6.1; WOW64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/46.0.2490.80 Safari/537.36"
+    ),
+    "Content-Type": "text/html",
+}
+
+
 def _fetch_html(url: str) -> str:
-    resp = requests.get(url, impersonate="chrome120", timeout=30)
+    resp = requests.get(url, headers=_FETCH_HEADERS, timeout=30)
     resp.raise_for_status()
     return resp.text
 
