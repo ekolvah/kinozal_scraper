@@ -3,7 +3,7 @@ import unittest.mock
 from typing import Any
 
 from generic_pipeline import ROW_HEADERS, NormalizedItem, Notification, extract_from_html
-from kinozal_pipeline import _kinozal_urls, enrich_with_trailer
+from kinozal_pipeline import _kinozal_urls, _title_year_matches, enrich_with_trailer
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 
@@ -135,6 +135,28 @@ class TestEnrichWithTrailer(unittest.TestCase):
         item = self._item("Great Film / 2025 / WEB-DL")
         enrich_with_trailer(item, youtube)
         self.assertEqual(youtube.last_film, "Great Film")
+
+
+# ── _title_year_matches ───────────────────────────────────────────────────────
+
+
+class TestTitleYearMatches(unittest.TestCase):
+    def test_matching_year_accepted(self) -> None:
+        self.assertTrue(_title_year_matches("Great Film 2026 Official Trailer", 2026))
+
+    def test_wrong_year_rejected(self) -> None:
+        self.assertFalse(
+            _title_year_matches("Kingsman: Секретная служба (2015) Трейлер на русском", 2026)
+        )
+
+    def test_no_year_in_title_accepted(self) -> None:
+        self.assertTrue(_title_year_matches("Секретная служба трейлер", 2026))
+
+    def test_multiple_years_one_matches(self) -> None:
+        self.assertTrue(_title_year_matches("Film 2025/2026 Official Trailer", 2026))
+
+    def test_multiple_years_none_match(self) -> None:
+        self.assertFalse(_title_year_matches("Remake 2023 vs Original 2015", 2026))
 
 
 # ── _kinozal_urls ─────────────────────────────────────────────────────────────
