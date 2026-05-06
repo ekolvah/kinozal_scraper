@@ -39,6 +39,7 @@ class TestBuildMacroContext(unittest.TestCase):
         ctx = build_macro_context(today=date(2024, 3, 15))
         self.assertEqual(ctx["TODAY"], "2024-03-15")
         self.assertEqual(ctx["DATE_MINUS_7_DAYS"], "2024-03-08")
+        self.assertEqual(ctx["DATE_MINUS_30_DAYS"], "2024-02-14")
 
     def test_env_macro_defaults(self) -> None:
         ctx = build_macro_context(today=date(2024, 1, 1), env={})
