@@ -103,6 +103,7 @@ class TelegramChannelSummarizer:
                 if summary:
                     results.append({
                         "channel": display_name, # Используем красивое имя
+                        "url": url,
                         "summary": summary
                     })
 
