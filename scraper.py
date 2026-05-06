@@ -121,7 +121,7 @@ class TelegramBot:
         self.bot_token = os.environ['BOT_TOKEN']
         self.bot_chatID = os.environ['BOT_CHATID']
 
-    def send_text(self, text, is_error_message=False):
+    def send_text(self, text, is_error_message=False, parse_mode=None):
         """Отправляет текстовое сообщение."""
         if len(text) > 4096:
             logger.warning("Message too long, truncating to 4096 characters.")
@@ -129,6 +129,8 @@ class TelegramBot:
 
         send_message = f'https://api.telegram.org/bot{self.bot_token}/sendMessage'
         message_data = {'chat_id': self.bot_chatID, 'text': text}
+        if parse_mode:
+            message_data['parse_mode'] = parse_mode
         self._send_request(send_message, message_data, is_error_message)
 
     def send_poster(self, film, poster, href, trailer):
@@ -302,9 +304,15 @@ if __name__ == "__main__":
 
         # Отправляем каждое саммари отдельным сообщением
         for summary_item in summaries:
+            import html as _html
             channel = summary_item["channel"]
+            channel_url = summary_item.get("url", "")
             summary_text = summary_item["summary"]
-            message = f"📢 Канал: {channel}\n\n{summary_text}"
-            telegram_bot.send_text(message)
+            if channel_url and isinstance(channel_url, str) and channel_url.startswith("http"):
+                channel_label = f'<a href="{channel_url}">{_html.escape(channel)}</a>'
+            else:
+                channel_label = _html.escape(channel)
+            message = f"📢 Канал: {channel_label}\n\n{_html.escape(summary_text)}"
+            telegram_bot.send_text(message, parse_mode="HTML")
     else:
         telegram_bot.send_text("За последние сутки в отслеживаемых каналах не было новых сообщений.")
