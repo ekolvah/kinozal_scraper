@@ -294,8 +294,6 @@ if __name__ == "__main__":
         movie_scraper = MovieScraper(spreadsheet, youtube, telegram_bot)
         movie_scraper.run()
 
-    # EventsScraper replaced by events_pipeline.py (declarative HTML pipeline)
-
     # Изменение: обрабатываем каждый канал отдельно
     summaries = TelegramChannelSummarizer.summarization()
     if summaries:

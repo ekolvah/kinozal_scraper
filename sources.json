@@ -82,7 +82,7 @@
     },
     {
       "id": "soldout_events",
-      "enabled": true,
+      "enabled": false,
       "type": "html",
       "url": "{{SOLDOUT_URL}}",
       "base_url": "https://www.soldoutticketbox.com",
