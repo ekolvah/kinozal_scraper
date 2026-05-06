@@ -112,20 +112,26 @@ class Youtube:
         else:
             cutoff = date.today() - timedelta(days=180)
             published_after = f"{cutoff.isoformat()}T00:00:00Z"
-        result = self._search_youtube(query, published_after)
+        result = self._search_youtube(query, published_after, film_year=year)
         if result:
             return result
-        return self._search_youtube(query, published_after=None)
+        return self._search_youtube(query, published_after=None, film_year=year)
 
-    def _search_youtube(self, query, published_after=None):
+    def _search_youtube(self, query, published_after=None, film_year=None):
         """Выполняет поиск на YouTube и возвращает URL первого подходящего видео."""
-        params = dict(q=query, part='id', maxResults=5, type='video', videoDuration='short')
+        params = dict(q=query, part='id,snippet', maxResults=5, type='video', videoDuration='short')
         if published_after:
             params['publishedAfter'] = published_after
         response = self.youtube.search().list(**params).execute()
+        from kinozal_pipeline import _title_year_matches
         for item in response.get('items', []):
-            if item['id'].get('kind') == 'youtube#video':
-                return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
+            if item['id'].get('kind') != 'youtube#video':
+                continue
+            if film_year:
+                title = item.get('snippet', {}).get('title', '')
+                if not _title_year_matches(title, film_year):
+                    continue
+            return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
         return None
 
 class TelegramBot:
