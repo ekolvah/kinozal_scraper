@@ -2,12 +2,9 @@ import os
 import logging
 from datetime import date, datetime, timedelta
 import requests
-import pandas as pd
-from bs4 import BeautifulSoup
 from googleapiclient.discovery import build
 import gspread
 import json
-from abc import ABC, abstractmethod
 import re
 from gspread.exceptions import APIError
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -212,112 +209,24 @@ class TelegramBot:
         self.send_text(error_message, is_error_message=True)
 
 
-class Scraper(ABC):
-    """Абстрактный класс для скрапера."""
-
-    def __init__(self, spreadsheet: GoogleSpreadsheet, youtube: Youtube, telegram_bot: TelegramBot):
-        """Инициализация скрапера."""
-        self.spreadsheet = spreadsheet
-        self.youtube = youtube
-        self.telegram_bot = telegram_bot
-        self.notified_events = self.get_notified_events()
-        self.top_events = self.get_top_events()
-        self.new_events = self.get_new_events()
-
-    @staticmethod
-    @abstractmethod
-    def add_prefix(link: str) -> str:
-        """Добавляет префикс к ссылке."""
-        pass
-
-    def get_notified_events(self):
-        """Получает уже оповещенные события."""
-        worksheet = self.spreadsheet.get_worksheet(0)
-        return pd.DataFrame(worksheet.get_all_values(), columns=['events', 'posters', 'href'])
-
-    @abstractmethod
-    def get_top_events(self):
-        """Получает топовые события."""
-        pass
-
-    def get_new_events(self):
-        """Получает новые события."""
-        return self.top_events[~self.top_events['events'].isin(self.notified_events['events'])]
-
-    def run(self):
-        """Запускает процесс скрапинга и оповещения."""
-        self._send_notifications()
-        self._update_notified_events()
-
-    def _send_notifications(self):
-        """Отправляет уведомления о новых событиях."""
-        for _, event in self.new_events.iterrows():
-            trailer = self.youtube.get_trailer_url(event['events'])
-            self.telegram_bot.send_poster(event['events'], event['posters'], event['href'], trailer)
-
-    def _update_notified_events(self):
-        """Обновляет список оповещенных событий."""
-        self.notified_events = pd.concat([self.notified_events, self.new_events])
-        self.spreadsheet.update_worksheet(self.spreadsheet.get_worksheet(0), self.notified_events)
-
-
-class MovieScraper(Scraper):
-    """Скрапер для фильмов."""
-
-    @staticmethod
-    def add_prefix(link: str) -> str:
-        """Добавляет префикс к ссылке на фильм."""
-        return link if link.startswith('http') else f'https://kinozal.tv{link}'
-
-    def get_top_events(self):
-        """Получает топовые фильмы."""
-        data = []
-        urls = [pair.split("|")[1] for pair in os.getenv('URLS').split(";")]
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/46.0.2490.80 Safari/537.36',
-            'Content-Type': 'text/html',
-        }
-        for url in urls:
-            response = requests.get(url, headers=headers)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            for link in soup.select('a[href^="/details.php"]'):
-                data.append([
-                    str(link.get('title')),
-                    self.add_prefix(link.find('img').get('src')),
-                    self.add_prefix(str(link.get('href')))
-                ])
-        return pd.DataFrame(data, columns=['events', 'posters', 'href']).drop_duplicates()
-
-    def run(self):
-        """Запускает процесс скрапинга фильмов и оповещения."""
-        for _, event in self.new_events.iterrows():
-            movie_title = event['events'].split('/')[0].strip().split('(')[0].strip()
-            trailer = self.youtube.get_trailer_url(movie_title)
-            self.telegram_bot.send_poster(movie_title, event['posters'], event['href'], trailer)
-        self._update_notified_events()
-
 if __name__ == "__main__":
     spreadsheet = GoogleSpreadsheet()
     youtube = Youtube()
     telegram_bot = TelegramBot()
 
-    if os.getenv("USE_GENERIC_KINOZAL", "false").lower() == "true":
-        from kinozal_pipeline import run_kinozal_pipeline
-        from sheets_storage import SheetsStorage
-        from telegram_notifier import TelegramNotifier
+    from kinozal_pipeline import run_kinozal_pipeline
+    from sheets_storage import SheetsStorage
+    from telegram_notifier import TelegramNotifier
 
-        _SPREADSHEET_URL = (
-            "https://docs.google.com/spreadsheets/d/"
-            "12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing"
-        )
-        _storage = SheetsStorage(spreadsheet.client, _SPREADSHEET_URL)
-        _notifier = TelegramNotifier(telegram_bot.bot_token, telegram_bot.bot_chatID)
-        run_kinozal_pipeline(_storage, _notifier, youtube)
-    else:
-        movie_scraper = MovieScraper(spreadsheet, youtube, telegram_bot)
-        movie_scraper.run()
+    _SPREADSHEET_URL = (
+        "https://docs.google.com/spreadsheets/d/"
+        "12E95cAZIT-_2MfEoo6T5Dm-uF8c8xPHZQQ3WcEZPQjo/edit?usp=sharing"
+    )
+    _storage = SheetsStorage(spreadsheet.client, _SPREADSHEET_URL)
+    _notifier = TelegramNotifier(telegram_bot.bot_token, telegram_bot.bot_chatID)
+    run_kinozal_pipeline(_storage, _notifier, youtube)
 
-    # Изменение: обрабатываем каждый канал отдельно
+    #
     summaries = TelegramChannelSummarizer.summarization()
     if summaries:
         # Отправляем заголовок
