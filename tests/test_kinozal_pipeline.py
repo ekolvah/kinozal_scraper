@@ -41,12 +41,18 @@ _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
 
 
 class _FakeYoutube:
-    def get_trailer_url(self, film: str) -> str:
+    def __init__(self) -> None:
+        self.last_film: str = ""
+        self.last_year: int | None = None
+
+    def get_trailer_url(self, film: str, year: int | None = None) -> str:
+        self.last_film = film
+        self.last_year = year
         return f"https://youtube.com/watch?v={film.replace(' ', '_')}"
 
 
 class _RaisingYoutube:
-    def get_trailer_url(self, film: str) -> str:
+    def get_trailer_url(self, film: str, year: int | None = None) -> str:
         raise RuntimeError("YouTube API down")
 
 
@@ -105,6 +111,30 @@ class TestEnrichWithTrailer(unittest.TestCase):
         item = self._item("Some Film")
         trailer = enrich_with_trailer(item, _RaisingYoutube())
         self.assertEqual(trailer, "")
+
+    def test_year_extracted_from_title_and_passed(self) -> None:
+        youtube = _FakeYoutube()
+        item = self._item("Film One / 2024 / BDRip")
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_year, 2024)
+
+    def test_no_year_passes_none(self) -> None:
+        youtube = _FakeYoutube()
+        item = self._item("Film Without Year")
+        enrich_with_trailer(item, youtube)
+        self.assertIsNone(youtube.last_year)
+
+    def test_year_in_parentheses_extracted(self) -> None:
+        youtube = _FakeYoutube()
+        item = self._item("Film (2023)")
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_year, 2023)
+
+    def test_clean_title_passed_without_year_slash(self) -> None:
+        youtube = _FakeYoutube()
+        item = self._item("Great Film / 2025 / WEB-DL")
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_film, "Great Film")
 
 
 # ── _kinozal_urls ─────────────────────────────────────────────────────────────

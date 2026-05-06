@@ -1,6 +1,6 @@
 import os
 import logging
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import requests
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -104,13 +104,28 @@ class Youtube:
         self.credentials = os.environ['API_KEY']
         self.youtube = build('youtube', 'v3', developerKey=self.credentials)
 
-    def get_trailer_url(self, film):
+    def get_trailer_url(self, film, year=None):
         """Получает URL трейлера фильма."""
-        request = self.youtube.search().list(q=f"{film} trailer", part='id', maxResults=5)
-        response = request.execute()
-        for item in response['items']:
+        query = f"{film} {year} trailer" if year else f"{film} trailer"
+        if year:
+            published_after = f"{year}-01-01T00:00:00Z"
+        else:
+            cutoff = date.today() - timedelta(days=180)
+            published_after = f"{cutoff.isoformat()}T00:00:00Z"
+        result = self._search_youtube(query, published_after)
+        if result:
+            return result
+        return self._search_youtube(query, published_after=None)
+
+    def _search_youtube(self, query, published_after=None):
+        """Выполняет поиск на YouTube и возвращает URL первого подходящего видео."""
+        params = dict(q=query, part='id', maxResults=5, type='video', videoDuration='short')
+        if published_after:
+            params['publishedAfter'] = published_after
+        response = self.youtube.search().list(**params).execute()
+        for item in response.get('items', []):
             if item['id'].get('kind') == 'youtube#video':
-                return f"https://www.youtube.com/watch?v={item['id'].get('videoId')}"
+                return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
         return None
 
 class TelegramBot:

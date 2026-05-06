@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Any
 
 import requests
@@ -52,7 +53,9 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     """Clean title and look up a YouTube trailer URL. Returns '' on any failure."""
     try:
         clean = item.title.split("/")[0].strip().split("(")[0].strip()
-        return youtube.get_trailer_url(clean) or ""
+        year_match = re.search(r"\b(20\d{2})\b", item.title)
+        year = int(year_match.group(1)) if year_match else None
+        return youtube.get_trailer_url(clean, year=year) or ""
     except Exception as exc:
         logger.error("trailer lookup failed for %r: %s", item.title, exc)
         return ""
