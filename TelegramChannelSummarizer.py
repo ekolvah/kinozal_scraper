@@ -26,12 +26,15 @@ class TelegramChannelSummarizer:
     CHAT_PROMPT = os.getenv('CHAT_PROMPT')
     BROADCAST_PROMPT = os.getenv('BROADCAST_PROMPT')
 
-    # to comment it to be able to debug if you have no SECRET_KEY
-    crypto.load_encrypter_session()
-    genai.configure(api_key=GOOGLE_API_KEY)
-    models = genai.list_models()
-    for model in models:
-        print(model.name)
+    _initialized = False
+
+    @classmethod
+    def _ensure_initialized(cls):
+        if cls._initialized:
+            return
+        crypto.load_encrypter_session()
+        genai.configure(api_key=cls.GOOGLE_API_KEY)
+        cls._initialized = True
 
     @staticmethod
     @retry(
@@ -84,6 +87,7 @@ class TelegramChannelSummarizer:
 
     @staticmethod
     def summarization():
+        TelegramChannelSummarizer._ensure_initialized()
         logger.info(f"Environment variable LLM_MODEL: {TelegramChannelSummarizer.LLM_MODEL}")
         channel_urls_list = TelegramChannelSummarizer.channel_urls.split(';')
         results = []  # Сохраняем результаты для каждого канала отдельно

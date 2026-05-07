@@ -6,12 +6,13 @@ extend-exclude = [
     ".audit-tmp",
     ".idea",
     ".ruff_cache",
+    ".claude",
     ".venv",
     "__pycache__",
     "pytest-cache-files-*",
     "TelegramChannelSummarizer.py",
     "crypto.py",
-    "scraper.py",
+    "telegram_summarizer.py",
 ]
 
 [tool.ruff.lint]

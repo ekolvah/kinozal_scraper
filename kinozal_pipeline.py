@@ -49,12 +49,6 @@ def _kinozal_urls() -> list[str]:
     return [fallback] if fallback else []
 
 
-def _title_year_matches(title: str, film_year: int) -> bool:
-    """Return False if the video title explicitly mentions a year other than film_year."""
-    title_years = {int(m) for m in re.findall(r"\b((?:19|20)\d{2})\b", title)}
-    return not title_years or film_year in title_years
-
-
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     """Clean title and look up a YouTube trailer URL. Returns '' on any failure."""
     try:
@@ -126,3 +120,26 @@ def run_kinozal_pipeline(
     sent, failed = notifier.send_items(notifications)
     if failed:
         logger.warning("kinozal pipeline: %d notification(s) failed", len(failed))
+
+
+if __name__ == "__main__":
+    import json
+
+    import gspread
+
+    from sheets_storage import SheetsStorage
+    from telegram_notifier import TelegramNotifier
+    from youtube import Youtube
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+    credentials = json.loads(os.environ["CREDENTIALS"])
+    gc = gspread.service_account_from_dict(credentials)
+
+    storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
+    notifier = TelegramNotifier(
+        os.environ["TELEGRAM_BOT_TOKEN"],
+        os.environ["TELEGRAM_CHAT_ID"],
+    )
+    youtube = Youtube()
+    run_kinozal_pipeline(storage, notifier, youtube)

@@ -35,6 +35,9 @@ class TelegramNotifier:
         self._max_retry_sleep = max_retry_sleep
         self._session = session or requests.Session()
 
+    def send_text(self, text: str) -> bool:
+        return self._send_one(text)
+
     def send_items(
         self, notifications: list[Notification]
     ) -> tuple[list[Notification], list[Notification]]:

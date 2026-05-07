@@ -3,29 +3,24 @@
 ## Что делает приложение
 Парсит топ kinozal.tv по расписанию (GitHub Actions, 04:00 UTC), дедуплицирует через Google Sheets, отправляет новинки в Telegram. Параллельно суммаризует Telegram-каналы через Gemini.
 
-## Файлы которые нельзя трогать без явного указания
-- `scraper.py` — рантайм продакшн
-- `TelegramChannelSummarizer.py` — рантайм продакшн
-- `crypto.py` — рантайм продакшн
-- `.github/workflows/run-script.yml` — scheduled workflow продакшн
+## Файлы исключённые из ruff/mypy
 
-Эти файлы исключены из ruff и mypy намеренно.
+`scraper.py`, `TelegramChannelSummarizer.py`, `crypto.py` исключены из
+ruff и mypy в `scripts/ci_check.py` (legacy код, будет рефакториться).
 
 ## Активная работа: declarative pipeline (issues #1–#8)
 
 Порядок реализации (зависимости сверху вниз):
 ```
 #1 sources.json + macro engine          ← done (PR #9)
-#2 generic fetch/extract/normalize core
-#3 Google Sheets batch storage
-#4 Telegram notifier queue              (параллельно с #3)
-#5 Port Kinozal → generic pipeline      ← точка переключения на новый рантайм
-#6 GitHub repos source
-#7 Steam games source
+#2 generic fetch/extract/normalize core ← done
+#3 Google Sheets batch storage          ← done
+#4 Telegram notifier queue              ← done
+#5 Port Kinozal → generic pipeline      ← done (PR #36)
+#6 GitHub repos source                  ← done
+#7 Steam games source                   ← done
 #8 Update Action + README
 ```
-
-До issue #5 `scraper.py` и `run-script.yml` не трогаем — продакшн работает как прежде.
 
 ## Ветки
 - Каждый issue — отдельная ветка `codex-issue-N-*`
