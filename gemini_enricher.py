@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import string
 import time
 from typing import Any, Protocol, runtime_checkable
@@ -91,10 +92,20 @@ def _model_version_key(name: str) -> tuple[float, str]:
 
 _EXCLUDED_SUFFIXES = ("-tts", "-image", "-customtools", "-computer-use", "-robotics")
 
+# Comma-separated model names to exclude, e.g.:
+# GEMINI_EXCLUDED_MODELS=models/gemini-3.1-pro-preview,models/gemini-3-flash-preview
+_EXCLUDED_MODELS: frozenset[str] = frozenset(
+    m.strip()
+    for m in os.getenv("GEMINI_EXCLUDED_MODELS", "models/gemini-3.1-pro-preview").split(",")
+    if m.strip()
+)
+
 
 def _is_text_gemini(name: str) -> bool:
     """Filter to pure text-generation Gemini models only."""
     if not name.startswith("models/gemini-"):
+        return False
+    if name in _EXCLUDED_MODELS:
         return False
     return not any(s in name for s in _EXCLUDED_SUFFIXES)
 
