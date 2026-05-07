@@ -8,7 +8,6 @@ from telethon.sessions import StringSession
 import os
 from crypto import crypto  # Import the crypto module
 import logging
-from tenacity import retry, wait_fixed, retry_if_exception_type, stop_after_attempt
 import google.api_core.exceptions
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -34,56 +33,69 @@ class TelegramChannelSummarizer:
             return
         crypto.load_encrypter_session()
         genai.configure(api_key=cls.GOOGLE_API_KEY)
+        cls._models = cls._build_model_list()
+        logger.info(f"Available models for summarization: {cls._models}")
         cls._initialized = True
 
     @staticmethod
-    @retry(
-        wait=wait_fixed(60),  # Ожидание 60 секунд (1 минута) между попытками
-        retry=retry_if_exception_type(google.api_core.exceptions.ResourceExhausted),
-        stop=stop_after_attempt(3),  # Максимальное количество попыток
-        before_sleep=lambda retry_state: logger.warning(
-            f"Повторная попытка через 1 минуту. Ошибка: {retry_state.outcome.exception()}")
-    )
-    def generate_with_retry(model, request):
-        return model.generate_content(request)
+    def _build_model_list():
+        from gemini_enricher import get_generation_models
+        available = get_generation_models()
+        preferred = TelegramChannelSummarizer.LLM_MODEL
+        if preferred and preferred in available:
+            available.remove(preferred)
+            available.insert(0, preferred)
+        elif preferred and f"models/{preferred}" in available:
+            full = f"models/{preferred}"
+            available.remove(full)
+            available.insert(0, full)
+        elif preferred:
+            available.insert(0, preferred)
+        return available or [preferred or "gemini-2.0-flash"]
 
     @staticmethod
     def summarization_text(text, is_broadcast=False):
         if not text:
             return ""
 
-        try:
-            model = genai.GenerativeModel(TelegramChannelSummarizer.LLM_MODEL)
-            if is_broadcast:
-                prompt = TelegramChannelSummarizer.BROADCAST_PROMPT or (
-                    " Это текст постов из телеграм канала. "
-                    "Проанализируй этот текст и выдели ключевые темы. "
-                    "Будь лаконичным."
-                )
-            else:
-                prompt = TelegramChannelSummarizer.CHAT_PROMPT or (
-                    " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
-                    "Проанализируй этот текст и выдели только основные обсуждаемые темы. "
-                    "Не пиши детали, кто что сказал, не указывай имена. "
-                    "Просто перечисли заголовки обсуждаемых тем. Будь максимально лаконичным."
-                )
-            request = text + prompt
+        if is_broadcast:
+            prompt = TelegramChannelSummarizer.BROADCAST_PROMPT or (
+                " Это текст постов из телеграм канала. "
+                "Проанализируй этот текст и выдели ключевые темы. "
+                "Будь лаконичным."
+            )
+        else:
+            prompt = TelegramChannelSummarizer.CHAT_PROMPT or (
+                " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
+                "Проанализируй этот текст и выдели только основные обсуждаемые темы. "
+                "Не пиши детали, кто что сказал, не указывай имена. "
+                "Просто перечисли заголовки обсуждаемых тем. Будь максимально лаконичным."
+            )
+        request = text + prompt
 
-            # Используем функцию с повторными попытками
-            response = TelegramChannelSummarizer.generate_with_retry(model, request)
+        for model_name in TelegramChannelSummarizer._models:
+            try:
+                model = genai.GenerativeModel(model_name)
+                response = model.generate_content(request)
 
-            logger.info("------Оригинальный текст------")
-            logger.info(text)
-            logger.info("------Саммаризация------")
+                logger.info("------Оригинальный текст------")
+                logger.info(text)
+                logger.info("------Саммаризация------")
 
-            if not response.candidates:
+                if not response.candidates:
+                    return ""
+
+                logger.info(response.text)
+                return response.text
+            except google.api_core.exceptions.ResourceExhausted:
+                logger.warning(f"model {model_name} quota exhausted, trying next")
+                continue
+            except Exception as e:
+                logger.error(f"Error with model {model_name}: {e}")
                 return ""
 
-            logger.info(response.text)
-            return response.text
-        except Exception as e:
-            logger.error(f"Error in summarization_text: {e}")
-            return ""
+        logger.error("all models exhausted, could not summarize")
+        return ""
 
     @staticmethod
     def summarization():
