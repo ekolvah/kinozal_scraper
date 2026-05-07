@@ -34,7 +34,10 @@ class TelegramChannelSummarizer:
         crypto.load_encrypter_session()
         genai.configure(api_key=cls.GOOGLE_API_KEY)
         cls._models = cls._build_model_list()
-        logger.info(f"Available models for summarization: {cls._models}")
+        if cls._models:
+            logger.info(f"Available models for summarization: {cls._models}")
+        else:
+            logger.warning("No Gemini models available, summarization will be skipped")
         cls._initialized = True
 
     @staticmethod

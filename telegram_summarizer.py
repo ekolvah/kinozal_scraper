@@ -5,10 +5,9 @@ import os
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-from TelegramChannelSummarizer import TelegramChannelSummarizer
-
 
 if __name__ == "__main__":
+    from TelegramChannelSummarizer import TelegramChannelSummarizer
     from telegram_notifier import TelegramNotifier
 
     notifier = TelegramNotifier(

@@ -223,7 +223,7 @@ def _format_field(field_name: str, value: Any) -> str:
 
 
 def _html_link(href: str, label: str) -> str:
-    return f'<a href="{href}">{_html.escape(label)}</a>'
+    return f'<a href="{_html.escape(href, quote=True)}">{_html.escape(label)}</a>'
 
 
 def build_notification(item: NormalizedItem, template: str) -> Notification:

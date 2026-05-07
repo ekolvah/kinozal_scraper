@@ -5,8 +5,8 @@
 
 ## Файлы исключённые из ruff/mypy
 
-`scraper.py`, `TelegramChannelSummarizer.py`, `crypto.py` исключены из
-ruff и mypy в `scripts/ci_check.py` (legacy код, будет рефакториться).
+`telegram_summarizer.py`, `TelegramChannelSummarizer.py`, `crypto.py` исключены из
+ruff и mypy в `scripts/ci_check.py` и `pyproject.toml` (legacy код).
 
 ## Активная работа: declarative pipeline (issues #1–#8)
 

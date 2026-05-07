@@ -230,5 +230,59 @@ class TestBuildNotificationNewlineCollapse(unittest.TestCase):
         self.assertIn("Крутой проект\n⭐ 42", note.text)
 
 
+class TestBuildNotificationLinks(unittest.TestCase):
+    def _item(self, title: str, url: str = "", trailer_url: str = "") -> NormalizedItem:
+        return NormalizedItem(
+            dedupe_key=title,
+            title=title,
+            source_id="test",
+            url=url,
+            trailer_url=trailer_url,
+        )
+
+    def test_title_link_is_clickable_anchor(self) -> None:
+        item = self._item("Фильм / 2026", url="https://kinozal.tv/details.php?id=1")
+        note = build_notification(item, "{title_link}")
+        self.assertIn('<a href="https://kinozal.tv/details.php?id=1">', note.text)
+        self.assertIn("Фильм / 2026", note.text)
+
+    def test_title_link_escapes_special_chars_in_title(self) -> None:
+        item = self._item("Film <2026>", url="https://example.com/")
+        note = build_notification(item, "{title_link}")
+        self.assertIn("&lt;2026&gt;", note.text)
+        self.assertNotIn("<2026>", note.text)
+
+    def test_title_link_escapes_href(self) -> None:
+        item = self._item("Film", url='https://example.com/?a="bad"')
+        note = build_notification(item, "{title_link}")
+        self.assertNotIn('"bad"', note.text)
+
+    def test_title_link_without_url_is_plain_escaped_title(self) -> None:
+        item = self._item("Film <X>", url="")
+        note = build_notification(item, "{title_link}")
+        self.assertNotIn("<a href", note.text)
+        self.assertIn("Film &lt;X&gt;", note.text)
+
+    def test_trailer_link_is_clickable_trailer_word(self) -> None:
+        item = self._item("Film", trailer_url="https://www.youtube.com/watch?v=abc")
+        note = build_notification(item, "{trailer_link}")
+        self.assertIn('<a href="https://www.youtube.com/watch?v=abc">Trailer</a>', note.text)
+
+    def test_trailer_link_empty_when_no_trailer(self) -> None:
+        item = self._item("Film", trailer_url="")
+        note = build_notification(item, "{trailer_link}")
+        self.assertEqual(note.text, "")
+
+    def test_kinozal_template(self) -> None:
+        item = self._item(
+            "Фильм / 2026 / WEB",
+            url="https://kinozal.tv/details.php?id=1",
+            trailer_url="https://www.youtube.com/watch?v=xyz",
+        )
+        note = build_notification(item, "{title_link}\n{trailer_link}")
+        self.assertIn('<a href="https://kinozal.tv/details.php?id=1">', note.text)
+        self.assertIn('<a href="https://www.youtube.com/watch?v=xyz">Trailer</a>', note.text)
+
+
 if __name__ == "__main__":
     unittest.main()
