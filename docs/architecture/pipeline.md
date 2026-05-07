@@ -7,8 +7,7 @@ sources.json          declarative config (urls, selectors, limits, macros)
 pipeline_config.py    loads config, expands macros, validates schema
 generic_pipeline.py   extract + normalize (no network, no I/O)
 sheets_storage.py     read existing keys, append confirmed rows
-telegram_notifier.py  send items, return confirmed list  [issue #4]
-scraper.py            legacy runtime — untouched until issue #5
+telegram_notifier.py  send items, return confirmed list
 ```
 
 ## Key principle: new source = config, not code (with known limitation)
@@ -19,7 +18,9 @@ Adding GitHub, Steam, or any future source requires only a new entry in
 **Known limitation:** HTTP fetching (pagination, auth headers, rate limits) is
 not declarative. Each new source requires a small fetch function in the caller.
 
-## Data flow (issues #2–#5)
+## Data flow
+
+For the full list of pipelines and how they connect, see [runtime.md](runtime.md).
 
 **Order is intentional: Sheets write BEFORE Telegram send.**
 If Telegram fails after Sheets write → item is deduped on next run (skipped
