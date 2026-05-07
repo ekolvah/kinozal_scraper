@@ -42,7 +42,8 @@ jobs:
         run: |
           mapfile -t modules < <(find . -name "*.py" \
             ! -path "./.venv/*" ! -path "./.git/*" ! -path "./__pycache__/*" \
-            ! -name "scraper.py" \
+            ! -path "./.claude/*" \
+            ! -name "telegram_summarizer.py" \
             ! -name "TelegramChannelSummarizer.py" \
             ! -name "crypto.py")
           if [ "${#modules[@]}" -eq 0 ]; then
