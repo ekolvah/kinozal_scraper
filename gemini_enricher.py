@@ -92,31 +92,33 @@ def _model_version_key(name: str) -> tuple[float, str]:
 
 _EXCLUDED_SUFFIXES = ("-tts", "-image", "-customtools", "-computer-use", "-robotics")
 
-# Comma-separated model names to exclude, e.g.:
-# GEMINI_EXCLUDED_MODELS=models/gemini-3.1-pro-preview,models/gemini-3-flash-preview
+# Comma-separated model names to skip during rotation.
+# Set via GitHub Actions variable GEMINI_EXCLUDED_MODELS, e.g.:
+#   models/gemini-3.1-pro-preview,models/gemini-3-flash-preview
 _EXCLUDED_MODELS: frozenset[str] = frozenset(
-    m.strip()
-    for m in os.getenv("GEMINI_EXCLUDED_MODELS", "models/gemini-3.1-pro-preview").split(",")
-    if m.strip()
+    m.strip() for m in os.getenv("GEMINI_EXCLUDED_MODELS", "").split(",") if m.strip()
 )
 
 
 def _is_text_gemini(name: str) -> bool:
-    """Filter to pure text-generation Gemini models only."""
+    """Return True for pure text-generation Gemini models (ignores the excluded list)."""
     if not name.startswith("models/gemini-"):
-        return False
-    if name in _EXCLUDED_MODELS:
         return False
     return not any(s in name for s in _EXCLUDED_SUFFIXES)
 
 
 def get_generation_models() -> list[str]:
-    """Return text-generation Gemini model names, newer versions first."""
+    """Return text-generation Gemini model names, newer versions first.
+
+    Models in GEMINI_EXCLUDED_MODELS are omitted from the result.
+    """
     try:
         names = [
             m.name
             for m in genai.list_models()
-            if "generateContent" in m.supported_generation_methods and _is_text_gemini(m.name)
+            if "generateContent" in m.supported_generation_methods
+            and _is_text_gemini(m.name)
+            and m.name not in _EXCLUDED_MODELS
         ]
     except Exception:
         logger.warning("cannot list models")

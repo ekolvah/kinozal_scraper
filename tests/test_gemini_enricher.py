@@ -112,12 +112,12 @@ class TestIsTextGemini(unittest.TestCase):
 
         self.assertTrue(_is_text_gemini("models/gemini-2.5-flash"))
         self.assertTrue(_is_text_gemini("models/gemini-2.0-flash-lite"))
+        self.assertTrue(_is_text_gemini("models/gemini-3.1-pro-preview"))
         self.assertTrue(_is_text_gemini("models/gemini-2.5-flash-lite"))
 
     def test_rejects_specialized_models(self) -> None:
         from gemini_enricher import _is_text_gemini
 
-        self.assertFalse(_is_text_gemini("models/gemini-3.1-pro-preview"))
         self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-tts-preview"))
         self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-image-preview"))
         self.assertFalse(_is_text_gemini("models/gemini-3.1-pro-preview-customtools"))
