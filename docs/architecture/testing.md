@@ -11,7 +11,7 @@ missing fields).
 - Extract pure functions (row construction, field mapping, normalization) and
   unit-test those directly — no mocks needed.
 - Define a `Protocol` for each external boundary and provide an in-memory
-  implementation for tests (`InMemoryStorage`, future `InMemoryNotifier`).
+  implementation for tests (`InMemoryStorage`, `InMemoryNotifier`).
 - Integration tests against real external services belong in a separate test
   suite, run manually against a dedicated test document/channel.
 
@@ -40,3 +40,8 @@ test spreadsheet and Telegram channel. Automating this in CI is a future issue.
 python -m pytest          # via pyproject.toml config
 python scripts/ci_check.py  # full CI mirror: format + lint + tests + mypy
 ```
+
+## Test coverage map
+
+For a structured inventory of what is tested and where gaps exist,
+see [test-coverage.md](test-coverage.md).
