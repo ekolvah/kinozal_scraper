@@ -78,7 +78,7 @@
         "metric": null,
         "image_url": "img@src"
       },
-      "message_template": "<b>{title}</b>\n{url}\n{trailer_url}"
+      "message_template": "{title_link}\n{trailer_link}"
     },
     {
       "id": "soldout_events",

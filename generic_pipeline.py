@@ -196,6 +196,7 @@ def extract_from_html(
 
 _URL_FIELDS: frozenset[str] = frozenset({"url", "image_url", "trailer_url"})
 _NUMBER_FIELDS: frozenset[str] = frozenset({"metric"})
+_HTML_FIELDS: frozenset[str] = frozenset({"title_link", "trailer_link"})
 _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 
 
@@ -210,6 +211,8 @@ def _format_field(field_name: str, value: Any) -> str:
     if value is None:
         return ""
     value_str = str(value)
+    if field_name in _HTML_FIELDS:
+        return value_str
     if field_name in _URL_FIELDS:
         if value_str.startswith(("http://", "https://")):
             return value_str
@@ -219,14 +222,30 @@ def _format_field(field_name: str, value: Any) -> str:
     return _html.escape(value_str, quote=False)
 
 
+def _html_link(href: str, label: str) -> str:
+    return f'<a href="{href}">{_html.escape(label)}</a>'
+
+
 def build_notification(item: NormalizedItem, template: str) -> Notification:
+    title_link = (
+        _html_link(item.url, item.title)
+        if item.url and item.url.startswith(("http://", "https://"))
+        else _html.escape(item.title)
+    )
+    trailer_link = (
+        _html_link(item.trailer_url, "Trailer")
+        if item.trailer_url and item.trailer_url.startswith(("http://", "https://"))
+        else ""
+    )
     values: dict[str, Any] = {
         "title": item.title,
+        "title_link": title_link,
         "url": item.url,
         "description": item.description,
         "metric": item.metric,
         "dedupe_key": item.dedupe_key,
         "trailer_url": item.trailer_url,
+        "trailer_link": trailer_link,
     }
     text = template
     for field_name, raw_value in values.items():
