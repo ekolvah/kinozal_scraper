@@ -31,9 +31,3 @@
 - **No external API mocks**: never mock `gspread`, `genai`, `telethon` — see [testing.md](testing.md)
 - **Class naming**: `Test<Feature>` groups related assertions (e.g., `TestDeduplication`, `TestWriteBeforeNotify`)
 - **Pipeline test structure**: build config dict → inject in-memory doubles → call `run_*_pipeline()` → assert on doubles' recorded calls
-
-## Recommended next tests (prioritized)
-
-1. **Extract `Youtube` behind a Protocol** — add `InMemoryYoutube` double, test `kinozal_pipeline` trailer enrichment path without live API
-2. **Add `test_text_utils.py`** — direct tests for `title_year_matches()` (currently only indirect coverage)
-3. **`RotatingGeminiEnricher` cooldown edge cases** — verify timing behavior when all models exhaust simultaneously
