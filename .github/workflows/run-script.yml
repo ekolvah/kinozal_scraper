@@ -33,6 +33,7 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
       - name: Run events pipeline
         run: python events_pipeline.py
