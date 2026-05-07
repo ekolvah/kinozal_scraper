@@ -33,6 +33,7 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
       - name: Run events pipeline
         run: python events_pipeline.py
@@ -43,14 +44,22 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
 
-      - name: Run legacy Kinozal scraper
-        run: python scraper.py
+      - name: Run Kinozal pipeline
+        run: python kinozal_pipeline.py
         env:
-          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          BOT_CHATID: ${{ secrets.BOT_CHATID }}
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
+          SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
           API_KEY: ${{ secrets.API_KEY }}
           URLS: ${{ vars.URLS }}
+
+      - name: Run Telegram summarizer
+        if: always()
+        run: python telegram_summarizer.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
           CHANNEL_URL: ${{ vars.CHANNEL_URL }}
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           API_HASH: ${{ secrets.API_HASH }}
@@ -59,3 +68,4 @@ jobs:
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}

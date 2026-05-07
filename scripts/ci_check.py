@@ -7,8 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-_LEGACY = {"scraper.py", "TelegramChannelSummarizer.py", "crypto.py"}
-_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp"}
+_LEGACY = {"telegram_summarizer.py", "TelegramChannelSummarizer.py", "crypto.py"}
+_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
 
 
 def _run(cmd: list[str]) -> None:

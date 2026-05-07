@@ -3,9 +3,10 @@ import unittest.mock
 from typing import Any
 
 from generic_pipeline import ROW_HEADERS, NormalizedItem, Notification, extract_from_html
-from kinozal_pipeline import _kinozal_urls, _title_year_matches, enrich_with_trailer
+from kinozal_pipeline import _kinozal_urls, enrich_with_trailer
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
+from text_utils import title_year_matches as _title_year_matches
 
 # ── minimal synthetic HTML matching kinozal_movies row_selector ──────────────
 

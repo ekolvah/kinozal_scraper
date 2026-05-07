@@ -62,7 +62,7 @@
     },
     {
       "id": "kinozal_movies",
-      "enabled": false,
+      "enabled": true,
       "type": "html",
       "url": "{{KINOZAL_TOP_URL}}",
       "base_url": "https://kinozal.tv",
@@ -78,7 +78,7 @@
         "metric": null,
         "image_url": "img@src"
       },
-      "message_template": "<b>{title}</b>\n{url}\n{trailer_url}"
+      "message_template": "{title_link}\n{trailer_link}"
     },
     {
       "id": "soldout_events",

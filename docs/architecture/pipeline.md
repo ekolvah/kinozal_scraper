@@ -57,11 +57,34 @@ class NormalizedItem:
     description: str
     metric: str
     image_url: str
+    trailer_url: str     # enriched by caller; not stored in Sheets
     raw: dict            # original record for debugging
 ```
 
 Row serialization: `item.to_row()` → `[dedupe_key, title, url, metric, source_id, notified_at]`
 Headers constant: `ROW_HEADERS` in `generic_pipeline.py`
+
+## Notification templates
+
+`build_notification(item, template)` in `generic_pipeline.py` renders the
+Telegram HTML message. Available template variables:
+
+| Variable | Content |
+|---|---|
+| `{title}` | plain escaped title |
+| `{title_link}` | `<a href="{url}">{title}</a>` — clickable title linking to the source page |
+| `{url}` | raw URL of the item page |
+| `{trailer_url}` | raw YouTube trailer URL |
+| `{trailer_link}` | `<a href="{trailer_url}">Trailer</a>` — clickable "Trailer" word; empty if no trailer |
+| `{description}` | plain escaped description |
+| `{metric}` | numeric metric (stars, players, etc.) |
+| `{image_url}` | raw image URL |
+
+**Kinozal template** (`sources.json`):
+```
+{title_link}\n{trailer_link}
+```
+Renders as: clickable film title → kinozal page, then "Trailer" → YouTube.
 
 ## extract_from_* contracts
 
