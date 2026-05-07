@@ -40,18 +40,7 @@ class TelegramChannelSummarizer:
     @staticmethod
     def _build_model_list():
         from gemini_enricher import get_generation_models
-        available = get_generation_models()
-        preferred = TelegramChannelSummarizer.LLM_MODEL
-        if preferred and preferred in available:
-            available.remove(preferred)
-            available.insert(0, preferred)
-        elif preferred and f"models/{preferred}" in available:
-            full = f"models/{preferred}"
-            available.remove(full)
-            available.insert(0, full)
-        elif preferred:
-            available.insert(0, preferred)
-        return available or [preferred or "gemini-2.0-flash"]
+        return get_generation_models()
 
     @staticmethod
     def summarization_text(text, is_broadcast=False):
