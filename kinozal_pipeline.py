@@ -49,11 +49,32 @@ def _kinozal_urls() -> list[str]:
     return [fallback] if fallback else []
 
 
+def _kinozal_title(raw: str) -> str:
+    """Drop ' / original / year / format' suffix from raw kinozal anchor title."""
+    return raw.split(" / ")[0].strip()
+
+
+def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[NormalizedItem]:
+    """Parse kinozal HTML and return items with clean titles and raw dedupe_keys."""
+    result = extract_from_html(html, source)
+    if not result.ok:
+        logger.error("[%s] extraction errors: %s", source["id"], result.errors)
+        return []
+    for item in result.items:
+        item.title = _kinozal_title(item.title)
+    return result.items
+
+
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
-    """Clean title and look up a YouTube trailer URL. Returns '' on any failure."""
+    """Look up a YouTube trailer URL. Returns '' on any failure.
+
+    Expects item.title to already be cleaned (no ' / ' separators).
+    Year is read from item.dedupe_key (raw kinozal title) because item.title
+    may have had the year stripped along with the technical suffix.
+    """
     try:
-        clean = item.title.split("/")[0].strip().split("(")[0].strip()
-        year_match = re.search(r"\b(20\d{2})\b", item.title)
+        clean = item.title.split("(")[0].strip()
+        year_match = re.search(r"\b(20\d{2})\b", item.dedupe_key)
         year = int(year_match.group(1)) if year_match else None
         return youtube.get_trailer_url(clean, year=year) or ""
     except Exception as exc:
@@ -92,11 +113,7 @@ def run_kinozal_pipeline(
             except Exception as exc:
                 logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 continue
-            result = extract_from_html(html_text, source)
-            if not result.ok:
-                logger.error("[%s] extraction errors: %s", source["id"], result.errors)
-                continue
-            all_items.extend(result.items)
+            all_items.extend(_extract_kinozal_items(html_text, source))
 
     if not all_items:
         logger.info("kinozal pipeline: no items extracted")

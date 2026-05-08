@@ -3,7 +3,12 @@ import unittest.mock
 from typing import Any
 
 from generic_pipeline import ROW_HEADERS, NormalizedItem, Notification, extract_from_html
-from kinozal_pipeline import _kinozal_urls, enrich_with_trailer
+from kinozal_pipeline import (
+    _extract_kinozal_items,
+    _kinozal_title,
+    _kinozal_urls,
+    enrich_with_trailer,
+)
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 from text_utils import title_year_matches as _title_year_matches
@@ -104,10 +109,10 @@ class TestBaseUrlResolution(unittest.TestCase):
 
 
 class TestEnrichWithTrailer(unittest.TestCase):
-    def _item(self, title: str) -> NormalizedItem:
-        return NormalizedItem(dedupe_key=title, title=title, source_id="kinozal_movies")
+    def _item(self, raw: str) -> NormalizedItem:
+        return NormalizedItem(dedupe_key=raw, title=_kinozal_title(raw), source_id="kinozal_movies")
 
-    def test_title_cleaned_before_lookup(self) -> None:
+    def test_clean_title_used_for_lookup(self) -> None:
         youtube = _FakeYoutube()
         item = self._item("Film One / 2024 / BDRip")
         trailer = enrich_with_trailer(item, youtube)
@@ -126,7 +131,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         trailer = enrich_with_trailer(item, _RaisingYoutube())
         self.assertEqual(trailer, "")
 
-    def test_year_extracted_from_title_and_passed(self) -> None:
+    def test_year_extracted_from_dedupe_key_and_passed(self) -> None:
         youtube = _FakeYoutube()
         item = self._item("Film One / 2024 / BDRip")
         enrich_with_trailer(item, youtube)
@@ -144,7 +149,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         enrich_with_trailer(item, youtube)
         self.assertEqual(youtube.last_year, 2023)
 
-    def test_clean_title_passed_without_year_slash(self) -> None:
+    def test_parentheses_stripped_before_youtube_query(self) -> None:
         youtube = _FakeYoutube()
         item = self._item("Great Film / 2025 / WEB-DL")
         enrich_with_trailer(item, youtube)
@@ -161,6 +166,21 @@ class TestEnrichWithTrailer(unittest.TestCase):
         trailer = enrich_with_trailer(item, youtube)
         self.assertNotIn("JoKiK7Nx8Y8", trailer)
         self.assertIn("correct_id", trailer)
+
+
+# ── _kinozal_title ────────────────────────────────────────────────────────────
+
+
+class TestKinozalTitle(unittest.TestCase):
+    def test_strips_metadata(self) -> None:
+        raw = "Гнев (1 сезон: 1-7 серии из 7) / Man on Fire / 2026 / ДБ (Videofilm Int.), CT / WEB-DLRip"
+        self.assertEqual(_kinozal_title(raw), "Гнев (1 сезон: 1-7 серии из 7)")
+
+    def test_no_separator_returns_as_is(self) -> None:
+        self.assertEqual(_kinozal_title("Дюна"), "Дюна")
+
+    def test_slash_without_spaces_not_split(self) -> None:
+        self.assertEqual(_kinozal_title("ДБ (Videofilm/Int.)"), "ДБ (Videofilm/Int.)")
 
 
 # ── _title_year_matches ───────────────────────────────────────────────────────
@@ -245,7 +265,7 @@ class _FetchingPipeline:
         youtube: Any,
         sources_config: dict[str, Any],
     ) -> None:
-        from generic_pipeline import Notification, build_notification, extract_from_html
+        from generic_pipeline import Notification, build_notification
 
         kinozal_sources = [
             s
@@ -256,9 +276,7 @@ class _FetchingPipeline:
         all_items = []
         for source in kinozal_sources:
             html = self._html.get(source["id"], "")
-            result = extract_from_html(html, source)
-            if result.ok:
-                all_items.extend(result.items)
+            all_items.extend(_extract_kinozal_items(html, source))
 
         existing = storage.get_existing_keys("movies")
         new_items = [i for i in all_items if i.dedupe_key not in existing]
