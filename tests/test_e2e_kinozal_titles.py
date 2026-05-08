@@ -2,6 +2,7 @@
 
 Always runs. Uses URLS/KINOZAL_TOP_URL env var if set, falls back to the public top page.
 """
+
 from __future__ import annotations
 
 import unittest
@@ -23,9 +24,7 @@ class TestKinozalTitlesE2E(unittest.TestCase):
         url = urls[0] if urls else _FALLBACK_URL
         config = load_sources_config()
         kinozal_sources = [
-            s
-            for s in config["sources"]
-            if s.get("enabled") and s["id"].startswith("kinozal_")
+            s for s in config["sources"] if s.get("enabled") and s["id"].startswith("kinozal_")
         ]
         if not kinozal_sources:
             raise unittest.SkipTest("no enabled kinozal sources in sources.json")
