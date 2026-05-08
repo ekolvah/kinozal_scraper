@@ -22,7 +22,8 @@ class TestKinozalTitlesE2E(unittest.TestCase):
             raise unittest.SkipTest("set URLS or KINOZAL_TOP_URL to run e2e tests")
         config = load_sources_config()
         kinozal_sources = [
-            s for s in config["sources"]
+            s
+            for s in config["sources"]
             if s.get("enabled") and s["id"].startswith("kinozal_")
         ]
         if not kinozal_sources:
