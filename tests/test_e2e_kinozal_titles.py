@@ -12,22 +12,21 @@ from generic_pipeline import NormalizedItem
 from kinozal_pipeline import _extract_kinozal_items, _fetch_html, _kinozal_urls
 from pipeline_config import load_sources_config
 
-_FALLBACK_URL = "https://kinozal.tv/top.php"
-
 
 class TestKinozalTitlesE2E(unittest.TestCase):
     items: ClassVar[list[NormalizedItem]]
 
     @classmethod
     def setUpClass(cls) -> None:
-        urls = _kinozal_urls()
-        url = urls[0] if urls else _FALLBACK_URL
         config = load_sources_config()
         kinozal_sources = [
             s for s in config["sources"] if s.get("enabled") and s["id"].startswith("kinozal_")
         ]
         if not kinozal_sources:
             raise unittest.SkipTest("no enabled kinozal sources in sources.json")
+        urls = _kinozal_urls()
+        fallback_url = kinozal_sources[0]["base_url"] + "/top.php"
+        url = urls[0] if urls else fallback_url
         html = _fetch_html(url)
         cls.items = _extract_kinozal_items(html, kinozal_sources[0])
 
