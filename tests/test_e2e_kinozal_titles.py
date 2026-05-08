@@ -1,25 +1,26 @@
-"""E2E: fetch real kinozal.tv page and verify title cleaning.
+"""E2E: fetch real kinozal.tv and verify that titles are free of technical metadata.
 
-Skip automatically when env var is absent (CI has no credentials).
-Run locally:
-    KINOZAL_TOP_URL=https://kinozal.tv/top.php python -m pytest tests/test_e2e_kinozal_titles.py -v
+Always runs. Uses URLS/KINOZAL_TOP_URL env var if set, falls back to the public top page.
 """
 from __future__ import annotations
 
 import unittest
+from typing import ClassVar
 
+from generic_pipeline import NormalizedItem
 from kinozal_pipeline import _extract_kinozal_items, _fetch_html, _kinozal_urls
 from pipeline_config import load_sources_config
 
+_FALLBACK_URL = "https://kinozal.tv/top.php"
+
 
 class TestKinozalTitlesE2E(unittest.TestCase):
-    items: list
+    items: ClassVar[list[NormalizedItem]]
 
     @classmethod
     def setUpClass(cls) -> None:
         urls = _kinozal_urls()
-        if not urls:
-            raise unittest.SkipTest("set URLS or KINOZAL_TOP_URL to run e2e tests")
+        url = urls[0] if urls else _FALLBACK_URL
         config = load_sources_config()
         kinozal_sources = [
             s
@@ -28,7 +29,7 @@ class TestKinozalTitlesE2E(unittest.TestCase):
         ]
         if not kinozal_sources:
             raise unittest.SkipTest("no enabled kinozal sources in sources.json")
-        html = _fetch_html(urls[0])
+        html = _fetch_html(url)
         cls.items = _extract_kinozal_items(html, kinozal_sources[0])
 
     def test_items_extracted(self) -> None:
