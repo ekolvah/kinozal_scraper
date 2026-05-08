@@ -50,6 +50,7 @@ def _kinozal_urls() -> list[str]:
 
 
 def _kinozal_title(raw: str) -> str:
+    """Drop ' / original / year / format' suffix from raw kinozal anchor title."""
     return raw.split(" / ")[0].strip()
 
 
@@ -65,7 +66,12 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
-    """Look up a YouTube trailer URL. Returns '' on any failure."""
+    """Look up a YouTube trailer URL. Returns '' on any failure.
+
+    Expects item.title to already be cleaned (no ' / ' separators).
+    Year is read from item.dedupe_key (raw kinozal title) because item.title
+    may have had the year stripped along with the technical suffix.
+    """
     try:
         clean = item.title.split("(")[0].strip()
         year_match = re.search(r"\b(20\d{2})\b", item.dedupe_key)

@@ -112,7 +112,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
     def _item(self, raw: str) -> NormalizedItem:
         return NormalizedItem(dedupe_key=raw, title=_kinozal_title(raw), source_id="kinozal_movies")
 
-    def test_title_cleaned_before_lookup(self) -> None:
+    def test_clean_title_used_for_lookup(self) -> None:
         youtube = _FakeYoutube()
         item = self._item("Film One / 2024 / BDRip")
         trailer = enrich_with_trailer(item, youtube)
@@ -131,7 +131,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         trailer = enrich_with_trailer(item, _RaisingYoutube())
         self.assertEqual(trailer, "")
 
-    def test_year_extracted_from_title_and_passed(self) -> None:
+    def test_year_extracted_from_dedupe_key_and_passed(self) -> None:
         youtube = _FakeYoutube()
         item = self._item("Film One / 2024 / BDRip")
         enrich_with_trailer(item, youtube)
@@ -149,7 +149,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         enrich_with_trailer(item, youtube)
         self.assertEqual(youtube.last_year, 2023)
 
-    def test_clean_title_passed_without_year_slash(self) -> None:
+    def test_parentheses_stripped_before_youtube_query(self) -> None:
         youtube = _FakeYoutube()
         item = self._item("Great Film / 2025 / WEB-DL")
         enrich_with_trailer(item, youtube)
