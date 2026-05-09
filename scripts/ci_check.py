@@ -38,7 +38,12 @@ def main() -> None:
 
     print("==> gen_test_coverage")
     _run([sys.executable, "scripts/gen_test_coverage.py"])
-    if subprocess.run(["git", "diff", "--exit-code", "docs/architecture/test-coverage.md"]).returncode != 0:
+    if (
+        subprocess.run(
+            ["git", "diff", "--exit-code", "docs/architecture/test-coverage.md"]
+        ).returncode
+        != 0
+    ):
         print("docs/architecture/test-coverage.md is out of date — stage it and re-run")
         sys.exit(1)
 
