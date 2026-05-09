@@ -1,5 +1,9 @@
 # Testing philosophy
 
+> **Question this document answers:** How do we plan to guarantee product quality?
+>
+> For the actual coverage map (which tests catch which category of bugs and where the gaps are), see [test-coverage.md](test-coverage.md).
+
 ## Rule: no mocks of internal functions
 
 Mock of external I/O is acceptable. Mock of internal business logic is not.
