@@ -61,6 +61,22 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         return ""
 
 
+def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
+    """Normalize to clean title (part before first ' / ') and deduplicate by it."""
+    seen: set[str] = set()
+    result: list[NormalizedItem] = []
+    for item in items:
+        clean = item.dedupe_key.split(" / ")[0].strip()
+        if clean in seen:
+            logger.debug("[kinozal] duplicate title collapsed: %r", clean)
+            continue
+        seen.add(clean)
+        item.dedupe_key = clean
+        item.title = clean
+        result.append(item)
+    return result
+
+
 def run_kinozal_pipeline(
     storage: Storage,
     notifier: Notifier,
@@ -101,6 +117,8 @@ def run_kinozal_pipeline(
     if not all_items:
         logger.info("kinozal pipeline: no items extracted")
         return
+
+    all_items = _normalize_items(all_items)
 
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
