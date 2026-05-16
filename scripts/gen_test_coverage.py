@@ -85,7 +85,7 @@ def _inventory_block(rows: list[tuple[str, str, int, int]], total: int) -> str:
 def main() -> None:
     if not _OUT.exists():
         sys.exit(f"{_OUT} does not exist; create it manually with autogen markers first")
-    current = _OUT.read_text()
+    current = _OUT.read_text(encoding="utf-8")
     if _START not in current or _END not in current:
         sys.exit(f"markers {_START} / {_END} not found in {_OUT}")
 
@@ -96,7 +96,7 @@ def main() -> None:
 
     pattern = re.compile(re.escape(_START) + r".*?" + re.escape(_END), re.DOTALL)
     updated = pattern.sub(block, current)
-    _OUT.write_text(updated)
+    _OUT.write_text(updated, encoding="utf-8")
     print(f"Updated {_OUT} ({len(test_ids)} tests)")
 
 
