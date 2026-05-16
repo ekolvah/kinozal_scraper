@@ -167,5 +167,38 @@ class TestLoadSourcesConfig(unittest.TestCase):
         self.assertIn("sources", config)
 
 
+class TestConfigValidationKnownGaps(unittest.TestCase):
+    """Documents gaps in `validate_sources_config` (taxonomy D — config errors).
+
+    Both scenarios below currently pass validation silently and only blow up
+    later during runtime. Pinning the gaps so we notice if/when validation is
+    tightened.
+    """
+
+    def test_invalid_css_row_selector_not_caught_by_validator(self) -> None:
+        """A broken CSS row_selector reaches BeautifulSoup unchecked.
+
+        Expected future fix: try compiling selectors against a dummy parser at
+        load time so misconfiguration is surfaced before the next cron run.
+        """
+        bad_source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "div[unclosed-bracket",
+        }
+        validate_sources_config(_make_config([bad_source]))
+
+    def test_unresolved_macro_in_url_passes_validation(self) -> None:
+        """Typo'd macro names survive expand_macros and end up in the URL.
+
+        load_sources_config does not strip or flag residual {{...}} patterns,
+        so a mistyped macro silently leaks into the outgoing HTTP request.
+        """
+        source = {**_MINIMAL_SOURCE, "url": "https://api.example.com?d={{TOAY}}"}
+        path = _write_tmp(_make_config([source]))
+        config = load_sources_config(path)
+        self.assertIn("{{TOAY}}", config["sources"][0]["url"])
+
+
 if __name__ == "__main__":
     unittest.main()

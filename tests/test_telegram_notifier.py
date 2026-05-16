@@ -171,6 +171,77 @@ class TestTelegramNotifierRetry(unittest.TestCase):
         mock_sleep.assert_not_called()
 
 
+class TestTelegramNotifierImageFallback(unittest.TestCase):
+    def test_photo_400_falls_back_to_text_send(self) -> None:
+        """Broken image URL: sendPhoto → 400 must fall back to sendMessage and succeed."""
+        session = _make_session(
+            (400, {"ok": False, "description": "wrong file identifier"}, {}),
+            (200, {"ok": True}, {}),
+        )
+        notifier = _notifier(session)
+        notif = Notification(id="k1", text="caption", image_url="https://broken.example/404.jpg")
+        sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [notif])
+        self.assertEqual(failed, [])
+        self.assertEqual(session.post.call_count, 2)
+        first_url = session.post.call_args_list[0].args[0]
+        second_url = session.post.call_args_list[1].args[0]
+        self.assertIn("sendPhoto", first_url)
+        self.assertIn("sendMessage", second_url)
+
+
+class TestTelegramNotifierKnownBugs(unittest.TestCase):
+    """Tests that document current (buggy) behaviour. Linked to follow-up issues.
+
+    These tests will need to be updated when the underlying bugs are fixed; until
+    then they pin the contract so we notice regressions in the wrong direction.
+    """
+
+    def test_message_over_4096_chars_lost_as_failed(self) -> None:
+        """Telegram rejects text >4096 chars with 400; we currently drop the notification.
+
+        Expected future fix: split the message or truncate. Until then, the
+        notification ends up in `failed` and is never delivered.
+        """
+        long_text = "x" * 5000
+        session = _make_session(
+            (400, {"ok": False, "description": "message is too long"}, {}),
+        )
+        notifier = _notifier(session)
+        notif = Notification(id="k1", text=long_text)
+        sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [])
+        self.assertEqual(failed, [notif])
+
+    def test_session_post_called_without_explicit_timeout(self) -> None:
+        """session.post is invoked without a `timeout=` kwarg.
+
+        Expected future fix: pass `timeout=30` so a hung Telegram API can't
+        block the cron run forever. This test pins current behaviour.
+        """
+        session = _make_session((200, {"ok": True}, {}))
+        notifier = _notifier(session)
+        notifier.send_items([Notification(id="k1", text="hello")])
+        self.assertEqual(session.post.call_count, 1)
+        kwargs = session.post.call_args.kwargs
+        self.assertNotIn("timeout", kwargs)
+
+    def test_requests_timeout_routes_to_failed(self) -> None:
+        """If the HTTP layer raises Timeout, the notification is marked failed.
+
+        Combined with `test_session_post_called_without_explicit_timeout` above,
+        this documents that we have *no* defence in depth: no client-side timeout,
+        and a Timeout from anywhere in the stack drops the notification silently.
+        """
+        session = MagicMock()
+        session.post.side_effect = requests.Timeout("read timeout")
+        notifier = _notifier(session)
+        notif = Notification(id="k1", text="hello")
+        sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [])
+        self.assertEqual(failed, [notif])
+
+
 class TestInMemoryNotifier(unittest.TestCase):
     def test_implements_notifier_protocol(self) -> None:
         self.assertIsInstance(InMemoryNotifier(), Notifier)

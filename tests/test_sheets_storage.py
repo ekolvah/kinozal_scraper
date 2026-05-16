@@ -1,8 +1,20 @@
 import unittest
 from datetime import UTC, datetime
+from unittest.mock import MagicMock
+
+import gspread
+import gspread.exceptions
+import requests
 
 from generic_pipeline import ROW_HEADERS, NormalizedItem
-from sheets_storage import InMemoryStorage, SchemaError, Storage
+from sheets_storage import InMemoryStorage, SchemaError, SheetsStorage, Storage
+
+
+def _api_error(code: int, message: str) -> gspread.exceptions.APIError:
+    """Build a gspread APIError without hitting the network."""
+    resp = MagicMock(spec=requests.Response)
+    resp.json.return_value = {"error": {"code": code, "message": message}}
+    return gspread.exceptions.APIError(resp)
 
 
 def _validate_schema(headers: list[str], tab_name: str = "tab") -> None:
@@ -89,6 +101,36 @@ class TestInMemoryStorage(unittest.TestCase):
         self.storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.storage.append_rows("movies", ROW_HEADERS, [_item("k2").to_row()])
         self.assertEqual(len(self.storage.stored_rows("movies")), 2)
+
+    def test_seed_existing_populates_keys_without_rows(self) -> None:
+        self.storage.seed_existing("movies", ["pre-existing-1", "pre-existing-2"])
+        self.assertEqual(
+            self.storage.get_existing_keys("movies"),
+            {"pre-existing-1", "pre-existing-2"},
+        )
+        # seed_existing does not append rows — only the dedupe set is touched
+        self.assertEqual(self.storage.stored_rows("movies"), [])
+
+
+class TestSheetsStorageKnownBugs(unittest.TestCase):
+    """Documents current behaviour: Sheets API 429 is propagated without retry.
+
+    Expected future fix: retry with backoff on 429, since gspread does not do
+    this for us. Until then a transient quota hit aborts the whole pipeline run.
+    """
+
+    def test_append_rows_429_propagates_no_retry(self) -> None:
+        client = MagicMock(spec=gspread.Client)
+        worksheet = MagicMock()
+        worksheet.append_rows.side_effect = _api_error(429, "Quota exceeded")
+        client.open_by_url.return_value.worksheet.return_value = worksheet
+
+        storage = SheetsStorage(client, "https://sheets.example/url")
+        item = _item(dedupe_key="k1")
+        with self.assertRaises(gspread.exceptions.APIError) as ctx:
+            storage.append_rows("movies", ROW_HEADERS, [item.to_row()])
+        self.assertEqual(ctx.exception.code, 429)
+        self.assertEqual(worksheet.append_rows.call_count, 1)
 
 
 class TestSchemaValidation(unittest.TestCase):

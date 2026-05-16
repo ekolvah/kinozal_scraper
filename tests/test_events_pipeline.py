@@ -61,8 +61,7 @@ def _run(
     """
     storage = InMemoryStorage()
     if existing_keys:
-        for key in existing_keys:
-            storage._keys["events"].add(key)
+        storage.seed_existing("events", existing_keys)
     notifier = InMemoryNotifier()
     config = sources_config or _SOURCES_CONFIG
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Iterable
 from typing import Any, Protocol, runtime_checkable
 
 import gspread
@@ -71,6 +72,10 @@ class InMemoryStorage:
             self._rows[tab_name].append(row)
             if row:
                 self._keys[tab_name].add(str(row[0]))
+
+    def seed_existing(self, tab_name: str, keys: Iterable[str]) -> None:
+        """Pre-populate dedupe keys for tests without going through append_rows."""
+        self._keys[tab_name].update(keys)
 
     def stored_rows(self, tab_name: str) -> list[list[Any]]:
         return list(self._rows[tab_name])
