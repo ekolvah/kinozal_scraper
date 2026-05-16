@@ -186,7 +186,7 @@ tzdata==2026.2
     # via pandas
 uritemplate==4.2.0
     # via google-api-python-client
-urllib3[socks]==2.6.3
+urllib3[socks]==2.7.0
     # via
     #   requests
     #   selenium
