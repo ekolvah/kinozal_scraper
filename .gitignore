@@ -1,4 +1,6 @@
 /.idea
+.venv/
+.claude/
 anon.session
 __pycache__/
 .coverage
