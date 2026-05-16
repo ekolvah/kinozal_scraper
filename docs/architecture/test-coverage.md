@@ -7,7 +7,9 @@
 ## Coverage by bug category
 
 Each row maps a category from [Bug taxonomy](testing.md#bug-taxonomy) to the
-concrete tests that catch it. Status: ✅ covered / ⚠ partial or unreliable / ❌ gap.
+concrete tests that catch it. Status: ✅ covered / ⚠ partial or unreliable /
+⚠ documents-current-bug (test pins a known production bug — see linked issue) /
+❌ gap.
 
 When you add or rewrite a test, update this table. When you add a new bug
 category, add it here AND in `testing.md` taxonomy.
@@ -15,20 +17,20 @@ category, add it here AND in `testing.md` taxonomy.
 | Category | Tests catching it | Status |
 |---|---|---|
 | A. Structure drift | `test_e2e_kinozal_titles.py::TestKinozalTitlesE2E` (kinozal HTML, real HTTP) | ⚠ partial — no E2E for GitHub/Steam JSON |
-| B. Network failures | `test_telegram_notifier.py::TestTelegramNotifierRetry::test_connection_error_goes_to_failed`, `test_429_*` | ⚠ partial — Telegram only; no kinozal/GitHub/Steam HTTP timeout |
-| C. Auth & quota | `test_gemini_enricher.py::TestGeminiEnricherQuota`, `TestRotatingGeminiEnricher::test_rotates_to_next_model_on_quota`, `test_all_models_exhausted_*`; `test_telegram_notifier.py::test_http_400_goes_to_failed` | ⚠ partial — no Sheets 401, no YouTube quota, no GitHub 401 |
-| D. Config errors | `test_pipeline_config.py::TestValidateSourcesConfig`, `TestExpandMacros`, `TestBuildMacroContext`, `TestLoadSourcesConfig` | ✅ |
-| E. Data integrity | `test_json_pipeline.py::TestJsonPipelineDeduplication` (calls `run_*` directly); `test_sheets_storage.py::TestInMemoryStorage`, `TestSchemaValidation`; `test_kinozal_pipeline.py::TestPipelineDeduplication` ❌, `TestPipelineWriteBeforeNotify` ❌ | ⚠ partial — kinozal/events tests flagged for rewrite (test copy, not production); JSON pipeline OK |
-| F. Message rendering | `test_telegram_notifier.py::TestFormatField`, `TestBuildNotification`; `test_kinozal_pipeline.py::TestPipelineNotificationContent`; `test_events_pipeline.py::TestEventsPipelineNotificationContent`; `test_generic_pipeline.py::TestBuildNotificationRawFallback`, `TestBuildNotificationNewlineCollapse`, `TestBuildNotificationLinks` | ⚠ partial — no >4096 truncation test, no photo→text fallback test |
-| G. Trailer enrichment | `test_kinozal_pipeline.py::TestEnrichWithTrailer` (fake YouTube via `_FakeYoutube`, `_FilteringFakeYoutube`, `_RaisingYoutube`) | ⚠ partial — no quota-exhausted scenario, no year-mismatch detail |
-| H. Pipeline orchestration | `test_json_pipeline.py::TestJsonPipelineSourceIsolation`, `TestJsonPipelineFailedNotifications` (call `run_*` directly); `test_kinozal_pipeline.py::TestPipelineFailureIsolation` ❌, `TestPipelineWriteBeforeNotify` ❌; `test_events_pipeline.py::TestEventsPipelineEdgeCases` ❌ | ⚠ partial — kinozal/events flagged for rewrite; JSON pipeline OK |
-| I. URL resolution | `test_kinozal_pipeline.py::TestKinozalUrls`, `TestBaseUrlResolution`; `test_generic_pipeline.py::TestBuildNotificationLinks` | ✅ |
+| B. Network failures | `test_telegram_notifier.py::TestTelegramNotifierRetry::test_connection_error_goes_to_failed`, `test_429_*`, `TestTelegramNotifierKnownBugs::test_session_post_called_without_explicit_timeout`, `test_requests_timeout_routes_to_failed` | ⚠ documents-current-bug — Telegram `session.post` has no `timeout=` ([#54](https://github.com/ekolvah/kinozal_scraper/issues/54)); kinozal/GitHub/Steam HTTP timeouts already set to 30s in their `_fetch_*` |
+| C. Auth & quota | `test_gemini_enricher.py::TestGeminiEnricherQuota`, `TestRotatingGeminiEnricher::test_rotates_to_next_model_on_quota`, `test_all_models_exhausted_*`; `test_json_pipeline.py::TestEnricherQuotaCircuitBreaker::test_all_models_exhausted_from_start_uses_on_error_fallback`; `test_telegram_notifier.py::test_http_400_goes_to_failed`; `test_sheets_storage.py::TestSheetsStorageKnownBugs::test_append_rows_429_propagates_no_retry` | ⚠ documents-current-bug — Sheets 429 has no retry ([#55](https://github.com/ekolvah/kinozal_scraper/issues/55)); Gemini all-exhausted now covered caller-side; no GitHub 401 |
+| D. Config errors | `test_pipeline_config.py::TestValidateSourcesConfig`, `TestExpandMacros`, `TestBuildMacroContext`, `TestLoadSourcesConfig`, `TestConfigValidationKnownGaps::test_invalid_css_row_selector_not_caught_by_validator`, `test_unresolved_macro_in_url_passes_validation` | ⚠ documents-current-bug — invalid CSS `row_selector` not caught ([#57](https://github.com/ekolvah/kinozal_scraper/issues/57)); unresolved `{{macro}}` leaks to URL ([#58](https://github.com/ekolvah/kinozal_scraper/issues/58)) |
+| E. Data integrity | `test_json_pipeline.py::TestJsonPipelineDeduplication`, `test_sheets_storage.py::TestInMemoryStorage`, `TestSchemaValidation`; `test_kinozal_pipeline.py::TestPipelineDeduplication`, `TestPipelineWriteBeforeNotify`; `test_events_pipeline.py::TestEventsPipelineDeduplication` | ✅ — all pipeline tests now invoke `run_*_pipeline` directly (rewritten in [#51](https://github.com/ekolvah/kinozal_scraper/pull/51)) |
+| F. Message rendering | `test_telegram_notifier.py::TestFormatField`, `TestBuildNotification`, `TestTelegramNotifierImageFallback::test_photo_400_falls_back_to_text_send`, `TestTelegramNotifierKnownBugs::test_message_over_4096_chars_lost_as_failed`; `test_kinozal_pipeline.py::TestPipelineNotificationContent`; `test_events_pipeline.py::TestEventsPipelineNotificationContent`; `test_generic_pipeline.py::TestBuildNotificationRawFallback`, `TestBuildNotificationNewlineCollapse`, `TestBuildNotificationLinks` | ⚠ documents-current-bug — messages >4096 chars are dropped instead of split ([#53](https://github.com/ekolvah/kinozal_scraper/issues/53)) |
+| G. Trailer enrichment | `test_kinozal_pipeline.py::TestEnrichWithTrailer`, `TestKinozalKnownBugs::test_youtube_quota_exhausted_pipeline_continues_with_empty_trailer` | ✅ — quota-exhausted scenario covered pipeline-level |
+| H. Pipeline orchestration | `test_json_pipeline.py::TestJsonPipelineSourceIsolation`, `TestJsonPipelineFailedNotifications`; `test_kinozal_pipeline.py::TestPipelineFailureIsolation`, `TestPipelineWriteBeforeNotify`; `test_events_pipeline.py::TestEventsPipelineEdgeCases` | ✅ — all pipeline tests rewritten to call production functions directly ([#51](https://github.com/ekolvah/kinozal_scraper/pull/51)) |
+| I. URL resolution | `test_kinozal_pipeline.py::TestKinozalUrls`, `TestBaseUrlResolution`, `TestKinozalKnownBugs::test_url_field_drift_yields_silent_empty_link`; `test_generic_pipeline.py::TestBuildNotificationLinks` | ⚠ documents-current-bug — kinozal HTML attribute drift silently yields empty `url` in notifications ([#56](https://github.com/ekolvah/kinozal_scraper/issues/56)) |
 | J. Concurrent state | none | ❌ gap — no tests for rerun-after-crash or partially-written rows |
 
-❌ next to a test class = the test exists but is flagged for rewrite (it
-duplicates production code in the test, so it tests its own copy, not the
-production pipeline). See [issue #43](https://github.com/ekolvah/kinozal_scraper/issues/43)
-for the full audit.
+**⚠ documents-current-bug** = the test pins production behaviour that is
+known to be buggy. The linked issue tracks the fix; when the bug is fixed,
+the test must be inverted (assert the *correct* behaviour) and the table
+row promoted to ✅.
 
 ## Modules without dedicated tests
 
