@@ -1,7 +1,9 @@
 import unittest
+import unittest.mock
 from typing import Any
 
-from generic_pipeline import ROW_HEADERS, build_notification, extract_from_html
+from events_pipeline import run_events_pipeline
+from generic_pipeline import extract_from_html
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 
@@ -53,6 +55,10 @@ def _run(
     existing_keys: set[str] | None = None,
     sources_config: dict[str, Any] | None = None,
 ) -> tuple[InMemoryStorage, InMemoryNotifier]:
+    """Run the real run_events_pipeline with HTTP patched.
+
+    Invokes production code directly so tests fail if pipeline behaviour drifts.
+    """
     storage = InMemoryStorage()
     if existing_keys:
         for key in existing_keys:
@@ -60,21 +66,8 @@ def _run(
     notifier = InMemoryNotifier()
     config = sources_config or _SOURCES_CONFIG
 
-    event_sources = [
-        s for s in config["sources"] if s.get("enabled") and s["id"].startswith("soldout_")
-    ]
-    for source in event_sources:
-        result = extract_from_html(html, source)
-        if not result.ok:
-            continue
-        sheet_tab: str = source["sheet_tab"]
-        existing = storage.get_existing_keys(sheet_tab)
-        new_items = [i for i in result.items if i.dedupe_key not in existing]
-        if not new_items:
-            continue
-        storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in new_items])
-        notifications = [build_notification(item, source["message_template"]) for item in new_items]
-        notifier.send_items(notifications)
+    with unittest.mock.patch("events_pipeline._fetch_html", return_value=html):
+        run_events_pipeline(storage, notifier, sources_config=config)
 
     return storage, notifier
 
@@ -175,15 +168,19 @@ class TestEventsPipelineEdgeCases(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
     def test_missing_url_skips_source(self) -> None:
-        from events_pipeline import run_events_pipeline
-
         config: dict[str, Any] = {
             "version": 1,
             "sources": [{**_SOLDOUT_SOURCE, "url": ""}],
         }
+        storage, notifier = _run(sources_config=config)
+        self.assertEqual(storage.stored_rows("events"), [])
+        self.assertEqual(notifier.sent, [])
+
+    def test_fetch_failure_isolated_pipeline_continues(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
-        run_events_pipeline(storage, notifier, sources_config=config)
+        with unittest.mock.patch("events_pipeline._fetch_html", side_effect=RuntimeError("boom")):
+            run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("events"), [])
         self.assertEqual(notifier.sent, [])
 
