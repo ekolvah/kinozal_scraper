@@ -61,20 +61,42 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
         logger.error("[%s] extraction errors: %s", source["id"], result.errors)
         return []
     for item in result.items:
+        item.raw["kinozal_raw_title"] = item.dedupe_key
         item.title = _kinozal_title(item.title)
     return result.items
+
+
+def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
+    """Deduplicate by clean title and normalize dedupe_key to match.
+
+    Multiple repacks of the same title (Portable, FitGirl, etc.) share
+    the same item.title after _extract_kinozal_items. This collapses them
+    to one item and stores the clean title as the dedup key so future runs
+    also skip all repacks of an already-notified title.
+    """
+    seen: set[str] = set()
+    result: list[NormalizedItem] = []
+    for item in items:
+        if item.title in seen:
+            logger.debug("[kinozal] duplicate title collapsed: %r", item.title)
+            continue
+        seen.add(item.title)
+        item.dedupe_key = item.title
+        result.append(item)
+    return result
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     """Look up a YouTube trailer URL. Returns '' on any failure.
 
     Expects item.title to already be cleaned (no ' / ' separators).
-    Year is read from item.dedupe_key (raw kinozal title) because item.title
-    may have had the year stripped along with the technical suffix.
+    Year is read from item.raw['kinozal_raw_title'] (the original @title
+    attribute) because the clean title may have had the year stripped.
     """
     try:
         clean = item.title.split("(")[0].strip()
-        year_match = re.search(r"\b(20\d{2})\b", item.dedupe_key)
+        raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
+        year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
         year = int(year_match.group(1)) if year_match else None
         return youtube.get_trailer_url(clean, year=year) or ""
     except Exception as exc:
@@ -118,6 +140,8 @@ def run_kinozal_pipeline(
     if not all_items:
         logger.info("kinozal pipeline: no items extracted")
         return
+
+    all_items = _normalize_items(all_items)
 
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
