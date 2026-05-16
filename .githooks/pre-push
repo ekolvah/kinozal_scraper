@@ -1,2 +1,4 @@
 #!/usr/bin/env bash
+.venv/Scripts/python scripts/ci_check.py 2>/dev/null || \
+.venv/bin/python scripts/ci_check.py 2>/dev/null || \
 py -3.12 scripts/ci_check.py

@@ -14,6 +14,10 @@ ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at
 
 @dataclass
 class NormalizedItem:
+    # Canonical identity of the content (film/game title, repo URL, etc.).
+    # Must be stable across repacks, mirrors, and variants of the same item —
+    # i.e. two different torrents of the same movie share one dedupe_key.
+    # Stored as the primary key in Sheets; new items are filtered against it.
     dedupe_key: str
     title: str
     source_id: str

@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -45,6 +46,26 @@ def main() -> None:
         != 0
     ):
         print("docs/architecture/test-coverage.md is out of date — stage it and re-run")
+        sys.exit(1)
+
+    print("==> requirements consistency")
+
+    def _parse_pins(path: Path) -> dict[str, str]:
+        pins: dict[str, str] = {}
+        for line in path.read_text(encoding="utf-8").splitlines():
+            m = re.match(r"^([a-zA-Z0-9_.\-\[\]]+)==(.+)$", line.strip())
+            if m:
+                name = re.sub(r"\[.*\]", "", m.group(1)).lower().replace("-", "_")
+                pins[name] = m.group(2)
+        return pins
+
+    req = _parse_pins(Path("requirements.txt"))
+    dev = _parse_pins(Path("requirements-dev.txt"))
+    bad = [(p, req[p], dev[p]) for p in req if p in dev and req[p] != dev[p]]
+    if bad:
+        print("requirements version mismatch — edit .in files and run pip-compile:")
+        for p, rv, dv in bad:
+            print(f"  {p}: requirements.txt={rv}, requirements-dev.txt={dv}")
         sys.exit(1)
 
     print("==> mypy")
