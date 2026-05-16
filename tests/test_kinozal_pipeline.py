@@ -7,6 +7,7 @@ from kinozal_pipeline import (
     _extract_kinozal_items,
     _kinozal_title,
     _kinozal_urls,
+    _normalize_items,
     enrich_with_trailer,
 )
 from sheets_storage import InMemoryStorage
@@ -110,7 +111,12 @@ class TestBaseUrlResolution(unittest.TestCase):
 
 class TestEnrichWithTrailer(unittest.TestCase):
     def _item(self, raw: str) -> NormalizedItem:
-        return NormalizedItem(dedupe_key=raw, title=_kinozal_title(raw), source_id="kinozal_movies")
+        return NormalizedItem(
+            dedupe_key=raw,
+            title=_kinozal_title(raw),
+            source_id="kinozal_movies",
+            raw={"kinozal_raw_title": raw},
+        )
 
     def test_clean_title_used_for_lookup(self) -> None:
         youtube = _FakeYoutube()
@@ -278,6 +284,8 @@ class _FetchingPipeline:
             html = self._html.get(source["id"], "")
             all_items.extend(_extract_kinozal_items(html, source))
 
+        all_items = _normalize_items(all_items)
+
         existing = storage.get_existing_keys("movies")
         new_items = [i for i in all_items if i.dedupe_key not in existing]
         if not new_items:
@@ -315,16 +323,36 @@ class TestPipelineDeduplication(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 2)
 
     def test_already_existing_item_not_re_notified(self) -> None:
-        storage, notifier = _run(existing_keys={"Film One / 2024 / BDRip"})
+        storage, notifier = _run(existing_keys={"Film One"})
         self.assertEqual(len(storage.stored_rows("movies")), 1)
         self.assertEqual(len(notifier.sent), 1)
         self.assertEqual(notifier.sent[0].id, "Film Two")
 
     def test_all_existing_no_notifications(self) -> None:
-        keys = {"Film One / 2024 / BDRip", "Film Two"}
+        keys = {"Film One", "Film Two"}
         storage, notifier = _run(existing_keys=keys)
         self.assertEqual(storage.stored_rows("movies"), [])
         self.assertEqual(notifier.sent, [])
+
+    def test_multiple_repacks_same_title_one_notification(self) -> None:
+        html = """
+        <html><body>
+        <a href="/details.php?id=1" title="Great Film / 2025 / Portable"><img src="/p1.jpg"></a>
+        <a href="/details.php?id=2" title="Great Film / 2025 / RePack (FitGirl)"><img src="/p2.jpg"></a>
+        <a href="/details.php?id=3" title="Great Film / 2025 / RePack (другой)"><img src="/p3.jpg"></a>
+        </body></html>
+        """
+        storage, notifier = _run(html=html)
+        self.assertEqual(len(notifier.sent), 1)
+        self.assertEqual(notifier.sent[0].id, "Great Film")
+        self.assertEqual(len(storage.stored_rows("movies")), 1)
+
+    def test_stored_dedupe_key_is_clean_title(self) -> None:
+        storage, notifier = _run()
+        row = storage.stored_rows("movies")[0]
+        dedupe_key, title = row[0], row[1]
+        self.assertEqual(dedupe_key, "Film One")
+        self.assertEqual(title, "Film One")
 
 
 class TestPipelineNotificationContent(unittest.TestCase):
