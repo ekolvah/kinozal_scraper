@@ -125,8 +125,7 @@ class TestJsonPipelineHappyPath(unittest.TestCase):
 class TestJsonPipelineDeduplication(unittest.TestCase):
     def test_existing_keys_not_re_notified(self) -> None:
         storage = InMemoryStorage()
-        storage._keys["github_projects"].add("user/repo-alpha")
-        storage._keys["github_projects"].add("org/repo-beta")
+        storage.seed_existing("github_projects", ["user/repo-alpha", "org/repo-beta"])
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
@@ -312,8 +311,7 @@ class TestSteamPipeline(unittest.TestCase):
 
     def test_steam_dedup_by_appid(self) -> None:
         storage = InMemoryStorage()
-        storage._keys["steam_games"].add("730")
-        storage._keys["steam_games"].add("570")
+        storage.seed_existing("steam_games", ["730", "570"])
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_STEAM_RESPONSE):
@@ -440,6 +438,38 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         self.assertNotIn("OK:", notifier.sent[1].text)
         self.assertNotIn("OK:", notifier.sent[2].text)
         self.assertEqual(call_count, 2)
+
+    def test_all_models_exhausted_from_start_uses_on_error_fallback(self) -> None:
+        """When every Gemini model is exhausted, the very first enrich() raises.
+
+        Caller (run_json_pipeline) must substitute `on_error` from sources.json
+        into every item so notifications still go out — gap C in test-coverage.md.
+        """
+        import copy
+
+        from gemini_enricher import QuotaExhausted
+
+        class _AlwaysExhaustedEnricher:
+            def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+                raise QuotaExhausted
+
+        source = copy.deepcopy(_GITHUB_SOURCE_WITH_ENRICH)
+        source["enrich"]["on_error"] = "[summary unavailable]"
+        config = {"version": 1, "sources": [source]}
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
+
+        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+            run_json_pipeline(
+                storage, notifier, enricher=_AlwaysExhaustedEnricher(), sources_config=config
+            )
+
+        self.assertEqual(len(notifier.sent), 3)
+        for notif in notifier.sent:
+            self.assertIn("[summary unavailable]", notif.text)
+        self.assertEqual(len(storage.stored_rows("github_projects")), 3)
 
 
 if __name__ == "__main__":

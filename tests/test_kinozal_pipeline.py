@@ -23,7 +23,7 @@ _KINOZAL_HTML = """
 </body></html>
 """
 
-_KINOZAL_SOURCE = {
+_KINOZAL_SOURCE: dict[str, Any] = {
     "id": "kinozal_movies",
     "enabled": True,
     "type": "html",
@@ -232,7 +232,9 @@ class TestKinozalUrls(unittest.TestCase):
         self.assertEqual(urls, ["https://kinozal.tv/top.php"])
 
     def test_returns_empty_when_nothing_configured(self) -> None:
-        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+        with unittest.mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_TOP_URL", None)
             urls = _kinozal_urls()
         self.assertEqual(urls, [])
 
@@ -265,8 +267,7 @@ def _run(
     """
     storage = storage if storage is not None else InMemoryStorage()
     if existing_keys:
-        for key in existing_keys:
-            storage._keys["movies"].add(key)
+        storage.seed_existing("movies", existing_keys)
     notifier = notifier if notifier is not None else InMemoryNotifier(fail_ids=fail_ids)
 
     with (
@@ -397,8 +398,10 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=_KINOZAL_HTML),
-            unittest.mock.patch.dict(os.environ, {}, clear=True),
+            unittest.mock.patch.dict(os.environ, {}, clear=False),
         ):
+            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_TOP_URL", None)
             run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("movies"), [])
         self.assertEqual(notifier.sent, [])
@@ -418,6 +421,50 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("movies"), [])
         self.assertEqual(notifier.sent, [])
+
+
+class TestKinozalKnownBugs(unittest.TestCase):
+    """Documents current behaviour for scenarios that should ideally be louder.
+
+    These tests pin contracts that we want to revisit in follow-up issues —
+    e.g. silent empty trailer on YouTube quota exhaustion, silent broken URL
+    on a sources.json field drift.
+    """
+
+    def test_youtube_quota_exhausted_pipeline_continues_with_empty_trailer(self) -> None:
+        """YouTube quota → enrich_with_trailer swallows the exception → trailer=''.
+
+        Pipeline still publishes items, but their notification text carries no
+        trailer link. Documented as a quiet degradation (G in the taxonomy).
+        """
+
+        class _QuotaExhaustedYoutube:
+            def get_trailer_url(self, film: str, year: int | None = None) -> str:
+                raise RuntimeError("quotaExceeded")
+
+        storage, notifier = _run(youtube=_QuotaExhaustedYoutube())
+        self.assertEqual(len(storage.stored_rows("movies")), 2)
+        self.assertEqual(len(notifier.sent), 2)
+        for notif in notifier.sent:
+            self.assertNotIn("youtube.com", notif.text)
+
+    def test_url_field_drift_yields_silent_empty_link(self) -> None:
+        """Renamed HTML attribute → fields.url returns ''; pipeline does not flag it.
+
+        Mimics the scenario where kinozal.tv changes the attribute used for the
+        details URL (e.g. switches from @href to @data-link). Items are still
+        stored (row_selector still matches), but their notifications point
+        nowhere — currently no warning is emitted (I in the taxonomy).
+        """
+        drifted_source: dict[str, Any] = {
+            **_KINOZAL_SOURCE,
+            "fields": {**_KINOZAL_SOURCE["fields"], "url": "@data-link"},
+        }
+        config = {"version": 1, "sources": [drifted_source]}
+        storage, notifier = _run(sources_config=config)
+        self.assertEqual(len(storage.stored_rows("movies")), 2)
+        for notif in notifier.sent:
+            self.assertNotIn("kinozal.tv/details", notif.text)
 
 
 if __name__ == "__main__":
