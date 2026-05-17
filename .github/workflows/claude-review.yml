@@ -23,8 +23,12 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          use_sticky_comment: true
+          track_progress: true
+          show_full_output: true
           prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
             Review this pull request as a senior engineer would. Read CLAUDE.md
             first — it lists project conventions that take precedence over your
             defaults.
@@ -41,7 +45,13 @@ jobs:
             Skip nitpicks — ruff handles formatting/lint. Skip docstring style
             and small wording issues unless they obscure intent.
 
-            Leave findings as inline PR review comments at the relevant lines.
-            If the PR looks clean, post a single top-level comment saying so
-            explicitly. Do not approve or merge — those stay with the human
-            reviewer.
+            How to deliver feedback:
+            - For each issue found: call `mcp__github_inline_comment__create_inline_comment`
+              at the relevant line.
+            - Always finish by posting a top-level summary via
+              `Bash(gh pr comment $PR_NUMBER --repo $REPO --body "...")`.
+              If no blocking issues, post exactly: "✅ Review complete — no
+              blocking issues found." This is mandatory: a silent finish is
+              indistinguishable from a broken review and is not acceptable.
+
+            Do not approve or merge — those stay with the human reviewer.

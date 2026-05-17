@@ -29,11 +29,23 @@ Uses `anthropics/claude-code-action@v1` to run an automated code review on
 every PR push. Posts inline comments at relevant lines and a top-level
 verdict. Does **not** approve or merge — human reviewer keeps that.
 
-`use_sticky_comment: true` is set so every run posts (or updates) a single
-pinned summary comment on the PR — without it, a run that finds no issues
-silently leaves the PR with no comment, making "review clean" and "review
-silently broken" indistinguishable. The sticky comment is updated in
-place on each push, not duplicated.
+Visibility is guaranteed via two layers:
+
+- `track_progress: true` — the action itself posts a tracking comment on
+  the PR at start ("Claude Code is reviewing…") and updates it as the
+  run proceeds. Independent of whatever Claude does, this guarantees at
+  least one visible signal that the review ran.
+- The prompt instructs Claude to (a) post per-issue inline comments via
+  `mcp__github_inline_comment__create_inline_comment` and (b) finish
+  with a top-level summary via `Bash(gh pr comment ...)`. The earlier
+  approach (`use_sticky_comment: true`) only controlled comment
+  *format*, not whether Claude published anything — when Claude found no
+  issues and didn't invoke a publishing tool, the PR stayed silent.
+
+`show_full_output: true` is enabled while we're stabilising review
+behaviour — full SDK transcript appears in Actions logs. Remove once
+the loop is reliable; it adds noise and may surface internal model
+chatter.
 
 ### One-time setup
 
