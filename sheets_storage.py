@@ -6,12 +6,17 @@ from typing import Any, Protocol, runtime_checkable
 
 import gspread
 import gspread.exceptions
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from generic_pipeline import ROW_HEADERS
 
 
 class SchemaError(ValueError):
     """Raised when an existing worksheet has an incompatible column schema."""
+
+
+def _is_sheets_rate_limit(exc: BaseException) -> bool:
+    return isinstance(exc, gspread.exceptions.APIError) and exc.code == 429
 
 
 @runtime_checkable
@@ -54,6 +59,15 @@ class SheetsStorage:
         if not rows:
             return
         ws = self._get_or_create_worksheet(tab_name, headers)
+        self._ws_append_rows(ws, rows)
+
+    @retry(
+        retry=retry_if_exception(_is_sheets_rate_limit),
+        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, max=60),
+        reraise=True,
+    )
+    def _ws_append_rows(self, ws: gspread.Worksheet, rows: list[list[Any]]) -> None:
         ws.append_rows(rows, value_input_option=gspread.utils.ValueInputOption.user_entered)
 
 

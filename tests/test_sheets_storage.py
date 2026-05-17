@@ -1,6 +1,7 @@
 import unittest
 from datetime import UTC, datetime
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import gspread
 import gspread.exceptions
@@ -112,24 +113,35 @@ class TestInMemoryStorage(unittest.TestCase):
         self.assertEqual(self.storage.stored_rows("movies"), [])
 
 
-class TestSheetsStorageKnownBugs(unittest.TestCase):
-    """Documents current behaviour: Sheets API 429 is propagated without retry.
+class TestSheetsStorageRetryOn429(unittest.TestCase):
+    """append_rows retries on Sheets 429 (quota) with exponential backoff."""
 
-    Expected future fix: retry with backoff on 429, since gspread does not do
-    this for us. Until then a transient quota hit aborts the whole pipeline run.
-    """
-
-    def test_append_rows_429_propagates_no_retry(self) -> None:
+    def _build(self, side_effect: list[Any]) -> tuple[SheetsStorage, MagicMock]:
         client = MagicMock(spec=gspread.Client)
         worksheet = MagicMock()
-        worksheet.append_rows.side_effect = _api_error(429, "Quota exceeded")
+        worksheet.append_rows.side_effect = side_effect
         client.open_by_url.return_value.worksheet.return_value = worksheet
+        return SheetsStorage(client, "https://sheets.example/url"), worksheet
 
-        storage = SheetsStorage(client, "https://sheets.example/url")
-        item = _item(dedupe_key="k1")
+    @patch("tenacity.nap.time.sleep")
+    def test_429_then_success_retries_and_succeeds(self, _sleep: MagicMock) -> None:
+        storage, worksheet = self._build([_api_error(429, "Quota exceeded"), None])
+        storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
+        self.assertEqual(worksheet.append_rows.call_count, 2)
+
+    @patch("tenacity.nap.time.sleep")
+    def test_429_repeated_eventually_raises_after_5_attempts(self, _sleep: MagicMock) -> None:
+        storage, worksheet = self._build([_api_error(429, "Quota exceeded")] * 5)
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
-            storage.append_rows("movies", ROW_HEADERS, [item.to_row()])
+            storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(ctx.exception.code, 429)
+        self.assertEqual(worksheet.append_rows.call_count, 5)
+
+    def test_non_429_api_error_not_retried(self) -> None:
+        storage, worksheet = self._build([_api_error(401, "Unauthorized")])
+        with self.assertRaises(gspread.exceptions.APIError) as ctx:
+            storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
+        self.assertEqual(ctx.exception.code, 401)
         self.assertEqual(worksheet.append_rows.call_count, 1)
 
 
