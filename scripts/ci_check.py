@@ -59,6 +59,18 @@ def main() -> None:
                 pins[name] = m.group(2)
         return pins
 
+    def _parse_in_top_level(path: Path) -> set[str]:
+        names: set[str] = set()
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith(("#", "-")):
+                continue
+            m = re.match(r"^([a-zA-Z0-9_.\-\[\]]+)", stripped)
+            if m:
+                name = re.sub(r"\[.*\]", "", m.group(1)).lower().replace("-", "_")
+                names.add(name)
+        return names
+
     req = _parse_pins(Path("requirements.txt"))
     dev = _parse_pins(Path("requirements-dev.txt"))
     bad = [(p, req[p], dev[p]) for p in req if p in dev and req[p] != dev[p]]
@@ -67,6 +79,20 @@ def main() -> None:
         for p, rv, dv in bad:
             print(f"  {p}: requirements.txt={rv}, requirements-dev.txt={dv}")
         sys.exit(1)
+
+    for in_path, txt_pins in [
+        (Path("requirements.in"), req),
+        (Path("requirements-dev.in"), dev),
+    ]:
+        if not in_path.exists():
+            continue
+        missing = sorted(_parse_in_top_level(in_path) - set(txt_pins))
+        if missing:
+            print(
+                f"{in_path} declares packages absent from its .txt lockfile: {', '.join(missing)}"
+            )
+            print(f"  Run: pip-compile {in_path}")
+            sys.exit(1)
 
     print("==> mypy")
     modules = _find_modules()
