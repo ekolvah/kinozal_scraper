@@ -3,25 +3,36 @@
 ## Что делает приложение
 Парсит топ kinozal.tv по расписанию (GitHub Actions, 04:00 UTC), дедуплицирует через Google Sheets, отправляет новинки в Telegram. Параллельно суммаризует Telegram-каналы через Gemini.
 
-## Файлы исключённые из ruff/mypy
+## Среда
+- Windows. Используй `python` (НЕ `python3` — это Microsoft Store stub).
+- Не полагайся на `jq`/`sed`/`awk` — пиши pure-Python скрипты в `scripts/`.
 
-`telegram_summarizer.py`, `TelegramChannelSummarizer.py`, `crypto.py` исключены из
-ruff и mypy в `scripts/ci_check.py` и `pyproject.toml` (legacy код).
+## Debugging
+- Сначала root cause, потом fix. Никаких workarounds/shims, пока корень не понятен.
+- Перед патчем — инструментируй: логи, входы, точка отказа. Только потом предложение.
 
 ## Активная работа
 
 Текущие задачи: [GitHub Issues](https://github.com/ekolvah/kinozal_scraper/issues)
 
-## Ветки
-- Каждый issue — отдельная ветка `codex-issue-N-*`
-- CI триггерится на `codex-*` и `main`
-- **Никогда не пушить напрямую в `main`** — только через PR
-- **Никогда не мержить PR самостоятельно** (`gh pr merge` запрещено без явного подтверждения пользователя для конкретного PR)
-- PR мержит только пользователь вручную после своего апрува
+Issue создаём с label обязательно: `gh issue create --label bug|enhancement|documentation|testing|...`.
+
+## PR Workflow
+- Каждый issue — отдельная ветка `codex-issue-N-*`. CI триггерится на `codex-*` и `main`.
+- **Никогда не пушить напрямую в `main`** — только через PR.
+- **Никогда не мержить PR самостоятельно** (`gh pr merge` запрещено без явного подтверждения пользователя для конкретного PR).
+- PR мержит только пользователь вручную после своего апрува.
+- Один PR — одна логическая единица: docs-only PR отдельно от refactor/feature (PR #39 → #40 переделывали из-за смешения).
+- Предпочтительно `/commit-push-pr` из плагина `commit-commands` — авто-ветка если на main.
+
+## Зависимости
+- При изменении `requirements*.in` запусти `pip-compile` для соответствующего `.txt` в том же коммите.
+- `scripts/ci_check.py` ловит drift версий и пакеты в `.in` без pin в `.txt`.
 
 ## Перед каждым коммитом
 
 `python scripts/ci_check.py` — подробнее в [CI doc](docs/architecture/ci.md).
+`.githooks/pre-push` запускает ci_check автоматически перед push — не дублировать вручную.
 
 ## Architecture decisions
 
