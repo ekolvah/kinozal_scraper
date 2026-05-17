@@ -35,7 +35,9 @@ verdict. Does **not** approve or merge — human reviewer keeps that.
 2. Repo Settings → Secrets and variables → Actions → New repository secret:
    - Name: `CLAUDE_CODE_OAUTH_TOKEN`
    - Value: the token from step 1.
-3. The workflow consumes it via `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` passed as the action's `anthropic_api_key` input (input name is legacy — token format is what matters).
+3. The workflow consumes it via `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` passed as the action's `claude_code_oauth_token` input (separate from `anthropic_api_key`; OAuth tokens do not work as API keys).
+
+The workflow also needs `id-token: write` in `permissions:` — `anthropics/claude-code-action@v1` uses OIDC for GitHub App auth, and without that scope every run fails with "Could not fetch an OIDC token".
 
 No separate Anthropic API billing — usage counts against the Pro/Max subscription quota.
 
