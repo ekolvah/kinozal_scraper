@@ -213,25 +213,22 @@ class TestTelegramNotifierKnownBugs(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(failed, [notif])
 
-    def test_session_post_called_without_explicit_timeout(self) -> None:
-        """session.post is invoked without a `timeout=` kwarg.
-
-        Expected future fix: pass `timeout=30` so a hung Telegram API can't
-        block the cron run forever. This test pins current behaviour.
-        """
+    def test_session_post_called_with_explicit_timeout(self) -> None:
+        """session.post is invoked with `timeout=30` to bound a hung Telegram API."""
         session = _make_session((200, {"ok": True}, {}))
         notifier = _notifier(session)
         notifier.send_items([Notification(id="k1", text="hello")])
         self.assertEqual(session.post.call_count, 1)
         kwargs = session.post.call_args.kwargs
-        self.assertNotIn("timeout", kwargs)
+        self.assertEqual(kwargs.get("timeout"), 30.0)
 
     def test_requests_timeout_routes_to_failed(self) -> None:
         """If the HTTP layer raises Timeout, the notification is marked failed.
 
-        Combined with `test_session_post_called_without_explicit_timeout` above,
-        this documents that we have *no* defence in depth: no client-side timeout,
-        and a Timeout from anywhere in the stack drops the notification silently.
+        Combined with `test_session_post_called_with_explicit_timeout` above:
+        we now bound the call with `timeout=30`, but a raised Timeout still
+        drops the notification with no retry (any `RequestException` returns
+        False from `_send_one`).
         """
         session = MagicMock()
         session.post.side_effect = requests.Timeout("read timeout")

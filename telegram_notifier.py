@@ -25,6 +25,7 @@ class TelegramNotifier:
         inter_message_delay: float = 0.5,
         max_retries: int = 3,
         max_retry_sleep: float = 60.0,
+        http_timeout: float = 30.0,
         session: requests.Session | None = None,
     ) -> None:
         self._url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -33,6 +34,7 @@ class TelegramNotifier:
         self._inter_message_delay = inter_message_delay
         self._max_retries = max_retries
         self._max_retry_sleep = max_retry_sleep
+        self._http_timeout = http_timeout
         self._session = session or requests.Session()
 
     def send_text(self, text: str) -> bool:
@@ -64,6 +66,7 @@ class TelegramNotifier:
                             "caption": text,
                             "parse_mode": "HTML",
                         },
+                        timeout=self._http_timeout,
                     )
                     if resp.status_code == 400:
                         # fallback: broken image URL or caption issue → plain text
@@ -74,6 +77,7 @@ class TelegramNotifier:
                                 "text": text,
                                 "parse_mode": "HTML",
                             },
+                            timeout=self._http_timeout,
                         )
                 else:
                     resp = self._session.post(
@@ -83,6 +87,7 @@ class TelegramNotifier:
                             "text": text,
                             "parse_mode": "HTML",
                         },
+                        timeout=self._http_timeout,
                     )
             except requests.RequestException:
                 return False
