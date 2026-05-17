@@ -1,0 +1,45 @@
+name: Claude code review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Claude review
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            Review this pull request as a senior engineer would. Read CLAUDE.md
+            first — it lists project conventions that take precedence over your
+            defaults.
+
+            Focus on:
+            - Bugs and logic errors
+            - Security issues
+            - Adherence to the conventions in CLAUDE.md (PR workflow, branch
+              naming, dependency rules, no workarounds without root cause)
+            - Whether the change has matching test coverage and whether
+              `docs/architecture/test-coverage.md` is updated when test
+              structure changes
+
+            Skip nitpicks — ruff handles formatting/lint. Skip docstring style
+            and small wording issues unless they obscure intent.
+
+            Leave findings as inline PR review comments at the relevant lines.
+            If the PR looks clean, post a single top-level comment saying so
+            explicitly. Do not approve or merge — those stay with the human
+            reviewer.

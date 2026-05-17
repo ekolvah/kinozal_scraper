@@ -21,6 +21,24 @@ Steps: checkout → Python 3.12 → install deps → ruff format → ruff lint �
 
 mypy excludes the same legacy files as `ci_check.py`, plus `.claude` directory.
 
+## Claude review workflow (`claude-review.yml`)
+
+Triggers: every `pull_request: opened/synchronize`.
+
+Uses `anthropics/claude-code-action@v1` to run an automated code review on
+every PR push. Posts inline comments at relevant lines and a top-level
+verdict. Does **not** approve or merge — human reviewer keeps that.
+
+### One-time setup
+
+1. Locally: `claude setup-token` (requires Claude Pro/Max subscription) → copy the token.
+2. Repo Settings → Secrets and variables → Actions → New repository secret:
+   - Name: `CLAUDE_CODE_OAUTH_TOKEN`
+   - Value: the token from step 1.
+3. The workflow consumes it via `${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}` passed as the action's `anthropic_api_key` input (input name is legacy — token format is what matters).
+
+No separate Anthropic API billing — usage counts against the Pro/Max subscription quota.
+
 ## Production workflow (`run-script.yml`)
 
 Schedule: `0 4 * * *` UTC + manual `workflow_dispatch`.
