@@ -57,6 +57,22 @@ def expand_macros(value: Any, context: dict[str, str]) -> Any:
     return value
 
 
+def _check_no_residual_macros(value: Any, known_macros: list[str], path: str = "") -> None:
+    if isinstance(value, str):
+        match = _MACRO_RE.search(value)
+        if match:
+            raise ConfigError(
+                f"Unresolved macro {match.group(0)!r} at {path or '<root>'}. "
+                f"Known macros: {sorted(known_macros)}"
+            )
+    elif isinstance(value, dict):
+        for k, v in value.items():
+            _check_no_residual_macros(v, known_macros, f"{path}.{k}" if path else str(k))
+    elif isinstance(value, list):
+        for i, item in enumerate(value):
+            _check_no_residual_macros(item, known_macros, f"{path}[{i}]")
+
+
 def validate_sources_config(config: Any) -> None:
     if not isinstance(config, dict):
         raise ConfigError("Config must be a JSON object")
@@ -109,6 +125,7 @@ def load_sources_config(path: str | Path = "sources.json") -> dict[str, Any]:
 
     context = build_macro_context()
     config = cast(dict[str, Any], expand_macros(config, context))
+    _check_no_residual_macros(config, list(context.keys()))
 
     for source in config.get("sources", []):
         if isinstance(source, dict) and "limit" in source:

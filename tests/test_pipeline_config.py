@@ -166,14 +166,24 @@ class TestLoadSourcesConfig(unittest.TestCase):
         config = load_sources_config(sources_path)
         self.assertIn("sources", config)
 
+    def test_unresolved_macro_in_url_raises_config_error(self) -> None:
+        source = {**_MINIMAL_SOURCE, "url": "https://api.example.com?d={{TOAY}}"}
+        path = _write_tmp(_make_config([source]))
+        with self.assertRaises(ConfigError) as ctx:
+            load_sources_config(path)
+        self.assertIn("{{TOAY}}", str(ctx.exception))
+        self.assertIn("sources[0].url", str(ctx.exception))
+
+    def test_unresolved_macro_in_nested_field_raises(self) -> None:
+        source = {**_MINIMAL_SOURCE, "headers": {"X-Token": "{{NOPE}}"}}
+        path = _write_tmp(_make_config([source]))
+        with self.assertRaises(ConfigError) as ctx:
+            load_sources_config(path)
+        self.assertIn("{{NOPE}}", str(ctx.exception))
+
 
 class TestConfigValidationKnownGaps(unittest.TestCase):
-    """Documents gaps in `validate_sources_config` (taxonomy D — config errors).
-
-    Both scenarios below currently pass validation silently and only blow up
-    later during runtime. Pinning the gaps so we notice if/when validation is
-    tightened.
-    """
+    """Documents gaps in `validate_sources_config` (taxonomy D — config errors)."""
 
     def test_invalid_css_row_selector_not_caught_by_validator(self) -> None:
         """A broken CSS row_selector reaches BeautifulSoup unchecked.
@@ -187,17 +197,6 @@ class TestConfigValidationKnownGaps(unittest.TestCase):
             "row_selector": "div[unclosed-bracket",
         }
         validate_sources_config(_make_config([bad_source]))
-
-    def test_unresolved_macro_in_url_passes_validation(self) -> None:
-        """Typo'd macro names survive expand_macros and end up in the URL.
-
-        load_sources_config does not strip or flag residual {{...}} patterns,
-        so a mistyped macro silently leaks into the outgoing HTTP request.
-        """
-        source = {**_MINIMAL_SOURCE, "url": "https://api.example.com?d={{TOAY}}"}
-        path = _write_tmp(_make_config([source]))
-        config = load_sources_config(path)
-        self.assertIn("{{TOAY}}", config["sources"][0]["url"])
 
 
 if __name__ == "__main__":
