@@ -8,6 +8,16 @@ import requests
 
 from generic_pipeline import Notification
 
+_TG_TEXT_LIMIT = 4096
+_TG_CAPTION_LIMIT = 1024
+_TRUNCATION_SUFFIX = "\n… (truncated)"
+
+
+def _truncate(text: str, limit: int) -> str:
+    if len(text) <= limit:
+        return text
+    return text[: limit - len(_TRUNCATION_SUFFIX)] + _TRUNCATION_SUFFIX
+
 
 @runtime_checkable
 class Notifier(Protocol):
@@ -55,9 +65,13 @@ class TelegramNotifier:
         return sent, failed
 
     def _send_one(self, text: str, image_url: str = "") -> bool:
+        # Caption limit (1024) is much tighter than text limit (4096); if the
+        # message wouldn't fit as a caption, skip sendPhoto entirely.
+        use_caption = bool(image_url) and len(text) <= _TG_CAPTION_LIMIT
+        message_text = _truncate(text, _TG_TEXT_LIMIT)
         for _ in range(self._max_retries):
             try:
-                if image_url:
+                if use_caption:
                     resp = self._session.post(
                         self._photo_url,
                         json={
@@ -74,7 +88,7 @@ class TelegramNotifier:
                             self._url,
                             json={
                                 "chat_id": self._chat_id,
-                                "text": text,
+                                "text": message_text,
                                 "parse_mode": "HTML",
                             },
                             timeout=self._http_timeout,
@@ -84,7 +98,7 @@ class TelegramNotifier:
                         self._url,
                         json={
                             "chat_id": self._chat_id,
-                            "text": text,
+                            "text": message_text,
                             "parse_mode": "HTML",
                         },
                         timeout=self._http_timeout,

@@ -190,28 +190,34 @@ class TestTelegramNotifierImageFallback(unittest.TestCase):
         self.assertIn("sendMessage", second_url)
 
 
-class TestTelegramNotifierKnownBugs(unittest.TestCase):
-    """Tests that document current (buggy) behaviour. Linked to follow-up issues.
-
-    These tests will need to be updated when the underlying bugs are fixed; until
-    then they pin the contract so we notice regressions in the wrong direction.
-    """
-
-    def test_message_over_4096_chars_lost_as_failed(self) -> None:
-        """Telegram rejects text >4096 chars with 400; we currently drop the notification.
-
-        Expected future fix: split the message or truncate. Until then, the
-        notification ends up in `failed` and is never delivered.
-        """
+class TestTelegramNotifierMessageLimits(unittest.TestCase):
+    def test_message_over_4096_chars_is_truncated_and_sent(self) -> None:
         long_text = "x" * 5000
-        session = _make_session(
-            (400, {"ok": False, "description": "message is too long"}, {}),
-        )
+        session = _make_session((200, {"ok": True}, {}))
         notifier = _notifier(session)
         notif = Notification(id="k1", text=long_text)
         sent, failed = notifier.send_items([notif])
-        self.assertEqual(sent, [])
-        self.assertEqual(failed, [notif])
+        self.assertEqual(sent, [notif])
+        self.assertEqual(failed, [])
+        payload = session.post.call_args.kwargs["json"]
+        self.assertLessEqual(len(payload["text"]), 4096)
+        self.assertTrue(payload["text"].endswith("(truncated)"))
+
+    def test_caption_over_1024_chars_falls_back_to_sendmessage(self) -> None:
+        long_caption = "x" * 2000
+        session = _make_session((200, {"ok": True}, {}))
+        notifier = _notifier(session)
+        notif = Notification(id="k1", text=long_caption, image_url="https://example.com/i.jpg")
+        sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [notif])
+        self.assertEqual(failed, [])
+        self.assertEqual(session.post.call_count, 1)
+        url = session.post.call_args.args[0]
+        self.assertIn("sendMessage", url)
+
+
+class TestTelegramNotifierKnownBugs(unittest.TestCase):
+    """Tests that document current (buggy) behaviour. Linked to follow-up issues."""
 
     def test_session_post_called_with_explicit_timeout(self) -> None:
         """session.post is invoked with `timeout=30` to bound a hung Telegram API."""
