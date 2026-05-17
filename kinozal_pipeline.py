@@ -55,12 +55,24 @@ def _kinozal_title(raw: str) -> str:
 
 
 def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[NormalizedItem]:
-    """Parse kinozal HTML and return items with clean titles and raw dedupe_keys."""
+    """Parse kinozal HTML and return items with clean titles and raw dedupe_keys.
+
+    Items with an empty `url` after extraction still go through — the user sees
+    a notification without a link, reports it, and we fix the drift. Silently
+    dropping them would just look like "no new films" to the user. The WARNING
+    is the dev-side tripwire for the same situation in logs.
+    """
     result = extract_from_html(html, source)
     if not result.ok:
         logger.error("[%s] extraction errors: %s", source["id"], result.errors)
         return []
     for item in result.items:
+        if not item.url:
+            logger.warning(
+                "[%s] item %r has empty url field, check sources.json fields.url",
+                source["id"],
+                item.title,
+            )
         item.raw["kinozal_raw_title"] = item.dedupe_key
         item.title = _kinozal_title(item.title)
     return result.items
