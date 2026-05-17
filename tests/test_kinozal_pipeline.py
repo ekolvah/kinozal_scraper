@@ -424,7 +424,11 @@ class TestPipelineFailureIsolation(unittest.TestCase):
 
 
 class TestKinozalEmptyUrlGuard(unittest.TestCase):
-    def test_url_field_drift_logs_warning_and_skips_items(self) -> None:
+    def test_url_field_drift_logs_warning_but_still_notifies(self) -> None:
+        """Empty url after extraction must surface to the user (notification still sent,
+        just without a link) AND to logs (WARNING). Silently skipping would look like
+        \"no new films\" — visible failure is the user's only way to report drift.
+        """
         drifted_source: dict[str, Any] = {
             **_KINOZAL_SOURCE,
             "fields": {**_KINOZAL_SOURCE["fields"], "url": "@data-link"},
@@ -432,8 +436,10 @@ class TestKinozalEmptyUrlGuard(unittest.TestCase):
         config = {"version": 1, "sources": [drifted_source]}
         with self.assertLogs("kinozal_pipeline", level="WARNING") as logs:
             storage, notifier = _run(sources_config=config)
-        self.assertEqual(storage.stored_rows("movies"), [])
-        self.assertEqual(notifier.sent, [])
+        self.assertEqual(len(storage.stored_rows("movies")), 2)
+        self.assertEqual(len(notifier.sent), 2)
+        for notif in notifier.sent:
+            self.assertNotIn("kinozal.tv/details", notif.text)
         self.assertTrue(
             any("empty url field" in msg for msg in logs.output),
             f"expected 'empty url field' warning in logs: {logs.output}",

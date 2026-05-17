@@ -57,15 +57,15 @@ def _kinozal_title(raw: str) -> str:
 def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[NormalizedItem]:
     """Parse kinozal HTML and return items with clean titles and raw dedupe_keys.
 
-    Items with an empty `url` after extraction are dropped with a WARNING:
-    that means the configured `fields.url` selector (e.g. `@href`) no longer
-    matches the kinozal HTML — a broken link is worse than no notification.
+    Items with an empty `url` after extraction still go through — the user sees
+    a notification without a link, reports it, and we fix the drift. Silently
+    dropping them would just look like "no new films" to the user. The WARNING
+    is the dev-side tripwire for the same situation in logs.
     """
     result = extract_from_html(html, source)
     if not result.ok:
         logger.error("[%s] extraction errors: %s", source["id"], result.errors)
         return []
-    items: list[NormalizedItem] = []
     for item in result.items:
         if not item.url:
             logger.warning(
@@ -73,11 +73,9 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
                 source["id"],
                 item.title,
             )
-            continue
         item.raw["kinozal_raw_title"] = item.dedupe_key
         item.title = _kinozal_title(item.title)
-        items.append(item)
-    return items
+    return result.items
 
 
 def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
