@@ -29,6 +29,12 @@ Uses `anthropics/claude-code-action@v1` to run an automated code review on
 every PR push. Posts inline comments at relevant lines and a top-level
 verdict. Does **not** approve or merge — human reviewer keeps that.
 
+`use_sticky_comment: true` is set so every run posts (or updates) a single
+pinned summary comment on the PR — without it, a run that finds no issues
+silently leaves the PR with no comment, making "review clean" and "review
+silently broken" indistinguishable. The sticky comment is updated in
+place on each push, not duplicated.
+
 ### One-time setup
 
 1. Locally: `claude setup-token` (requires Claude Pro/Max subscription) → copy the token.
