@@ -1,6 +1,9 @@
 /.idea
 .venv/
-.claude/
+.claude/settings.json
+.claude/settings.local.json
+.claude/worktrees/
+.claude/cache/
 anon.session
 __pycache__/
 .coverage
