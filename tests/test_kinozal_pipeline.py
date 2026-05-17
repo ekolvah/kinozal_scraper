@@ -423,13 +423,25 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
 
-class TestKinozalKnownBugs(unittest.TestCase):
-    """Documents current behaviour for scenarios that should ideally be louder.
+class TestKinozalEmptyUrlGuard(unittest.TestCase):
+    def test_url_field_drift_logs_warning_and_skips_items(self) -> None:
+        drifted_source: dict[str, Any] = {
+            **_KINOZAL_SOURCE,
+            "fields": {**_KINOZAL_SOURCE["fields"], "url": "@data-link"},
+        }
+        config = {"version": 1, "sources": [drifted_source]}
+        with self.assertLogs("kinozal_pipeline", level="WARNING") as logs:
+            storage, notifier = _run(sources_config=config)
+        self.assertEqual(storage.stored_rows("movies"), [])
+        self.assertEqual(notifier.sent, [])
+        self.assertTrue(
+            any("empty url field" in msg for msg in logs.output),
+            f"expected 'empty url field' warning in logs: {logs.output}",
+        )
 
-    These tests pin contracts that we want to revisit in follow-up issues —
-    e.g. silent empty trailer on YouTube quota exhaustion, silent broken URL
-    on a sources.json field drift.
-    """
+
+class TestKinozalKnownBugs(unittest.TestCase):
+    """Documents current behaviour for scenarios that should ideally be louder."""
 
     def test_youtube_quota_exhausted_pipeline_continues_with_empty_trailer(self) -> None:
         """YouTube quota → enrich_with_trailer swallows the exception → trailer=''.
@@ -447,24 +459,6 @@ class TestKinozalKnownBugs(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 2)
         for notif in notifier.sent:
             self.assertNotIn("youtube.com", notif.text)
-
-    def test_url_field_drift_yields_silent_empty_link(self) -> None:
-        """Renamed HTML attribute → fields.url returns ''; pipeline does not flag it.
-
-        Mimics the scenario where kinozal.tv changes the attribute used for the
-        details URL (e.g. switches from @href to @data-link). Items are still
-        stored (row_selector still matches), but their notifications point
-        nowhere — currently no warning is emitted (I in the taxonomy).
-        """
-        drifted_source: dict[str, Any] = {
-            **_KINOZAL_SOURCE,
-            "fields": {**_KINOZAL_SOURCE["fields"], "url": "@data-link"},
-        }
-        config = {"version": 1, "sources": [drifted_source]}
-        storage, notifier = _run(sources_config=config)
-        self.assertEqual(len(storage.stored_rows("movies")), 2)
-        for notif in notifier.sent:
-            self.assertNotIn("kinozal.tv/details", notif.text)
 
 
 if __name__ == "__main__":
