@@ -46,3 +46,8 @@ Key decisions recorded here; details in separate files to keep this file short.
 - [Test coverage map](docs/architecture/test-coverage.md) — what is tested, gaps, patterns
 - [CI & deployment](docs/architecture/ci.md) — GitHub Actions, env vars, setup
 - [Gemini enrichment](docs/architecture/gemini.md) — model rotation, quota strategy
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->
