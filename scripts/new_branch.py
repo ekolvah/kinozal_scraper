@@ -4,8 +4,10 @@
 Usage: python scripts/new_branch.py codex-issue-N-short-slug
 
 Steps: refuse if working tree is dirty → checkout main → pull --ff-only
-→ checkout -b <name>. Ensures every codex-* branch starts at origin/main
-HEAD so squash-merges don't cause history divergence (see #66).
+→ prune merged [gone] branches → checkout -b <name>. Ensures every
+codex-* branch starts at origin/main HEAD so squash-merges don't cause
+history divergence (see #66), and that local `[gone]` branches from
+already-merged-and-deleted PRs don't pile up (see #72).
 """
 
 from __future__ import annotations
@@ -13,9 +15,45 @@ from __future__ import annotations
 import subprocess
 import sys
 
+PROTECTED_BRANCHES = frozenset({"main", "master"})
+
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     return subprocess.run(cmd, check=True, text=True, capture_output=capture)
+
+
+def _prune_gone_branches() -> None:
+    """Delete local branches whose remote-tracking ref is gone (merged & deleted)."""
+    _run(["git", "fetch", "--prune"])
+    output = _run(["git", "branch", "-vv"], capture=True).stdout
+
+    gone: list[str] = []
+    for raw in output.splitlines():
+        if ": gone]" not in raw:
+            continue
+        line = raw.lstrip()
+        if line.startswith("* "):
+            continue  # current branch — never delete
+        parts = line.split()
+        if parts:
+            gone.append(parts[0])
+
+    pruned = 0
+    skipped = 0
+    for branch in gone:
+        if branch in PROTECTED_BRANCHES:
+            continue
+        result = subprocess.run(
+            ["git", "branch", "-d", branch],
+            text=True,
+            capture_output=True,
+        )
+        if result.returncode == 0:
+            pruned += 1
+        else:
+            skipped += 1
+            print(f"warn: kept {branch} ({result.stderr.strip()})", file=sys.stderr)
+    print(f"pruned: {pruned} merged branches (skipped {skipped} unmerged)")
 
 
 def main() -> None:
@@ -40,6 +78,7 @@ def main() -> None:
 
     _run(["git", "checkout", "main"])
     _run(["git", "pull", "--ff-only"])
+    _prune_gone_branches()
     _run(["git", "checkout", "-b", name])
     print(f"ready: on {name}, branched from origin/main HEAD")
 
