@@ -10,9 +10,6 @@ extend-exclude = [
     ".venv",
     "__pycache__",
     "pytest-cache-files-*",
-    "TelegramChannelSummarizer.py",
-    "crypto.py",
-    "telegram_summarizer.py",
 ]
 
 [tool.ruff.lint]
@@ -49,6 +46,4 @@ check_untyped_defs = true
 ignore_missing_imports = true
 exclude = [
     "^scraper\\.py$",
-    "^TelegramChannelSummarizer\\.py$",
-    "^crypto\\.py$",
 ]

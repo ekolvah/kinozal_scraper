@@ -7,8 +7,6 @@ python scripts/ci_check.py
 ```
 
 Runs: ruff format check → ruff lint → pytest → mypy.
-Legacy files (`telegram_summarizer.py`, `TelegramChannelSummarizer.py`, `crypto.py`)
-are excluded from ruff and mypy.
 
 Pre-push hook: `.githooks/pre-push` runs `ci_check.py` automatically.
 Activate: `git config core.hooksPath .githooks`
@@ -19,7 +17,9 @@ Triggers: PR and push to `main` / `codex-*` branches.
 
 Steps: checkout → Python 3.12 → install deps → ruff format → ruff lint → pytest → mypy → pip-audit.
 
-mypy excludes the same legacy files as `ci_check.py`, plus `.claude` directory.
+mypy excludes only `scraper.py` (legacy WebDriver script with its own
+issue trail) and the `.claude` directory. All other Python files are
+type-checked.
 
 ## Claude review workflow (`claude-review.yml`)
 
