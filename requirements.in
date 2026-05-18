@@ -9,7 +9,6 @@ google-api-python-client
 langdetect
 protobuf
 telethon
-pytz
 google-generativeai
 cryptography
 tenacity
