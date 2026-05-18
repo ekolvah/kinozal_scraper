@@ -125,6 +125,18 @@ class TestValidateSourcesConfig(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_sources_config(_make_config([source]))
 
+    def test_html_requires_row_selector(self) -> None:
+        source = {**_MINIMAL_SOURCE, "type": "html"}
+        source.pop("row_selector", None)
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        self.assertIn("test_src", str(ctx.exception))
+        self.assertIn("row_selector", str(ctx.exception))
+
+    def test_html_with_row_selector_passes(self) -> None:
+        source = {**_MINIMAL_SOURCE, "type": "html", "row_selector": "article.Box-row"}
+        validate_sources_config(_make_config([source]))
+
 
 class TestLoadSourcesConfig(unittest.TestCase):
     def test_loads_valid_file(self) -> None:

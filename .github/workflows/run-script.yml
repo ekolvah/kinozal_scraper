@@ -35,6 +35,14 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
+      - name: Run GitHub trending pipeline
+        run: python github_trending_pipeline.py
+        env:
+          SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
+          CREDENTIALS: ${{ secrets.CREDENTIALS }}
+
       - name: Run events pipeline
         run: python events_pipeline.py
         env:

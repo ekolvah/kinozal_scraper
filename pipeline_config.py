@@ -100,6 +100,9 @@ def validate_sources_config(config: Any) -> None:
         if source["type"] not in _SUPPORTED_TYPES:
             raise ConfigError(f"Source '{source_id}' has unsupported type: {source['type']!r}")
 
+        if source["type"] == "html" and not source.get("row_selector"):
+            raise ConfigError(f"Source '{source_id}' has type='html' but no 'row_selector' field")
+
         try:
             limit = int(source["limit"])
         except (TypeError, ValueError) as exc:

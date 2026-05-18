@@ -39,6 +39,25 @@
       "message_template": "<b>{title}</b>\n{summary_ru}\n⭐ {metric} | {language}\n{url}"
     },
     {
+      "id": "github_trending",
+      "enabled": true,
+      "type": "html",
+      "url": "https://github.com/trending?since=daily",
+      "base_url": "https://github.com",
+      "row_selector": "article.Box-row",
+      "limit": 25,
+      "sheet_tab": "github_projects",
+      "dedupe_key": "h2 a@href",
+      "fields": {
+        "title": "h2 a@href",
+        "url": "h2 a@href",
+        "description": "p",
+        "metric": "span.d-inline-block.float-sm-right",
+        "image_url": null
+      },
+      "message_template": "<b>{title}</b>\n{description}\n⭐ {metric}\n{url}"
+    },
+    {
       "id": "steam_top_games",
       "enabled": true,
       "type": "json",
