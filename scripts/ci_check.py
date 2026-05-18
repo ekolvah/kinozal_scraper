@@ -8,7 +8,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-_LEGACY = {"telegram_summarizer.py", "TelegramChannelSummarizer.py", "crypto.py"}
 _EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
 
 
@@ -23,7 +22,6 @@ def _find_modules() -> list[str]:
         for p in Path(".").rglob("*.py")
         if not (_EXCLUDE_DIRS & set(p.parts))
         and not any(part.startswith("pytest-cache-files-") for part in p.parts)
-        and p.name not in _LEGACY
     ]
 
 

@@ -42,10 +42,7 @@ jobs:
         run: |
           mapfile -t modules < <(find . -name "*.py" \
             ! -path "./.venv/*" ! -path "./.git/*" ! -path "./__pycache__/*" \
-            ! -path "./.claude/*" \
-            ! -name "telegram_summarizer.py" \
-            ! -name "TelegramChannelSummarizer.py" \
-            ! -name "crypto.py")
+            ! -path "./.claude/*")
           if [ "${#modules[@]}" -eq 0 ]; then
             echo "No modules to type-check; skipping."
           else

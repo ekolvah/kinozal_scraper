@@ -9,9 +9,10 @@
 | `kinozal_pipeline.py` | Kinozal movies | HTML scraping | daily 04:00 UTC |
 | `telegram_summarizer.py` | Telegram channels | Gemini summarization | daily 04:00 UTC, `if: always()` |
 
-All pipelines except `telegram_summarizer` follow the generic pipeline pattern.
-`telegram_summarizer` is legacy code (excluded from linting) that uses
-`TelegramChannelSummarizer` + Gemini directly.
+All pipelines except `telegram_summarizer` follow the generic pipeline
+pattern. `telegram_summarizer` uses `TelegramChannelSummarizer` (Telethon
+reader + Gemini summarizer behind Protocols) and the shared `TelegramNotifier`
+— see [Telethon-direct modules](#telethon-direct-modules) below.
 
 ## Protocols
 
@@ -44,8 +45,16 @@ Details in [pipeline.md](pipeline.md).
 - `pipeline_config.py` — loads config, expands macros (`{{TODAY}}`, `{{GITHUB_TOP_LIMIT}}`), validates
 - Env vars override runtime behavior — full list in [ci.md](ci.md)
 
-## Legacy modules
+## Telethon-direct modules
 
-`TelegramChannelSummarizer.py`, `crypto.py`, `telegram_summarizer.py` are excluded
-from ruff and mypy (see CLAUDE.md). They use Telethon + Gemini directly, not the
-generic pipeline. Model rotation strategy shared with generic pipeline — see [gemini.md](gemini.md).
+`TelegramChannelSummarizer.py`, `crypto.py`, and `telegram_summarizer.py`
+use Telethon + Gemini directly rather than going through the generic
+pipeline (sources.json → declarative extraction → Storage → Notifier).
+The reason is the domain: they read live Telegram channels, decrypt a
+Telethon session, and summarize free-form chat — none of which fits the
+"fetch → extract → dedupe → notify" shape the other pipelines share.
+
+They are nevertheless covered by the same quality gates: ruff format,
+ruff lint, mypy, and dedicated tests (`test_telegram_summarizer.py`,
+`test_crypto.py`). Model rotation is the same strategy as the generic
+pipelines — see [gemini.md](gemini.md).
