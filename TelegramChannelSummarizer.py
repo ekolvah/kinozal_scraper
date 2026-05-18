@@ -1,71 +1,80 @@
+from __future__ import annotations
+
+import asyncio
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
+from typing import Protocol, runtime_checkable
+
+import google.api_core.exceptions
+import google.generativeai as genai
+from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
-from datetime import datetime, timedelta
-import pytz
-import google.generativeai as genai
-import asyncio
-from telethon.sessions import StringSession
-import os
-from crypto import crypto  # Import the crypto module
-import logging
-import google.api_core.exceptions
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
-class TelegramChannelSummarizer:
-    telegram_api_id = os.getenv('TELEGRAM_API_ID')
-    api_hash = os.getenv('API_HASH')
-    channel_urls = os.getenv('CHANNEL_URL')
-    GOOGLE_API_KEY = os.getenv('GOOGLE_API_KEY')
-    phone_number = os.getenv('PHONE_NUMBER')
-    TELETHON_SESSION = os.getenv('TELETHON_SESSION')
-    LLM_MODEL = os.getenv('LLM_MODEL')
-    CHAT_PROMPT = os.getenv('CHAT_PROMPT')
-    BROADCAST_PROMPT = os.getenv('BROADCAST_PROMPT')
+@dataclass
+class ChannelSummary:
+    channel: str
+    url: str
+    summary: str
 
-    _initialized = False
 
-    @classmethod
-    def _ensure_initialized(cls):
-        if cls._initialized:
-            return
-        crypto.load_encrypter_session()
-        genai.configure(api_key=cls.GOOGLE_API_KEY)
-        cls._models = cls._build_model_list()
-        if cls._models:
-            logger.info(f"Available models for summarization: {cls._models}")
-        else:
-            logger.warning("No Gemini models available, summarization will be skipped")
-        cls._initialized = True
+# Tuple shape returned by readers: (channel_title, joined_messages_text, is_broadcast).
+# title=None signals a fetch error — orchestrator falls back to the raw url for display.
+ChannelMessages = tuple[str | None, str, bool]
 
-    @staticmethod
-    def _build_model_list():
-        from gemini_enricher import get_generation_models
-        return get_generation_models()
 
-    @staticmethod
-    def summarization_text(text, is_broadcast=False):
+@runtime_checkable
+class TelegramReader(Protocol):
+    def fetch_channel(self, channel_url: str) -> ChannelMessages: ...
+
+
+@runtime_checkable
+class Summarizer(Protocol):
+    def summarize(self, text: str, is_broadcast: bool) -> str: ...
+
+
+_DEFAULT_BROADCAST_PROMPT = (
+    " Это текст постов из телеграм канала. "
+    "Проанализируй этот текст и выдели ключевые темы. "
+    "Будь лаконичным."
+)
+_DEFAULT_CHAT_PROMPT = (
+    " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
+    "Проанализируй этот текст и выдели только основные обсуждаемые темы. "
+    "Не пиши детали, кто что сказал, не указывай имена. "
+    "Просто перечисли заголовки обсуждаемых тем. Будь максимально лаконичным."
+)
+
+
+class GeminiSummarizer:
+    """Sequential Gemini model fallback on `ResourceExhausted`. Differs
+    from `RotatingGeminiEnricher` (no cooldown, no re-raise — silent
+    fallback to next model, empty string if all exhausted). Behaviour
+    preserved 1:1 from the pre-refactor `summarization_text`.
+    """
+
+    def __init__(
+        self,
+        models: list[str],
+        broadcast_prompt: str | None = None,
+        chat_prompt: str | None = None,
+    ) -> None:
+        self._models = models
+        self._broadcast_prompt = broadcast_prompt or _DEFAULT_BROADCAST_PROMPT
+        self._chat_prompt = chat_prompt or _DEFAULT_CHAT_PROMPT
+
+    def summarize(self, text: str, is_broadcast: bool) -> str:
         if not text:
             return ""
 
-        if is_broadcast:
-            prompt = TelegramChannelSummarizer.BROADCAST_PROMPT or (
-                " Это текст постов из телеграм канала. "
-                "Проанализируй этот текст и выдели ключевые темы. "
-                "Будь лаконичным."
-            )
-        else:
-            prompt = TelegramChannelSummarizer.CHAT_PROMPT or (
-                " Это текст сообщений из чата в формате 'Имя: Сообщение'. "
-                "Проанализируй этот текст и выдели только основные обсуждаемые темы. "
-                "Не пиши детали, кто что сказал, не указывай имена. "
-                "Просто перечисли заголовки обсуждаемых тем. Будь максимально лаконичным."
-            )
+        prompt = self._broadcast_prompt if is_broadcast else self._chat_prompt
         request = text + prompt
 
-        for model_name in TelegramChannelSummarizer._models:
+        for model_name in self._models:
             try:
                 model = genai.GenerativeModel(model_name)
                 response = model.generate_content(request)
@@ -78,115 +87,136 @@ class TelegramChannelSummarizer:
                     return ""
 
                 logger.info(response.text)
-                return response.text
+                summary: str = response.text
+                return summary
             except google.api_core.exceptions.ResourceExhausted:
-                logger.warning(f"model {model_name} quota exhausted, trying next")
+                logger.warning("model %s quota exhausted, trying next", model_name)
                 continue
-            except Exception as e:
-                logger.error(f"Error with model {model_name}: {e}")
+            except Exception as exc:
+                logger.error("Error with model %s: %s", model_name, exc)
                 return ""
 
         logger.error("all models exhausted, could not summarize")
         return ""
 
-    @staticmethod
-    def summarization():
-        TelegramChannelSummarizer._ensure_initialized()
-        logger.info(f"Environment variable LLM_MODEL: {TelegramChannelSummarizer.LLM_MODEL}")
-        channel_urls_list = TelegramChannelSummarizer.channel_urls.split(';')
-        results = []  # Сохраняем результаты для каждого канала отдельно
 
-        for url in channel_urls_list:
-            # Используем asyncio.run для создания/закрытия event loop для каждого top-level async вызова.
-            # ПОЛУЧАЕМ ТРИ ЗНАЧЕНИЯ: channel_title, text, is_broadcast
-            channel_title, text, is_broadcast = asyncio.run(TelegramChannelSummarizer.get_news_from_telegram_channel(url))
-            
-            # Если название не удалось определить, используем URL или ID
-            display_name = channel_title if channel_title else url
+class TelethonReader:
+    """Reads the last 24 hours of messages from a Telegram channel via
+    Telethon, renders them as a single text payload. Preserves the
+    pre-refactor behaviour 1:1: same day-cutoff, same sender-name format,
+    same broadcast detection, same swallowed-error path returning
+    `(None, "", False)`.
+    """
 
-            logger.info(f"-----Telegram channel: {display_name} -----")
-            logger.info(text)
-            if text:
-                summary = TelegramChannelSummarizer.summarization_text(text, is_broadcast)
-                if summary:
-                    results.append({
-                        "channel": display_name, # Используем красивое имя
-                        "url": url,
-                        "summary": summary
-                    })
+    def __init__(
+        self,
+        api_id: str | None,
+        api_hash: str | None,
+        session: str | None,
+        phone: str | None,
+    ) -> None:
+        self._api_id = api_id
+        self._api_hash = api_hash
+        self._session = session
+        self._phone = phone
 
-        return results  # Возвращаем список с результатами для каждого канала
-        
-    @staticmethod
-    async def get_news_from_telegram_channel(channel_url):
-        # 1. Если channel_url - это строка с числом (например, "-1001537004903"), конвертируем в int
-        if isinstance(channel_url, str) and channel_url.lstrip('-').isdigit():
-            channel_url = int(channel_url)
-        if TelegramChannelSummarizer.TELETHON_SESSION:
-            client = TelegramClient(StringSession(TelegramChannelSummarizer.TELETHON_SESSION),
-                                    TelegramChannelSummarizer.telegram_api_id, TelegramChannelSummarizer.api_hash)
+    def fetch_channel(self, channel_url: str) -> ChannelMessages:
+        return asyncio.run(self._fetch_channel_async(channel_url))
+
+    async def _fetch_channel_async(self, channel_url: str) -> ChannelMessages:
+        target: str | int = channel_url
+        if isinstance(channel_url, str) and channel_url.lstrip("-").isdigit():
+            target = int(channel_url)
+
+        if self._session:
+            client = TelegramClient(StringSession(self._session), self._api_id, self._api_hash)
         else:
-            client = TelegramClient('anon', TelegramChannelSummarizer.telegram_api_id,
-                                    TelegramChannelSummarizer.api_hash)
+            client = TelegramClient("anon", self._api_id, self._api_hash)
 
         try:
             await client.start()
             if not await client.is_user_authorized():
-                await client.send_code_request(TelegramChannelSummarizer.phone_number)
-                await client.sign_in(TelegramChannelSummarizer.phone_number, input('Enter the code: '))
+                await client.send_code_request(self._phone)
+                await client.sign_in(self._phone, input("Enter the code: "))
 
-            entity = await client.get_entity(channel_url)
-            channel_title = getattr(entity, 'title', str(channel_url)) 
-            posts = await client(GetHistoryRequest(
-                peer=entity,
-                limit=100,
-                offset_date=None,
-                offset_id=0,
-                max_id=0,
-                min_id=0,
-                add_offset=0,
-                hash=0))
+            entity = await client.get_entity(target)
+            channel_title: str = getattr(entity, "title", str(target))
+            posts = await client(
+                GetHistoryRequest(
+                    peer=entity,
+                    limit=100,
+                    offset_date=None,
+                    offset_id=0,
+                    max_id=0,
+                    min_id=0,
+                    add_offset=0,
+                    hash=0,
+                )
+            )
 
-            one_day_ago = datetime.now(pytz.UTC) - timedelta(days=1)
-            recent_messages = [message for message in posts.messages if message.date > one_day_ago]
+            one_day_ago = datetime.now(UTC) - timedelta(days=1)
+            recent_messages = [m for m in posts.messages if m.date > one_day_ago]
             recent_messages.reverse()
 
-            # Создаем словарь пользователей для быстрого поиска по ID
             users = {user.id: user for user in posts.users}
 
-            formatted_messages = []
-            is_broadcast = getattr(entity, 'broadcast', False)
-            logger.info(f"Channel '{channel_title}' is_broadcast: {is_broadcast}")
+            formatted_messages: list[str] = []
+            is_broadcast: bool = getattr(entity, "broadcast", False)
+            logger.info("Channel '%s' is_broadcast: %s", channel_title, is_broadcast)
             for message in recent_messages:
-                if message.message:
-                    if is_broadcast:
-                        formatted_messages.append(message.message)
-                    else:
-                        sender_name = "Unknown"
-                        # Пытаемся найти имя отправителя
-                        if message.sender_id:
-                            sender = users.get(message.sender_id)
-                            if sender:
-                                first_name = sender.first_name or ""
-                                last_name = sender.last_name or ""
-                                sender_name = f"{first_name} {last_name}".strip()
-                                # Если нет имени, берем юзернейм, если нет юзернейма - ID
-                                if not sender_name and sender.username:
-                                    sender_name = sender.username
-                                if not sender_name:
-                                    sender_name = str(sender.id)
-                        
-                        # Добавляем в список в формате "Имя: Сообщение"
-                        formatted_messages.append(f"{sender_name}: {message.message}")
+                if not message.message:
+                    continue
+                if is_broadcast:
+                    formatted_messages.append(message.message)
+                    continue
+
+                sender_name = "Unknown"
+                if message.sender_id:
+                    sender = users.get(message.sender_id)
+                    if sender:
+                        first = sender.first_name or ""
+                        last = sender.last_name or ""
+                        sender_name = f"{first} {last}".strip()
+                        if not sender_name and sender.username:
+                            sender_name = sender.username
+                        if not sender_name:
+                            sender_name = str(sender.id)
+                formatted_messages.append(f"{sender_name}: {message.message}")
 
             if not formatted_messages:
-                logger.info(f"No text messages found in channel: {channel_url}")
-                return channel_title, "", is_broadcast # Возвращаем кортеж
+                logger.info("No text messages found in channel: %s", channel_url)
+                return channel_title, "", is_broadcast
 
-            result = '\n'.join(formatted_messages)
-            return channel_title, result, is_broadcast # Возвращаем название и текст
-        except Exception as e:
-            logger.error(f"Error processing channel {channel_url}: {str(e)}")
-            return None, "", False # Возвращаем None при ошибке
+            result = "\n".join(formatted_messages)
+            return channel_title, result, is_broadcast
+        except Exception as exc:
+            logger.error("Error processing channel %s: %s", channel_url, exc)
+            return None, "", False
         finally:
             await client.disconnect()
+
+
+def summarize_channels(
+    reader: TelegramReader,
+    summarizer: Summarizer,
+    channel_urls: list[str],
+) -> list[ChannelSummary]:
+    """Pure orchestrator: fetch each channel via the injected reader,
+    summarize via the injected summarizer, return a list. Errors from one
+    channel never block the others (matches pre-refactor behaviour).
+    """
+    results: list[ChannelSummary] = []
+    for url in channel_urls:
+        channel_title, text, is_broadcast = reader.fetch_channel(url)
+        display_name = channel_title if channel_title else url
+
+        logger.info("-----Telegram channel: %s -----", display_name)
+        logger.info(text)
+        if not text:
+            continue
+
+        summary = summarizer.summarize(text, is_broadcast)
+        if summary:
+            results.append(ChannelSummary(channel=display_name, url=url, summary=summary))
+
+    return results
