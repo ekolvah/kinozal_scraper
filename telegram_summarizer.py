@@ -4,7 +4,23 @@ import html as _html
 import logging
 import os
 
+from TelegramChannelSummarizer import ChannelSummary
+
 logger = logging.getLogger(__name__)
+
+
+def format_summary_message(summary: ChannelSummary) -> str:
+    """Render one `ChannelSummary` for Telegram. Output is HTML-formatted:
+    if `summary.url` is an `http[s]://` URL, the channel name is wrapped
+    in an anchor tag; otherwise the channel name is plain HTML-escaped.
+    The body line is always HTML-escaped to keep Telegram's parser
+    happy regardless of what Gemini returned.
+    """
+    if summary.url and summary.url.startswith("http"):
+        channel_label = f'<a href="{summary.url}">{_html.escape(summary.channel)}</a>'
+    else:
+        channel_label = _html.escape(summary.channel)
+    return f"📢 Канал: {channel_label}\n\n{_html.escape(summary.summary)}"
 
 
 if __name__ == "__main__":
@@ -56,14 +72,7 @@ if __name__ == "__main__":
     summaries = summarize_channels(reader, summarizer, channel_urls)
     if summaries:
         notifier.send_text("🔍 Обзор сообщений в каналах за последние сутки:")
-
         for item in summaries:
-            channel_url = item.url
-            if channel_url and isinstance(channel_url, str) and channel_url.startswith("http"):
-                channel_label = f'<a href="{channel_url}">{_html.escape(item.channel)}</a>'
-            else:
-                channel_label = _html.escape(item.channel)
-            message = f"📢 Канал: {channel_label}\n\n{_html.escape(item.summary)}"
-            notifier.send_text(message)
+            notifier.send_text(format_summary_message(item))
     else:
         notifier.send_text("За последние сутки в отслеживаемых каналах не было новых сообщений.")
