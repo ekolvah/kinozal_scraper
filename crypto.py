@@ -41,8 +41,8 @@ class crypto:
     def load_encrypter_session() -> None:
         """Decrypt `anon.session.encrypted` into `anon.session` on the
         local filesystem so Telethon can pick it up. Runs at the start of
-        every cron invocation (called from
-        `TelegramChannelSummarizer._ensure_initialized`).
+        every cron invocation (called from the `__main__` block in
+        `telegram_summarizer.py`).
         """
         key = os.environ["SECRET_KEY"].encode()
         encrypted = Path("anon.session.encrypted").read_bytes()

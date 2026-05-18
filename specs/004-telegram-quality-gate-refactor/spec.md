@@ -63,10 +63,12 @@ expected structure.
   side effects (file paths, env-var read) — they delegate to the pure
   helpers.
 - **FR-002**: `TelegramChannelSummarizer.py` MUST define two Protocols:
-  - `TelegramReader`: `async def fetch_channel(self, channel_url) -> ChannelMessages`
+  - `TelegramReader`: `def fetch_channel(self, channel_url: str) -> ChannelMessages`
     where `ChannelMessages` is `tuple[str | None, str, bool]` (title,
-    joined text, is_broadcast). On error the reader returns
-    `(None, "", False)` (matches current behaviour).
+    joined text, is_broadcast). The Protocol is **sync** so test doubles
+    can be written without an event loop; the concrete `TelethonReader`
+    bridges to async internally via `asyncio.run`. On error the reader
+    returns `(None, "", False)` (matches current behaviour).
   - `Summarizer`: `def summarize(self, text: str, is_broadcast: bool) -> str`.
 - **FR-003**: The module MUST expose a top-level pure function
   `summarize_channels(reader: TelegramReader, summarizer: Summarizer,
