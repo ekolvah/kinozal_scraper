@@ -63,6 +63,32 @@ for `"dedupe_key"`. Never hardcode column A or index 0.
 `ROW_HEADERS` in `generic_pipeline.py`:
 `["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]`
 
+## Column semantics — invariants
+
+For a given Sheets tab, all sources writing into that tab MUST agree on the
+meaning of each column. Mixing semantics within one column is a bug — it
+shipped once (PR #85 / issue #60) where `github_trending` wrote daily-delta
+("172 stars today") into the same `github_projects.metric` column that
+`github_new_popular` filled with total stargazer count (`14113`), making the
+column unusable for cross-source analysis. Closed by #86.
+
+### `github_projects.metric`
+
+- **Meaning**: total stargazers count of the repository at observation time.
+- **Format**: integer string with no thousands separators (e.g. `"14113"`,
+  not `"14,113"` and not `"14,113 stars today"`).
+- **Sources writing here**: `github_new_popular`, `github_trending`. Both
+  MUST produce this exact shape — see
+  `tests/test_github_trending_pipeline.py::TestMetricColumnSemantics` for
+  the pin-tests.
+- **Daily delta** ("X stars today") is a Telegram-only signal. Trending
+  pipeline stashes it in `item.raw["stars_today"]` so the
+  `message_template` can reference `{stars_today}`; it is never written to
+  the row.
+
+Adding a third GitHub-shaped source to `github_projects` requires producing
+`metric` in the same shape — otherwise extend this section first.
+
 ## Write ordering
 
 Always write to Sheets BEFORE sending to Telegram. See `pipeline.md`.

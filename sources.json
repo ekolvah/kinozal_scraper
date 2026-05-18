@@ -52,10 +52,10 @@
         "title": "h2 a@href",
         "url": "h2 a@href",
         "description": "p",
-        "metric": "span.d-inline-block.float-sm-right",
+        "metric": "a[href$=\"/stargazers\"]",
         "image_url": null
       },
-      "message_template": "<b>{title}</b>\n{description}\n⭐ {metric}\n{url}"
+      "message_template": "<b>{title}</b>\n{description}\n⭐ {metric} (+{stars_today} today)\n{url}"
     },
     {
       "id": "steam_top_games",

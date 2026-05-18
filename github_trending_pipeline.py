@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 
 from generic_pipeline import (
     ROW_HEADERS,
@@ -14,6 +16,10 @@ from generic_pipeline import (
 from pipeline_config import load_sources_config
 from sheets_storage import Storage
 from telegram_notifier import Notifier
+
+# Match the longest sequence of digits-with-optional-commas in a string.
+# Used to turn "14,113" → "14113" and "1,690 stars today" → "1690".
+_DIGITS_RE = re.compile(r"[\d,]+")
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +58,61 @@ def _fetch_html(url: str) -> str:
     return resp.text
 
 
+def _digits_only(text: str) -> str:
+    """Extract first run of digits (commas stripped). Returns "" if none."""
+    if not text:
+        return ""
+    match = _DIGITS_RE.search(text)
+    return match.group(0).replace(",", "") if match else ""
+
+
 def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
-    """Strip the leading `/` from `dedupe_key` (and mirror into `title`).
+    """Strip the leading `/` from `dedupe_key` (and mirror into `title`), and
+    normalise `metric` to a digit-only string.
 
     The trending page exposes `h2 a@href` as `/owner/repo`; we drop the slash
     so the stored key matches `github_new_popular`'s `full_name` shape and the
-    shared `github_projects` tab can dedupe cross-source.
+    shared `github_projects` tab can dedupe cross-source. The `metric` field
+    is extracted from `a[href$="/stargazers"]` and arrives as a
+    locale-formatted number ("14,113") which we strip to digits only so the
+    shared `github_projects.metric` column matches `github_new_popular`'s
+    integer-string shape (see docs/architecture/storage.md).
     """
     for item in items:
         item.dedupe_key = item.dedupe_key.lstrip("/")
         item.title = item.dedupe_key
+        item.metric = _digits_only(item.metric)
     return items
+
+
+def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
+    """Populate `item.raw["stars_today"]` for each item from the trending HTML.
+
+    The daily-delta is shown on the trending page in
+    `span.d-inline-block.float-sm-right` as text like "1,690 stars today".
+    It is NOT a column on the shared `github_projects` Sheets tab (where
+    `metric` means total stars — invariant from #86). We surface the daily
+    value only through the notification template, by stashing it in `raw`
+    keyed by `stars_today` so the template can reference `{stars_today}`.
+
+    Missing or unparseable element → empty string (notification template
+    will render "(+ today)" which the operator can still spot as drift).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    by_href: dict[str, str] = {}
+    for row in soup.select("article.Box-row"):
+        link = row.select_one("h2 a")
+        if not link or not link.get("href"):
+            continue
+        delta_el = row.select_one("span.d-inline-block.float-sm-right")
+        by_href[str(link["href"]).strip()] = _digits_only(
+            delta_el.get_text(strip=True) if delta_el else ""
+        )
+    for item in items:
+        # item.dedupe_key was already normalised to "owner/repo" — restore
+        # the leading slash to match the original href used as map key.
+        key = "/" + item.dedupe_key if not item.dedupe_key.startswith("/") else item.dedupe_key
+        item.raw["stars_today"] = by_href.get(key, "")
 
 
 def run_github_trending_pipeline(
@@ -99,6 +149,7 @@ def run_github_trending_pipeline(
             continue
 
         items = _normalize_items(result.items)
+        _enrich_with_stars_today(html_text, items)
         for item in items:
             if not item.metric:
                 logger.warning(
