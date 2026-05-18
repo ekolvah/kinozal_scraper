@@ -7,6 +7,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
+from gemini_enricher import Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
@@ -118,6 +119,7 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
 def run_github_trending_pipeline(
     storage: Storage,
     notifier: Notifier,
+    enricher: Enricher | None = None,
     sources_config: dict[str, Any] | None = None,
 ) -> None:
     global _FAILED
@@ -171,6 +173,33 @@ def run_github_trending_pipeline(
             logger.info("[%s] no new items", source["id"])
             continue
 
+        enrich_config = source.get("enrich")
+        if enrich_config and enricher is not None:
+            field: str = enrich_config["field"]
+            fallback: str = enrich_config.get("on_error", "")
+            enriched, skipped = 0, 0
+            for item in new_items:
+                try:
+                    item.raw[field] = enricher.enrich(item, enrich_config)
+                    enriched += 1
+                except QuotaExhausted:
+                    item.raw[field] = fallback
+                    skipped += 1
+                    for remaining in new_items[new_items.index(item) + 1 :]:
+                        remaining.raw[field] = fallback
+                        skipped += 1
+                    break
+            if skipped:
+                logger.warning(
+                    "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
+                    source["id"],
+                    enriched,
+                    enriched + skipped,
+                    skipped,
+                )
+            elif enriched:
+                logger.info("[%s] enriched %d items", source["id"], enriched)
+
         storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in new_items])
 
         template: str = source["message_template"]
@@ -219,7 +248,35 @@ if __name__ == "__main__":
         prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
         prod_notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
 
-    run_github_trending_pipeline(prod_storage, prod_notifier, sources_config=sources_config)
+    # Mirror json_pipeline.__main__: build a RotatingGeminiEnricher when
+    # GOOGLE_API_KEY is set so both GitHub sources get the same Russian
+    # who/pain enrichment in one cron run. NullEnricher otherwise.
+    from gemini_enricher import NullEnricher
+
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    prod_enricher: Enricher
+    if api_key:
+        import google.generativeai as genai
+
+        from gemini_enricher import RotatingGeminiEnricher, get_generation_models
+
+        genai.configure(api_key=api_key)
+        available_models = get_generation_models()
+        logger.info("available generation models: %s", available_models)
+        if available_models:
+            prod_enricher = RotatingGeminiEnricher(available_models)
+        else:
+            logger.warning("no generation models found, enrichment disabled")
+            prod_enricher = NullEnricher()
+    else:
+        prod_enricher = NullEnricher()
+
+    run_github_trending_pipeline(
+        prod_storage,
+        prod_notifier,
+        enricher=prod_enricher,
+        sources_config=sources_config,
+    )
 
     if _did_fail():
         sys.exit(1)

@@ -6,6 +6,7 @@ import unittest.mock
 from pathlib import Path
 from typing import Any
 
+from gemini_enricher import QuotaExhausted
 from generic_pipeline import extract_from_html
 from github_trending_pipeline import (
     _did_fail,
@@ -314,6 +315,101 @@ class TestPipelineMechanics(unittest.TestCase):
         _, notifier = _run()
         self.assertTrue(notifier.sent[0].text)
         self.assertIn("github.com/", notifier.sent[0].text)
+
+
+# ── #88: Russian who/pain enrichment for trending ────────────────────────────
+
+
+_TRENDING_SOURCE_WITH_ENRICH: dict[str, Any] = {
+    **_TRENDING_SOURCE,
+    "enrich": {
+        "field": "summary_ru",
+        "prompt": "Для кого и Зачем: $title — $description",
+        "parameters": {"temperature": 0.2, "max_tokens": 150},
+        "on_error": "",
+    },
+    "message_template": ("<b>{title}</b>\n{summary_ru}\n⭐ {metric} (+{stars_today} today)\n{url}"),
+}
+
+_ENRICH_SOURCES_CONFIG: dict[str, Any] = {
+    "version": 1,
+    "sources": [_TRENDING_SOURCE_WITH_ENRICH],
+}
+
+
+def _run_with_enricher(
+    enricher: Any,
+    html: str | None = None,
+    existing_keys: set[str] | None = None,
+) -> tuple[InMemoryStorage, InMemoryNotifier]:
+    storage = InMemoryStorage()
+    if existing_keys:
+        storage.seed_existing("github_projects", existing_keys)
+    notifier = InMemoryNotifier()
+
+    with unittest.mock.patch(
+        "github_trending_pipeline._fetch_html",
+        return_value=html if html is not None else _fixture_html(),
+    ):
+        run_github_trending_pipeline(
+            storage,
+            notifier,
+            enricher=enricher,
+            sources_config=_ENRICH_SOURCES_CONFIG,
+        )
+
+    return storage, notifier
+
+
+class _FakeRuEnricher:
+    def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+        return "Для кого: ML-инженер\nЗачем: ускоряет inference"
+
+
+class _FlakyEnricher:
+    """Returns real text once, then raises QuotaExhausted for every subsequent call."""
+
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+        self.call_count += 1
+        if self.call_count == 1:
+            return "Для кого: разработчик\nЗачем: что-то полезное"
+        raise QuotaExhausted
+
+
+class TestRussianEnrichment(unittest.TestCase):
+    def test_enricher_field_in_notification(self) -> None:
+        _, notifier = _run_with_enricher(_FakeRuEnricher())
+        self.assertGreaterEqual(len(notifier.sent), 1)
+        first_text = notifier.sent[0].text
+        self.assertIn("Для кого: ML-инженер", first_text)
+        self.assertIn("Зачем: ускоряет inference", first_text)
+
+    def test_no_enricher_no_summary_ru_in_text(self) -> None:
+        # enricher=None path — summary_ru placeholder resolves to "" (no crash,
+        # no literal placeholder leakage, no who/pain marker text).
+        _, notifier = _run_with_enricher(None)
+        self.assertGreaterEqual(len(notifier.sent), 1)
+        first_text = notifier.sent[0].text
+        self.assertNotIn("{summary_ru}", first_text)
+        self.assertNotIn("Для кого", first_text)
+
+    def test_quota_exhausted_falls_back_but_still_sends(self) -> None:
+        flaky = _FlakyEnricher()
+        _, notifier = _run_with_enricher(flaky)
+        self.assertGreaterEqual(len(notifier.sent), 2)
+        # First item got the real enrichment text.
+        self.assertIn("Для кого: разработчик", notifier.sent[0].text)
+        # Subsequent items have empty summary_ru (on_error fallback) — no
+        # "Для кого" marker present.
+        for sent in notifier.sent[1:]:
+            self.assertNotIn("Для кого", sent.text)
+        # Enricher was called once for the first item, then once more (which
+        # raised) — the loop must short-circuit after the raise without
+        # calling for the remaining items.
+        self.assertEqual(flaky.call_count, 2)
 
 
 if __name__ == "__main__":

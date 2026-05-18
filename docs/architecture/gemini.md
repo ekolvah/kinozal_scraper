@@ -56,3 +56,33 @@ Prompts live in `sources.json` under each source's `enrich` section:
 - `prompt` — `string.Template` with `$title`, `$description`, `$metric`, `$url`, `$source_id` + any `raw` fields
 - `parameters.temperature` (default 0.2), `parameters.max_tokens` (default 150)
 - `on_error` — fallback value if enrichment fails (default: empty string)
+
+## `summary_ru` invariant (GitHub sources)
+
+Both `github_new_popular` and `github_trending` write the enrich result to
+`item.raw["summary_ru"]` and render it via `{summary_ru}` in the
+`message_template`. The prompt MUST ask Gemini for exactly two Russian lines:
+
+```
+Для кого: <короткая роль / аудитория>
+Зачем: <какую конкретную боль или задачу решает>
+```
+
+Pin-tests in `tests/test_pipeline_config.py::TestRussianEnrichPrompts`
+enforce that both sources' prompts contain the substrings `Для кого` and
+`Зачем` and that the template references `{summary_ru}`. Closed by #88.
+
+`summary_ru` is **never** written to the Sheets row — it lives only in
+`item.raw` so the notification template can read it. No `ROW_HEADERS`
+migration required.
+
+## Enrichment plumbing across pipelines
+
+Both `json_pipeline.run_json_pipeline` and
+`github_trending_pipeline.run_github_trending_pipeline` accept an optional
+`enricher: Enricher | None` parameter and apply the same loop semantics:
+
+- `enricher is None` or no `enrich` block → field stays unset, `{summary_ru}`
+  placeholder resolves to empty, notification still sends.
+- `QuotaExhausted` raised mid-loop → remaining items get the `on_error`
+  fallback value, but every notification still goes out (Principle IV).

@@ -194,6 +194,41 @@ class TestLoadSourcesConfig(unittest.TestCase):
         self.assertIn("{{NOPE}}", str(ctx.exception))
 
 
+class TestRussianEnrichPrompts(unittest.TestCase):
+    """Pin-tests for #88: both GitHub sources must emit the same Russian
+    two-line `summary_ru` (Для кого / Зачем) so notifications read uniformly.
+    """
+
+    def setUp(self) -> None:
+        sources_path = Path(__file__).resolve().parents[1] / "sources.json"
+        if not sources_path.exists():
+            self.skipTest("sources.json not found")
+        self.config = load_sources_config(sources_path)
+        self.by_id = {s["id"]: s for s in self.config["sources"]}
+
+    def _assert_who_pain_enrich(self, source_id: str) -> None:
+        assert source_id in self.by_id, f"missing source: {source_id}"
+        source = self.by_id[source_id]
+        assert "enrich" in source, f"{source_id} has no enrich block"
+        enrich = source["enrich"]
+        self.assertEqual(
+            enrich["field"], "summary_ru", f"{source_id}.enrich.field must be 'summary_ru'"
+        )
+        prompt = enrich["prompt"]
+        self.assertIn("Для кого", prompt, f"{source_id}.enrich.prompt must mention 'Для кого'")
+        self.assertIn("Зачем", prompt, f"{source_id}.enrich.prompt must mention 'Зачем'")
+        template = source["message_template"]
+        self.assertIn(
+            "{summary_ru}", template, f"{source_id}.message_template must use {{summary_ru}}"
+        )
+
+    def test_github_new_popular_has_who_pain_prompt(self) -> None:
+        self._assert_who_pain_enrich("github_new_popular")
+
+    def test_github_trending_has_who_pain_prompt(self) -> None:
+        self._assert_who_pain_enrich("github_trending")
+
+
 class TestConfigValidationKnownGaps(unittest.TestCase):
     """Documents gaps in `validate_sources_config` (taxonomy D — config errors)."""
 
