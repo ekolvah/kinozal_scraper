@@ -162,3 +162,22 @@ class RotatingGeminiEnricher:
                     last_exc = exc
 
         raise QuotaExhausted from last_exc
+
+
+def build_default_enricher(api_key: str, log: logging.Logger) -> Enricher:
+    """Construct the production Enricher from `GOOGLE_API_KEY`, logging a
+    WARNING whenever we degrade to `NullEnricher` so the operator sees in
+    cron logs that enrichment is off (see issue #93)."""
+    if not api_key:
+        log.warning(
+            "GOOGLE_API_KEY is empty, enrichment disabled — notifications "
+            "will lack enriched fields (e.g. summary_ru). Check workflow env-vars."
+        )
+        return NullEnricher()
+    genai.configure(api_key=api_key)
+    available_models = get_generation_models()
+    log.info("available generation models: %s", available_models)
+    if not available_models:
+        log.warning("no generation models found, enrichment disabled")
+        return NullEnricher()
+    return RotatingGeminiEnricher(available_models)
