@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from gemini_enricher import Enricher, NullEnricher, QuotaExhausted
+from gemini_enricher import Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     build_notification,
@@ -139,10 +139,9 @@ if __name__ == "__main__":
     import json
     import os
 
-    import google.generativeai as genai
     import gspread
 
-    from gemini_enricher import RotatingGeminiEnricher, get_generation_models
+    from gemini_enricher import build_default_enricher
     from sheets_storage import SheetsStorage
     from telegram_notifier import TelegramNotifier
 
@@ -155,18 +154,6 @@ if __name__ == "__main__":
         chat_id=os.environ["TELEGRAM_CHAT_ID"],
     )
 
-    api_key = os.environ.get("GOOGLE_API_KEY", "")
-    prod_enricher: Enricher
-    if api_key:
-        genai.configure(api_key=api_key)
-        available_models = get_generation_models()
-        logger.info("available generation models: %s", available_models)
-        if available_models:
-            prod_enricher = RotatingGeminiEnricher(available_models)
-        else:
-            logger.warning("no generation models found, enrichment disabled")
-            prod_enricher = NullEnricher()
-    else:
-        prod_enricher = NullEnricher()
+    prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
 
     run_json_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)

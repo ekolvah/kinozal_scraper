@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import logging
 import unittest
 import unittest.mock
 from typing import Any
 
-from gemini_enricher import Enricher, NullEnricher, QuotaExhausted, RotatingGeminiEnricher
+from gemini_enricher import (
+    Enricher,
+    NullEnricher,
+    QuotaExhausted,
+    RotatingGeminiEnricher,
+    build_default_enricher,
+)
 from generic_pipeline import NormalizedItem
 
 
@@ -203,6 +210,51 @@ class TestRotatingGeminiEnricher(unittest.TestCase):
         with self.assertRaises(QuotaExhausted):
             enricher.enrich(_item(), _ENRICH_CFG)
         mock_sleep.assert_called_once_with(60)
+
+
+class TestBuildDefaultEnricher(unittest.TestCase):
+    """Pin-test for issue #93: silent degradation when GOOGLE_API_KEY is absent.
+
+    Previously, `__main__` in json_pipeline / github_trending_pipeline silently
+    constructed a `NullEnricher` when the env-var was missing, hiding the fact
+    that enrichment was disabled. The trending workflow shipped without
+    GOOGLE_API_KEY for ~3 cron runs after PR #89; the visibility gap kept this
+    invisible. We now WARN whenever the production helper falls back to
+    NullEnricher.
+    """
+
+    def test_empty_api_key_returns_null_enricher_and_warns(self) -> None:
+        log = logging.getLogger("test_build_default_enricher.empty")
+        with self.assertLogs(log, level="WARNING") as captured:
+            result = build_default_enricher("", log)
+        self.assertIsInstance(result, NullEnricher)
+        joined = "\n".join(captured.output)
+        self.assertIn("GOOGLE_API_KEY is empty", joined)
+        self.assertIn("summary_ru", joined)
+
+    def test_api_key_with_no_models_returns_null_enricher_and_warns(self) -> None:
+        log = logging.getLogger("test_build_default_enricher.no_models")
+        with (
+            unittest.mock.patch("gemini_enricher.genai.configure"),
+            unittest.mock.patch("gemini_enricher.get_generation_models", return_value=[]),
+            self.assertLogs(log, level="WARNING") as captured,
+        ):
+            result = build_default_enricher("real-key", log)
+        self.assertIsInstance(result, NullEnricher)
+        self.assertIn("no generation models found", "\n".join(captured.output))
+
+    def test_api_key_with_models_returns_rotating_enricher(self) -> None:
+        log = logging.getLogger("test_build_default_enricher.ok")
+        with (
+            unittest.mock.patch("gemini_enricher.genai.configure") as mock_configure,
+            unittest.mock.patch(
+                "gemini_enricher.get_generation_models",
+                return_value=["models/gemini-2.5-flash", "models/gemini-2.0-flash"],
+            ),
+        ):
+            result = build_default_enricher("real-key", log)
+        self.assertIsInstance(result, RotatingGeminiEnricher)
+        mock_configure.assert_called_once_with(api_key="real-key")
 
 
 if __name__ == "__main__":

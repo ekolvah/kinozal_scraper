@@ -248,28 +248,9 @@ if __name__ == "__main__":
         prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
         prod_notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
 
-    # Mirror json_pipeline.__main__: build a RotatingGeminiEnricher when
-    # GOOGLE_API_KEY is set so both GitHub sources get the same Russian
-    # who/pain enrichment in one cron run. NullEnricher otherwise.
-    from gemini_enricher import NullEnricher
+    from gemini_enricher import build_default_enricher
 
-    api_key = os.environ.get("GOOGLE_API_KEY", "")
-    prod_enricher: Enricher
-    if api_key:
-        import google.generativeai as genai
-
-        from gemini_enricher import RotatingGeminiEnricher, get_generation_models
-
-        genai.configure(api_key=api_key)
-        available_models = get_generation_models()
-        logger.info("available generation models: %s", available_models)
-        if available_models:
-            prod_enricher = RotatingGeminiEnricher(available_models)
-        else:
-            logger.warning("no generation models found, enrichment disabled")
-            prod_enricher = NullEnricher()
-    else:
-        prod_enricher = NullEnricher()
+    prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
 
     run_github_trending_pipeline(
         prod_storage,
