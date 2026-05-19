@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _SOURCE_TYPE = "steam_charts"
 _APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
+_APPLIST_URL = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 
 # `last_week_rank: -1` is the API's sentinel for new entries; we surface a
 # human-friendly token via the template (see test_new_entry_last_week_normalised).
@@ -64,14 +65,68 @@ def _fetch_appdetails(appid: int) -> dict[str, Any] | None:
     return data
 
 
-def _enrich_with_appdetails(source_id: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Mutate records with `name`/`short_description`, drop those without a name.
+def _fetch_app_name_index() -> dict[str, str]:
+    """One-shot fallback name dictionary for the whole Steam catalogue.
 
-    The Steam Charts API returns only appid + numeric stats — it does not
-    carry game names, and `appdetails` doesn't support batch (verified 400
-    on comma-separated appids). One HTTP call per item is the only path.
-    Records that 404 or come back with `success: false` are dropped with a
-    warning rather than skipped silently (see [[feedback_visibility_over_silence]]).
+    `ISteamApps/GetAppList/v2/` returns ~10MB JSON with every published app
+    as `{appid, name}`. We hit it once per run and use it as a fallback when
+    `appdetails` 500s / rate-limits / returns `success: false` for an item
+    that's still legitimately in the charts. Keeps the operator from losing
+    notifications during Steam flaps (see [[feedback_visibility_over_silence]]).
+    """
+    resp = requests.get(_APPLIST_URL, timeout=60)
+    resp.raise_for_status()
+    payload = resp.json()
+    apps = payload.get("applist", {}).get("apps", [])
+    return {str(a["appid"]): a["name"] for a in apps if "appid" in a and "name" in a}
+
+
+def _resolve_name(appid: int, source_id: str, name_index: dict[str, str]) -> tuple[str, str]:
+    """Resolve `(name, short_description)` for an appid via 2-level fallback.
+
+    1. `appdetails?filters=basic` — full payload (name + short_description).
+    2. `GetAppList` index — name only, no description.
+    3. `f"Game #{appid}"` — last-resort placeholder so the item still reaches
+       Telegram as a visible anomaly rather than a silent drop.
+
+    A WARNING is logged at every fallback so cron logs flag drift, but the
+    item is never dropped from the notification stream.
+    """
+    try:
+        details = _fetch_appdetails(appid)
+    except Exception as exc:
+        logger.warning("[%s] appdetails fetch failed for %s: %s", source_id, appid, exc)
+        details = None
+    if details and details.get("name"):
+        name: str = details["name"]
+        return name, details.get("short_description", "")
+
+    fallback_name = name_index.get(str(appid))
+    if fallback_name:
+        logger.warning(
+            "[%s] appdetails missing for %s — using GetAppList name '%s'",
+            source_id,
+            appid,
+            fallback_name,
+        )
+        return fallback_name, ""
+
+    placeholder = f"Game #{appid}"
+    logger.warning("[%s] no name anywhere for %s — sending as '%s'", source_id, appid, placeholder)
+    return placeholder, ""
+
+
+def _enrich_with_appdetails(
+    source_id: str,
+    records: list[dict[str, Any]],
+    name_index: dict[str, str],
+) -> list[dict[str, Any]]:
+    """Populate `name`/`short_description` on every record; nothing is dropped.
+
+    Earlier revision dropped items whose `appdetails` returned `success: false`
+    — that produced silent gaps in Telegram for entire chart positions during
+    Steam flaps. Now each record reaches the notifier with at minimum a
+    placeholder name (see `_resolve_name` for the fallback chain).
     """
     enriched: list[dict[str, Any]] = []
     for rec in records:
@@ -79,16 +134,9 @@ def _enrich_with_appdetails(source_id: str, records: list[dict[str, Any]]) -> li
         if appid is None:
             logger.warning("[%s] record without appid: %s", source_id, rec)
             continue
-        try:
-            details = _fetch_appdetails(int(appid))
-        except Exception as exc:
-            logger.warning("[%s] appdetails fetch failed for %s: %s", source_id, appid, exc)
-            continue
-        if not details or not details.get("name"):
-            logger.warning("[%s] no name for appid %s", source_id, appid)
-            continue
-        rec["name"] = details["name"]
-        rec["short_description"] = details.get("short_description", "")
+        name, description = _resolve_name(int(appid), source_id, name_index)
+        rec["name"] = name
+        rec["short_description"] = description
         if rec.get("last_week_rank") == -1:
             rec["last_week_rank"] = _NEW_ENTRY_TOKEN
         enriched.append(rec)
@@ -131,9 +179,17 @@ def run_steam_pipeline(
         limit = int(source.get("limit", len(ranks)))
         top_n = ranks[:limit]
 
-        enriched = _enrich_with_appdetails(source_id, top_n)
+        try:
+            name_index = _fetch_app_name_index()
+        except Exception as exc:
+            logger.warning(
+                "[%s] GetAppList fetch failed: %s — appdetails-only mode", source_id, exc
+            )
+            name_index = {}
+
+        enriched = _enrich_with_appdetails(source_id, top_n, name_index)
         if not enriched:
-            logger.error("[%s] all appdetails lookups failed", source_id)
+            logger.error("[%s] no usable records after enrichment", source_id)
             _FAILED = True
             continue
 

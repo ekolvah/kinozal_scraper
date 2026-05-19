@@ -55,11 +55,20 @@ _APPDETAILS: dict[int, dict[str, Any] | None] = {
 }
 
 
+_APPLIST_INDEX: dict[str, str] = {
+    "730": "Counter-Strike 2 (applist)",
+    "578080": "PUBG: BATTLEGROUNDS (applist)",
+    "570": "Dota 2 (applist)",
+    "1962700": "Banana (applist)",
+}
+
+
 def _run(
     charts: dict[str, Any] | None = None,
     existing_keys: set[str] | None = None,
     sources_config: dict[str, Any] | None = None,
     appdetails: dict[int, dict[str, Any] | None] | None = None,
+    applist_index: dict[str, str] | None = None,
 ) -> tuple[InMemoryStorage, InMemoryNotifier]:
     storage = InMemoryStorage()
     if existing_keys:
@@ -67,6 +76,7 @@ def _run(
     notifier = InMemoryNotifier()
     config = sources_config or _SOURCES_CONFIG
     appd_map = appdetails if appdetails is not None else _APPDETAILS
+    name_index = applist_index if applist_index is not None else _APPLIST_INDEX
 
     def fake_appdetails(appid: int) -> dict[str, Any] | None:
         return appd_map.get(appid)
@@ -79,6 +89,10 @@ def _run(
         unittest.mock.patch(
             "steam_pipeline._fetch_appdetails",
             side_effect=fake_appdetails,
+        ),
+        unittest.mock.patch(
+            "steam_pipeline._fetch_app_name_index",
+            return_value=name_index,
         ),
     ):
         run_steam_pipeline(storage, notifier, sources_config=config)
@@ -144,18 +158,112 @@ class TestDedup(unittest.TestCase):
 
 
 class TestAppDetailsFailure(unittest.TestCase):
-    def test_missing_name_skipped_with_warning(self) -> None:
+    """Decision 4 audit fix: degraded items must reach Telegram visibly, never
+    silent-drop — see [[feedback_visibility_over_silence]]."""
+
+    def test_appdetails_missing_falls_back_to_getapplist_name(self) -> None:
+        """Primary fallback: appdetails 404 → use name from `GetAppList` index."""
         appd: dict[int, dict[str, Any] | None] = {
             730: None,
             578080: _APPDETAILS[578080],
             570: _APPDETAILS[570],
         }
         with self.assertLogs("steam_pipeline", level="WARNING") as caplog:
-            _, notifier = _run(appdetails=appd)
+            storage, notifier = _run(appdetails=appd)
         ids = {n.id for n in notifier.sent}
-        self.assertNotIn("730", ids)
-        self.assertEqual(len(notifier.sent), 2)
+        self.assertIn("730", ids)
+        self.assertEqual(len(notifier.sent), 3)
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("Counter-Strike 2 (applist)", cs2.text)
         self.assertIn("730", "\n".join(caplog.output))
+
+    def test_appdetails_exception_falls_back_to_getapplist_name(self) -> None:
+        """A raised exception from `_fetch_appdetails` must still fall through
+        to the GetAppList index, not crash the run."""
+
+        def boom(appid: int) -> dict[str, Any] | None:
+            if appid == 730:
+                raise RuntimeError("503 Service Unavailable")
+            return _APPDETAILS.get(appid)
+
+        with (
+            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+            unittest.mock.patch("steam_pipeline._fetch_appdetails", side_effect=boom),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX
+            ),
+        ):
+            storage = InMemoryStorage()
+            notifier = InMemoryNotifier()
+            run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("Counter-Strike 2 (applist)", cs2.text)
+
+    def test_both_appdetails_and_getapplist_miss_uses_appid_placeholder(self) -> None:
+        """Both lookups miss → render as 'Game #N' so the row still reaches
+        Telegram as a visible anomaly."""
+        appd: dict[int, dict[str, Any] | None] = {
+            730: None,
+            578080: _APPDETAILS[578080],
+            570: _APPDETAILS[570],
+        }
+        with self.assertLogs("steam_pipeline", level="WARNING") as caplog:
+            _, notifier = _run(appdetails=appd, applist_index={})
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("Game #730", cs2.text)
+        self.assertIn("no name anywhere", "\n".join(caplog.output))
+
+    def test_getapplist_fetched_once_per_run(self) -> None:
+        """Index is per-run, not per-item — verify single HTTP call regardless
+        of item count."""
+        calls: list[int] = []
+
+        def tracked_applist() -> dict[str, str]:
+            calls.append(1)
+            return _APPLIST_INDEX
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_appdetails",
+                side_effect=lambda appid: _APPDETAILS.get(appid),
+            ),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_app_name_index", side_effect=tracked_applist
+            ),
+        ):
+            run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+        self.assertEqual(len(calls), 1)
+
+    def test_getapplist_fetch_failure_uses_appdetails_only(self) -> None:
+        """If GetAppList itself errors, run continues — items with working
+        appdetails still get sent; items without name get placeholder."""
+        appd: dict[int, dict[str, Any] | None] = {
+            730: None,
+            578080: _APPDETAILS[578080],
+            570: _APPDETAILS[570],
+        }
+
+        def failing_applist() -> dict[str, str]:
+            raise RuntimeError("Steam API down")
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_appdetails", side_effect=lambda appid: appd.get(appid)
+            ),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_app_name_index", side_effect=failing_applist
+            ),
+        ):
+            run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("Game #730", cs2.text)
 
 
 class TestVisibility(unittest.TestCase):
@@ -192,6 +300,9 @@ class TestLimit(unittest.TestCase):
             unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
             unittest.mock.patch(
                 "steam_pipeline._fetch_appdetails", side_effect=tracking_appdetails
+            ),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX
             ),
         ):
             run_steam_pipeline(storage, notifier, sources_config=sources_config)
