@@ -65,10 +65,12 @@ Schedule: `0 4 * * *` UTC + manual `workflow_dispatch`.
 
 Steps run sequentially:
 1. **pytest** — smoke gate, fails fast
-2. **json_pipeline.py** — GitHub + Steam sources
-3. **events_pipeline.py** — Soldout events
-4. **kinozal_pipeline.py** — Kinozal movies
-5. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
+2. **json_pipeline.py** — GitHub `new_popular`
+3. **github_trending_pipeline.py** — GitHub trending (HTML + enrichment)
+4. **steam_pipeline.py** — Steam Most Played (Steam Charts API + appdetails)
+5. **events_pipeline.py** — Soldout events
+6. **kinozal_pipeline.py** — Kinozal movies
+7. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
 
 ## Environment variables
 
@@ -81,16 +83,21 @@ Steps run sequentially:
 | `TELEGRAM_BOT_TOKEN` | secret | all 4 steps |
 | `TELEGRAM_CHAT_ID` | secret | all 4 steps |
 
-### json_pipeline
+### json_pipeline / github_trending_pipeline
 
 | Variable | Type | Purpose |
 |---|---|---|
-| `GITHUB_TOKEN` | secret | GitHub API auth |
-| `GH_TOP_LIMIT` | var | max GitHub repos to fetch |
-| `STEAM_TOP_LIMIT` | var | max Steam games to fetch |
+| `GITHUB_TOKEN` | secret | GitHub API auth (json_pipeline only) |
+| `GH_TOP_LIMIT` | var | max GitHub repos to fetch (json_pipeline only) |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |
 | `GEMINI_EXCLUDED_MODELS` | var | comma-separated models to skip |
+
+### steam_pipeline
+
+| Variable | Type | Purpose |
+|---|---|---|
+| `STEAM_TOP_LIMIT` | var | max Steam Most Played entries to fetch |
 
 ### events_pipeline
 

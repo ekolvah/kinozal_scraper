@@ -21,7 +21,7 @@ _REQUIRED_SOURCE_FIELDS = {
     "fields",
     "message_template",
 }
-_SUPPORTED_TYPES = {"json", "html"}
+_SUPPORTED_TYPES = {"json", "html", "steam_charts"}
 
 
 class ConfigError(ValueError):

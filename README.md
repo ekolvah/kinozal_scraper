@@ -10,7 +10,7 @@ Runs daily at 04:00 UTC via GitHub Actions.
 |--------|------|------------|------------|
 | Kinozal top movies | HTML scraping | `movies` | Film title |
 | GitHub new popular repos | JSON (Search API) | `github_projects` | `full_name` |
-| Steam top games | JSON (SteamSpy) | `steam_games` | `appid` |
+| Steam Most Played | JSON (Steam Charts) | `steam_games` | `appid` |
 | Soldout events | HTML scraping | `soldout_events` | Event title |
 | Telegram channels | Gemini summarization | — | — |
 

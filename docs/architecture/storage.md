@@ -89,6 +89,21 @@ column unusable for cross-source analysis. Closed by #86.
 Adding a third GitHub-shaped source to `github_projects` requires producing
 `metric` in the same shape — otherwise extend this section first.
 
+### `steam_games.metric`
+
+- **Meaning**: weekly peak concurrent in-game players (`peak_in_game` from
+  `ISteamChartsService/GetMostPlayedGames`) — same number as shown on
+  https://store.steampowered.com/charts/mostplayed.
+- **Format**: integer string with no thousands separators
+  (e.g. `"1313208"`).
+- **Sources writing here**: `steam_charts_mostplayed`. The legacy SteamSpy
+  source `steam_top_games` was retired in #95 — it wrote SteamSpy's `ccu`
+  field (rolling 2-week average), a different semantic. Pre-#95 rows in
+  this tab carry that older shape; new rows use peak_in_game.
+- **Rank / last-week-rank** are Telegram-only signals; they live on the
+  template via `{rank}` and `{last_week_rank}` (drawn from `item.raw`) and
+  are never written to the row.
+
 ## Write ordering
 
 Always write to Sheets BEFORE sending to Telegram. See `pipeline.md`.
