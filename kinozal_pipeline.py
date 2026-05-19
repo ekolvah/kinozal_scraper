@@ -55,8 +55,13 @@ def _kinozal_title(raw: str) -> str:
     return raw.split(" / ")[0].strip()
 
 
-def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[NormalizedItem]:
-    """Parse kinozal HTML and return items with clean titles and raw dedupe_keys.
+def _extract_kinozal_items(html: str, source: dict[str, Any]) -> PipelineResult:
+    """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
+
+    Returns the underlying `extract_from_html` result (errors included) so the
+    runner can propagate failures to its own PipelineResult. Earlier revision
+    swallowed `extract_from_html` errors and returned `[]`, hiding HTML drift
+    from `__main__`'s exit-code surface.
 
     Items with an empty `url` after extraction still go through — the user sees
     a notification without a link, reports it, and we fix the drift. Silently
@@ -66,7 +71,7 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
     result = extract_from_html(html, source)
     if not result.ok:
         logger.error("[%s] extraction errors: %s", source["id"], result.errors)
-        return []
+        return result
     for item in result.items:
         if not item.url:
             logger.warning(
@@ -76,7 +81,7 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
         item.title = _kinozal_title(item.title)
-    return result.items
+    return result
 
 
 def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
@@ -145,9 +150,9 @@ def run_kinozal_pipeline(
             results.append(result)
         return results
 
-    # Fetch HTML for every (source × url) pair, recording per-source fetch errors.
-    # Items keep their source_id from extract_from_html so the per-source result
-    # below picks them up correctly.
+    # Fetch HTML for every (source × url) pair, recording per-source fetch and
+    # extraction errors. Items keep their source_id from extract_from_html so
+    # the per-source result below picks them up correctly.
     all_items: list[NormalizedItem] = []
     for source in kinozal_sources:
         result = PipelineResult(source_id=source["id"])
@@ -158,7 +163,11 @@ def run_kinozal_pipeline(
                 logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
                 continue
-            all_items.extend(_extract_kinozal_items(html_text, source))
+            extracted = _extract_kinozal_items(html_text, source)
+            if not extracted.ok:
+                result.errors.extend(extracted.errors)
+                continue
+            all_items.extend(extracted.items)
         results.append(result)
 
     if not all_items:

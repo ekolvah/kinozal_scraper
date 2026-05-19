@@ -467,6 +467,31 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             results = run_kinozal_pipeline(storage2, notifier2, _FakeYoutube(), _SOURCES_CONFIG)
         self.assertTrue(all(r.ok for r in results))
 
+    def test_extraction_failure_propagates_to_result_errors(self) -> None:
+        """HTML drift (selector matches zero rows) must surface as result.errors,
+        not be swallowed silently. Previously _extract_kinozal_items logged and
+        returned [], hiding the failure from __main__'s exit-code surface (review
+        finding on PR #102)."""
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch("kinozal_pipeline._fetch_html", return_value="<html></html>"),
+            unittest.mock.patch.dict(
+                os.environ,
+                {"URLS": "top|https://test.example/top.php"},
+                clear=False,
+            ),
+        ):
+            results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
+        self.assertTrue(
+            any(not r.ok for r in results),
+            f"expected at least one not-ok result, got: {[(r.source_id, r.ok) for r in results]}",
+        )
+        self.assertTrue(
+            any(r.errors for r in results),
+            f"expected extraction errors to propagate, got: {[r.errors for r in results]}",
+        )
+
 
 class TestKinozalEmptyUrlGuard(unittest.TestCase):
     def test_url_field_drift_logs_warning_but_still_notifies(self) -> None:
