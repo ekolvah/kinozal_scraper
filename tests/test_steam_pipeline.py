@@ -21,15 +21,14 @@ _SOURCE: dict[str, Any] = {
     "dedupe_key": "appid",
     "fields": {
         "title": "name",
-        "url": None,
+        "url": "store_url",
         "description": "short_description",
         "metric": "peak_in_game",
         "image_url": None,
     },
     "message_template": (
-        "<b>{title}</b>\n{description}\nPeak players: {metric}\n"
-        "Rank: {rank} (last week: {last_week_rank})\n"
-        "https://store.steampowered.com/app/{appid}"
+        "<b>{title_link}</b>\n{description}\nPeak players: {metric}\n"
+        "Rank: {rank} (last week: {last_week_rank})"
     ),
 }
 
@@ -133,7 +132,17 @@ class TestNotificationTemplate(unittest.TestCase):
         self.assertIn("Counter-Strike 2", cs2.text)
         self.assertIn("1313208", cs2.text)
         self.assertIn("Rank: 1", cs2.text)
-        self.assertIn("https://store.steampowered.com/app/730", cs2.text)
+        self.assertIn(
+            '<a href="https://store.steampowered.com/app/730">Counter-Strike 2</a>',
+            cs2.text,
+        )
+
+    def test_no_standalone_url_line(self) -> None:
+        """The store URL must appear only inside the title's anchor href,
+        not as a separate trailing line that duplicates the title."""
+        _, notifier = _run()
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertNotIn("\nhttps://store.steampowered.com/app/730", cs2.text)
 
     def test_new_entry_last_week_normalised(self) -> None:
         """`last_week_rank: -1` is the API's marker for new entries; the template

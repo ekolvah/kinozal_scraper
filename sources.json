@@ -76,12 +76,12 @@
       "dedupe_key": "appid",
       "fields": {
         "title": "name",
-        "url": null,
+        "url": "store_url",
         "description": "short_description",
         "metric": "peak_in_game",
         "image_url": null
       },
-      "message_template": "<b>{title}</b>\n{description}\nPeak players: {metric}\nRank: {rank} (last week: {last_week_rank})\nhttps://store.steampowered.com/app/{appid}"
+      "message_template": "<b>{title_link}</b>\n{description}\nPeak players: {metric}\nRank: {rank} (last week: {last_week_rank})"
     },
     {
       "id": "kinozal_movies",
