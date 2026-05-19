@@ -11,6 +11,7 @@ from gemini_enricher import Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
+    PipelineResult,
     build_notification,
     extract_from_html,
 )
@@ -35,22 +36,6 @@ _FETCH_HEADERS = {
 
 _SOURCE_ID = "github_trending"
 _SHEET_TAB = "github_projects"
-
-
-# Module-level failure flag — flipped True when any selected source yields
-# zero items with non-empty errors. The __main__ block translates this to
-# sys.exit(1) so the GitHub Actions step turns red (Principle IV).
-_FAILED = False
-
-
-def _did_fail() -> bool:
-    return _FAILED
-
-
-def _reset_failure() -> None:
-    """Test helper — clear the module-level failure flag between runs."""
-    global _FAILED
-    _FAILED = False
 
 
 def _fetch_html(url: str) -> str:
@@ -121,15 +106,13 @@ def run_github_trending_pipeline(
     notifier: Notifier,
     enricher: Enricher | None = None,
     sources_config: dict[str, Any] | None = None,
-) -> None:
-    global _FAILED
-    _reset_failure()
-
+) -> list[PipelineResult]:
+    results: list[PipelineResult] = []
     config = sources_config or load_sources_config()
     trending_sources = [s for s in config["sources"] if s.get("enabled") and s["id"] == _SOURCE_ID]
     if not trending_sources:
         logger.info("no enabled '%s' source found", _SOURCE_ID)
-        return
+        return results
 
     for source in trending_sources:
         url: str = source.get("url", "")
@@ -137,20 +120,23 @@ def run_github_trending_pipeline(
             logger.warning("[%s] no URL configured", source["id"])
             continue
 
+        result = PipelineResult(source_id=source["id"])
         try:
             html_text = _fetch_html(url)
         except Exception as exc:
             logger.error("[%s] fetch failed: %s", source["id"], exc)
-            _FAILED = True
+            result.errors.append(f"fetch failed: {exc}")
+            results.append(result)
             continue
 
-        result = extract_from_html(html_text, source)
-        if not result.items and result.errors:
-            logger.error("[%s] extraction errors: %s", source["id"], result.errors)
-            _FAILED = True
+        extracted = extract_from_html(html_text, source)
+        if not extracted.items and extracted.errors:
+            logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
+            result.errors.extend(extracted.errors)
+            results.append(result)
             continue
 
-        items = _normalize_items(result.items)
+        items = _normalize_items(extracted.items)
         _enrich_with_stars_today(html_text, items)
         for item in items:
             if not item.metric:
@@ -166,11 +152,14 @@ def run_github_trending_pipeline(
                     item.dedupe_key,
                 )
 
+        result.items = items
+
         sheet_tab: str = source["sheet_tab"]
         existing = storage.get_existing_keys(sheet_tab)
         new_items = [i for i in items if i.dedupe_key not in existing]
         if not new_items:
             logger.info("[%s] no new items", source["id"])
+            results.append(result)
             continue
 
         enrich_config = source.get("enrich")
@@ -208,6 +197,9 @@ def run_github_trending_pipeline(
         if failed:
             logger.warning("[%s] %d notification(s) failed", source["id"], len(failed))
         logger.info("[%s] sent %d notification(s)", source["id"], len(sent))
+        results.append(result)
+
+    return results
 
 
 if __name__ == "__main__":
@@ -252,12 +244,12 @@ if __name__ == "__main__":
 
     prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
 
-    run_github_trending_pipeline(
+    prod_results = run_github_trending_pipeline(
         prod_storage,
         prod_notifier,
         enricher=prod_enricher,
         sources_config=sources_config,
     )
 
-    if _did_fail():
+    if any(not r.ok for r in prod_results):
         sys.exit(1)

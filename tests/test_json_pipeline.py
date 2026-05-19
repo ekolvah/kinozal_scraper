@@ -4,6 +4,7 @@ import unittest
 import unittest.mock
 from typing import Any
 
+from generic_pipeline import PipelineResult
 from json_pipeline import _unwrap_records, run_json_pipeline
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
@@ -203,6 +204,62 @@ class TestJsonPipelineSourceIsolation(unittest.TestCase):
             run_json_pipeline(storage, notifier, sources_config=config)
 
         self.assertEqual(len(notifier.sent), 3)
+
+
+# ── exit-code surface (issue #97) ─────────────────────────────────────────────
+
+
+class TestJsonPipelineExitCodeSurface(unittest.TestCase):
+    """run_json_pipeline must return list[PipelineResult] so __main__ can
+    sys.exit(1) on failed source. Previously errors were silent — see #97."""
+
+    def test_fetch_failure_returns_not_ok_result(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "json_pipeline._fetch_json", side_effect=ConnectionError("network down")
+        ):
+            results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+        self.assertIsInstance(results, list)
+        self.assertEqual(len(results), 1)
+        self.assertIsInstance(results[0], PipelineResult)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(
+            any("fetch failed" in err for err in results[0].errors),
+            f"expected 'fetch failed' in errors, got: {results[0].errors}",
+        )
+
+    def test_successful_run_returns_all_ok_results(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_GITHUB_RESPONSE):
+            results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+        self.assertTrue(all(r.ok for r in results))
+        self.assertEqual([r.source_id for r in results], ["github_new_popular"])
+
+    def test_partial_failure_one_ok_one_not(self) -> None:
+        broken_source: dict[str, Any] = {
+            **_GITHUB_SOURCE,
+            "id": "broken_source",
+            "url": "https://broken.example.com",
+            "sheet_tab": "broken",
+        }
+        config = {"version": 1, "sources": [broken_source, _GITHUB_SOURCE]}
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+
+        def side_effect(url: str, params: Any, headers: Any) -> Any:
+            if "broken" in url:
+                raise ConnectionError("network down")
+            return _GITHUB_RESPONSE
+
+        with unittest.mock.patch("json_pipeline._fetch_json", side_effect=side_effect):
+            results = run_json_pipeline(storage, notifier, sources_config=config)
+
+        self.assertEqual(len(results), 2)
+        ok_by_id = {r.source_id: r.ok for r in results}
+        self.assertFalse(ok_by_id["broken_source"])
+        self.assertTrue(ok_by_id["github_new_popular"])
 
 
 class TestEmptyAuthHeaderStripped(unittest.TestCase):

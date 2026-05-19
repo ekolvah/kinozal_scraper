@@ -3,7 +3,7 @@ import unittest.mock
 from typing import Any
 
 from events_pipeline import run_events_pipeline
-from generic_pipeline import extract_from_html
+from generic_pipeline import PipelineResult, extract_from_html
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 
@@ -182,6 +182,38 @@ class TestEventsPipelineEdgeCases(unittest.TestCase):
             run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("events"), [])
         self.assertEqual(notifier.sent, [])
+
+
+# ── exit-code surface (issue #97) ─────────────────────────────────────────────
+
+
+class TestEventsPipelineExitCodeSurface(unittest.TestCase):
+    """The runner must return list[PipelineResult] so __main__ can sys.exit(1)
+    on any failed source. Previously fetch errors were silent — see issue #97."""
+
+    def test_fetch_failure_returns_not_ok_result(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch("events_pipeline._fetch_html", side_effect=RuntimeError("boom")):
+            results = run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+        self.assertIsInstance(results, list)
+        self.assertEqual(len(results), 1)
+        self.assertIsInstance(results[0], PipelineResult)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(
+            any("fetch failed" in err for err in results[0].errors),
+            f"expected 'fetch failed' in errors, got: {results[0].errors}",
+        )
+
+    def test_successful_run_returns_all_ok_results(self) -> None:
+        storage, notifier = _run()
+        # Re-invoke directly to capture the return value (helper discards it).
+        storage2 = InMemoryStorage()
+        notifier2 = InMemoryNotifier()
+        with unittest.mock.patch("events_pipeline._fetch_html", return_value=_SOLDOUT_HTML):
+            results = run_events_pipeline(storage2, notifier2, sources_config=_SOURCES_CONFIG)
+        self.assertTrue(all(r.ok for r in results))
+        self.assertEqual([r.source_id for r in results], ["soldout_events"])
 
 
 if __name__ == "__main__":

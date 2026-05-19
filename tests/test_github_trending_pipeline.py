@@ -9,7 +9,6 @@ from typing import Any
 from gemini_enricher import QuotaExhausted
 from generic_pipeline import extract_from_html
 from github_trending_pipeline import (
-    _did_fail,
     _normalize_items,
     run_github_trending_pipeline,
 )
@@ -156,10 +155,18 @@ class TestUS2CrossSourceDedupe(unittest.TestCase):
 
 class TestUS3Visibility(unittest.TestCase):
     def test_zero_row_extraction_signals_failure(self) -> None:
-        storage, notifier = _run(html="<html><body></body></html>")
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "github_trending_pipeline._fetch_html",
+            return_value="<html><body></body></html>",
+        ):
+            results = run_github_trending_pipeline(
+                storage, notifier, sources_config=_SOURCES_CONFIG
+            )
         self.assertEqual(notifier.sent, [])
         self.assertEqual(storage.stored_rows("github_projects"), [])
-        self.assertTrue(_did_fail())
+        self.assertTrue(any(not r.ok for r in results))
 
     def test_partial_row_logs_warning_for_missing_metric(self) -> None:
         html = """

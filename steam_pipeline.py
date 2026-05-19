@@ -7,6 +7,7 @@ import requests
 
 from generic_pipeline import (
     ROW_HEADERS,
+    PipelineResult,
     build_notification,
     extract_from_json,
 )
@@ -23,22 +24,6 @@ _APPLIST_URL = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 # `last_week_rank: -1` is the API's sentinel for new entries; we surface a
 # human-friendly token via the template (see test_new_entry_last_week_normalised).
 _NEW_ENTRY_TOKEN = "new"
-
-# Module-level failure flag — flipped True when any selected source produces
-# zero items or fails to fetch. The __main__ block translates this to
-# sys.exit(1) so the GitHub Actions step turns red (Principle IV, mirrors
-# github_trending_pipeline._FAILED).
-_FAILED = False
-
-
-def _did_fail() -> bool:
-    return _FAILED
-
-
-def _reset_failure() -> None:
-    """Test helper — clear the module-level failure flag between runs."""
-    global _FAILED
-    _FAILED = False
 
 
 def _fetch_charts(url: str) -> dict[str, Any]:
@@ -148,9 +133,8 @@ def run_steam_pipeline(
     storage: Storage,
     notifier: Notifier,
     sources_config: dict[str, Any] | None = None,
-) -> None:
-    global _FAILED
-    _reset_failure()
+) -> list[PipelineResult]:
+    results: list[PipelineResult] = []
 
     config = sources_config or load_sources_config()
     steam_sources = [
@@ -158,23 +142,26 @@ def run_steam_pipeline(
     ]
     if not steam_sources:
         logger.info("no enabled '%s' source found", _SOURCE_TYPE)
-        return
+        return results
 
     for source in steam_sources:
         source_id: str = source["id"]
         url: str = source["url"]
+        result = PipelineResult(source_id=source_id)
 
         try:
             data = _fetch_charts(url)
         except Exception as exc:
             logger.error("[%s] charts fetch failed: %s", source_id, exc)
-            _FAILED = True
+            result.errors.append(f"charts fetch failed: {exc}")
+            results.append(result)
             continue
 
         ranks = data.get("response", {}).get("ranks", [])
         if not isinstance(ranks, list) or not ranks:
             logger.error("[%s] empty 'response.ranks' in charts payload", source_id)
-            _FAILED = True
+            result.errors.append("empty 'response.ranks' in charts payload")
+            results.append(result)
             continue
 
         limit = int(source.get("limit", len(ranks)))
@@ -191,20 +178,24 @@ def run_steam_pipeline(
         enriched = _enrich_with_appdetails(source_id, top_n, name_index)
         if not enriched:
             logger.error("[%s] no usable records after enrichment", source_id)
-            _FAILED = True
+            result.errors.append("no usable records after enrichment")
+            results.append(result)
             continue
 
-        result = extract_from_json(enriched, source)
-        if not result.items:
-            logger.error("[%s] extraction errors: %s", source_id, result.errors)
-            _FAILED = True
+        extracted = extract_from_json(enriched, source)
+        if not extracted.items:
+            logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
+            result.errors.extend(extracted.errors or ["extraction yielded no items"])
+            results.append(result)
             continue
+        result.items = extracted.items
 
         sheet_tab: str = source["sheet_tab"]
         existing = storage.get_existing_keys(sheet_tab)
         new_items = [i for i in result.items if i.dedupe_key not in existing]
         if not new_items:
             logger.info("[%s] no new items", source_id)
+            results.append(result)
             continue
 
         storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in new_items])
@@ -215,6 +206,9 @@ def run_steam_pipeline(
         if failed:
             logger.warning("[%s] %d notification(s) failed", source_id, len(failed))
         logger.info("[%s] sent %d notification(s)", source_id, len(sent))
+        results.append(result)
+
+    return results
 
 
 if __name__ == "__main__":
@@ -255,7 +249,7 @@ if __name__ == "__main__":
         prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
         prod_notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
 
-    run_steam_pipeline(prod_storage, prod_notifier, sources_config=prod_config)
+    prod_results = run_steam_pipeline(prod_storage, prod_notifier, sources_config=prod_config)
 
-    if _did_fail():
+    if any(not r.ok for r in prod_results):
         sys.exit(1)
