@@ -77,7 +77,7 @@ httplib2==0.31.2
     #   google-api-python-client
     #   google-auth-httplib2
     #   oauth2client
-idna==3.13
+idna==3.15
     # via
     #   requests
     #   trio
