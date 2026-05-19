@@ -137,6 +137,7 @@ def _enrich_with_appdetails(
         name, description = _resolve_name(int(appid), source_id, name_index)
         rec["name"] = name
         rec["short_description"] = description
+        rec["store_url"] = f"https://store.steampowered.com/app/{appid}"
         if rec.get("last_week_rank") == -1:
             rec["last_week_rank"] = _NEW_ENTRY_TOKEN
         enriched.append(rec)
