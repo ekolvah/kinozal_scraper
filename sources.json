@@ -67,26 +67,21 @@
       "message_template": "<b>{title}</b>\n{summary_ru}\n⭐ {metric} (+{stars_today} today)\n{url}"
     },
     {
-      "id": "steam_top_games",
+      "id": "steam_charts_mostplayed",
       "enabled": true,
-      "type": "json",
-      "url": "https://steamspy.com/api.php",
-      "params": {
-        "request": "top100in2weeks"
-      },
-      "sort_by": "ccu",
-      "sort_reverse": true,
+      "type": "steam_charts",
+      "url": "https://api.steampowered.com/ISteamChartsService/GetMostPlayedGames/v1/",
       "limit": "{{STEAM_TOP_LIMIT}}",
       "sheet_tab": "steam_games",
       "dedupe_key": "appid",
       "fields": {
         "title": "name",
         "url": null,
-        "description": "developer",
-        "metric": "ccu",
+        "description": "short_description",
+        "metric": "peak_in_game",
         "image_url": null
       },
-      "message_template": "<b>{title}</b>\nDeveloper: {description}\nPlayers: {metric}\nhttps://store.steampowered.com/app/{appid}"
+      "message_template": "<b>{title}</b>\n{description}\nPeak players: {metric}\nRank: {rank} (last week: {last_week_rank})\nhttps://store.steampowered.com/app/{appid}"
     },
     {
       "id": "kinozal_movies",
