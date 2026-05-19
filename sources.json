@@ -36,7 +36,7 @@
         },
         "on_error": ""
       },
-      "message_template": "<b>{title}</b>\n{summary_ru}\n⭐ {metric} | {language}\n{url}"
+      "message_template": "<b>{title_link}</b>\n{summary_ru}\n⭐ {metric} | {language}"
     },
     {
       "id": "github_trending",
@@ -64,7 +64,7 @@
         },
         "on_error": ""
       },
-      "message_template": "<b>{title}</b>\n{summary_ru}\n⭐ {metric} (+{stars_today} today)\n{url}"
+      "message_template": "<b>{title_link}</b>\n{summary_ru}\n⭐ {metric} (+{stars_today} today)"
     },
     {
       "id": "steam_charts_mostplayed",
