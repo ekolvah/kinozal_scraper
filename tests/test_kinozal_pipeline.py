@@ -3,7 +3,7 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from generic_pipeline import NormalizedItem, Notification, extract_from_html
+from generic_pipeline import NormalizedItem, Notification, PipelineResult, extract_from_html
 from kinozal_pipeline import (
     _kinozal_title,
     _kinozal_urls,
@@ -421,6 +421,76 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("movies"), [])
         self.assertEqual(notifier.sent, [])
+
+
+# ── exit-code surface (issue #97) ─────────────────────────────────────────────
+
+
+class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
+    """run_kinozal_pipeline must return list[PipelineResult] so __main__ can
+    sys.exit(1) on failed source. Previously fetch errors were silent — #97."""
+
+    def test_fetch_failure_returns_not_ok_result(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch("kinozal_pipeline._fetch_html", side_effect=RuntimeError("boom")),
+            unittest.mock.patch.dict(
+                os.environ,
+                {"URLS": "top|https://test.example/top.php"},
+                clear=False,
+            ),
+        ):
+            results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
+        self.assertIsInstance(results, list)
+        self.assertTrue(len(results) >= 1)
+        self.assertIsInstance(results[0], PipelineResult)
+        self.assertTrue(any(not r.ok for r in results))
+        self.assertTrue(
+            any("fetch failed" in err for r in results for err in r.errors),
+            f"expected 'fetch failed' in any result's errors, got: {[r.errors for r in results]}",
+        )
+
+    def test_successful_run_returns_all_ok_results(self) -> None:
+        storage, notifier = _run()
+        # Re-invoke directly to capture return value (helper discards it).
+        storage2 = InMemoryStorage()
+        notifier2 = InMemoryNotifier()
+        with (
+            unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=_KINOZAL_HTML),
+            unittest.mock.patch.dict(
+                os.environ,
+                {"URLS": "top|https://test.example/top.php"},
+                clear=False,
+            ),
+        ):
+            results = run_kinozal_pipeline(storage2, notifier2, _FakeYoutube(), _SOURCES_CONFIG)
+        self.assertTrue(all(r.ok for r in results))
+
+    def test_extraction_failure_propagates_to_result_errors(self) -> None:
+        """HTML drift (selector matches zero rows) must surface as result.errors,
+        not be swallowed silently. Previously _extract_kinozal_items logged and
+        returned [], hiding the failure from __main__'s exit-code surface (review
+        finding on PR #102)."""
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch("kinozal_pipeline._fetch_html", return_value="<html></html>"),
+            unittest.mock.patch.dict(
+                os.environ,
+                {"URLS": "top|https://test.example/top.php"},
+                clear=False,
+            ),
+        ):
+            results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
+        self.assertTrue(
+            any(not r.ok for r in results),
+            f"expected at least one not-ok result, got: {[(r.source_id, r.ok) for r in results]}",
+        )
+        self.assertTrue(
+            any(r.errors for r in results),
+            f"expected extraction errors to propagate, got: {[r.errors for r in results]}",
+        )
 
 
 class TestKinozalEmptyUrlGuard(unittest.TestCase):

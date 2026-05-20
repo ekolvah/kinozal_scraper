@@ -28,7 +28,7 @@ class TestKinozalTitlesE2E(unittest.TestCase):
         fallback_url = kinozal_sources[0]["base_url"] + "/top.php"
         url = urls[0] if urls else fallback_url
         html = _fetch_html(url)
-        cls.items = _extract_kinozal_items(html, kinozal_sources[0])
+        cls.items = _extract_kinozal_items(html, kinozal_sources[0]).items
 
     def test_items_extracted(self) -> None:
         self.assertGreater(len(self.items), 0, "no items returned from kinozal")

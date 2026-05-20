@@ -11,6 +11,7 @@ from generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     Notification,
+    PipelineResult,
     build_notification,
     extract_from_html,
 )
@@ -54,8 +55,13 @@ def _kinozal_title(raw: str) -> str:
     return raw.split(" / ")[0].strip()
 
 
-def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[NormalizedItem]:
-    """Parse kinozal HTML and return items with clean titles and raw dedupe_keys.
+def _extract_kinozal_items(html: str, source: dict[str, Any]) -> PipelineResult:
+    """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
+
+    Returns the underlying `extract_from_html` result (errors included) so the
+    runner can propagate failures to its own PipelineResult. Earlier revision
+    swallowed `extract_from_html` errors and returned `[]`, hiding HTML drift
+    from `__main__`'s exit-code surface.
 
     Items with an empty `url` after extraction still go through — the user sees
     a notification without a link, reports it, and we fix the drift. Silently
@@ -65,7 +71,7 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
     result = extract_from_html(html, source)
     if not result.ok:
         logger.error("[%s] extraction errors: %s", source["id"], result.errors)
-        return []
+        return result
     for item in result.items:
         if not item.url:
             logger.warning(
@@ -75,7 +81,7 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> list[Normalized
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
         item.title = _kinozal_title(item.title)
-    return result.items
+    return result
 
 
 def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
@@ -121,14 +127,15 @@ def run_kinozal_pipeline(
     notifier: Notifier,
     youtube: Any,
     sources_config: dict[str, Any] | None = None,
-) -> None:
+) -> list[PipelineResult]:
+    results: list[PipelineResult] = []
     config = sources_config or load_sources_config()
     kinozal_sources = [
         s for s in config["sources"] if s.get("enabled") and s["id"].startswith("kinozal_")
     ]
     if not kinozal_sources:
         logger.info("no enabled kinozal sources found")
-        return
+        return results
 
     source_map = {s["id"]: s for s in kinozal_sources}
 
@@ -137,29 +144,49 @@ def run_kinozal_pipeline(
     urls = _kinozal_urls()
     if not urls:
         logger.error("kinozal pipeline: no URLs configured (set URLS or KINOZAL_TOP_URL)")
-        return
+        for source in kinozal_sources:
+            result = PipelineResult(source_id=source["id"])
+            result.errors.append("no URLs configured (set URLS or KINOZAL_TOP_URL)")
+            results.append(result)
+        return results
 
+    # Fetch HTML for every (source × url) pair, recording per-source fetch and
+    # extraction errors. Items keep their source_id from extract_from_html so
+    # the per-source result below picks them up correctly.
     all_items: list[NormalizedItem] = []
     for source in kinozal_sources:
+        result = PipelineResult(source_id=source["id"])
         for url in urls:
             try:
                 html_text = _fetch_html(url)
             except Exception as exc:
                 logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
+                result.errors.append(f"fetch failed for {url}: {exc}")
                 continue
-            all_items.extend(_extract_kinozal_items(html_text, source))
+            extracted = _extract_kinozal_items(html_text, source)
+            if not extracted.ok:
+                result.errors.extend(extracted.errors)
+                continue
+            all_items.extend(extracted.items)
+        results.append(result)
 
     if not all_items:
         logger.info("kinozal pipeline: no items extracted")
-        return
+        return results
 
     all_items = _normalize_items(all_items)
+    # Re-attach items to their per-source result so callers can inspect coverage.
+    items_by_source: dict[str, list[NormalizedItem]] = {}
+    for item in all_items:
+        items_by_source.setdefault(item.source_id, []).append(item)
+    for result in results:
+        result.items = items_by_source.get(result.source_id, [])
 
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
     if not new_items:
         logger.info("kinozal pipeline: no new items")
-        return
+        return results
 
     # Write to storage BEFORE sending notifications to prevent duplicates on crash
     storage.append_rows("movies", ROW_HEADERS, [i.to_row() for i in new_items])
@@ -174,9 +201,12 @@ def run_kinozal_pipeline(
     if failed:
         logger.warning("kinozal pipeline: %d notification(s) failed", len(failed))
 
+    return results
+
 
 if __name__ == "__main__":
     import json
+    import sys
 
     import gspread
 
@@ -195,4 +225,7 @@ if __name__ == "__main__":
         os.environ["TELEGRAM_CHAT_ID"],
     )
     youtube = Youtube()
-    run_kinozal_pipeline(storage, notifier, youtube)
+    prod_results = run_kinozal_pipeline(storage, notifier, youtube)
+
+    if any(not r.ok for r in prod_results):
+        sys.exit(1)

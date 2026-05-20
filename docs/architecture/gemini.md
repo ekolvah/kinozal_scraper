@@ -55,7 +55,37 @@ Set as GitHub Actions variable (not secret) — see [ci.md](ci.md).
 Prompts live in `sources.json` under each source's `enrich` section:
 - `prompt` — `string.Template` with `$title`, `$description`, `$metric`, `$url`, `$source_id` + any `raw` fields
 - `parameters.temperature` (default 0.2), `parameters.max_tokens` (default 150)
+- `response_pattern` (optional) — regex; if set, the model's answer is validated against it after markdown-strip. On mismatch the answer is replaced with the visible-anomaly marker (see below).
 - `on_error` — fallback value if enrichment fails (default: empty string)
+
+### Input sanitization
+
+Before substitution, `$description` is sanitized: fenced code blocks are
+removed, leading `*`/`#`/`>` markers are stripped, whitespace is collapsed,
+and the text is truncated to 400 characters. This is a defensive shaping of
+the *prompt input* — `item.description` itself is left untouched. Rationale:
+raw `<p>` from GitHub trending HTML often contains README markdown that
+correlated with echo / format-leak in model output (issue #106 — closed
+not-planned, fix lives in PR #102).
+
+### Output validation and fallback
+
+`_generate` reads `response.candidates[0].finish_reason`:
+
+- `STOP` → answer is markdown-stripped (outer ``` fences, `**bold**`
+  wrappers, leading `*`/`-` bullets) and returned.
+- `MAX_TOKENS` or `SAFETY` → `TruncatedResponse` is raised. `enrich` catches
+  it and returns the **fallback** value: `on_error` if non-empty, otherwise
+  `FALLBACK_MARKER = "⚠️ summary unavailable"`.
+
+After successful generation, if `response_pattern` is set on the source's
+`enrich` block, the cleaned text is matched against it. A mismatch (model
+echoed the instruction, produced markdown listing, etc.) also routes to the
+fallback marker.
+
+Every call logs `model_name`, `prompt_len`, `resp_len`, `finish_reason`,
+and the first line of the answer at INFO level — the diagnostic surface
+needed to triage drift without instrumenting each call ad hoc.
 
 ## `summary_ru` invariant (GitHub sources)
 

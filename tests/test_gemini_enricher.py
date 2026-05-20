@@ -6,13 +6,39 @@ import unittest.mock
 from typing import Any
 
 from gemini_enricher import (
+    FALLBACK_MARKER,
     Enricher,
+    GeminiEnricher,
     NullEnricher,
     QuotaExhausted,
     RotatingGeminiEnricher,
+    TruncatedResponse,
     build_default_enricher,
 )
 from generic_pipeline import NormalizedItem
+
+
+class _FakeCandidate:
+    def __init__(self, finish_reason: str) -> None:
+        self.finish_reason = finish_reason
+
+
+class _FakeResponse:
+    def __init__(self, text: str, finish_reason: str = "STOP") -> None:
+        self.text = text
+        self.candidates = [_FakeCandidate(finish_reason)]
+
+
+class _FakeGenerativeModel:
+    """Stand-in for `genai.GenerativeModel` capturing the prompt and returning a canned response."""
+
+    def __init__(self, response: _FakeResponse) -> None:
+        self._response = response
+        self.last_prompt: str = ""
+
+    def generate_content(self, prompt: str, generation_config: Any = None) -> _FakeResponse:  # noqa: ARG002
+        self.last_prompt = prompt
+        return self._response
 
 
 def _item(key: str = "x") -> NormalizedItem:
@@ -57,6 +83,181 @@ class TestPromptTemplateSubstitution(unittest.TestCase):
         result = string.Template(template).safe_substitute(context)
         self.assertIn("repo", result)
         self.assertIn("$language", result)
+
+
+_TWO_LINE_PATTERN = r"^Для кого:\s*.+\nЗачем:\s*.+"
+
+_TWO_LINE_CFG: dict[str, Any] = {
+    "field": "summary_ru",
+    "prompt": "Inst. Title: $title\nDesc: $description",
+    "response_pattern": _TWO_LINE_PATTERN,
+    "parameters": {"temperature": 0.2, "max_tokens": 220},
+    "on_error": "",
+}
+
+
+class TestGenerateFinishReason(unittest.TestCase):
+    """`_generate` must surface MAX_TOKENS / SAFETY truncation as
+    `TruncatedResponse`, not silently return a half-finished string that
+    pollutes the Telegram notification (review of broken 19.05.2026 batch)."""
+
+    def test_max_tokens_raises_truncated_response(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
+        with (
+            unittest.mock.patch(
+                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            ),
+            self.assertRaises(TruncatedResponse),
+        ):
+            enricher._generate(
+                "p",
+                __import__("google.generativeai", fromlist=["types"]).types.GenerationConfig(),
+            )
+
+    def test_safety_raises_truncated_response(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="…", finish_reason="SAFETY")
+        with (
+            unittest.mock.patch(
+                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            ),
+            self.assertRaises(TruncatedResponse),
+        ):
+            enricher._generate(
+                "p",
+                __import__("google.generativeai", fromlist=["types"]).types.GenerationConfig(),
+            )
+
+    def test_stop_returns_stripped_text(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="  Для кого: X\nЗачем: Y\n  ", finish_reason="STOP")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher._generate(
+                "p",
+                __import__("google.generativeai", fromlist=["types"]).types.GenerationConfig(),
+            )
+        self.assertEqual(result, "Для кого: X\nЗачем: Y")
+
+
+class TestEnrichFallbackOnTruncation(unittest.TestCase):
+    def test_truncation_returns_fallback_marker_when_on_error_empty(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), _TWO_LINE_CFG)
+        self.assertEqual(result, FALLBACK_MARKER)
+
+    def test_truncation_returns_on_error_when_non_empty(self) -> None:
+        cfg = {**_TWO_LINE_CFG, "on_error": "custom-fallback"}
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), cfg)
+        self.assertEqual(result, "custom-fallback")
+
+
+class TestEnrichFormatValidation(unittest.TestCase):
+    """When `enrich.response_pattern` is set, the answer must match — otherwise
+    the malformed text is replaced with a visible-anomaly marker so the user
+    sees a tripwire in Telegram instead of garbage (Constitution Principle IV)."""
+
+    def test_echo_prompt_returns_fallback_marker(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        # Real-world bad output captured 19.05.2026: model echoed the instruction.
+        response = _FakeResponse(text="строка 1:\nстрока 2:", finish_reason="STOP")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), _TWO_LINE_CFG)
+        self.assertEqual(result, FALLBACK_MARKER)
+
+    def test_markdown_wrap_around_valid_text_is_stripped_and_accepted(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        # Some models like to wrap structured output in fenced code blocks.
+        wrapped = "```\nДля кого: разработчиков\nЗачем: ускорить сборку\n```"
+        response = _FakeResponse(text=wrapped, finish_reason="STOP")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), _TWO_LINE_CFG)
+        self.assertEqual(result, "Для кого: разработчиков\nЗачем: ускорить сборку")
+
+    def test_valid_two_line_passes_through(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(
+            text="Для кого: разработчиков\nЗачем: ускорить сборку", finish_reason="STOP"
+        )
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), _TWO_LINE_CFG)
+        self.assertEqual(result, "Для кого: разработчиков\nЗачем: ускорить сборку")
+
+    def test_no_response_pattern_skips_validation(self) -> None:
+        """Configs without `response_pattern` (e.g. free-form prompts) must
+        not enforce the two-line shape — validation is opt-in per source."""
+        cfg = {**_TWO_LINE_CFG}
+        del cfg["response_pattern"]
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="anything goes here", finish_reason="STOP")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), cfg)
+        self.assertEqual(result, "anything goes here")
+
+
+class TestPromptSanitization(unittest.TestCase):
+    """The `$description` substituted into the prompt comes from raw <p> tags
+    of trending HTML and frequently contains markdown noise (` ``` ` fences,
+    leading `*`/`#`). That noise was correlated with echo / markdown leaks in
+    the 19.05.2026 batch. Sanitize before substitution; do NOT mutate the
+    item itself."""
+
+    def test_description_markdown_stripped_before_substitution(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        item = NormalizedItem(
+            dedupe_key="x",
+            title="proj",
+            source_id="s",
+            description="```js\nconst x = 1;\n```\n* feature one\n# heading",
+            raw={},
+        )
+        response = _FakeResponse(
+            text="Для кого: X\nЗачем: Y",
+            finish_reason="STOP",
+        )
+        fake = _FakeGenerativeModel(response)
+        with unittest.mock.patch("gemini_enricher.genai.GenerativeModel", return_value=fake):
+            enricher.enrich(item, _TWO_LINE_CFG)
+        # description was the raw markdown blob — it should NOT appear verbatim
+        # in the prompt sent to the model.
+        self.assertNotIn("```", fake.last_prompt)
+        self.assertNotIn("# heading", fake.last_prompt)
+        # item itself was untouched.
+        self.assertIn("```", item.description)
+
+    def test_description_truncated_to_400_chars(self) -> None:
+        enricher = GeminiEnricher("test-model")
+        long_desc = "a" * 1000
+        item = NormalizedItem(
+            dedupe_key="x", title="proj", source_id="s", description=long_desc, raw={}
+        )
+        response = _FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP")
+        fake = _FakeGenerativeModel(response)
+        with unittest.mock.patch("gemini_enricher.genai.GenerativeModel", return_value=fake):
+            enricher.enrich(item, _TWO_LINE_CFG)
+        # Bound: sanitized text + ellipsis. Allow some slack for word-boundary
+        # truncation but ensure we're well below the original 1000.
+        substituted_desc_len = fake.last_prompt.count("a")
+        self.assertLess(substituted_desc_len, 500)
 
 
 class TestGeminiEnricherQuota(unittest.TestCase):

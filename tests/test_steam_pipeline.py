@@ -4,11 +4,9 @@ import unittest
 import unittest.mock
 from typing import Any
 
+from generic_pipeline import PipelineResult
 from sheets_storage import InMemoryStorage
-from steam_pipeline import (
-    _did_fail,
-    run_steam_pipeline,
-)
+from steam_pipeline import run_steam_pipeline
 from telegram_notifier import InMemoryNotifier
 
 _SOURCE: dict[str, Any] = {
@@ -277,19 +275,47 @@ class TestAppDetailsFailure(unittest.TestCase):
 
 class TestVisibility(unittest.TestCase):
     def test_empty_ranks_marks_failure(self) -> None:
-        _run(charts={"response": {"rollup_date": 0, "ranks": []}})
-        self.assertTrue(_did_fail())
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch(
+                "steam_pipeline._fetch_charts",
+                return_value={"response": {"rollup_date": 0, "ranks": []}},
+            ),
+            unittest.mock.patch("steam_pipeline._fetch_app_name_index", return_value={}),
+        ):
+            results = run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+        self.assertTrue(any(not r.ok for r in results))
 
     def test_charts_fetch_exception_marks_failure(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch("steam_pipeline._fetch_charts", side_effect=RuntimeError("boom")):
-            run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
-        self.assertTrue(_did_fail())
+            results = run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+        self.assertTrue(any(not r.ok for r in results))
+        self.assertTrue(
+            any("charts fetch failed" in err for r in results for err in r.errors),
+            f"expected 'charts fetch failed' in errors, got: {[r.errors for r in results]}",
+        )
 
     def test_successful_run_does_not_mark_failure(self) -> None:
-        _run()
-        self.assertFalse(_did_fail())
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+
+        def fake_appdetails(appid: int) -> dict[str, Any] | None:
+            return _APPDETAILS.get(appid)
+
+        with (
+            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+            unittest.mock.patch("steam_pipeline._fetch_appdetails", side_effect=fake_appdetails),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX
+            ),
+        ):
+            results = run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+        self.assertTrue(all(r.ok for r in results))
+        self.assertEqual([r.source_id for r in results], ["steam_charts_mostplayed"])
+        self.assertIsInstance(results[0], PipelineResult)
 
 
 class TestLimit(unittest.TestCase):

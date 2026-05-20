@@ -8,6 +8,7 @@ import requests
 from gemini_enricher import Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
+    PipelineResult,
     build_notification,
     extract_from_json,
 )
@@ -44,19 +45,24 @@ def run_json_pipeline(
     notifier: Notifier,
     enricher: Enricher | None = None,
     sources_config: dict[str, Any] | None = None,
-) -> None:
+) -> list[PipelineResult]:
+    results: list[PipelineResult] = []
     config = sources_config or load_sources_config()
     json_sources = [s for s in config["sources"] if s.get("enabled") and s["type"] == "json"]
     if not json_sources:
         logger.info("no enabled json sources found")
-        return
+        return results
 
     for source in json_sources:
         try:
-            _run_single_source(source, storage, notifier, enricher)
+            result = _run_single_source(source, storage, notifier, enricher)
         except Exception as exc:
             logger.error("[%s] unhandled error: %s", source["id"], exc)
-            continue
+            result = PipelineResult(source_id=source["id"])
+            result.errors.append(f"unhandled error: {exc}")
+        results.append(result)
+
+    return results
 
 
 def _run_single_source(
@@ -64,14 +70,20 @@ def _run_single_source(
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None,
-) -> None:
+) -> PipelineResult:
     source_id = source["id"]
+    result = PipelineResult(source_id=source_id)
 
-    data = _fetch_json(
-        source["url"],
-        source.get("params", {}),
-        source.get("headers", {}),
-    )
+    try:
+        data = _fetch_json(
+            source["url"],
+            source.get("params", {}),
+            source.get("headers", {}),
+        )
+    except Exception as exc:
+        logger.error("[%s] fetch failed: %s", source_id, exc)
+        result.errors.append(f"fetch failed: {exc}")
+        return result
 
     records = _unwrap_records(data, source.get("json_path"))
 
@@ -81,17 +93,19 @@ def _run_single_source(
             key=lambda r: int(r.get(sort_key) or 0), reverse=source.get("sort_reverse", False)
         )
 
-    result = extract_from_json(records, source)
-    if not result.ok:
-        logger.error("[%s] extraction errors: %s", source_id, result.errors)
-        return
+    extracted = extract_from_json(records, source)
+    if not extracted.ok:
+        logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
+        result.errors.extend(extracted.errors)
+        return result
+    result.items = extracted.items
 
     tab = source["sheet_tab"]
     existing = storage.get_existing_keys(tab)
     new_items = [i for i in result.items if i.dedupe_key not in existing]
     if not new_items:
         logger.info("[%s] no new items", source_id)
-        return
+        return result
 
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
@@ -134,10 +148,13 @@ def _run_single_source(
             "[%s] %d notification(s) failed, will retry next run", source_id, len(failed)
         )
 
+    return result
+
 
 if __name__ == "__main__":
     import json
     import os
+    import sys
 
     import gspread
 
@@ -156,4 +173,7 @@ if __name__ == "__main__":
 
     prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
 
-    run_json_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
+    prod_results = run_json_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
+
+    if any(not r.ok for r in prod_results):
+        sys.exit(1)
