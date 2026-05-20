@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import string
 import time
 from typing import Any, Protocol, runtime_checkable
@@ -15,8 +16,77 @@ from generic_pipeline import NormalizedItem
 logger = logging.getLogger(__name__)
 
 
+# Visible marker that lands in Telegram when enrichment cannot produce a
+# valid answer. Surfaces a tripwire to the operator instead of silently
+# shipping garbage (Constitution Principle IV — visibility over silence).
+FALLBACK_MARKER = "⚠️ summary unavailable"
+
+# Cap raw `$description` substituted into prompts. Trending HTML <p> blocks
+# regularly leak README markdown; long noisy inputs correlated with echo /
+# markdown leakage in the 19.05.2026 batch.
+_DESCRIPTION_MAX_LEN = 400
+
+
 class QuotaExhausted(Exception):
     """All retry attempts hit ResourceExhausted — caller should stop or switch models."""
+
+
+class TruncatedResponse(Exception):
+    """Model returned an incomplete answer (`finish_reason` MAX_TOKENS / SAFETY).
+    Surfacing as exception so `enrich` can route to the visible-anomaly marker
+    instead of forwarding the half-finished string to the notifier."""
+
+
+_MARKDOWN_FENCE_BLOCK_RE = re.compile(r"```[^\n]*\n.*?```", re.DOTALL)
+_MARKDOWN_FENCE_LINE_RE = re.compile(r"^\s*```\s*\w*\s*$", re.MULTILINE)
+_LEADING_BULLET_RE = re.compile(r"^[\s>*#\-]+", re.MULTILINE)
+_BOLD_WRAP_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+def _sanitize_for_prompt(text: str, max_len: int = _DESCRIPTION_MAX_LEN) -> str:
+    """Drop fenced code blocks, leading `*`/`#`/`>` and truncate.
+
+    Applied to `$description` before substitution into the prompt template.
+    The original `item.description` is left untouched — sanitization is
+    only a defensive shaping of the prompt input.
+    """
+    if not text:
+        return ""
+    cleaned = _MARKDOWN_FENCE_BLOCK_RE.sub(" ", text)
+    cleaned = _MARKDOWN_FENCE_LINE_RE.sub("", cleaned)
+    cleaned = _LEADING_BULLET_RE.sub("", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len].rsplit(" ", 1)[0] + "…"
+    return cleaned
+
+
+def _strip_markdown_wrap(text: str) -> str:
+    """Remove outer ``` fences and `**bold**` wrappers from a model response.
+
+    Conservative: we strip wrappers but keep content. Leaves inline asterisks
+    alone — they could be legitimate characters in the answer.
+    """
+    stripped = _MARKDOWN_FENCE_LINE_RE.sub("", text).strip()
+    stripped = _BOLD_WRAP_RE.sub(r"\1", stripped)
+    stripped = re.sub(r"^[\s]*[*\-]\s+", "", stripped, flags=re.MULTILINE)
+    return stripped.strip()
+
+
+def _extract_finish_reason(response: Any) -> str:
+    """Return the candidate's `finish_reason` as a string ('STOP', 'MAX_TOKENS', …).
+
+    Tolerates both enum (with `.name`) and raw int/str shapes — different
+    SDK versions and the test doubles use different forms.
+    """
+    candidates = getattr(response, "candidates", None) or []
+    if not candidates:
+        return "UNKNOWN"
+    finish_reason = getattr(candidates[0], "finish_reason", None)
+    if finish_reason is None:
+        return "UNKNOWN"
+    name = getattr(finish_reason, "name", None)
+    return str(name) if name is not None else str(finish_reason)
 
 
 @runtime_checkable
@@ -42,11 +112,13 @@ class GeminiEnricher:
         prompt_template = enrich_config["prompt"]
         params = enrich_config.get("parameters", {})
         on_error: str = enrich_config.get("on_error", "")
+        response_pattern: str | None = enrich_config.get("response_pattern")
+        fallback = on_error or FALLBACK_MARKER
 
         context: dict[str, Any] = {
             "title": item.title,
             "url": item.url,
-            "description": item.description,
+            "description": _sanitize_for_prompt(item.description),
             "metric": item.metric,
             "source_id": item.source_id,
             **item.raw,
@@ -59,13 +131,29 @@ class GeminiEnricher:
         )
 
         try:
-            return self._generate(prompt, generation_config)
+            text = self._generate(prompt, generation_config)
+        except TruncatedResponse as exc:
+            logger.warning(
+                "[%s] enrichment truncated (%s) — falling back to marker",
+                item.dedupe_key,
+                exc,
+            )
+            return fallback
         except Exception as exc:
             is_quota = isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted)
             if is_quota:
                 raise QuotaExhausted from exc
             logger.error("[%s] enrichment failed: %s", item.dedupe_key, exc)
             return on_error
+
+        if response_pattern and not re.match(response_pattern, text):
+            logger.warning(
+                "[%s] enrichment format mismatch (first line: %r) — falling back to marker",
+                item.dedupe_key,
+                text.splitlines()[0] if text else "",
+            )
+            return fallback
+        return text
 
     @retry(
         retry=retry_if_exception_type(google.api_core.exceptions.ResourceExhausted),
@@ -75,8 +163,20 @@ class GeminiEnricher:
     def _generate(self, prompt: str, generation_config: genai.types.GenerationConfig) -> str:
         model = genai.GenerativeModel(self._model_name)
         response = model.generate_content(prompt, generation_config=generation_config)
-        text: str = response.text.strip()
-        return text
+        text: str = (response.text or "").strip()
+        finish_reason = _extract_finish_reason(response)
+        first_line = text.splitlines()[0] if text else ""
+        logger.info(
+            "[%s] gen: prompt_len=%d resp_len=%d finish=%s first_line=%r",
+            self._model_name,
+            len(prompt),
+            len(text),
+            finish_reason,
+            first_line,
+        )
+        if finish_reason in ("MAX_TOKENS", "SAFETY"):
+            raise TruncatedResponse(finish_reason)
+        return _strip_markdown_wrap(text)
 
 
 def _model_version_key(name: str) -> tuple[float, str]:
