@@ -19,7 +19,14 @@ PROTECTED_BRANCHES = frozenset({"main", "master"})
 
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, check=True, text=True, capture_output=capture)
+    result = subprocess.run(cmd, check=True, text=True, capture_output=capture)
+    # Under some Windows + git-bash + pipe-handle combinations, subprocess.run
+    # has been observed returning CompletedProcess(stdout=None) despite
+    # capture_output=True. Normalize so callers can call `.splitlines()` /
+    # `.strip()` without an `if x is None` dance (see #109).
+    if capture and result.stdout is None:
+        result.stdout = ""
+    return result
 
 
 def _prune_gone_branches() -> None:
