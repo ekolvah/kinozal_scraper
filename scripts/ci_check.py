@@ -46,6 +46,12 @@ def main() -> None:
         print("docs/architecture/test-coverage.md is out of date — stage it and re-run")
         sys.exit(1)
 
+    print("==> pip-audit (runtime)")
+    _run([sys.executable, "-m", "pip_audit", "-r", "requirements.txt"])
+
+    print("==> pip-audit (dev)")
+    _run([sys.executable, "-m", "pip_audit", "-r", "requirements-dev.txt"])
+
     print("==> requirements consistency")
 
     def _parse_pins(path: Path) -> dict[str, str]:

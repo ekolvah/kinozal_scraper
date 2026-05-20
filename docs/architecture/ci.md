@@ -6,7 +6,11 @@
 python scripts/ci_check.py
 ```
 
-Runs: ruff format check → ruff lint → pytest → mypy.
+Runs: ruff format check → ruff lint → pytest → test-coverage doc → pip-audit (runtime + dev) → requirements consistency → mypy.
+
+Mirrors `ci.yml` exactly — if `ci_check.py` is green, CI will be green too.
+Adds `pip-audit` (was CI-only until issue #112) and the test-coverage doc
+freshness check (CI-effectively-free; here it's enforced to avoid drift).
 
 Pre-push hook: `.githooks/pre-push` runs `ci_check.py` automatically.
 Activate: `git config core.hooksPath .githooks`
