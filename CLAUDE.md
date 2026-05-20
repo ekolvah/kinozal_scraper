@@ -4,8 +4,16 @@
 Парсит топ kinozal.tv по расписанию (GitHub Actions, 04:00 UTC), дедуплицирует через Google Sheets, отправляет новинки в Telegram. Параллельно суммаризует Telegram-каналы через Gemini.
 
 ## Среда
-- Windows. Используй `python` (НЕ `python3` — это Microsoft Store stub).
-- Не полагайся на `jq`/`sed`/`awk` — пиши pure-Python скрипты в `scripts/`.
+
+Windows + git-bash. Все грабли ниже повторялись ≥2 раз — не переоткрывать.
+
+- **Python**: `python`, НЕ `python3` (последнее — Microsoft Store stub, который открывает магазин).
+- **Утилиты**: нет `jq`/`sed`/`awk`. Парсить JSON/текст — pure-Python скриптами в `scripts/`.
+- **Пути**: `~/` не резолвится надёжно в shell-hook'ах и settings.json. Используй абсолютные (`C:/Users/jadow/...` или `$HOME/...` в bash).
+- **PowerShell ≠ bash**: `$null` (не `/dev/null`), `$env:VAR` (не `$VAR`), backtick для line continuation. Для POSIX-скриптов вызывай Bash tool явно.
+- **`subprocess.run(capture_output=True)`** на Windows + git-bash может вернуть `stdout=None` несмотря на `text=True`. Нормализуй в caller'е, не верь типу (см. #109).
+- **Спорадические file-lock / AV-сканер** на длинных `git`/`pytest`: перед root-cause hunt — 1 retry. Если воспроизводится — тогда копай.
+- **`pip-compile`**: при изменении `requirements*.in` обязательно перекомпилировать `.txt` в **том же коммите**. `ci_check.py` ловит drift, но push без пересборки = CI red.
 
 ## Debugging
 - Сначала root cause, потом fix. Никаких workarounds/shims, пока корень не понятен.
