@@ -435,6 +435,32 @@ class TestSteamRussianDescription(unittest.TestCase):
         self.assertIn("Battle royale", sent_by_id["578080"])
         self.assertIn("MOBA", sent_by_id["570"])
 
+    def test_falls_back_to_english_on_marker_or_empty(self) -> None:
+        """`FALLBACK_MARKER` (from `TruncatedResponse`) and empty string
+        (from `on_error`) are distinct return paths — both must fall back to
+        English. Claude-review #126 flagged this as an untested branch."""
+        from gemini_enricher import FALLBACK_MARKER
+
+        class _MarkerThenEmpty:
+            def __init__(self) -> None:
+                self._call = 0
+
+            def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+                self._call += 1
+                if self._call == 1:
+                    return FALLBACK_MARKER
+                return ""
+
+        with self.assertLogs("steam_pipeline", level="WARNING") as caplog:
+            _, notifier = _run_with_enricher(_MarkerThenEmpty())
+        self.assertEqual(len(notifier.sent), 3)
+        sent_by_id = {n.id: n.text for n in notifier.sent}
+        self.assertIn("Free shooter from Valve", sent_by_id["730"])
+        self.assertIn("Battle royale", sent_by_id["578080"])
+        warnings = "\n".join(caplog.output)
+        self.assertIn("730", warnings)
+        self.assertIn("578080", warnings)
+
 
 if __name__ == "__main__":
     unittest.main()

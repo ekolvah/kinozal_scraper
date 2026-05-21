@@ -174,6 +174,11 @@ def _apply_translation(
             quota_dead = True
             continue
         if not result or result == FALLBACK_MARKER:
+            logger.warning(
+                "[%s] item %s fell back to English (enricher returned empty/marker)",
+                source_id,
+                item.dedupe_key,
+            )
             item.raw[field] = item.description
         else:
             item.raw[field] = result
