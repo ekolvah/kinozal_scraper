@@ -108,11 +108,20 @@ migration required.
 
 ## Enrichment plumbing across pipelines
 
-Both `json_pipeline.run_json_pipeline` and
-`github_trending_pipeline.run_github_trending_pipeline` accept an optional
-`enricher: Enricher | None` parameter and apply the same loop semantics:
+`json_pipeline.run_json_pipeline`, `github_trending_pipeline.run_github_trending_pipeline`
+and `steam_pipeline.run_steam_pipeline` accept an optional `enricher: Enricher | None`
+parameter and apply the same loop semantics:
 
 - `enricher is None` or no `enrich` block → field stays unset, `{summary_ru}`
   placeholder resolves to empty, notification still sends.
 - `QuotaExhausted` raised mid-loop → remaining items get the `on_error`
   fallback value, but every notification still goes out (Principle IV).
+
+### Steam-specific fallback (issue #124)
+
+`run_steam_pipeline` deviates from GitHub sources on one point: the original
+English `short_description` is itself informative, so a failed translation
+(empty result, `FALLBACK_MARKER` from `TruncatedResponse`, `QuotaExhausted`,
+or `enricher is None`) falls back to `item.description`, not to the marker.
+The notification ships in English, with a WARNING in cron logs marking the
+degradation. Implemented in `steam_pipeline._apply_translation`.

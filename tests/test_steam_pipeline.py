@@ -4,7 +4,8 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from generic_pipeline import PipelineResult
+from gemini_enricher import QuotaExhausted
+from generic_pipeline import NormalizedItem, PipelineResult
 from sheets_storage import InMemoryStorage
 from steam_pipeline import run_steam_pipeline
 from telegram_notifier import InMemoryNotifier
@@ -342,6 +343,123 @@ class TestLimit(unittest.TestCase):
         ):
             run_steam_pipeline(storage, notifier, sources_config=sources_config)
         self.assertEqual(calls, [730, 578080])
+
+
+_RU_SOURCE: dict[str, Any] = {
+    **_SOURCE,
+    "enrich": {
+        "field": "description_ru",
+        "prompt": "Переведи описание игры на русский язык: $description",
+        "parameters": {"temperature": 0.2, "max_tokens": 300},
+        "on_error": "",
+    },
+    "message_template": (
+        "<b>{title_link}</b>\n{description_ru}\nPeak players: {metric}\n"
+        "Rank: {rank} (last week: {last_week_rank})"
+    ),
+}
+
+
+class _FakeTranslator:
+    def __init__(self, translation: str) -> None:
+        self._translation = translation
+        self.calls: list[str] = []
+
+    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+        self.calls.append(item.dedupe_key)
+        return self._translation
+
+
+class _QuotaAfterFirst:
+    """Returns translation for the first item, raises QuotaExhausted on every
+    subsequent call — to assert that remaining items still reach Telegram with
+    English fallback (visibility-over-silence)."""
+
+    def __init__(self, translation: str) -> None:
+        self._translation = translation
+        self._call_count = 0
+
+    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+        self._call_count += 1
+        if self._call_count > 1:
+            raise QuotaExhausted
+        return self._translation
+
+
+def _run_with_enricher(
+    enricher: Any | None,
+    sources_config: dict[str, Any] | None = None,
+) -> tuple[InMemoryStorage, InMemoryNotifier]:
+    storage = InMemoryStorage()
+    notifier = InMemoryNotifier()
+    config = sources_config or {"version": 1, "sources": [_RU_SOURCE]}
+    with (
+        unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+        unittest.mock.patch(
+            "steam_pipeline._fetch_appdetails",
+            side_effect=lambda appid: _APPDETAILS.get(appid),
+        ),
+        unittest.mock.patch("steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX),
+    ):
+        run_steam_pipeline(storage, notifier, sources_config=config, enricher=enricher)
+    return storage, notifier
+
+
+class TestSteamRussianDescription(unittest.TestCase):
+    """Translation of Steam `short_description` to Russian via Enricher — #124."""
+
+    def test_uses_translated_description_when_enricher_present(self) -> None:
+        translator = _FakeTranslator("Бесплатный шутер от Valve")
+        _, notifier = _run_with_enricher(translator)
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("Бесплатный шутер от Valve", cs2.text)
+        self.assertNotIn("Free shooter from Valve", cs2.text)
+        self.assertEqual(len(translator.calls), 3)
+
+    def test_falls_back_to_english_when_enricher_is_none(self) -> None:
+        _, notifier = _run_with_enricher(enricher=None)
+        self.assertEqual(len(notifier.sent), 3)
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("Free shooter from Valve", cs2.text)
+        pubg = next(n for n in notifier.sent if n.id == "578080")
+        self.assertIn("Battle royale", pubg.text)
+
+    def test_falls_back_to_english_on_quota_exhausted(self) -> None:
+        translator = _QuotaAfterFirst("РУ перевод первого")
+        _, notifier = _run_with_enricher(translator)
+        self.assertEqual(
+            len(notifier.sent), 3, "all items must reach Telegram even if quota dies mid-loop"
+        )
+        sent_by_id = {n.id: n.text for n in notifier.sent}
+        self.assertIn("РУ перевод первого", sent_by_id["730"])
+        self.assertIn("Battle royale", sent_by_id["578080"])
+        self.assertIn("MOBA", sent_by_id["570"])
+
+    def test_falls_back_to_english_on_marker_or_empty(self) -> None:
+        """`FALLBACK_MARKER` (from `TruncatedResponse`) and empty string
+        (from `on_error`) are distinct return paths — both must fall back to
+        English. Claude-review #126 flagged this as an untested branch."""
+        from gemini_enricher import FALLBACK_MARKER
+
+        class _MarkerThenEmpty:
+            def __init__(self) -> None:
+                self._call = 0
+
+            def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+                self._call += 1
+                if self._call == 1:
+                    return FALLBACK_MARKER
+                return ""
+
+        with self.assertLogs("steam_pipeline", level="WARNING") as caplog:
+            _, notifier = _run_with_enricher(_MarkerThenEmpty())
+        self.assertEqual(len(notifier.sent), 3)
+        sent_by_id = {n.id: n.text for n in notifier.sent}
+        self.assertIn("Free shooter from Valve", sent_by_id["730"])
+        self.assertIn("Battle royale", sent_by_id["578080"])
+        warnings = "\n".join(caplog.output)
+        self.assertIn("730", warnings)
+        self.assertIn("578080", warnings)
 
 
 if __name__ == "__main__":

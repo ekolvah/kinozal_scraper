@@ -80,6 +80,7 @@ Telegram HTML message. Available template variables:
 | `{description}` | plain escaped description |
 | `{metric}` | numeric metric (stars, players, etc.) |
 | `{image_url}` | raw image URL |
+| any key from `item.raw` | e.g. `{summary_ru}` for GitHub sources, `{description_ru}` for Steam (see [gemini.md](gemini.md)) |
 
 **Kinozal template** (`sources.json`):
 ```

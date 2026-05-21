@@ -22,7 +22,7 @@ def parse_pytest_summary(output: str) -> tuple[int, int, int]:
     for line in reversed(output.splitlines()):
         if "passed" not in line and "failed" not in line and "error" not in line:
             continue
-        if not line.lstrip().startswith("="):
+        if not re.search(r"\d+\s+(passed|failed|errors?)", line):
             continue
         for count, label in re.findall(r"(\d+)\s+(passed|failed|errors?|error)", line):
             n = int(count)

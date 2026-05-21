@@ -5,8 +5,10 @@ from typing import Any
 
 import requests
 
+from gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
+    NormalizedItem,
     PipelineResult,
     build_notification,
     extract_from_json,
@@ -129,10 +131,67 @@ def _enrich_with_appdetails(
     return enriched
 
 
+def _apply_translation(
+    source: dict[str, Any],
+    items: list[NormalizedItem],
+    enricher: Enricher | None,
+    source_id: str,
+) -> None:
+    """Populate `item.raw[field]` with translation (or English fallback).
+
+    Steam-specific fallback policy: unlike GitHub sources where missing
+    `summary_ru` becomes `FALLBACK_MARKER`, here the original English
+    `short_description` IS itself informative — degrading silently to the
+    marker would hide useful text. So any failure (no enricher, empty
+    result, FALLBACK_MARKER from TruncatedResponse, QuotaExhausted) falls
+    back to `item.description`. Notification still ships (Principle IV).
+    """
+    enrich_config = source.get("enrich")
+    if not enrich_config:
+        return
+    field = enrich_config["field"]
+    if enricher is None:
+        for item in items:
+            item.raw[field] = item.description
+        return
+
+    enriched = 0
+    quota_dead = False
+    for item in items:
+        if quota_dead:
+            item.raw[field] = item.description
+            continue
+        try:
+            result = enricher.enrich(item, enrich_config)
+        except QuotaExhausted:
+            logger.warning(
+                "[%s] enrichment quota exhausted at %s — remaining items "
+                "fall back to original description",
+                source_id,
+                item.dedupe_key,
+            )
+            item.raw[field] = item.description
+            quota_dead = True
+            continue
+        if not result or result == FALLBACK_MARKER:
+            logger.warning(
+                "[%s] item %s fell back to English (enricher returned empty/marker)",
+                source_id,
+                item.dedupe_key,
+            )
+            item.raw[field] = item.description
+        else:
+            item.raw[field] = result
+            enriched += 1
+    if enriched:
+        logger.info("[%s] translated %d/%d items", source_id, enriched, len(items))
+
+
 def run_steam_pipeline(
     storage: Storage,
     notifier: Notifier,
     sources_config: dict[str, Any] | None = None,
+    enricher: Enricher | None = None,
 ) -> list[PipelineResult]:
     results: list[PipelineResult] = []
 
@@ -200,6 +259,8 @@ def run_steam_pipeline(
 
         storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in new_items])
 
+        _apply_translation(source, new_items, enricher, source_id)
+
         template: str = source["message_template"]
         notifications = [build_notification(item, template) for item in new_items]
         sent, failed = notifier.send_items(notifications)
@@ -249,7 +310,13 @@ if __name__ == "__main__":
         prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
         prod_notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
 
-    prod_results = run_steam_pipeline(prod_storage, prod_notifier, sources_config=prod_config)
+    from gemini_enricher import build_default_enricher
+
+    prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
+
+    prod_results = run_steam_pipeline(
+        prod_storage, prod_notifier, sources_config=prod_config, enricher=prod_enricher
+    )
 
     if any(not r.ok for r in prod_results):
         sys.exit(1)

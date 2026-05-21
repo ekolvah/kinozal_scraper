@@ -228,6 +228,32 @@ class TestRussianEnrichPrompts(unittest.TestCase):
     def test_github_trending_has_who_pain_prompt(self) -> None:
         self._assert_who_pain_enrich("github_trending")
 
+    def test_steam_prompt_targets_russian(self) -> None:
+        """Pin-test for #124: steam_charts_mostplayed must translate `short_description`
+        to Russian via `description_ru` field, and template must reference it."""
+        source_id = "steam_charts_mostplayed"
+        assert source_id in self.by_id, f"missing source: {source_id}"
+        source = self.by_id[source_id]
+        assert "enrich" in source, f"{source_id} has no enrich block"
+        enrich = source["enrich"]
+        self.assertEqual(
+            enrich["field"],
+            "description_ru",
+            f"{source_id}.enrich.field must be 'description_ru'",
+        )
+        prompt = enrich["prompt"]
+        self.assertIn(
+            "русск",
+            prompt.lower(),
+            f"{source_id}.enrich.prompt must explicitly ask for Russian translation",
+        )
+        template = source["message_template"]
+        self.assertIn(
+            "{description_ru}",
+            template,
+            f"{source_id}.message_template must use {{description_ru}}",
+        )
+
 
 class TestConfigValidationKnownGaps(unittest.TestCase):
     """Documents gaps in `validate_sources_config` (taxonomy D — config errors)."""
