@@ -23,6 +23,12 @@ class TestParsePytestSummary:
         out = "======= 1 failed, 1 passed, 1 error in 0.20s =======\n"
         assert parse_pytest_summary(out) == (1, 1, 1)
 
+    def test_pytest_q_mode_summary_without_equals_decoration(self) -> None:
+        """When pytest stdout is captured (not a tty), `-q` produces a summary
+        line without leading `======` decoration. Parser must still pick it up."""
+        out = "FFFF                                                                     [100%]\n4 failed, 1 warning in 1.57s\n"
+        assert parse_pytest_summary(out) == (0, 4, 0)
+
 
 class TestRedStatus:
     def test_all_failed_is_ok(self) -> None:
