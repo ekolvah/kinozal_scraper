@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-from scripts.issue_branch import build_branch_name, slugify
+import json
+import subprocess
+from typing import Any
+
+import pytest
+
+from scripts.issue_branch import _fetch_title, build_branch_name, slugify
 
 
 class TestSlugify:
@@ -35,3 +41,18 @@ class TestBuildBranchName:
 
     def test_falls_back_when_slug_empty(self) -> None:
         assert build_branch_name(42, "русский тайтл") == "codex-issue-42-task"
+
+
+class TestFetchTitleEncoding:
+    def test_cyrillic_title_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cyrillic_title = "[bug] /plan и /implement не работают после PR #121"
+        payload = json.dumps({"state": "OPEN", "title": cyrillic_title}, ensure_ascii=False)
+
+        def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            assert kwargs.get("encoding") == "utf-8", (
+                "subprocess must request utf-8 to avoid cp1252 on Windows"
+            )
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=payload, stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert _fetch_title(122) == cyrillic_title

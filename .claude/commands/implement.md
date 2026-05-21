@@ -1,4 +1,9 @@
-# /implement #N — исполнить план из issue с TDD red-green
+---
+description: Исполнить план из issue с TDD red-green циклом (branch → RED → GREEN → docs → PR → CI-fix → review-fix×1)
+argument-hint: <issue-number>
+---
+
+# /implement N — исполнить план из issue с TDD red-green
 
 `$ARGUMENTS` = номер issue. Каждый шаг — детерминированный скрипт или внешний gate; правила в текстах команд агент забывает, скрипты — нет.
 

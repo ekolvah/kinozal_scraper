@@ -40,6 +40,7 @@ def _fetch_title(issue_number: int) -> str:
         check=True,
         text=True,
         capture_output=True,
+        encoding="utf-8",
     )
     stdout = result.stdout or ""
     data = json.loads(stdout)
