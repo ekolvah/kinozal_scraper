@@ -83,7 +83,16 @@
         "metric": "peak_in_game",
         "image_url": null
       },
-      "message_template": "<b>{title_link}</b>\n{description}\nPeak players: {metric}\nRank: {rank} (last week: {last_week_rank})"
+      "enrich": {
+        "field": "description_ru",
+        "prompt": "Переведи описание игры со Steam на русский язык. Сохрани смысл и тон оригинала. Ответь только переводом, без пояснений и без markdown.\n\nНазвание: $title\nОписание: $description",
+        "parameters": {
+          "temperature": 0.2,
+          "max_tokens": 300
+        },
+        "on_error": ""
+      },
+      "message_template": "<b>{title_link}</b>\n{description_ru}\nPeak players: {metric}\nRank: {rank} (last week: {last_week_rank})"
     },
     {
       "id": "kinozal_movies",

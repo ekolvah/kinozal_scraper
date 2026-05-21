@@ -399,9 +399,7 @@ def _run_with_enricher(
             "steam_pipeline._fetch_appdetails",
             side_effect=lambda appid: _APPDETAILS.get(appid),
         ),
-        unittest.mock.patch(
-            "steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX
-        ),
+        unittest.mock.patch("steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX),
     ):
         run_steam_pipeline(storage, notifier, sources_config=config, enricher=enricher)
     return storage, notifier
