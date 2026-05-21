@@ -1,0 +1,71 @@
+name: Bug report
+description: Известный или подозреваемый баг — поведение системы не соответствует ожидаемому
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Заполни все секции. Они являются контрактом для `/plan #N` (структурирование плана) и `/implement #N` (исполнение с TDD red-green). Пустые секции → `/implement` откажется.
+  - type: textarea
+    id: context
+    attributes:
+      label: Context / Why
+      description: Что наблюдается, кто/что страдает, чем нынешнее состояние плохо. Включи воспроизведение, если оно есть (логи, шаги, дату последнего проявления).
+      placeholder: |
+        При запуске github_trending pipeline 19.05.2026 первые 6 уведомлений в Telegram содержали обрезанные/мусорные summary_ru ("Для кого: разработчи"). Видимо для пользователей канала как «бот сломался». Воспроизводится на любом trending HTML с README markdown в description.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Что должно стать истинно после fix. Каждый bullet — testable утверждение ("при X возвращает Y"), а не "лучше работает".
+      placeholder: |
+        - При `finish_reason == MAX_TOKENS` enrich возвращает FALLBACK_MARKER, а не обрезанный текст.
+        - При ответе не матчящем `^Для кого:\s*.+\nЗачем:\s*.+` enrich возвращает FALLBACK_MARKER.
+        - `description` с markdown-шумом sanitize'ится до prompt-substitute (raw item.description не меняется).
+    validations:
+      required: true
+  - type: textarea
+    id: test-plan
+    attributes:
+      label: Test plan
+      description: Конкретные тест-кейсы которые нужно написать (файл + класс + сценарий). Это контракт RED step `/implement`'а — эти тесты будут написаны первыми и упадут.
+      placeholder: |
+        - `tests/test_gemini_enricher.py::TestEnrichFallbackOnTruncation::test_max_tokens_returns_marker`
+        - `tests/test_gemini_enricher.py::TestEnrichFormatValidation::test_format_mismatch_returns_marker`
+        - `tests/test_gemini_enricher.py::TestPromptSanitization::test_markdown_noise_sanitized_in_prompt`
+    validations:
+      required: true
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation outline
+      description: Файлы и что в них меняется. По одному bullet на файл. Без полного кода — структурные изменения. Если root cause известен — укажи здесь.
+      placeholder: |
+        - `gemini_enricher.py:_generate` — читать `response.candidates[0].finish_reason`, raise `TruncatedResponse(reason)` при MAX_TOKENS/SAFETY; strip ```/`**` обёртки.
+        - `gemini_enricher.py:enrich` — sanitize `$description` (≤400 символов, без fenced blocks) до `safe_substitute`; ловить `TruncatedResponse`/format mismatch → fallback marker.
+        - `sources.json` — bump `max_tokens` 150→220.
+    validations:
+      required: true
+  - type: textarea
+    id: docs
+    attributes:
+      label: Docs to update
+      description: Какие `.md` файлы обновить в том же PR. Если behaviour не меняется снаружи — явно напиши "нет".
+      placeholder: |
+        - `docs/architecture/gemini.md` — добавить раздел про FALLBACK_MARKER contract и format validation.
+    validations:
+      required: true
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: Что НЕ делаем в этом PR (защита от scope creep). Если ничего — напиши "нет".
+      placeholder: |
+        - Изменение списка моделей в RotatingGeminiEnricher.
+        - SDK migration на `google.genai` (см. #107).
+    validations:
+      required: true
