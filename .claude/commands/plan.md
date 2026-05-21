@@ -1,4 +1,9 @@
-# /plan #N — структурировать body issue
+---
+description: Структурировать body GitHub issue по 6 required секциям перед /implement
+argument-hint: <issue-number>
+---
+
+# /plan N — структурировать body issue
 
 `$ARGUMENTS` = номер issue.
 

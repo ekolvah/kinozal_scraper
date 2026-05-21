@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from scripts.validate_issue_sections import REQUIRED_SECTIONS, find_gaps
+import subprocess
+from typing import Any
+
+import pytest
+
+from scripts.validate_issue_sections import (
+    REQUIRED_SECTIONS,
+    _fetch_body,
+    find_gaps,
+)
 
 
 def _full_body() -> str:
@@ -42,3 +51,25 @@ class TestFindGaps:
     def test_extra_section_ignored(self) -> None:
         body = _full_body() + "\n## Extra\n\nNot required.\n"
         assert find_gaps(body) == []
+
+
+class TestFetchBodyEncoding:
+    def test_cyrillic_body_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cyrillic_body = "## Context / Why\n\nЭто кириллический контент с символом 0x81 в проблемной кодировке.\n"
+        payload = '{"state": "OPEN", "body": ' + _json_string(cyrillic_body) + "}"
+
+        def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            assert kwargs.get("encoding") == "utf-8", (
+                "subprocess must request utf-8 to avoid cp1252 on Windows"
+            )
+            return subprocess.CompletedProcess(args=args, returncode=0, stdout=payload, stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        result = _fetch_body(122)
+        assert "кириллический" in result
+
+
+def _json_string(s: str) -> str:
+    import json
+
+    return json.dumps(s, ensure_ascii=False)
