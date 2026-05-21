@@ -1,43 +1,23 @@
-<!--
-Sync Impact Report
-==================
-Version change: TEMPLATE → 1.0.0  (initial ratification)
+# kinozal_scraper architectural principles
 
-Modified principles (all replaced from template placeholders):
-  [PRINCIPLE_1_NAME] → I. Test-First (NON-NEGOTIABLE)
-  [PRINCIPLE_2_NAME] → II. Protocol Boundaries with Dependency Injection
-  [PRINCIPLE_3_NAME] → III. Write-Before-Notify Ordering
-  [PRINCIPLE_4_NAME] → IV. Visibility Over Silence
-  [PRINCIPLE_5_NAME] → V. Root Cause Before Fix
-  (new)              VI. Fail-Fast Configuration
+Source of truth on principles, workflow rules, and quality gates for this
+repo. `CLAUDE.md` and the other `docs/architecture/*.md` files are runtime
+guidance and reference implementation detail — where they conflict with
+this document, this document wins.
 
-Added sections:
-  Core Principles (6 declarative laws derived from CLAUDE.md + docs/architecture/*)
-  Development Workflow (issue→branch→PR rules, ci_check gate, spec-driven flow)
-  Quality Gates (no-mocks rule, write-before-notify proof, E2E smoke before merge)
-  Governance (amendment & version policy)
-
-Removed sections: none (template placeholders were never authored content).
-
-Templates requiring updates:
-  ✅ .specify/templates/tasks-template.md — "Tests are OPTIONAL" wording flipped to mandatory per Principle I (same PR)
-  ⚠ .specify/templates/plan-template.md — "Constitution Check" gates left as `[Gates determined based on constitution file]`; /speckit-plan resolves at runtime, no static edit needed
-  ⚠ .specify/templates/spec-template.md — no constitution-driven changes needed; spec format is orthogonal to our principles
-  ⚠ CLAUDE.md / docs/architecture/* — kept as runtime guidance docs that reference this constitution; not duplicated here
-
-Follow-up TODOs: none.
--->
-
-# kinozal_scraper Constitution
+Originally authored as a Spec Kit constitution (v1.0.0, ratified
+2026-05-17). Migrated to `docs/architecture/principles.md` on 2026-05-21
+when Spec Kit was removed; references to `/speckit-*` commands replaced
+with the project's local `/plan` → `/implement` workflow (see #114).
 
 ## Core Principles
 
 ### I. Test-First (NON-NEGOTIABLE)
 
 For every behavioural change a failing test exists **before** the implementation
-commit. The Spec Kit workflow enforces this: `/speckit-tasks` lists test tasks
-above implementation tasks, and `/speckit-implement` executes them in order so
-the test goes red, then green.
+commit. The `/implement #N` workflow enforces this: write tests from the
+issue's `## Test plan` section, run pytest to confirm RED, then write code
+to make them GREEN (see #114).
 
 Exceptions, all narrow: (a) rename / move of an already-tested symbol, (b)
 documentation-only PRs, (c) one-line non-behavioural fixes (typos, comments).
@@ -155,16 +135,17 @@ binding:
 5. **Issues carry labels** — every `gh issue create` includes `--label
    bug|enhancement|documentation|testing|...`.
 6. **Pre-commit gate** — `python scripts/ci_check.py` runs ruff format +
-   lint + pytest + mypy + lockfile drift. The `.githooks/pre-push` hook runs
-   it automatically; do not bypass with `--no-verify`.
+   lint + pytest + mypy + pip-audit + lockfile drift. The `.githooks/pre-push`
+   hook runs it automatically; do not bypass with `--no-verify`.
 7. **Dependency consistency** — when a `requirements*.in` changes,
    `pip-compile` regenerates the corresponding `.txt` in the same commit.
-8. **Spec-driven flow** — substantive new features and bug fixes are
-   authored via `/speckit-specify` → (`/speckit-clarify`) → `/speckit-plan` →
-   (`/speckit-analyze`) → `/speckit-tasks` → `/speckit-implement`. The
-   spec file lives at `.specify/specs/NNN-<slug>/spec.md` and is committed
-   alongside the code. Trivial fixes (typos, single-line non-behavioural
-   tweaks) may skip the workflow.
+8. **Plan-driven flow** — substantive new features and bug fixes are
+   authored via the project's local workflow: `/plan #N` writes a
+   structured plan into the issue body (Context / Acceptance / Test plan /
+   Implementation outline / Docs to update / Out of scope), then
+   `/implement #N` executes it with TDD red-green discipline. Trivial fixes
+   (typos, single-line non-behavioural tweaks) may skip the workflow. See
+   #114 for the rationale and exact contract.
 
 ## Quality Gates
 
@@ -186,15 +167,13 @@ A PR MAY merge only when:
 
 ## Governance
 
-This constitution supersedes ad-hoc conventions in `CLAUDE.md` and the
+This document supersedes ad-hoc conventions in `CLAUDE.md` and the other
 `docs/architecture/*` notes; where they conflict, this document wins.
-`CLAUDE.md` and `docs/architecture/*` remain as runtime guidance and
+`CLAUDE.md` and the other architecture docs remain as runtime guidance and
 implementation-detail references — kept short, kept linked, never the source
 of truth on principles.
 
-**Amendments** are made via PR that modifies this file, runs
-`/speckit-constitution` to regenerate the Sync Impact Report, and bumps the
-version:
+Amendments are made via PR that modifies this file. Version policy:
 
 - **MAJOR** — a principle is removed, redefined, or a procedural rule is
   reversed (e.g. Test-First downgraded to optional). Requires explicit human
@@ -204,9 +183,9 @@ version:
 - **PATCH** — clarifications, wording improvements, typo fixes, references
   updated, no semantic shift in rules.
 
-**Compliance review** — every PR description states which principles the
-change interacts with. The reviewer (human + Claude review action) checks
-that the change does not violate them; if it does, the violation MUST be
-recorded in the plan's "Complexity Tracking" section with a justification.
+Every PR description states which principles the change interacts with. The
+reviewer (human + Claude review action) checks that the change does not
+violate them; if it does, the violation MUST be recorded in the PR body
+with a justification.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-17 | **Last Amended**: 2026-05-17
+**Version**: 1.0.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21

@@ -47,6 +47,7 @@ Issue создаём с label обязательно: `gh issue create --label b
 
 Key decisions recorded here; details in separate files to keep this file short.
 
+- **[Principles](docs/architecture/principles.md)** — source of truth: 6 core principles + dev workflow + quality gates. When this file conflicts with `principles.md`, `principles.md` wins.
 - [Runtime overview](docs/architecture/runtime.md) — 4 pipelines, protocols, data flow
 - [Pipeline](docs/architecture/pipeline.md) — layers, NormalizedItem, extract_from_* contracts
 - [Storage](docs/architecture/storage.md) — Storage Protocol, DI, EAFP, row schema
@@ -54,9 +55,3 @@ Key decisions recorded here; details in separate files to keep this file short.
 - [Test coverage map](docs/architecture/test-coverage.md) — what is tested, gaps, patterns
 - [CI & deployment](docs/architecture/ci.md) — GitHub Actions, env vars, setup
 - [Gemini enrichment](docs/architecture/gemini.md) — model rotation, quota strategy
-
-<!-- SPECKIT START -->
-For additional context about technologies to be used, project structure,
-shell commands, and other important information, read the current plan:
-[specs/007-pipeline-result-ok/plan.md](specs/007-pipeline-result-ok/plan.md)
-<!-- SPECKIT END -->
