@@ -128,7 +128,6 @@ class GeminiEnricher:
         params = enrich_config.get("parameters", {})
         on_error: str = enrich_config.get("on_error", "")
         response_pattern: str | None = enrich_config.get("response_pattern")
-        fallback = on_error or FALLBACK_MARKER
 
         context: dict[str, Any] = {
             "title": item.title,
@@ -170,7 +169,7 @@ class GeminiEnricher:
                 item.dedupe_key,
                 text.splitlines()[0] if text else "",
             )
-            return fallback
+            return on_error or FALLBACK_MARKER
         return text
 
     @retry(
@@ -273,8 +272,15 @@ class RotatingGeminiEnricher:
 
     def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
         last_exc: Exception | None = None
+        # Cooldown only helps if some failure was Quota or Unavailable —
+        # those can roll over / recover during the 60s wait. A pure
+        # TryNextModel exhaustion (every model truncated this item) will
+        # repeat identically after the sleep, so skip the cooldown then.
+        saw_recoverable_failure = False
         for rotation in range(2):
             if rotation == 1:
+                if not saw_recoverable_failure:
+                    break
                 logger.warning(
                     "all %d models exhausted, waiting %ds",
                     len(self._enrichers),
@@ -298,13 +304,14 @@ class RotatingGeminiEnricher:
                     prev = self._enrichers[prev_idx]._model_name
                     if isinstance(exc, ModelUnavailable):
                         self._dead.add(prev_idx)
-                    self._current = (self._current + 1) % len(self._enrichers)
-                    if isinstance(exc, ModelUnavailable):
+                        saw_recoverable_failure = True
                         kind = "unavailable"
                     elif isinstance(exc, QuotaExhausted):
+                        saw_recoverable_failure = True
                         kind = "quota exhausted"
                     else:
                         kind = "try-next"
+                    self._current = (self._current + 1) % len(self._enrichers)
                     # Skip over already-dead models when naming the next attempt,
                     # so the log matches what the inner loop will actually try.
                     preview = self._current

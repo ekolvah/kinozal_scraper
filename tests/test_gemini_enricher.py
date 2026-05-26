@@ -592,6 +592,45 @@ class TestRotatingGeminiEnricherTryNext(unittest.TestCase):
         with self.assertRaises(QuotaExhausted):
             rotator.enrich(_item(), _ENRICH_CFG)
 
+    @unittest.mock.patch("gemini_enricher.time.sleep")
+    def test_all_try_next_skips_cooldown(self, mock_sleep: Any) -> None:
+        """Per claude-review #131: if every model raised only `TryNextModel`
+        (no quota / no unavailable), the 60s cooldown buys nothing — the same
+        item × same models will truncate identically after the wait. Skip it.
+        """
+
+        def fail(item: Any, cfg: Any) -> str:
+            raise TryNextModel
+
+        rotator = RotatingGeminiEnricher(["m1", "m2"])
+        rotator._enrichers[0].enrich = fail  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = fail  # type: ignore[assignment]
+
+        with self.assertRaises(QuotaExhausted):
+            rotator.enrich(_item(), _ENRICH_CFG)
+        mock_sleep.assert_not_called()
+
+    @unittest.mock.patch("gemini_enricher.time.sleep")
+    def test_quota_in_first_rotation_still_uses_cooldown(self, mock_sleep: Any) -> None:
+        """Cooldown stays for the original use case: if any model hit quota
+        (or 404) in the first rotation, a 60s wait can let the window roll
+        over before the second pass."""
+        call_count = 0
+
+        def enrich_fn(item: Any, cfg: Any) -> str:
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                raise QuotaExhausted
+            return "recovered"
+
+        rotator = RotatingGeminiEnricher(["m1", "m2"])
+        rotator._enrichers[0].enrich = enrich_fn  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = enrich_fn  # type: ignore[assignment]
+
+        self.assertEqual(rotator.enrich(_item(), _ENRICH_CFG), "recovered")
+        mock_sleep.assert_called_once_with(60)
+
 
 class TestBuildDefaultEnricher(unittest.TestCase):
     """Pin-test for issue #93: silent degradation when GOOGLE_API_KEY is absent.
