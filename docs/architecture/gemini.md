@@ -16,10 +16,14 @@ Free tier limit: ~20 requests/day/model. With ~14 text models available,
 rotation gives ~280 requests/day without upgrading.
 
 `RotatingGeminiEnricher` behavior:
-1. Try current model
-2. On `ResourceExhausted` (429) → advance to next model, retry immediately
-3. After all models exhausted → 60s cooldown → one more full rotation
-4. Still exhausted → raise `QuotaExhausted` to caller
+1. Try current model (skipping any marked dead this run)
+2. On `ResourceExhausted` (429) → advance to next live model, retry immediately
+3. On `NotFound` (404, model deprecated server-side) → mark this model dead
+   for the rest of the run, advance to next live model (see #128)
+4. After all live models exhausted → 60s cooldown → clear the dead set →
+   one more full rotation (a quota window may have rolled over; a 404'd
+   model may have come back)
+5. Still exhausted → raise `QuotaExhausted` to caller
 
 `TelegramChannelSummarizer` uses the same model list via `_build_model_list()` →
 `get_generation_models()`, with simpler rotation (no cooldown, just skip on 429).
@@ -49,6 +53,15 @@ Set as GitHub Actions variable (not secret) — see [ci.md](ci.md).
 - Exponential backoff: 1s multiplier, max 10s
 - Retries only on `google.api_core.exceptions.ResourceExhausted`
 - After 3 failures: wrapped as `QuotaExhausted` for `RotatingGeminiEnricher` to catch
+
+`GeminiEnricher.enrich` additionally translates known per-model failures into
+rotator signals so 404s are not silently swallowed as `on_error` (#128):
+
+| Server-side condition | Exception surfaced |
+|---|---|
+| `ResourceExhausted` (429, quota) | `QuotaExhausted` |
+| `NotFound` (404, model deprecated mid-rotation) | `ModelUnavailable` |
+| Any other exception | logged at ERROR, `on_error` returned |
 
 ## Prompt configuration
 
@@ -114,8 +127,9 @@ parameter and apply the same loop semantics:
 
 - `enricher is None` or no `enrich` block → field stays unset, `{summary_ru}`
   placeholder resolves to empty, notification still sends.
-- `QuotaExhausted` raised mid-loop → remaining items get the `on_error`
-  fallback value, but every notification still goes out (Principle IV).
+- `QuotaExhausted` raised mid-loop → remaining items get the fallback value
+  (`enrich.on_error` if non-empty, otherwise `FALLBACK_MARKER`), but every
+  notification still goes out (Principle IV; #128).
 
 ### Steam-specific fallback (issue #124)
 
