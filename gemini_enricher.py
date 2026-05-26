@@ -38,6 +38,14 @@ class ModelUnavailable(Exception):
     it for every item (issue #128)."""
 
 
+class TryNextModel(Exception):
+    """Per-item failure (truncation, network timeout, any unexpected
+    exception that is not 404/429). The model is otherwise healthy — same
+    model may succeed on a different item — so the rotator advances to
+    the next live model for *this* item but does NOT mark the model dead.
+    See #130."""
+
+
 class TruncatedResponse(Exception):
     """Model returned an incomplete answer (`finish_reason` MAX_TOKENS / SAFETY).
     Surfacing as exception so `enrich` can route to the visible-anomaly marker
@@ -140,12 +148,12 @@ class GeminiEnricher:
         try:
             text = self._generate(prompt, generation_config)
         except TruncatedResponse as exc:
-            logger.warning(
-                "[%s] enrichment truncated (%s) — falling back to marker",
+            logger.info(
+                "[%s] enrichment truncated (%s) — asking rotator for next model",
                 item.dedupe_key,
                 exc,
             )
-            return fallback
+            raise TryNextModel from exc
         except Exception as exc:
             if isinstance(exc, google.api_core.exceptions.NotFound) or isinstance(
                 exc.__cause__, google.api_core.exceptions.NotFound
@@ -153,8 +161,8 @@ class GeminiEnricher:
                 raise ModelUnavailable from exc
             if isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted):
                 raise QuotaExhausted from exc
-            logger.error("[%s] enrichment failed: %s", item.dedupe_key, exc)
-            return fallback
+            logger.warning("[%s] enrichment failed: %s — trying next model", item.dedupe_key, exc)
+            raise TryNextModel from exc
 
         if response_pattern and not re.match(response_pattern, text):
             logger.warning(
@@ -285,13 +293,18 @@ class RotatingGeminiEnricher:
                     continue
                 try:
                     return self._enrichers[self._current].enrich(item, enrich_config)
-                except (QuotaExhausted, ModelUnavailable) as exc:
+                except (QuotaExhausted, ModelUnavailable, TryNextModel) as exc:
                     prev_idx = self._current
                     prev = self._enrichers[prev_idx]._model_name
                     if isinstance(exc, ModelUnavailable):
                         self._dead.add(prev_idx)
                     self._current = (self._current + 1) % len(self._enrichers)
-                    kind = "unavailable" if isinstance(exc, ModelUnavailable) else "quota exhausted"
+                    if isinstance(exc, ModelUnavailable):
+                        kind = "unavailable"
+                    elif isinstance(exc, QuotaExhausted):
+                        kind = "quota exhausted"
+                    else:
+                        kind = "try-next"
                     # Skip over already-dead models when naming the next attempt,
                     # so the log matches what the inner loop will actually try.
                     preview = self._current
