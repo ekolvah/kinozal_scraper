@@ -5,7 +5,7 @@ from typing import Any
 
 import requests
 
-from gemini_enricher import Enricher, QuotaExhausted
+from gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     PipelineResult,
@@ -110,7 +110,9 @@ def _run_single_source(
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
         field = enrich_config["field"]
-        fallback: str = enrich_config.get("on_error", "")
+        # Empty `on_error` would silently blank the enriched field — use
+        # the visible marker so the operator sees a tripwire (#128).
+        fallback: str = enrich_config.get("on_error") or FALLBACK_MARKER
         enriched, skipped = 0, 0
         for item in new_items:
             try:

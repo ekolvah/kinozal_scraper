@@ -31,6 +31,13 @@ class QuotaExhausted(Exception):
     """All retry attempts hit ResourceExhausted — caller should stop or switch models."""
 
 
+class ModelUnavailable(Exception):
+    """Model returned `NotFound` (404) at GenerateContent — typically a model
+    Google still lists via `ListModels` but has already disabled. The rotator
+    should mark this model dead for the rest of the run instead of retrying
+    it for every item (issue #128)."""
+
+
 class TruncatedResponse(Exception):
     """Model returned an incomplete answer (`finish_reason` MAX_TOKENS / SAFETY).
     Surfacing as exception so `enrich` can route to the visible-anomaly marker
@@ -140,11 +147,14 @@ class GeminiEnricher:
             )
             return fallback
         except Exception as exc:
-            is_quota = isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted)
-            if is_quota:
+            if isinstance(exc, google.api_core.exceptions.NotFound) or isinstance(
+                exc.__cause__, google.api_core.exceptions.NotFound
+            ):
+                raise ModelUnavailable from exc
+            if isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted):
                 raise QuotaExhausted from exc
             logger.error("[%s] enrichment failed: %s", item.dedupe_key, exc)
-            return on_error
+            return fallback
 
         if response_pattern and not re.match(response_pattern, text):
             logger.warning(
@@ -238,6 +248,20 @@ class RotatingGeminiEnricher:
             raise ValueError("model_names must not be empty")
         self._enrichers = [GeminiEnricher(n) for n in model_names]
         self._current = 0
+        # Indices of models that returned `NotFound` this run. Skipped on
+        # subsequent items until the cooldown window resets them (#128).
+        self._dead: set[int] = set()
+
+    def _advance_to_live(self) -> bool:
+        """Move `_current` to the next non-dead index. Returns False when
+        every model is dead."""
+        if len(self._dead) >= len(self._enrichers):
+            return False
+        for _ in range(len(self._enrichers)):
+            if self._current not in self._dead:
+                return True
+            self._current = (self._current + 1) % len(self._enrichers)
+        return False
 
     def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
         last_exc: Exception | None = None
@@ -250,15 +274,40 @@ class RotatingGeminiEnricher:
                 )
                 time.sleep(self._COOLDOWN)
                 self._current = 0
+                self._dead.clear()
+
+            if not self._advance_to_live():
+                continue
 
             for _ in range(len(self._enrichers)):
+                if self._current in self._dead:
+                    self._current = (self._current + 1) % len(self._enrichers)
+                    continue
                 try:
                     return self._enrichers[self._current].enrich(item, enrich_config)
-                except QuotaExhausted as exc:
-                    prev = self._enrichers[self._current]._model_name
+                except (QuotaExhausted, ModelUnavailable) as exc:
+                    prev_idx = self._current
+                    prev = self._enrichers[prev_idx]._model_name
+                    if isinstance(exc, ModelUnavailable):
+                        self._dead.add(prev_idx)
                     self._current = (self._current + 1) % len(self._enrichers)
-                    nxt = self._enrichers[self._current]._model_name
-                    logger.warning("model %s quota exhausted, trying %s", prev, nxt)
+                    kind = "unavailable" if isinstance(exc, ModelUnavailable) else "quota exhausted"
+                    # Skip over already-dead models when naming the next attempt,
+                    # so the log matches what the inner loop will actually try.
+                    preview = self._current
+                    for _ in range(len(self._enrichers)):
+                        if preview not in self._dead:
+                            break
+                        preview = (preview + 1) % len(self._enrichers)
+                    if preview in self._dead:
+                        logger.warning("model %s %s, no live models left", prev, kind)
+                    else:
+                        logger.warning(
+                            "model %s %s, trying %s",
+                            prev,
+                            kind,
+                            self._enrichers[preview]._model_name,
+                        )
                     last_exc = exc
 
         raise QuotaExhausted from last_exc

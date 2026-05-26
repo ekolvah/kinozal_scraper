@@ -7,7 +7,7 @@ from typing import Any
 import requests
 from bs4 import BeautifulSoup
 
-from gemini_enricher import Enricher, QuotaExhausted
+from gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
 from generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
@@ -165,7 +165,10 @@ def run_github_trending_pipeline(
         enrich_config = source.get("enrich")
         if enrich_config and enricher is not None:
             field: str = enrich_config["field"]
-            fallback: str = enrich_config.get("on_error", "")
+            # Empty `on_error` would blank the summary line in Telegram
+            # instead of surfacing the failure — use the visible marker
+            # so the operator sees a tripwire (#128, Principle IV).
+            fallback: str = enrich_config.get("on_error") or FALLBACK_MARKER
             enriched, skipped = 0, 0
             for item in new_items:
                 try:
