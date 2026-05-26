@@ -154,7 +154,7 @@ class GeminiEnricher:
             if isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted):
                 raise QuotaExhausted from exc
             logger.error("[%s] enrichment failed: %s", item.dedupe_key, exc)
-            return on_error
+            return fallback
 
         if response_pattern and not re.match(response_pattern, text):
             logger.warning(
@@ -291,9 +291,23 @@ class RotatingGeminiEnricher:
                     if isinstance(exc, ModelUnavailable):
                         self._dead.add(prev_idx)
                     self._current = (self._current + 1) % len(self._enrichers)
-                    nxt = self._enrichers[self._current]._model_name
                     kind = "unavailable" if isinstance(exc, ModelUnavailable) else "quota exhausted"
-                    logger.warning("model %s %s, trying %s", prev, kind, nxt)
+                    # Skip over already-dead models when naming the next attempt,
+                    # so the log matches what the inner loop will actually try.
+                    preview = self._current
+                    for _ in range(len(self._enrichers)):
+                        if preview not in self._dead:
+                            break
+                        preview = (preview + 1) % len(self._enrichers)
+                    if preview in self._dead:
+                        logger.warning("model %s %s, no live models left", prev, kind)
+                    else:
+                        logger.warning(
+                            "model %s %s, trying %s",
+                            prev,
+                            kind,
+                            self._enrichers[preview]._model_name,
+                        )
                     last_exc = exc
 
         raise QuotaExhausted from last_exc
