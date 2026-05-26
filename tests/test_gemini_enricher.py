@@ -9,6 +9,7 @@ from gemini_enricher import (
     FALLBACK_MARKER,
     Enricher,
     GeminiEnricher,
+    ModelUnavailable,
     NullEnricher,
     QuotaExhausted,
     RotatingGeminiEnricher,
@@ -411,6 +412,89 @@ class TestRotatingGeminiEnricher(unittest.TestCase):
         with self.assertRaises(QuotaExhausted):
             enricher.enrich(_item(), _ENRICH_CFG)
         mock_sleep.assert_called_once_with(60)
+
+
+class TestGeminiEnricherModelUnavailable(unittest.TestCase):
+    """Pin-tests for #128: ListModels returns Gemini models still in
+    deprecation that 404 at GenerateContent. Treat the per-model `NotFound`
+    as a signal to switch models — like `ResourceExhausted` (quota) does —
+    instead of silently returning `on_error` for every item.
+    """
+
+    def test_not_found_raises_model_unavailable(self) -> None:
+        import google.api_core.exceptions
+
+        enricher = GeminiEnricher("models/gemini-3.1-flash-lite-preview")
+        not_found = google.api_core.exceptions.NotFound(
+            "404 This model models/gemini-3.1-flash-lite-preview is no longer available."
+        )
+        with (
+            unittest.mock.patch.object(enricher, "_generate", side_effect=not_found),
+            self.assertRaises(ModelUnavailable),
+        ):
+            enricher.enrich(_item(), _ENRICH_CFG)
+
+    def test_not_found_wrapped_in_retry_error_raises_model_unavailable(self) -> None:
+        """Defensive: if tenacity is ever broadened to retry NotFound, the
+        outer `RetryError` carries the original NotFound as `__cause__` —
+        exactly the same shape `QuotaExhausted` detection handles today."""
+        import google.api_core.exceptions
+        from tenacity import RetryError
+
+        enricher = GeminiEnricher("models/gemini-3.1-flash-lite-preview")
+        not_found = google.api_core.exceptions.NotFound("404 model gone")
+        retry_err = RetryError(last_attempt=unittest.mock.MagicMock())
+        retry_err.__cause__ = not_found
+        with (
+            unittest.mock.patch.object(enricher, "_generate", side_effect=retry_err),
+            self.assertRaises(ModelUnavailable),
+        ):
+            enricher.enrich(_item(), _ENRICH_CFG)
+
+
+class TestRotatingGeminiEnricherModelUnavailable(unittest.TestCase):
+    def test_dead_model_skipped_on_subsequent_items(self) -> None:
+        """A 404'd model should be tried at most once per run. Today's bug
+        (#128): all 8 trending items hit the same dead model before rotator
+        even noticed, because `NotFound` was swallowed as `on_error`."""
+        rotator = RotatingGeminiEnricher(["model-a", "model-b"])
+        a_calls = 0
+        b_calls = 0
+
+        def fail_a(item: Any, cfg: Any) -> str:
+            nonlocal a_calls
+            a_calls += 1
+            raise ModelUnavailable
+
+        def ok_b(item: Any, cfg: Any) -> str:
+            nonlocal b_calls
+            b_calls += 1
+            return "from-b"
+
+        rotator._enrichers[0].enrich = fail_a  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = ok_b  # type: ignore[assignment]
+
+        for i in range(5):
+            self.assertEqual(rotator.enrich(_item(str(i)), _ENRICH_CFG), "from-b")
+
+        self.assertEqual(a_calls, 1, "dead model must not be retried for every item")
+        self.assertEqual(b_calls, 5)
+
+    @unittest.mock.patch("gemini_enricher.time.sleep")
+    def test_all_models_unavailable_raises_quota_exhausted(self, mock_sleep: Any) -> None:
+        """When every rotated model 404s, surface a single quota-style
+        exception so the pipeline switches to the visible fallback marker.
+        """
+
+        def fail(item: Any, cfg: Any) -> str:
+            raise ModelUnavailable
+
+        rotator = RotatingGeminiEnricher(["m1", "m2"])
+        rotator._enrichers[0].enrich = fail  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = fail  # type: ignore[assignment]
+
+        with self.assertRaises(QuotaExhausted):
+            rotator.enrich(_item(), _ENRICH_CFG)
 
 
 class TestBuildDefaultEnricher(unittest.TestCase):

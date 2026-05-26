@@ -6,7 +6,7 @@ import unittest.mock
 from pathlib import Path
 from typing import Any
 
-from gemini_enricher import QuotaExhausted
+from gemini_enricher import FALLBACK_MARKER, QuotaExhausted
 from generic_pipeline import extract_from_html
 from github_trending_pipeline import (
     _normalize_items,
@@ -417,6 +417,34 @@ class TestRussianEnrichment(unittest.TestCase):
         # raised) — the loop must short-circuit after the raise without
         # calling for the remaining items.
         self.assertEqual(flaky.call_count, 2)
+
+
+class _AlwaysQuotaEnricher:
+    """Mimics rotator after all models are exhausted: every call raises
+    QuotaExhausted. Used to pin the degraded-notification shape (#128)."""
+
+    def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+        raise QuotaExhausted
+
+
+class TestDegradedEnrichmentVisibility(unittest.TestCase):
+    """Pin-test for #128 second-order bug: when every Gemini model is
+    unavailable, the pipeline currently substitutes `on_error` (which is
+    "" for github_trending) into `summary_ru`, producing a blank line in
+    Telegram instead of a visible tripwire. Must use FALLBACK_MARKER
+    whenever `on_error` is empty (Constitution Principle IV).
+    """
+
+    def test_empty_on_error_falls_back_to_marker_when_quota_exhausted(self) -> None:
+        _, notifier = _run_with_enricher(_AlwaysQuotaEnricher())
+        self.assertGreaterEqual(len(notifier.sent), 1)
+        for sent in notifier.sent:
+            with self.subTest(text=sent.text):
+                self.assertIn(
+                    FALLBACK_MARKER,
+                    sent.text,
+                    "degraded notification must carry the visible marker, not blank",
+                )
 
 
 if __name__ == "__main__":
