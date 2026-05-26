@@ -14,6 +14,7 @@ from gemini_enricher import (
     QuotaExhausted,
     RotatingGeminiEnricher,
     TruncatedResponse,
+    TryNextModel,
     build_default_enricher,
 )
 from generic_pipeline import NormalizedItem
@@ -143,25 +144,36 @@ class TestGenerateFinishReason(unittest.TestCase):
         self.assertEqual(result, "Для кого: X\nЗачем: Y")
 
 
-class TestEnrichFallbackOnTruncation(unittest.TestCase):
-    def test_truncation_returns_fallback_marker_when_on_error_empty(self) -> None:
+class TestEnrichTruncationRotates(unittest.TestCase):
+    """After #130, MAX_TOKENS / SAFETY truncation is no longer terminal — the
+    enricher asks the rotator to try the next model instead of returning the
+    visible marker on first attempt. Marker shows up only when every live
+    model failed on this specific item (rotator → QuotaExhausted → pipeline)."""
+
+    def test_max_tokens_raises_try_next_model(self) -> None:
         enricher = GeminiEnricher("test-model")
         response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
-        with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        with (
+            unittest.mock.patch(
+                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            ),
+            self.assertRaises(TryNextModel),
         ):
-            result = enricher.enrich(_item(), _TWO_LINE_CFG)
-        self.assertEqual(result, FALLBACK_MARKER)
+            enricher.enrich(_item(), _TWO_LINE_CFG)
 
-    def test_truncation_returns_on_error_when_non_empty(self) -> None:
+    def test_safety_raises_try_next_model_even_with_custom_on_error(self) -> None:
+        """`on_error` is the final shape of the field if rotation exhausts —
+        truncation itself must still rotate first."""
         cfg = {**_TWO_LINE_CFG, "on_error": "custom-fallback"}
         enricher = GeminiEnricher("test-model")
-        response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
-        with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        response = _FakeResponse(text="…", finish_reason="SAFETY")
+        with (
+            unittest.mock.patch(
+                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            ),
+            self.assertRaises(TryNextModel),
         ):
-            result = enricher.enrich(_item(), cfg)
-        self.assertEqual(result, "custom-fallback")
+            enricher.enrich(_item(), cfg)
 
 
 class TestEnrichFormatValidation(unittest.TestCase):
@@ -279,13 +291,18 @@ class TestGeminiEnricherQuota(unittest.TestCase):
         ):
             enricher.enrich(_item(), _ENRICH_CFG)
 
-    def test_non_quota_error_returns_on_error(self) -> None:
+    def test_non_quota_error_raises_try_next_model(self) -> None:
+        """After #130, any unexpected exception (network timeout,
+        InvalidArgument, …) asks the rotator to try the next model rather
+        than silently returning `on_error` for this single item."""
         from gemini_enricher import GeminiEnricher
 
         enricher = GeminiEnricher("test-model")
-        with unittest.mock.patch.object(enricher, "_generate", side_effect=RuntimeError("net")):
-            result = enricher.enrich(_item(), _ENRICH_CFG)
-        self.assertEqual(result, "fallback")
+        with (
+            unittest.mock.patch.object(enricher, "_generate", side_effect=RuntimeError("net")),
+            self.assertRaises(TryNextModel),
+        ):
+            enricher.enrich(_item(), _ENRICH_CFG)
 
 
 class TestModelVersionSorting(unittest.TestCase):
@@ -488,6 +505,85 @@ class TestRotatingGeminiEnricherModelUnavailable(unittest.TestCase):
 
         def fail(item: Any, cfg: Any) -> str:
             raise ModelUnavailable
+
+        rotator = RotatingGeminiEnricher(["m1", "m2"])
+        rotator._enrichers[0].enrich = fail  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = fail  # type: ignore[assignment]
+
+        with self.assertRaises(QuotaExhausted):
+            rotator.enrich(_item(), _ENRICH_CFG)
+
+
+class TestRotateOnTryNextModel(unittest.TestCase):
+    """#130: per-item failures (truncation, network) signal `TryNextModel`
+    so the rotator can give the item another chance on a different model.
+    Bad-prompt failures (response_pattern mismatch) stay terminal — burning
+    14 models on a broken prompt is wasted quota."""
+
+    def test_pattern_mismatch_still_returns_marker_no_rotation(self) -> None:
+        """Response that doesn't match `response_pattern` is a prompt-level
+        issue, not a model issue — keep the immediate marker return so the
+        rotator does not retry across all live models."""
+        enricher = GeminiEnricher("test-model")
+        response = _FakeResponse(text="строка 1:\nстрока 2:", finish_reason="STOP")
+        with unittest.mock.patch(
+            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+        ):
+            result = enricher.enrich(_item(), _TWO_LINE_CFG)
+        self.assertEqual(result, FALLBACK_MARKER)
+
+
+class TestRotatingGeminiEnricherTryNext(unittest.TestCase):
+    def test_rotator_retries_on_next_model_after_truncated(self) -> None:
+        rotator = RotatingGeminiEnricher(["model-a", "model-b"])
+
+        def fail_a(item: Any, cfg: Any) -> str:
+            raise TryNextModel
+
+        def ok_b(item: Any, cfg: Any) -> str:
+            return "text-b"
+
+        rotator._enrichers[0].enrich = fail_a  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = ok_b  # type: ignore[assignment]
+
+        self.assertEqual(rotator.enrich(_item(), _ENRICH_CFG), "text-b")
+
+    def test_rotator_truncated_does_not_mark_dead(self) -> None:
+        """A model that truncated one item may handle the next one fine —
+        `_dead` is reserved for `ModelUnavailable` (#128). On item 2 the
+        rotator must be allowed to call model-A again."""
+        rotator = RotatingGeminiEnricher(["model-a", "model-b"])
+        a_calls = 0
+
+        def fail_a(item: Any, cfg: Any) -> str:
+            nonlocal a_calls
+            a_calls += 1
+            raise TryNextModel
+
+        def ok_b(item: Any, cfg: Any) -> str:
+            return "text-b"
+
+        rotator._enrichers[0].enrich = fail_a  # type: ignore[assignment]
+        rotator._enrichers[1].enrich = ok_b  # type: ignore[assignment]
+
+        rotator.enrich(_item("1"), _ENRICH_CFG)
+        # After item 1: _current is on model-b, but model-a is still live.
+        # Move pointer back to model-a so item 2 actually exercises it; if
+        # rotator wrongly added model-a to `_dead`, this call would skip it.
+        rotator._current = 0
+        rotator.enrich(_item("2"), _ENRICH_CFG)
+
+        self.assertEqual(a_calls, 2, "model-a must remain live after TryNextModel")
+        self.assertNotIn(0, rotator._dead)
+
+    @unittest.mock.patch("gemini_enricher.time.sleep")
+    def test_all_models_truncated_raises_quota_exhausted(self, mock_sleep: Any) -> None:
+        """When every model fails on the same item — even if every failure
+        is `TryNextModel` rather than 429 — the rotator surfaces a single
+        `QuotaExhausted` so the pipeline substitutes `FALLBACK_MARKER`."""
+
+        def fail(item: Any, cfg: Any) -> str:
+            raise TryNextModel
 
         rotator = RotatingGeminiEnricher(["m1", "m2"])
         rotator._enrichers[0].enrich = fail  # type: ignore[assignment]
