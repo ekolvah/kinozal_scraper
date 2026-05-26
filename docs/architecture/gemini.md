@@ -20,10 +20,13 @@ rotation gives ~280 requests/day without upgrading.
 2. On `ResourceExhausted` (429) → advance to next live model, retry immediately
 3. On `NotFound` (404, model deprecated server-side) → mark this model dead
    for the rest of the run, advance to next live model (see #128)
-4. After all live models exhausted → 60s cooldown → clear the dead set →
+4. On `TryNextModel` (truncation, network timeout, any unexpected exception
+   on this specific item — see #130) → advance to next live model, do **not**
+   mark the model dead (same model may handle a different item fine)
+5. After all live models exhausted → 60s cooldown → clear the dead set →
    one more full rotation (a quota window may have rolled over; a 404'd
    model may have come back)
-5. Still exhausted → raise `QuotaExhausted` to caller
+6. Still exhausted → raise `QuotaExhausted` to caller
 
 `TelegramChannelSummarizer` uses the same model list via `_build_model_list()` →
 `get_generation_models()`, with simpler rotation (no cooldown, just skip on 429).
@@ -54,14 +57,17 @@ Set as GitHub Actions variable (not secret) — see [ci.md](ci.md).
 - Retries only on `google.api_core.exceptions.ResourceExhausted`
 - After 3 failures: wrapped as `QuotaExhausted` for `RotatingGeminiEnricher` to catch
 
-`GeminiEnricher.enrich` additionally translates known per-model failures into
-rotator signals so 404s are not silently swallowed as `on_error` (#128):
+`GeminiEnricher.enrich` translates per-model failures into rotator signals so
+the rotator can give each item another chance on a different model before
+falling back to `FALLBACK_MARKER` (#128, #130):
 
-| Server-side condition | Exception surfaced |
-|---|---|
-| `ResourceExhausted` (429, quota) | `QuotaExhausted` |
-| `NotFound` (404, model deprecated mid-rotation) | `ModelUnavailable` |
-| Any other exception | logged at ERROR, `on_error` returned |
+| Condition | Exception surfaced | Rotator action |
+|---|---|---|
+| `ResourceExhausted` (429, quota) | `QuotaExhausted` | switch to next live model |
+| `NotFound` (404, model deprecated mid-rotation) | `ModelUnavailable` | switch + mark dead for this run |
+| `TruncatedResponse` (MAX_TOKENS / SAFETY) | `TryNextModel` | switch to next live model |
+| Any other exception (network, `InvalidArgument`, …) | `TryNextModel` | switch to next live model |
+| `response_pattern` mismatch | (returns `FALLBACK_MARKER` directly) | no rotation — bad prompt is not a model problem |
 
 ## Prompt configuration
 
