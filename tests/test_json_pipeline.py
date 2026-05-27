@@ -177,10 +177,12 @@ class TestJsonPipelineFailedNotifications(unittest.TestCase):
         notifier = InMemoryNotifier(fail_ids={"user/repo-alpha", "org/repo-beta"})
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(storage.stored_rows("github_projects")), 1)
         self.assertEqual(storage.stored_rows("github_projects")[0][0], "dev/repo-gamma")
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("notification(s) failed" in err for err in results[0].errors))
 
 
 class TestJsonPipelineSourceIsolation(unittest.TestCase):

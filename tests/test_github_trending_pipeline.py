@@ -323,6 +323,26 @@ class TestPipelineMechanics(unittest.TestCase):
         self.assertTrue(notifier.sent[0].text)
         self.assertIn("github.com/", notifier.sent[0].text)
 
+    def test_failed_notifications_are_not_stored_and_mark_result_not_ok(self) -> None:
+        result = extract_from_html(_fixture_html(), _TRENDING_SOURCE)
+        items = _normalize_items(result.items)
+        failed_key = items[0].dedupe_key
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier(fail_ids={failed_key})
+        with unittest.mock.patch(
+            "github_trending_pipeline._fetch_html",
+            return_value=_fixture_html(),
+        ):
+            results = run_github_trending_pipeline(
+                storage, notifier, sources_config=_SOURCES_CONFIG
+            )
+
+        stored_keys = [row[0] for row in storage.stored_rows("github_projects")]
+        self.assertNotIn(failed_key, stored_keys)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("notification(s) failed" in err for err in results[0].errors))
+
 
 # ── #88: Russian who/pain enrichment for trending ────────────────────────────
 
