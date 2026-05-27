@@ -22,6 +22,25 @@ class ChannelSummary:
     summary: str
 
 
+@dataclass
+class ChannelProcessResult:
+    channel: str
+    url: str
+    status: str
+    message_count: int = 0
+    text_chars: int = 0
+    summary: str = ""
+    error_kind: str = ""
+    error_message: str = ""
+
+
+class SummarizationFailed(Exception):
+    def __init__(self, error_kind: str, message: str) -> None:
+        super().__init__(message)
+        self.error_kind = error_kind
+        self.message = message
+
+
 # Tuple shape returned by readers: (channel_title, joined_messages_text, is_broadcast).
 # title=None signals a fetch error — orchestrator falls back to the raw url for display.
 ChannelMessages = tuple[str | None, str, bool]
@@ -50,11 +69,18 @@ _DEFAULT_CHAT_PROMPT = (
 )
 
 
+def _is_model_unavailable_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "404" in message and (
+        "model" in message and ("no longer available" in message or "not found" in message)
+    )
+
+
 class GeminiSummarizer:
-    """Sequential Gemini model fallback on `ResourceExhausted`. Differs
-    from `RotatingGeminiEnricher` (no cooldown, no re-raise — silent
-    fallback to next model, empty string if all exhausted). Behaviour
-    preserved 1:1 from the pre-refactor `summarization_text`.
+    """Sequential Gemini model fallback for recoverable per-model failures.
+    Quota and unavailable-model errors advance to the next model. Unknown
+    API failures raise `SummarizationFailed` so callers cannot confuse them
+    with "no channel messages."
     """
 
     def __init__(
@@ -73,6 +99,7 @@ class GeminiSummarizer:
 
         prompt = self._broadcast_prompt if is_broadcast else self._chat_prompt
         request = text + prompt
+        failures: list[str] = []
 
         for model_name in self._models:
             try:
@@ -84,20 +111,36 @@ class GeminiSummarizer:
                 logger.info("------Саммаризация------")
 
                 if not response.candidates:
-                    return ""
+                    raise SummarizationFailed(
+                        "empty_response", f"{model_name} returned no candidates"
+                    )
 
                 logger.info(response.text)
-                summary: str = response.text
+                summary: str = (response.text or "").strip()
+                if not summary:
+                    raise SummarizationFailed("empty_response", f"{model_name} returned empty text")
                 return summary
             except google.api_core.exceptions.ResourceExhausted:
+                failures.append(f"{model_name}: quota exhausted")
                 logger.warning("model %s quota exhausted, trying next", model_name)
                 continue
+            except google.api_core.exceptions.NotFound as exc:
+                failures.append(f"{model_name}: unavailable: {exc}")
+                logger.warning("model %s unavailable, trying next: %s", model_name, exc)
+                continue
+            except SummarizationFailed:
+                raise
             except Exception as exc:
+                if _is_model_unavailable_error(exc):
+                    failures.append(f"{model_name}: unavailable: {exc}")
+                    logger.warning("model %s unavailable, trying next: %s", model_name, exc)
+                    continue
                 logger.error("Error with model %s: %s", model_name, exc)
-                return ""
+                raise SummarizationFailed("api_error", f"{model_name}: {exc}") from exc
 
         logger.error("all models exhausted, could not summarize")
-        return ""
+        detail = "; ".join(failures) if failures else "no models configured"
+        raise SummarizationFailed("all_models_failed", detail)
 
 
 class TelethonReader:
@@ -196,27 +239,96 @@ class TelethonReader:
             await client.disconnect()
 
 
+def summarize_channel_results(
+    reader: TelegramReader,
+    summarizer: Summarizer,
+    channel_urls: list[str],
+) -> list[ChannelProcessResult]:
+    """Fetch and summarize channels while preserving explicit per-channel state."""
+    results: list[ChannelProcessResult] = []
+    for url in channel_urls:
+        channel_title, text, is_broadcast = reader.fetch_channel(url)
+        display_name = channel_title if channel_title else url
+        message_count = len([line for line in text.splitlines() if line.strip()])
+        text_chars = len(text)
+
+        logger.info("-----Telegram channel: %s -----", display_name)
+        logger.info(text)
+        if channel_title is None and not text:
+            results.append(
+                ChannelProcessResult(
+                    channel=display_name,
+                    url=url,
+                    status="fetch_failed",
+                    message_count=message_count,
+                    text_chars=text_chars,
+                    error_kind="fetch_failed",
+                    error_message="reader could not fetch channel",
+                )
+            )
+            continue
+        if not text:
+            results.append(
+                ChannelProcessResult(
+                    channel=display_name,
+                    url=url,
+                    status="no_text",
+                    message_count=0,
+                    text_chars=0,
+                )
+            )
+            continue
+
+        try:
+            summary = summarizer.summarize(text, is_broadcast)
+        except SummarizationFailed as exc:
+            results.append(
+                ChannelProcessResult(
+                    channel=display_name,
+                    url=url,
+                    status="summarization_failed",
+                    message_count=message_count,
+                    text_chars=text_chars,
+                    error_kind=exc.error_kind,
+                    error_message=exc.message,
+                )
+            )
+            continue
+        if summary:
+            results.append(
+                ChannelProcessResult(
+                    channel=display_name,
+                    url=url,
+                    status="summarized",
+                    message_count=message_count,
+                    text_chars=text_chars,
+                    summary=summary,
+                )
+            )
+        else:
+            results.append(
+                ChannelProcessResult(
+                    channel=display_name,
+                    url=url,
+                    status="summarization_failed",
+                    message_count=message_count,
+                    text_chars=text_chars,
+                    error_kind="empty_summary",
+                    error_message="summarizer returned empty text",
+                )
+            )
+
+    return results
+
+
 def summarize_channels(
     reader: TelegramReader,
     summarizer: Summarizer,
     channel_urls: list[str],
 ) -> list[ChannelSummary]:
-    """Pure orchestrator: fetch each channel via the injected reader,
-    summarize via the injected summarizer, return a list. Errors from one
-    channel never block the others (matches pre-refactor behaviour).
-    """
-    results: list[ChannelSummary] = []
-    for url in channel_urls:
-        channel_title, text, is_broadcast = reader.fetch_channel(url)
-        display_name = channel_title if channel_title else url
-
-        logger.info("-----Telegram channel: %s -----", display_name)
-        logger.info(text)
-        if not text:
-            continue
-
-        summary = summarizer.summarize(text, is_broadcast)
-        if summary:
-            results.append(ChannelSummary(channel=display_name, url=url, summary=summary))
-
-    return results
+    """Compatibility wrapper returning only successful summaries."""
+    return [
+        ChannelSummary(channel=r.channel, url=r.url, summary=r.summary)
+        for r in summarize_channel_results(reader, summarizer, channel_urls)
+        if r.status == "summarized"
+    ]

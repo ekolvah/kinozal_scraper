@@ -3,10 +3,14 @@ from __future__ import annotations
 import html as _html
 import logging
 import os
+from pathlib import Path
+from typing import Any
 
-from TelegramChannelSummarizer import ChannelSummary
+from TelegramChannelSummarizer import ChannelProcessResult, ChannelSummary
 
 logger = logging.getLogger(__name__)
+
+_TECH_ALERT_MARKER = ".run/technical_alert_sent"
 
 
 def format_summary_message(summary: ChannelSummary) -> str:
@@ -23,7 +27,41 @@ def format_summary_message(summary: ChannelSummary) -> str:
     return f"📢 Канал: {channel_label}\n\n{_html.escape(summary.summary)}"
 
 
+def format_technical_alert(results: list[ChannelProcessResult]) -> str:
+    failed = [r for r in results if r.status.endswith("_failed")]
+    lines = [
+        "⚠️ Ошибка Telegram summarizer",
+        "Найдены сообщения, но часть данных не удалось доставить пользователю.",
+        "",
+    ]
+    for result in failed[:10]:
+        lines.append(
+            "- "
+            + _html.escape(result.channel)
+            + f": {_html.escape(result.error_kind or result.status)}"
+        )
+    if len(failed) > 10:
+        lines.append(f"... и ещё {len(failed) - 10} failure(s)")
+    return "\n".join(lines)
+
+
+def mark_technical_alert_sent(path: str | None = None) -> None:
+    marker_value = path if path is not None else os.getenv("TECH_ALERT_MARKER")
+    marker = Path(marker_value or _TECH_ALERT_MARKER)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("1", encoding="utf-8")
+
+
+def send_required_text(notifier: Any, text: str) -> bool:
+    ok = bool(notifier.send_text(text))
+    if not ok:
+        logger.error("Telegram delivery failed")
+    return ok
+
+
 if __name__ == "__main__":
+    import sys
+
     import google.generativeai as genai
 
     from crypto import crypto
@@ -32,7 +70,7 @@ if __name__ == "__main__":
     from TelegramChannelSummarizer import (
         GeminiSummarizer,
         TelethonReader,
-        summarize_channels,
+        summarize_channel_results,
     )
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -69,10 +107,27 @@ if __name__ == "__main__":
         os.environ["TELEGRAM_CHAT_ID"],
     )
 
-    summaries = summarize_channels(reader, summarizer, channel_urls)
+    results = summarize_channel_results(reader, summarizer, channel_urls)
+    failures = [r for r in results if r.status.endswith("_failed")]
+    summaries = [
+        ChannelSummary(channel=r.channel, url=r.url, summary=r.summary)
+        for r in results
+        if r.status == "summarized"
+    ]
+
+    if failures:
+        alert_sent = send_required_text(notifier, format_technical_alert(results))
+        if alert_sent:
+            mark_technical_alert_sent()
+        sys.exit(1)
     if summaries:
-        notifier.send_text("🔍 Обзор сообщений в каналах за последние сутки:")
+        if not send_required_text(notifier, "🔍 Обзор сообщений в каналах за последние сутки:"):
+            sys.exit(1)
         for item in summaries:
-            notifier.send_text(format_summary_message(item))
+            if not send_required_text(notifier, format_summary_message(item)):
+                sys.exit(1)
     else:
-        notifier.send_text("За последние сутки в отслеживаемых каналах не было новых сообщений.")
+        if not send_required_text(
+            notifier, "За последние сутки в отслеживаемых каналах не было новых сообщений."
+        ):
+            sys.exit(1)

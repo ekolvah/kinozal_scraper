@@ -88,3 +88,13 @@ jobs:
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
+
+      - name: Send fallback failure alert
+        if: failure() && hashFiles('.run/technical_alert_sent') == ''
+        run: |
+          curl -sS -f -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -H "Content-Type: application/json" \
+            -d "{\"chat_id\":\"${TELEGRAM_CHAT_ID}\",\"text\":\"⚠️ kinozal_scraper run failed: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\"}"
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
