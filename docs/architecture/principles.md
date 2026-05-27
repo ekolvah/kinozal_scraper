@@ -55,19 +55,29 @@ Hard rules:
 test passes against its own duplicate copy of the logic). Protocol doubles
 exercise the real code path with deterministic external state.
 
-### III. Write-Before-Notify Ordering
+### III. Delivery Truthfulness
 
-Persisting an item to storage MUST complete successfully before any Telegram
-notification is sent for that item. `storage.append_rows()` then
-`notifier.send_items()` — never the reverse, never concurrent.
+The system MUST NOT silently lose user-visible data. If a pipeline finds new
+items or channel text but cannot deliver the corresponding Telegram message,
+the run MUST surface that as an explicit operational failure: log ERROR, mark
+the `PipelineResult` not-ok where that type is used, and exit non-zero from
+the run-script step. A best-effort technical alert should be sent when the
+failure is not the Telegram transport itself.
 
-If notification fails after storage succeeds, the item is deduped on the next
-run and the user misses one Telegram message. If storage fails after
-notification succeeds, the user receives the same message every day forever.
-The first failure mode is recoverable noise; the second is a spam loop.
+Persisted dedupe state MUST reflect confirmed delivery. Pipelines that can
+partition send results should store only successfully delivered items. A
+pipeline may persist before notifying only when it also turns any delivery
+failure into a visible operational failure; green silent skips are forbidden.
 
-**Rationale:** duplicate notifications are worse than skipped ones; users
-mute the bot, the channel becomes useless. Ordering is the entire guarantee.
+If Telegram delivery itself is unavailable, the script cannot reliably notify
+the user through the same channel. In that case the required behaviour is a
+red GitHub Actions run with enough logs to identify the missed source and
+items.
+
+**Rationale:** users must be able to distinguish "there was no news" from
+"the system failed to deliver news." Duplicate notifications are annoying,
+but a silent green run that neither delivers data nor reports failure destroys
+trust and creates support load.
 
 ### IV. Visibility Over Silence
 
@@ -79,6 +89,10 @@ gap marker AND a WARNING log line.
 Conversely, fatal extraction errors (zero rows, malformed source) MUST log
 ERROR and the relevant run-script step MUST exit non-zero so GitHub Actions
 surfaces the failure in the Actions UI.
+
+The same rule applies after extraction: failed notification delivery,
+summarization failures for channels that contained messages, and failed
+technical alerts MUST NOT be collapsed into "no new items/messages."
 
 Forbidden: `try: ... except Exception: pass`, swallowing parse errors with
 default empty values, "fail open" branches that hide drift.
@@ -188,4 +202,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 1.0.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21
+**Version**: 2.0.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-05-27

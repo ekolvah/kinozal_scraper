@@ -22,10 +22,10 @@ not declarative. Each new source requires a small fetch function in the caller.
 
 For the full list of pipelines and how they connect, see [runtime.md](runtime.md).
 
-**Order is intentional: Sheets write BEFORE Telegram send.**
-If Telegram fails after Sheets write → item is deduped on next run (skipped
-notification). If Sheets fails after Telegram send → duplicate notification.
-Duplicates are worse than skipped notifications.
+**Delivery state is intentional: Sheets rows represent confirmed delivery.**
+Pipelines that can partition notifier results write only successfully sent
+items to Sheets. If delivery fails for any item, the step must surface a
+non-ok result and exit non-zero instead of silently looking like "no news."
 
 ```
 load_sources_config()
@@ -34,13 +34,16 @@ load_sources_config()
       extract_from_json / extract_from_html  → PipelineResult
       storage.get_existing_keys(sheet_tab)   → set[str]  ← raises SchemaError on mismatch
       new_items = [i for i if i.dedupe_key not in existing_keys]
-      storage.append_rows(sheet_tab, [i.to_row() for i in new_items])
-      notifier.send(new_items)
+      sent, failed = notifier.send(new_items)
+      storage.append_rows(sheet_tab, [i.to_row() for i in sent])
+      failed notifications -> PipelineResult.errors
 ```
 
 ## Error policy
 
-`PipelineResult` carries `errors` and `warnings`; caller decides what to do.
+`PipelineResult` carries `errors` and `warnings`; production callers exit
+non-zero when any result is not ok. Notification delivery failures are errors,
+not warnings, because users must not receive neither data nor a failure signal.
 Future: `on_error: skip_item | fail_source` field in `sources.json` — deferred
 to issues #6/#7 when sources become real.
 
