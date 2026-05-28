@@ -34,12 +34,13 @@ sources.json
     → fetch (HTTP — per-pipeline, not declarative)
       → generic_pipeline.py (extract_from_json / extract_from_html → NormalizedItem)
         → sheets_storage.get_existing_keys()  → dedupe
-          → sheets_storage.append_rows()      [WRITE FIRST]
-            → telegram_notifier.send_items()  [NOTIFY SECOND]
+          → telegram_notifier.send_items()    [DELIVER]
+            → sheets_storage.append_rows()    [STORE SENT ITEMS]
 ```
 
-Write-before-notify ordering prevents duplicate Telegram notifications.
-Details in [pipeline.md](pipeline.md).
+Sheets rows represent confirmed delivery. Delivery failures are surfaced as
+run failures instead of being collapsed into "no news." Details in
+[pipeline.md](pipeline.md).
 
 ## Configuration
 
