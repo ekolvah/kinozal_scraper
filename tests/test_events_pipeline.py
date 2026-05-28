@@ -216,5 +216,52 @@ class TestEventsPipelineExitCodeSurface(unittest.TestCase):
         self.assertEqual([r.source_id for r in results], ["soldout_events"])
 
 
+# ── delivery truthfulness (Principle III, issue #132) ─────────────────────────
+
+
+def _run_results(
+    fail_ids: set[str] | None = None,
+    html: str = _SOLDOUT_HTML,
+) -> tuple[InMemoryStorage, InMemoryNotifier, list[PipelineResult]]:
+    """Invoke run_events_pipeline directly with a controllable-failure notifier,
+    returning the PipelineResult list for delivery-truthfulness assertions."""
+    storage = InMemoryStorage()
+    notifier = InMemoryNotifier(fail_ids=fail_ids)
+    with unittest.mock.patch("events_pipeline._fetch_html", return_value=html):
+        results = run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+    return storage, notifier, results
+
+
+class TestDeliveryTruthfulness(unittest.TestCase):
+    """Only confirmed-delivered items may be persisted (Principle III). A failed
+    Telegram send must mark result not-ok and leave the item unstored to retry."""
+
+    def test_failed_notifications_excluded_from_storage(self) -> None:
+        storage, notifier, _ = _run_results(fail_ids={"Event One"})
+        stored_keys = {row[0] for row in storage.stored_rows("events")}
+        self.assertEqual(stored_keys, {"Event Two"})
+        self.assertEqual({n.id for n in notifier.sent}, {"Event Two"})
+        self.assertEqual({n.id for n in notifier.failed}, {"Event One"})
+
+    def test_failed_notifications_mark_result_not_ok(self) -> None:
+        _, _, results = _run_results(fail_ids={"Event One"})
+        self.assertTrue(any(not r.ok for r in results))
+        self.assertTrue(
+            any(r.errors for r in results),
+            f"expected delivery failure in errors, got: {[r.errors for r in results]}",
+        )
+
+    def test_all_failed_writes_nothing(self) -> None:
+        storage, _, results = _run_results(fail_ids={"Event One", "Event Two"})
+        self.assertEqual(storage.stored_rows("events"), [])
+        self.assertTrue(any(not r.ok for r in results))
+
+    def test_all_sent_writes_all_rows(self) -> None:
+        storage, notifier, results = _run_results()
+        self.assertEqual(len(storage.stored_rows("events")), 2)
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertTrue(all(r.ok for r in results))
+
+
 if __name__ == "__main__":
     unittest.main()

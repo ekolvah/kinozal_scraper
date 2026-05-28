@@ -188,18 +188,32 @@ def run_kinozal_pipeline(
         logger.info("kinozal pipeline: no new items")
         return results
 
-    # Write to storage BEFORE sending notifications to prevent duplicates on crash
-    storage.append_rows("movies", ROW_HEADERS, [i.to_row() for i in new_items])
-
     notifications: list[Notification] = []
     for item in new_items:
         item.trailer_url = enrich_with_trailer(item, youtube)
         template = source_map[item.source_id]["message_template"]
         notifications.append(build_notification(item, template))
 
+    # Persist only confirmed-delivered items (Principle III). Failed deliveries
+    # stay unstored so the next run retries them, and surface as a visible
+    # anomaly via result.errors + non-zero exit (Principle IV).
     sent, failed = notifier.send_items(notifications)
+
+    if sent:
+        sent_ids = {n.id for n in sent}
+        items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
+        storage.append_rows("movies", ROW_HEADERS, [i.to_row() for i in items_to_store])
+
     if failed:
-        logger.warning("kinozal pipeline: %d notification(s) failed", len(failed))
+        result_by_source = {r.source_id: r for r in results}
+        item_by_key = {i.dedupe_key: i for i in new_items}
+        for notif in failed:
+            # notif.id is always a new_item dedupe_key whose source has a result,
+            # so both lookups must succeed — a KeyError here is a real bug.
+            source_id = item_by_key[notif.id].source_id
+            message = f"notification delivery failed for {notif.id!r}, will retry next run"
+            logger.error("[%s] %s", source_id, message)
+            result_by_source[source_id].errors.append(message)
 
     return results
 
