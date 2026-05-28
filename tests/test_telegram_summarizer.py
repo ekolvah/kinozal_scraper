@@ -6,7 +6,12 @@ from typing import Any
 
 import google.api_core.exceptions
 
-from telegram_summarizer import format_summary_message, format_technical_alert, send_required_text
+from telegram_summarizer import (
+    deliver_results,
+    format_summary_message,
+    format_technical_alert,
+    send_required_text,
+)
 from TelegramChannelSummarizer import (
     ChannelMessages,
     ChannelProcessResult,
@@ -336,6 +341,91 @@ class TestTechnicalAlert(unittest.TestCase):
         notifier = unittest.mock.MagicMock()
         notifier.send_text.return_value = False
         self.assertFalse(send_required_text(notifier, "x"))
+
+
+class _RecordingNotifier:
+    def __init__(self, fail_all: bool = False) -> None:
+        self.sent: list[str] = []
+        self._fail_all = fail_all
+
+    def send_text(self, text: str) -> bool:
+        if self._fail_all:
+            return False
+        self.sent.append(text)
+        return True
+
+
+def _summarized(channel: str) -> ChannelProcessResult:
+    return ChannelProcessResult(
+        channel=channel, url=f"http://{channel}", status="summarized", summary=f"sum-{channel}"
+    )
+
+
+def _failed(channel: str) -> ChannelProcessResult:
+    return ChannelProcessResult(
+        channel=channel, url=f"http://{channel}", status="summarization_failed", error_kind="api"
+    )
+
+
+def _no_text(channel: str) -> ChannelProcessResult:
+    return ChannelProcessResult(channel=channel, url=f"http://{channel}", status="no_text")
+
+
+class TestDeliverResults(unittest.TestCase):
+    def test_partial_failure_still_delivers_summaries_then_alerts(self) -> None:
+        """Product decision: a single failing channel must not discard the
+        summaries of the channels that succeeded. Summaries are sent first,
+        the technical alert last, and the run exits non-zero."""
+        notifier = _RecordingNotifier()
+        results = [_summarized("a"), _summarized("b"), _failed("c")]
+
+        with unittest.mock.patch("telegram_summarizer.mark_technical_alert_sent"):
+            code = deliver_results(notifier, results)
+
+        self.assertEqual(code, 1)
+        joined = "\n".join(notifier.sent)
+        self.assertIn("sum-a", joined)
+        self.assertIn("sum-b", joined)
+        alert_idx = next(i for i, t in enumerate(notifier.sent) if t.startswith("⚠️"))
+        last_summary_idx = max(i for i, t in enumerate(notifier.sent) if "sum-" in t)
+        self.assertLess(last_summary_idx, alert_idx, "alert must come after all summaries")
+
+    def test_all_summarized_no_alert_exit_zero(self) -> None:
+        notifier = _RecordingNotifier()
+        code = deliver_results(notifier, [_summarized("a"), _summarized("b")])
+        self.assertEqual(code, 0)
+        self.assertFalse(any(t.startswith("⚠️") for t in notifier.sent))
+
+    def test_all_failed_sends_alert_no_no_news(self) -> None:
+        notifier = _RecordingNotifier()
+        with unittest.mock.patch("telegram_summarizer.mark_technical_alert_sent"):
+            code = deliver_results(notifier, [_failed("a"), _failed("b")])
+        self.assertEqual(code, 1)
+        self.assertTrue(any(t.startswith("⚠️") for t in notifier.sent))
+        self.assertFalse(any("не было новых сообщений" in t for t in notifier.sent))
+
+    def test_no_summaries_no_failures_sends_no_news(self) -> None:
+        notifier = _RecordingNotifier()
+        code = deliver_results(notifier, [_no_text("a")])
+        self.assertEqual(code, 0)
+        self.assertTrue(any("не было новых сообщений" in t for t in notifier.sent))
+
+    def test_marker_write_failure_does_not_double_raise(self) -> None:
+        """Item 6: if the marker write throws after the alert was sent, the
+        exception is swallowed (logged) so the step still exits 1 cleanly
+        instead of crashing and double-firing the workflow fallback alert."""
+        notifier = _RecordingNotifier()
+        with unittest.mock.patch(
+            "telegram_summarizer.mark_technical_alert_sent", side_effect=OSError("no .run/")
+        ):
+            code = deliver_results(notifier, [_failed("a")])
+        self.assertEqual(code, 1)
+        self.assertTrue(any(t.startswith("⚠️") for t in notifier.sent))
+
+    def test_summary_delivery_failure_exits_nonzero(self) -> None:
+        notifier = _RecordingNotifier(fail_all=True)
+        code = deliver_results(notifier, [_summarized("a")])
+        self.assertEqual(code, 1)
 
 
 if __name__ == "__main__":

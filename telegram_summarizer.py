@@ -59,6 +59,44 @@ def send_required_text(notifier: Any, text: str) -> bool:
     return ok
 
 
+def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:
+    """Send whatever succeeded, then surface degradation. Returns the exit code.
+
+    Working summaries are delivered first so a single failing channel never
+    discards good content (Principle IV). Only after that does a technical
+    alert fire for any failures, with a non-zero exit. A Telegram delivery
+    failure at any step also returns non-zero.
+    """
+    failures = [r for r in results if r.status.endswith("_failed")]
+    summaries = [
+        ChannelSummary(channel=r.channel, url=r.url, summary=r.summary)
+        for r in results
+        if r.status == "summarized"
+    ]
+
+    if summaries:
+        if not send_required_text(notifier, "🔍 Обзор сообщений в каналах за последние сутки:"):
+            return 1
+        for item in summaries:
+            if not send_required_text(notifier, format_summary_message(item)):
+                return 1
+    elif not failures:
+        if not send_required_text(
+            notifier, "За последние сутки в отслеживаемых каналах не было новых сообщений."
+        ):
+            return 1
+
+    if failures:
+        if send_required_text(notifier, format_technical_alert(results)):
+            try:
+                mark_technical_alert_sent()
+            except Exception as exc:
+                logger.error("Could not write technical alert marker: %s", exc)
+        return 1
+
+    return 0
+
+
 if __name__ == "__main__":
     import sys
 
@@ -108,26 +146,4 @@ if __name__ == "__main__":
     )
 
     results = summarize_channel_results(reader, summarizer, channel_urls)
-    failures = [r for r in results if r.status.endswith("_failed")]
-    summaries = [
-        ChannelSummary(channel=r.channel, url=r.url, summary=r.summary)
-        for r in results
-        if r.status == "summarized"
-    ]
-
-    if failures:
-        alert_sent = send_required_text(notifier, format_technical_alert(results))
-        if alert_sent:
-            mark_technical_alert_sent()
-        sys.exit(1)
-    if summaries:
-        if not send_required_text(notifier, "🔍 Обзор сообщений в каналах за последние сутки:"):
-            sys.exit(1)
-        for item in summaries:
-            if not send_required_text(notifier, format_summary_message(item)):
-                sys.exit(1)
-    else:
-        if not send_required_text(
-            notifier, "За последние сутки в отслеживаемых каналах не было новых сообщений."
-        ):
-            sys.exit(1)
+    sys.exit(deliver_results(notifier, results))
