@@ -147,7 +147,7 @@ def _run_single_source(
 
     if failed:
         message = f"{len(failed)} notification(s) failed, will retry next run"
-        logger.error("[%s] %d notification(s) failed, will retry next run", source_id, len(failed))
+        logger.error("[%s] %s", source_id, message)
         result.errors.append(message)
 
     return result
