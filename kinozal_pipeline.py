@@ -208,13 +208,12 @@ def run_kinozal_pipeline(
         result_by_source = {r.source_id: r for r in results}
         item_by_key = {i.dedupe_key: i for i in new_items}
         for notif in failed:
-            failed_item = item_by_key.get(notif.id)
-            source_id = failed_item.source_id if failed_item else "kinozal"
+            # notif.id is always a new_item dedupe_key whose source has a result,
+            # so both lookups must succeed — a KeyError here is a real bug.
+            source_id = item_by_key[notif.id].source_id
             message = f"notification delivery failed for {notif.id!r}, will retry next run"
             logger.error("[%s] %s", source_id, message)
-            target = result_by_source.get(source_id)
-            if target is not None:
-                target.errors.append(message)
+            result_by_source[source_id].errors.append(message)
 
     return results
 
