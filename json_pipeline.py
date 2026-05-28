@@ -146,9 +146,9 @@ def _run_single_source(
         storage.append_rows(tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
 
     if failed:
-        logger.warning(
-            "[%s] %d notification(s) failed, will retry next run", source_id, len(failed)
-        )
+        message = f"{len(failed)} notification(s) failed, will retry next run"
+        logger.error("[%s] %s", source_id, message)
+        result.errors.append(message)
 
     return result
 
