@@ -257,15 +257,24 @@ def run_steam_pipeline(
             results.append(result)
             continue
 
-        storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in new_items])
-
         _apply_translation(source, new_items, enricher, source_id)
 
         template: str = source["message_template"]
         notifications = [build_notification(item, template) for item in new_items]
+
+        # Persist only confirmed-delivered items (Principle III); failed sends
+        # stay unstored to retry next run and surface as result.errors.
         sent, failed = notifier.send_items(notifications)
+
+        if sent:
+            sent_ids = {n.id for n in sent}
+            items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
+            storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+
         if failed:
-            logger.warning("[%s] %d notification(s) failed", source_id, len(failed))
+            message = f"{len(failed)} notification(s) failed, will retry next run"
+            logger.error("[%s] %s", source_id, message)
+            result.errors.append(message)
         logger.info("[%s] sent %d notification(s)", source_id, len(sent))
         results.append(result)
 

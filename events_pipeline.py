@@ -79,13 +79,22 @@ def run_events_pipeline(
             results.append(result)
             continue
 
-        storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in new_items])
-
         template: str = source["message_template"]
         notifications = [build_notification(item, template) for item in new_items]
+
+        # Persist only confirmed-delivered items (Principle III); failed sends
+        # stay unstored to retry next run and surface as result.errors.
         sent, failed = notifier.send_items(notifications)
+
+        if sent:
+            sent_ids = {n.id for n in sent}
+            items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
+            storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+
         if failed:
-            logger.warning("[%s] %d notification(s) failed", source["id"], len(failed))
+            message = f"{len(failed)} notification(s) failed, will retry next run"
+            logger.error("[%s] %s", source["id"], message)
+            result.errors.append(message)
         logger.info("[%s] sent %d notification(s)", source["id"], len(sent))
         results.append(result)
 
