@@ -3,7 +3,7 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from generic_pipeline import NormalizedItem, Notification, PipelineResult, extract_from_html
+from generic_pipeline import NormalizedItem, PipelineResult, extract_from_html
 from kinozal_pipeline import (
     _kinozal_title,
     _kinozal_urls,
@@ -349,25 +349,6 @@ class TestPipelineNotificationContent(unittest.TestCase):
         self.assertTrue(notifier.sent[0].image_url.startswith("https://"))
 
 
-class TestPipelineWriteBeforeNotify(unittest.TestCase):
-    def test_storage_written_before_notifications_sent(self) -> None:
-        """Rows must be in storage before notifier.send_items is called."""
-        storage = InMemoryStorage()
-        rows_visible_at_send: list[int] = []
-
-        class _OrderCheckNotifier(InMemoryNotifier):
-            def send_items(
-                self, notifications: list[Notification]
-            ) -> tuple[list[Notification], list[Notification]]:
-                rows_visible_at_send.append(len(storage.stored_rows("movies")))
-                return super().send_items(notifications)
-
-        notifier = _OrderCheckNotifier()
-        _run(storage=storage, notifier=notifier)
-        self.assertTrue(rows_visible_at_send, "notifier never called")
-        self.assertGreater(rows_visible_at_send[0], 0)
-
-
 class TestPipelineFailureIsolation(unittest.TestCase):
     def test_empty_html_gives_no_notifications_no_crash(self) -> None:
         storage, notifier = _run(html="<html></html>")
@@ -514,6 +495,64 @@ class TestKinozalEmptyUrlGuard(unittest.TestCase):
             any("empty url field" in msg for msg in logs.output),
             f"expected 'empty url field' warning in logs: {logs.output}",
         )
+
+
+# ── delivery truthfulness (Principle III, issue #132) ─────────────────────────
+
+
+def _run_results(
+    html: str = _KINOZAL_HTML,
+    fail_ids: set[str] | None = None,
+    existing_keys: set[str] | None = None,
+) -> tuple[InMemoryStorage, InMemoryNotifier, list[PipelineResult]]:
+    """Invoke run_kinozal_pipeline directly, returning the PipelineResult list
+    so delivery-truthfulness assertions can inspect ok / errors."""
+    storage = InMemoryStorage()
+    if existing_keys:
+        storage.seed_existing("movies", existing_keys)
+    notifier = InMemoryNotifier(fail_ids=fail_ids)
+    with (
+        unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=html),
+        unittest.mock.patch.dict(
+            os.environ,
+            {"URLS": "top|https://test.example/top.php"},
+            clear=False,
+        ),
+    ):
+        results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
+    return storage, notifier, results
+
+
+class TestDeliveryTruthfulness(unittest.TestCase):
+    """Persisted dedupe state must reflect confirmed delivery (Principle III).
+    Failed Telegram delivery must be a visible anomaly (result.ok False +
+    errors), and failed items must NOT be stored so they retry next run."""
+
+    def test_failed_notifications_excluded_from_storage(self) -> None:
+        storage, notifier, _ = _run_results(fail_ids={"Film One"})
+        stored_keys = {row[0] for row in storage.stored_rows("movies")}
+        self.assertEqual(stored_keys, {"Film Two"})
+        self.assertEqual({n.id for n in notifier.sent}, {"Film Two"})
+        self.assertEqual({n.id for n in notifier.failed}, {"Film One"})
+
+    def test_failed_notifications_mark_result_not_ok(self) -> None:
+        _, _, results = _run_results(fail_ids={"Film One"})
+        self.assertTrue(any(not r.ok for r in results))
+        self.assertTrue(
+            any(r.errors for r in results),
+            f"expected delivery failure in errors, got: {[r.errors for r in results]}",
+        )
+
+    def test_all_failed_writes_nothing(self) -> None:
+        storage, _, results = _run_results(fail_ids={"Film One", "Film Two"})
+        self.assertEqual(storage.stored_rows("movies"), [])
+        self.assertTrue(any(not r.ok for r in results))
+
+    def test_all_sent_writes_all_rows(self) -> None:
+        storage, notifier, results = _run_results()
+        self.assertEqual(len(storage.stored_rows("movies")), 2)
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertTrue(all(r.ok for r in results))
 
 
 class TestKinozalKnownBugs(unittest.TestCase):

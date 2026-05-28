@@ -462,5 +462,58 @@ class TestSteamRussianDescription(unittest.TestCase):
         self.assertIn("578080", warnings)
 
 
+# ── delivery truthfulness (Principle III, issue #132) ─────────────────────────
+
+
+def _run_results(
+    fail_ids: set[str] | None = None,
+) -> tuple[InMemoryStorage, InMemoryNotifier, list[PipelineResult]]:
+    """Invoke run_steam_pipeline directly with a controllable-failure notifier,
+    returning the PipelineResult list for delivery-truthfulness assertions."""
+    storage = InMemoryStorage()
+    notifier = InMemoryNotifier(fail_ids=fail_ids)
+    with (
+        unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+        unittest.mock.patch(
+            "steam_pipeline._fetch_appdetails",
+            side_effect=lambda appid: _APPDETAILS.get(appid),
+        ),
+        unittest.mock.patch("steam_pipeline._fetch_app_name_index", return_value=_APPLIST_INDEX),
+    ):
+        results = run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
+    return storage, notifier, results
+
+
+class TestDeliveryTruthfulness(unittest.TestCase):
+    """Only confirmed-delivered items may be persisted (Principle III). A failed
+    Telegram send must mark result not-ok and leave the item unstored to retry."""
+
+    def test_failed_notifications_excluded_from_storage(self) -> None:
+        storage, notifier, _ = _run_results(fail_ids={"730"})
+        stored_keys = {row[0] for row in storage.stored_rows("steam_games")}
+        self.assertNotIn("730", stored_keys)
+        self.assertEqual(stored_keys, {"578080", "570"})
+        self.assertEqual({n.id for n in notifier.failed}, {"730"})
+
+    def test_failed_notifications_mark_result_not_ok(self) -> None:
+        _, _, results = _run_results(fail_ids={"730"})
+        self.assertTrue(any(not r.ok for r in results))
+        self.assertTrue(
+            any(r.errors for r in results),
+            f"expected delivery failure in errors, got: {[r.errors for r in results]}",
+        )
+
+    def test_all_failed_writes_nothing(self) -> None:
+        storage, _, results = _run_results(fail_ids={"730", "578080", "570"})
+        self.assertEqual(storage.stored_rows("steam_games"), [])
+        self.assertTrue(any(not r.ok for r in results))
+
+    def test_all_sent_writes_all_rows(self) -> None:
+        storage, notifier, results = _run_results()
+        self.assertEqual(len(storage.stored_rows("steam_games")), 3)
+        self.assertEqual(len(notifier.sent), 3)
+        self.assertTrue(all(r.ok for r in results))
+
+
 if __name__ == "__main__":
     unittest.main()
