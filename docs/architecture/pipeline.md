@@ -43,7 +43,7 @@ load_sources_config()
 
 `PipelineResult` carries `errors` and `warnings`; production callers exit
 non-zero when any result is not ok. Notification delivery failures are errors,
-not warnings, because users must not receive neither data nor a failure signal.
+not warnings, because users must receive either data or a failure signal — never silence.
 Future: `on_error: skip_item | fail_source` field in `sources.json` — deferred
 to issues #6/#7 when sources become real.
 

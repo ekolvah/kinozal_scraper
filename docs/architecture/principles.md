@@ -65,7 +65,7 @@ the run-script step. A best-effort technical alert should be sent when the
 failure is not the Telegram transport itself.
 
 Persisted dedupe state MUST reflect confirmed delivery. Pipelines that can
-partition send results should store only successfully delivered items. A
+partition send results MUST store only successfully delivered items. A
 pipeline may persist before notifying only when it also turns any delivery
 failure into a visible operational failure; green silent skips are forbidden.
 
