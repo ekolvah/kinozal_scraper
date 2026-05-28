@@ -6,14 +6,22 @@ from typing import Any
 
 import google.api_core.exceptions
 
-from telegram_summarizer import format_summary_message
+from telegram_summarizer import (
+    deliver_results,
+    format_summary_message,
+    format_technical_alert,
+    send_required_text,
+)
 from TelegramChannelSummarizer import (
     ChannelMessages,
+    ChannelProcessResult,
     ChannelSummary,
     GeminiSummarizer,
+    SummarizationFailed,
     Summarizer,
     TelegramReader,
     TelethonReader,
+    summarize_channel_results,
     summarize_channels,
 )
 
@@ -38,6 +46,11 @@ class _FakeSummarizer:
     def summarize(self, text: str, is_broadcast: bool) -> str:
         self.calls.append((text, is_broadcast))
         return self._returns
+
+
+class _FailingSummarizer:
+    def summarize(self, text: str, is_broadcast: bool) -> str:
+        raise SummarizationFailed("api_error", "model down")
 
 
 # ── H. Pipeline orchestration ────────────────────────────────────────────────
@@ -96,6 +109,22 @@ class TestSummarizeChannelsOrchestration(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].channel, "u")
 
+    def test_results_preserve_summarization_failure_state(self) -> None:
+        reader = _FakeReader({"u": ("Channel", "real text", False)})
+        results = summarize_channel_results(reader, _FailingSummarizer(), ["u"])
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].status, "summarization_failed")
+        self.assertEqual(results[0].error_kind, "api_error")
+        self.assertGreater(results[0].message_count, 0)
+
+    def test_empty_summary_is_failure_not_no_text(self) -> None:
+        reader = _FakeReader({"u": ("Channel", "real text", False)})
+        results = summarize_channel_results(reader, _FakeSummarizer(returns=""), ["u"])
+
+        self.assertEqual(results[0].status, "summarization_failed")
+        self.assertEqual(results[0].error_kind, "empty_summary")
+
 
 # ── C. Auth & quota — GeminiSummarizer ──────────────────────────────────────
 
@@ -134,18 +163,38 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
             result = summ.summarize("text", is_broadcast=False)
         self.assertEqual(result, "from-b")
 
-    def test_all_models_exhausted_returns_empty(self) -> None:
+    def test_first_model_not_found_falls_back_to_next(self) -> None:
+        summ = GeminiSummarizer(models=["m-a", "m-b"], broadcast_prompt="b", chat_prompt="c")
+
+        def factory(name: str) -> Any:
+            instance = unittest.mock.MagicMock()
+            if name == "m-a":
+                instance.generate_content.side_effect = google.api_core.exceptions.NotFound(
+                    "404 model no longer available"
+                )
+            else:
+                instance.generate_content.return_value = _FakeResponse("from-b")
+            return instance
+
+        with unittest.mock.patch(
+            "TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
+        ):
+            result = summ.summarize("text", is_broadcast=False)
+        self.assertEqual(result, "from-b")
+
+    def test_all_models_exhausted_raises_failure(self) -> None:
         summ = GeminiSummarizer(models=["m1", "m2"], broadcast_prompt="b", chat_prompt="c")
         with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
             mock_model.return_value.generate_content.side_effect = (
                 google.api_core.exceptions.ResourceExhausted("quota")
             )
-            result = summ.summarize("text", is_broadcast=True)
-        self.assertEqual(result, "")
+            with self.assertRaises(SummarizationFailed) as ctx:
+                summ.summarize("text", is_broadcast=True)
+        self.assertEqual(ctx.exception.error_kind, "all_models_failed")
         # Both models were tried.
         self.assertEqual(mock_model.call_count, 2)
 
-    def test_non_quota_exception_returns_empty_without_fallback(self) -> None:
+    def test_non_quota_exception_raises_without_fallback(self) -> None:
         """Behaviour pinned from TelegramChannelSummarizer.py:86-87 — any
         non-`ResourceExhausted` exception aborts the loop. We don't try the
         next model on a generic failure (different from `ResourceExhausted`
@@ -153,19 +202,21 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
         summ = GeminiSummarizer(models=["m1", "m2"], broadcast_prompt="b", chat_prompt="c")
         with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
             mock_model.return_value.generate_content.side_effect = RuntimeError("net down")
-            result = summ.summarize("text", False)
-        self.assertEqual(result, "")
+            with self.assertRaises(SummarizationFailed) as ctx:
+                summ.summarize("text", False)
+        self.assertEqual(ctx.exception.error_kind, "api_error")
         # Only the first model was tried.
         self.assertEqual(mock_model.call_count, 1)
 
-    def test_no_candidates_returns_empty(self) -> None:
+    def test_no_candidates_raises_failure(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
         with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
             mock_model.return_value.generate_content.return_value = _FakeResponse(
                 "", has_candidates=False
             )
-            result = summ.summarize("text", False)
-        self.assertEqual(result, "")
+            with self.assertRaises(SummarizationFailed) as ctx:
+                summ.summarize("text", False)
+        self.assertEqual(ctx.exception.error_kind, "empty_response")
 
     def test_broadcast_uses_broadcast_prompt(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="BROADCAST", chat_prompt="CHAT")
@@ -266,6 +317,115 @@ class TestFormatSummaryMessage(unittest.TestCase):
         s = ChannelSummary(channel="A & B", url="https://t.me/c", summary="t")
         text = format_summary_message(s)
         self.assertIn("A &amp; B</a>", text)
+
+
+class TestTechnicalAlert(unittest.TestCase):
+    def test_format_technical_alert_includes_failed_channel(self) -> None:
+        text = format_technical_alert(
+            [
+                ChannelProcessResult(
+                    channel="A & B",
+                    url="u",
+                    status="summarization_failed",
+                    message_count=1,
+                    text_chars=4,
+                    error_kind="api_error",
+                    error_message="down",
+                )
+            ]
+        )
+        self.assertIn("A &amp; B", text)
+        self.assertIn("api_error", text)
+
+    def test_send_required_text_returns_false_on_delivery_failure(self) -> None:
+        notifier = unittest.mock.MagicMock()
+        notifier.send_text.return_value = False
+        self.assertFalse(send_required_text(notifier, "x"))
+
+
+class _RecordingNotifier:
+    def __init__(self, fail_all: bool = False) -> None:
+        self.sent: list[str] = []
+        self._fail_all = fail_all
+
+    def send_text(self, text: str) -> bool:
+        if self._fail_all:
+            return False
+        self.sent.append(text)
+        return True
+
+
+def _summarized(channel: str) -> ChannelProcessResult:
+    return ChannelProcessResult(
+        channel=channel, url=f"http://{channel}", status="summarized", summary=f"sum-{channel}"
+    )
+
+
+def _failed(channel: str) -> ChannelProcessResult:
+    return ChannelProcessResult(
+        channel=channel, url=f"http://{channel}", status="summarization_failed", error_kind="api"
+    )
+
+
+def _no_text(channel: str) -> ChannelProcessResult:
+    return ChannelProcessResult(channel=channel, url=f"http://{channel}", status="no_text")
+
+
+class TestDeliverResults(unittest.TestCase):
+    def test_partial_failure_still_delivers_summaries_then_alerts(self) -> None:
+        """Product decision: a single failing channel must not discard the
+        summaries of the channels that succeeded. Summaries are sent first,
+        the technical alert last, and the run exits non-zero."""
+        notifier = _RecordingNotifier()
+        results = [_summarized("a"), _summarized("b"), _failed("c")]
+
+        with unittest.mock.patch("telegram_summarizer.mark_technical_alert_sent"):
+            code = deliver_results(notifier, results)
+
+        self.assertEqual(code, 1)
+        joined = "\n".join(notifier.sent)
+        self.assertIn("sum-a", joined)
+        self.assertIn("sum-b", joined)
+        alert_idx = next(i for i, t in enumerate(notifier.sent) if t.startswith("⚠️"))
+        last_summary_idx = max(i for i, t in enumerate(notifier.sent) if "sum-" in t)
+        self.assertLess(last_summary_idx, alert_idx, "alert must come after all summaries")
+
+    def test_all_summarized_no_alert_exit_zero(self) -> None:
+        notifier = _RecordingNotifier()
+        code = deliver_results(notifier, [_summarized("a"), _summarized("b")])
+        self.assertEqual(code, 0)
+        self.assertFalse(any(t.startswith("⚠️") for t in notifier.sent))
+
+    def test_all_failed_sends_alert_no_no_news(self) -> None:
+        notifier = _RecordingNotifier()
+        with unittest.mock.patch("telegram_summarizer.mark_technical_alert_sent"):
+            code = deliver_results(notifier, [_failed("a"), _failed("b")])
+        self.assertEqual(code, 1)
+        self.assertTrue(any(t.startswith("⚠️") for t in notifier.sent))
+        self.assertFalse(any("не было новых сообщений" in t for t in notifier.sent))
+
+    def test_no_summaries_no_failures_sends_no_news(self) -> None:
+        notifier = _RecordingNotifier()
+        code = deliver_results(notifier, [_no_text("a")])
+        self.assertEqual(code, 0)
+        self.assertTrue(any("не было новых сообщений" in t for t in notifier.sent))
+
+    def test_marker_write_failure_does_not_double_raise(self) -> None:
+        """Item 6: if the marker write throws after the alert was sent, the
+        exception is swallowed (logged) so the step still exits 1 cleanly
+        instead of crashing and double-firing the workflow fallback alert."""
+        notifier = _RecordingNotifier()
+        with unittest.mock.patch(
+            "telegram_summarizer.mark_technical_alert_sent", side_effect=OSError("no .run/")
+        ):
+            code = deliver_results(notifier, [_failed("a")])
+        self.assertEqual(code, 1)
+        self.assertTrue(any(t.startswith("⚠️") for t in notifier.sent))
+
+    def test_summary_delivery_failure_exits_nonzero(self) -> None:
+        notifier = _RecordingNotifier(fail_all=True)
+        code = deliver_results(notifier, [_summarized("a")])
+        self.assertEqual(code, 1)
 
 
 if __name__ == "__main__":
