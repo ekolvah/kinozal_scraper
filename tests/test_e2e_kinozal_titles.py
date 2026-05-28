@@ -1,6 +1,12 @@
 """E2E: fetch real kinozal.tv and verify that titles are free of technical metadata.
 
-Always runs. Uses URLS/KINOZAL_TOP_URL env var if set, falls back to the public top page.
+Uses URLS/KINOZAL_TOP_URL env var if set, falls back to the public top page.
+
+Temporarily disabled: this test hits the live kinozal.tv top page, which is
+currently returning HTTP 520 (origin down), so it fails any unrelated PR's CI.
+The proper fix — skip only when the site is genuinely unreachable while still
+catching markup drift when it is up — is tracked in #136. Remove this skip
+there.
 """
 
 from __future__ import annotations
@@ -13,6 +19,7 @@ from kinozal_pipeline import _extract_kinozal_items, _fetch_html, _kinozal_urls
 from pipeline_config import load_sources_config
 
 
+@unittest.skip("temporarily disabled while kinozal.tv returns 520; re-enable in #136")
 class TestKinozalTitlesE2E(unittest.TestCase):
     items: ClassVar[list[NormalizedItem]]
 
