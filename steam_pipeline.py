@@ -181,74 +181,95 @@ def run_steam_pipeline(
         logger.info("no enabled '%s' source found", _SOURCE_TYPE)
         return results
 
+    # Thin loop: each source is isolated so an *unhandled* error in one (e.g. a
+    # malformed rank, a Sheets API hiccup mid-pipeline) becomes a not-ok result
+    # instead of aborting the whole run. Mirrors `run_json_pipeline`.
     for source in steam_sources:
-        source_id: str = source["id"]
-        url: str = source["url"]
-        result = PipelineResult(source_id=source_id)
-
         try:
-            data = _fetch_charts(url)
+            result = _run_single_source(source, storage, notifier, enricher)
         except Exception as exc:
-            logger.error("[%s] charts fetch failed: %s", source_id, exc)
-            result.errors.append(f"charts fetch failed: {exc}")
-            results.append(result)
-            continue
-
-        ranks = data.get("response", {}).get("ranks", [])
-        if not isinstance(ranks, list) or not ranks:
-            logger.error("[%s] empty 'response.ranks' in charts payload", source_id)
-            result.errors.append("empty 'response.ranks' in charts payload")
-            results.append(result)
-            continue
-
-        limit = int(source.get("limit", len(ranks)))
-        top_n = ranks[:limit]
-
-        enriched = _enrich_with_appdetails(source_id, top_n)
-        if not enriched:
-            logger.error("[%s] no usable records after enrichment", source_id)
-            result.errors.append("no usable records after enrichment")
-            results.append(result)
-            continue
-
-        extracted = extract_from_json(enriched, source)
-        if not extracted.items:
-            logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
-            result.errors.extend(extracted.errors or ["extraction yielded no items"])
-            results.append(result)
-            continue
-        result.items = extracted.items
-
-        sheet_tab: str = source["sheet_tab"]
-        existing = storage.get_existing_keys(sheet_tab)
-        new_items = [i for i in result.items if i.dedupe_key not in existing]
-        if not new_items:
-            logger.info("[%s] no new items", source_id)
-            results.append(result)
-            continue
-
-        _apply_translation(source, new_items, enricher, source_id)
-
-        template: str = source["message_template"]
-        notifications = [build_notification(item, template) for item in new_items]
-
-        # Persist only confirmed-delivered items (Principle III); failed sends
-        # stay unstored to retry next run and surface as result.errors.
-        sent, failed = notifier.send_items(notifications)
-
-        if sent:
-            sent_ids = {n.id for n in sent}
-            items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
-            storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
-
-        if failed:
-            message = f"{len(failed)} notification(s) failed, will retry next run"
-            logger.error("[%s] %s", source_id, message)
-            result.errors.append(message)
-        logger.info("[%s] sent %d notification(s)", source_id, len(sent))
+            logger.error("[%s] unhandled error: %s", source["id"], exc)
+            result = PipelineResult(source_id=source["id"])
+            result.errors.append(f"unhandled error: {exc}")
         results.append(result)
 
     return results
+
+
+def _run_single_source(
+    source: dict[str, Any],
+    storage: Storage,
+    notifier: Notifier,
+    enricher: Enricher | None,
+) -> PipelineResult:
+    """Process one steam_charts source through the 5 stages, returning its
+    `PipelineResult`. Stage guards short-circuit with `return result` (not
+    `continue`) so the caller's loop stays the isolation boundary."""
+    source_id: str = source["id"]
+    url: str = source["url"]
+    result = PipelineResult(source_id=source_id)
+
+    # 1. Fetch the Most Played charts payload.
+    try:
+        data = _fetch_charts(url)
+    except Exception as exc:
+        logger.error("[%s] charts fetch failed: %s", source_id, exc)
+        result.errors.append(f"charts fetch failed: {exc}")
+        return result
+
+    # 2. Validate the rank list before slicing.
+    ranks = data.get("response", {}).get("ranks", [])
+    if not isinstance(ranks, list) or not ranks:
+        logger.error("[%s] empty 'response.ranks' in charts payload", source_id)
+        result.errors.append("empty 'response.ranks' in charts payload")
+        return result
+
+    limit = int(source.get("limit", len(ranks)))
+    top_n = ranks[:limit]
+
+    # 3. Resolve names/descriptions via appdetails (visible ⚠️ marker on miss).
+    enriched = _enrich_with_appdetails(source_id, top_n)
+    if not enriched:
+        logger.error("[%s] no usable records after enrichment", source_id)
+        result.errors.append("no usable records after enrichment")
+        return result
+
+    # 4. Normalise records into NormalizedItem rows.
+    extracted = extract_from_json(enriched, source)
+    if not extracted.items:
+        logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
+        result.errors.extend(extracted.errors or ["extraction yielded no items"])
+        return result
+    result.items = extracted.items
+
+    # 5. Dedup against the sheet, translate, notify, then persist only delivered.
+    sheet_tab: str = source["sheet_tab"]
+    existing = storage.get_existing_keys(sheet_tab)
+    new_items = [i for i in result.items if i.dedupe_key not in existing]
+    if not new_items:
+        logger.info("[%s] no new items", source_id)
+        return result
+
+    _apply_translation(source, new_items, enricher, source_id)
+
+    template: str = source["message_template"]
+    notifications = [build_notification(item, template) for item in new_items]
+
+    # Persist only confirmed-delivered items (Principle III); failed sends
+    # stay unstored to retry next run and surface as result.errors.
+    sent, failed = notifier.send_items(notifications)
+
+    if sent:
+        sent_ids = {n.id for n in sent}
+        items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
+        storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+
+    if failed:
+        message = f"{len(failed)} notification(s) failed, will retry next run"
+        logger.error("[%s] %s", source_id, message)
+        result.errors.append(message)
+    logger.info("[%s] sent %d notification(s)", source_id, len(sent))
+    return result
 
 
 if __name__ == "__main__":
