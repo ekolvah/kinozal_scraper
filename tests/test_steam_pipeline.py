@@ -426,5 +426,40 @@ class TestDeliveryTruthfulness(unittest.TestCase):
         self.assertTrue(all(r.ok for r in results))
 
 
+class TestSourceIsolation(unittest.TestCase):
+    """An *unhandled* error in one source must not abort the whole run — it
+    yields a not-ok PipelineResult and the next source still ships. Mirrors
+    json_pipeline's top-level isolation (test_one_source_error_does_not_block_others).
+    The error is raised in a stage with no per-stage guard (dedup), so only the
+    top-level wrapper can contain it."""
+
+    def test_unhandled_error_isolated_per_source(self) -> None:
+        broken = {**_SOURCE, "id": "steam_broken", "sheet_tab": "broken"}
+        config = {"version": 1, "sources": [broken, _SOURCE]}
+
+        class _FlakyStorage(InMemoryStorage):
+            def get_existing_keys(self, tab_name: str) -> set[str]:
+                if tab_name == "broken":
+                    raise RuntimeError("sheets API down")
+                return super().get_existing_keys(tab_name)
+
+        storage = _FlakyStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
+            unittest.mock.patch(
+                "steam_pipeline._fetch_appdetails",
+                side_effect=lambda appid: _APPDETAILS.get(appid),
+            ),
+        ):
+            results = run_steam_pipeline(storage, notifier, sources_config=config)
+
+        broken_result = next(r for r in results if r.source_id == "steam_broken")
+        self.assertFalse(broken_result.ok)
+        self.assertTrue(any("unhandled error" in e for e in broken_result.errors))
+        # the second source still delivered its 3 items despite the first erroring
+        self.assertEqual(len(notifier.sent), 3)
+
+
 if __name__ == "__main__":
     unittest.main()
