@@ -273,6 +273,20 @@ class TestAppDetailsFailure(unittest.TestCase):
         cs2 = next(n for n in notifier.sent if n.id == "730")
         self.assertIn("Game #730", cs2.text)
 
+    def test_appdetails_miss_renders_visible_marker(self) -> None:
+        """appdetails miss → name carries a visible ⚠️ anomaly marker, not a
+        silent 'Game #N' that looks like a real title (Principle IV)."""
+        appd: dict[int, dict[str, Any] | None] = {
+            730: None,
+            578080: _APPDETAILS[578080],
+            570: _APPDETAILS[570],
+        }
+        with self.assertLogs("steam_pipeline", level="WARNING"):
+            _, notifier = _run(appdetails=appd, applist_index={})
+        cs2 = next(n for n in notifier.sent if n.id == "730")
+        self.assertIn("⚠️", cs2.text)
+        self.assertIn("Game #730", cs2.text)
+
 
 class TestVisibility(unittest.TestCase):
     def test_empty_ranks_marks_failure(self) -> None:
