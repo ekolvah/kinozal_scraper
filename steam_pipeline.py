@@ -21,7 +21,6 @@ logger = logging.getLogger(__name__)
 
 _SOURCE_TYPE = "steam_charts"
 _APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
-_APPLIST_URL = "https://api.steampowered.com/ISteamApps/GetAppList/v2/"
 
 # `last_week_rank: -1` is the API's sentinel for new entries; we surface a
 # human-friendly token via the template (see test_new_entry_last_week_normalised).
@@ -52,32 +51,22 @@ def _fetch_appdetails(appid: int) -> dict[str, Any] | None:
     return data
 
 
-def _fetch_app_name_index() -> dict[str, str]:
-    """One-shot fallback name dictionary for the whole Steam catalogue.
-
-    `ISteamApps/GetAppList/v2/` returns ~10MB JSON with every published app
-    as `{appid, name}`. We hit it once per run and use it as a fallback when
-    `appdetails` 500s / rate-limits / returns `success: false` for an item
-    that's still legitimately in the charts. Keeps the operator from losing
-    notifications during Steam flaps (see [[feedback_visibility_over_silence]]).
-    """
-    resp = requests.get(_APPLIST_URL, timeout=60)
-    resp.raise_for_status()
-    payload = resp.json()
-    apps = payload.get("applist", {}).get("apps", [])
-    return {str(a["appid"]): a["name"] for a in apps if "appid" in a and "name" in a}
-
-
-def _resolve_name(appid: int, source_id: str, name_index: dict[str, str]) -> tuple[str, str]:
-    """Resolve `(name, short_description)` for an appid via 2-level fallback.
+def _resolve_name(appid: int, source_id: str) -> tuple[str, str]:
+    """Resolve `(name, short_description)` for an appid.
 
     1. `appdetails?filters=basic` — full payload (name + short_description).
-    2. `GetAppList` index — name only, no description.
-    3. `f"Game #{appid}"` — last-resort placeholder so the item still reaches
-       Telegram as a visible anomaly rather than a silent drop.
+    2. `f"⚠️ Game #{appid}"` — last-resort placeholder. The ⚠️ marker (same
+       convention as `FALLBACK_MARKER`) makes the degradation a *visible*
+       anomaly in Telegram rather than a silent-looking title, so the operator
+       notices instead of mistaking it for a real game (Principle IV,
+       see [[feedback_visibility_over_silence]]).
 
-    A WARNING is logged at every fallback so cron logs flag drift, but the
-    item is never dropped from the notification stream.
+    The former `GetAppList` second level was dropped: `ISteamApps/GetAppList/v2`
+    was deprecated 2025-11-25 and returns 404 permanently, so it could only ever
+    yield an empty index (see #146).
+
+    A WARNING is logged on placeholder so cron logs flag drift, but the item is
+    never dropped from the notification stream.
     """
     try:
         details = _fetch_appdetails(appid)
@@ -88,25 +77,14 @@ def _resolve_name(appid: int, source_id: str, name_index: dict[str, str]) -> tup
         name: str = details["name"]
         return name, details.get("short_description", "")
 
-    fallback_name = name_index.get(str(appid))
-    if fallback_name:
-        logger.warning(
-            "[%s] appdetails missing for %s — using GetAppList name '%s'",
-            source_id,
-            appid,
-            fallback_name,
-        )
-        return fallback_name, ""
-
-    placeholder = f"Game #{appid}"
-    logger.warning("[%s] no name anywhere for %s — sending as '%s'", source_id, appid, placeholder)
+    placeholder = f"⚠️ Game #{appid}"
+    logger.warning("[%s] no name for %s — sending as '%s'", source_id, appid, placeholder)
     return placeholder, ""
 
 
 def _enrich_with_appdetails(
     source_id: str,
     records: list[dict[str, Any]],
-    name_index: dict[str, str],
 ) -> list[dict[str, Any]]:
     """Populate `name`/`short_description` on every record; nothing is dropped.
 
@@ -121,7 +99,7 @@ def _enrich_with_appdetails(
         if appid is None:
             logger.warning("[%s] record without appid: %s", source_id, rec)
             continue
-        name, description = _resolve_name(int(appid), source_id, name_index)
+        name, description = _resolve_name(int(appid), source_id)
         rec["name"] = name
         rec["short_description"] = description
         rec["store_url"] = f"https://store.steampowered.com/app/{appid}"
@@ -226,15 +204,7 @@ def run_steam_pipeline(
         limit = int(source.get("limit", len(ranks)))
         top_n = ranks[:limit]
 
-        try:
-            name_index = _fetch_app_name_index()
-        except Exception as exc:
-            logger.warning(
-                "[%s] GetAppList fetch failed: %s — appdetails-only mode", source_id, exc
-            )
-            name_index = {}
-
-        enriched = _enrich_with_appdetails(source_id, top_n, name_index)
+        enriched = _enrich_with_appdetails(source_id, top_n)
         if not enriched:
             logger.error("[%s] no usable records after enrichment", source_id)
             result.errors.append("no usable records after enrichment")
