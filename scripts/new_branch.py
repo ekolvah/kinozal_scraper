@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Start a new feature branch from a fresh main.
 
-Usage: python scripts/new_branch.py codex-issue-N-short-slug
+Usage: python scripts/new_branch.py issue-N-short-slug
 
 Steps: refuse if working tree is dirty → checkout main → pull --ff-only
 → prune merged [gone] branches → checkout -b <name>. Ensures every
-codex-* branch starts at origin/main HEAD so squash-merges don't cause
+issue-* branch starts at origin/main HEAD so squash-merges don't cause
 history divergence (see #66), and that local `[gone]` branches from
 already-merged-and-deleted PRs don't pile up (see #72).
 """
@@ -17,7 +17,7 @@ import sys
 
 PROTECTED_BRANCHES = frozenset({"main", "master"})
 
-BRANCH_PREFIX = "codex-"
+BRANCH_PREFIX = "issue-"
 
 
 def is_valid_branch_name(name: str) -> bool:
@@ -77,7 +77,9 @@ def main() -> None:
         sys.exit(2)
     name = sys.argv[1]
     if not is_valid_branch_name(name):
-        print(f"error: branch name must start with {BRANCH_PREFIX!r} (got {name!r})", file=sys.stderr)
+        print(
+            f"error: branch name must start with {BRANCH_PREFIX!r} (got {name!r})", file=sys.stderr
+        )
         sys.exit(2)
 
     status = _run(["git", "status", "--porcelain"], capture=True).stdout

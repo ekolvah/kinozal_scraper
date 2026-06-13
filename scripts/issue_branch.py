@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a fresh `codex-issue-N-<slug>` branch from a GitHub issue title.
+"""Create a fresh `issue-N-<slug>` branch from a GitHub issue title.
 
 Usage: python scripts/issue_branch.py <issue-number>
 
@@ -31,7 +31,7 @@ def slugify(title: str) -> str:
 
 
 def build_branch_name(issue_number: int, title: str) -> str:
-    return f"codex-issue-{issue_number}-{slugify(title)}"
+    return f"issue-{issue_number}-{slugify(title)}"
 
 
 def _fetch_title(issue_number: int) -> str:

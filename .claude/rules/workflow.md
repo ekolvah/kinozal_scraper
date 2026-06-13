@@ -10,7 +10,7 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
 
 Эти процедурные правила дополняют принципы §I–VI и связывают **наравне** с ними:
 
-1. **Branch creation** — new work happens on `codex-issue-N-<slug>` branches
+1. **Branch creation** — new work happens on `issue-N-<slug>` branches
    created **only** via `python scripts/new_branch.py <name>`. Direct
    `git checkout -b` is forbidden; the script guarantees the branch starts
    at `origin/main` HEAD, preventing squash-merge divergence (issue #66).
