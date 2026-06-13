@@ -24,14 +24,18 @@ _IMPLEMENT = _REPO / ".claude" / "commands" / "implement.md"
 
 def _deny_patterns() -> list[str]:
     data = json.loads(_SETTINGS.read_text(encoding="utf-8"))
-    return data["permissions"]["deny"]
+    return [str(p) for p in data["permissions"]["deny"]]
 
 
 def _declared_prohibitions() -> list[str]:
     """Inline-code tokens from the `Запреты` line of implement.md."""
     for line in _IMPLEMENT.read_text(encoding="utf-8").splitlines():
         if "Запреты" in line:
-            return re.findall(r"`([^`]+)`", line)
+            # Only inline-code tokens that are actual git/gh commands or flags —
+            # the line also references files (settings.json, the test) in backticks.
+            return [
+                t for t in re.findall(r"`([^`]+)`", line) if t.startswith(("git ", "gh ", "--"))
+            ]
     raise AssertionError("no `Запреты` line found in implement.md")
 
 
@@ -51,9 +55,7 @@ class TestDenyList:
         declared = _declared_prohibitions()
         assert declared, "implement.md must declare prohibitions as inline code"
 
-        missing = [
-            tok for tok in declared if not any(_keyword(tok) in pat for pat in patterns)
-        ]
+        missing = [tok for tok in declared if not any(_keyword(tok) in pat for pat in patterns)]
         assert not missing, (
             f"prohibitions declared in implement.md but not enforced in settings.json deny: {missing}"
         )
