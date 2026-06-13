@@ -112,5 +112,25 @@ class TestPruneGoneBranchesParsesGoneEntries(unittest.TestCase):
         self.assertEqual(deletions, [["git", "branch", "-d", "feature/done"]])
 
 
+class TestBranchNameGuard(unittest.TestCase):
+    """`is_valid_branch_name` must accept the project prefix and reject others.
+
+    Pin-test for #162 (rename `codex-` → `issue-`): the guard gates branch
+    creation in `main()`; only `issue-…` names are valid.
+    """
+
+    def test_accepts_issue_prefix(self) -> None:
+        new_branch = _load_new_branch_module()
+        self.assertTrue(new_branch.is_valid_branch_name("issue-162-rename-codex"))
+
+    def test_rejects_codex_prefix(self) -> None:
+        new_branch = _load_new_branch_module()
+        self.assertFalse(new_branch.is_valid_branch_name("codex-issue-1-x"))
+
+    def test_rejects_unprefixed(self) -> None:
+        new_branch = _load_new_branch_module()
+        self.assertFalse(new_branch.is_valid_branch_name("foo-bar"))
+
+
 if __name__ == "__main__":
     unittest.main()

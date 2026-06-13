@@ -37,10 +37,10 @@ class TestSlugify:
 
 class TestBuildBranchName:
     def test_concatenates_with_issue_number(self) -> None:
-        assert build_branch_name(114, "[feat] add commands") == "codex-issue-114-add-commands"
+        assert build_branch_name(114, "[feat] add commands") == "issue-114-add-commands"
 
     def test_falls_back_when_slug_empty(self) -> None:
-        assert build_branch_name(42, "русский тайтл") == "codex-issue-42-task"
+        assert build_branch_name(42, "русский тайтл") == "issue-42-task"
 
 
 class TestFetchTitleEncoding:
