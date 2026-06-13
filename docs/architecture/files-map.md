@@ -18,8 +18,8 @@ responsibility: один файл = чёткий ответ на один воп
 | `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings | ✅ |
-| `.claude/settings.json` (gitignored) | Что запрещено агенту (deny-list) + режим permissions | ⚠️ неполный deny-list (см. дубль #9); gitignored → не виден на GitHub |
-| `.claude/settings.local.json` (gitignored) | Доп. локальные permissions (WebFetch / Skill) | ✅ (gitignored) |
+| `.claude/settings.json` | Что запрещено агенту (`permissions.deny`) — источник истины запретов, трекается | ✅ |
+| `.claude/settings.local.json` (gitignored) | Личный режим + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, личный) |
 
 ## `docs/architecture/`
 
@@ -63,5 +63,5 @@ Backlog де-дупликации (Phase B — отдельные follow-up issu
 | 6 | `codex-` префикс ветки | `new_branch.py` + `ci.yml` trigger + `principles.md` + `CLAUDE.md` | конфиг/скрипт | 🟡 |
 | 7 | `_EXCLUDE_DIRS` (mypy) | `ci_check.py` (вкл. `.audit-tmp`) vs `ci.yml` (без) — mismatch | единый источник (**→ #153**) | 🟡 |
 | 8 | Data-flow диаграмма | `runtime.md` ≈ `pipeline.md` | runtime=обзор, pipeline=деталь (терпимо) | 🟢 |
-| 9 | Запреты git (push-main/force/no-verify/pr-merge/reset/branch-D) | `implement.md` проза vs `settings.json` deny-list (неполный) | `settings.json` (энфорс) (**→ #154**) | 🟡 |
+| 9 | ~~Запреты git (push-main/force/no-verify/pr-merge/reset/branch-D)~~ | ✅ закрыт #154: `settings.json` (трекаемый) — источник истины; `tests/test_settings_deny.py` синхронит с `implement.md` | `settings.json` (энфорс) | ✅ |
 | 10 | `pip-compile` в том же коммите | дважды внутри одного `CLAUDE.md` | один раз | 🟢 |

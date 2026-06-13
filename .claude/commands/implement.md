@@ -18,4 +18,6 @@ argument-hint: <issue-number>
 9. **Review loop (1 проход)**: после комментария `claude-review.yml` — `gh pr view <pr> --comments`, применить findings одним коммитом `review: address claude-review feedback for #$ARGUMENTS`, push. Второй проход не делать.
 10. **Hand-off**: дай user'у ссылку на PR, статус checks, явное «merge — твой шаг».
 
-Запреты (дублируются deny-list'ом в settings, упомянуты для self-check): push в main, `gh pr merge`, `--no-verify`, `git reset --hard`, `git push --force`, `git branch -D`.
+Запреты (источник истины — `permissions.deny` в трекаемом `.claude/settings.json`; список здесь — self-check, синхронность проверяет `tests/test_settings_deny.py`): push в main, `gh pr merge`, `--no-verify`, `git reset --hard`, `git push --force`, `git branch -D`.
+
+deny — defense-in-depth для типовых форм команд, **не герметичный sandbox** (Claude Code матчит по разбору команды; цепочки/`bash -c`/env-vars его обходят). Авторитетный барьер для `main` — **GitHub branch protection** (require PR, restrict push/merge), а не локальный deny.

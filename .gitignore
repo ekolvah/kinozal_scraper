@@ -1,6 +1,5 @@
 /.idea
 .venv/
-.claude/settings.json
 .claude/settings.local.json
 .claude/worktrees/
 .claude/cache/
