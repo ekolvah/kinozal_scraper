@@ -17,6 +17,13 @@ import sys
 
 PROTECTED_BRANCHES = frozenset({"main", "master"})
 
+BRANCH_PREFIX = "codex-"
+
+
+def is_valid_branch_name(name: str) -> bool:
+    """A new branch must carry the project prefix (canon: `.claude/rules/workflow.md`)."""
+    return name.startswith(BRANCH_PREFIX)
+
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, check=True, text=True, capture_output=capture, encoding="utf-8")
@@ -69,8 +76,8 @@ def main() -> None:
         print("Usage: python scripts/new_branch.py <branch-name>", file=sys.stderr)
         sys.exit(2)
     name = sys.argv[1]
-    if not name.startswith("codex-"):
-        print(f"error: branch name must start with 'codex-' (got {name!r})", file=sys.stderr)
+    if not is_valid_branch_name(name):
+        print(f"error: branch name must start with {BRANCH_PREFIX!r} (got {name!r})", file=sys.stderr)
         sys.exit(2)
 
     status = _run(["git", "status", "--porcelain"], capture=True).stdout
