@@ -74,6 +74,7 @@ docstring для `.py`, верхняя строка-шапка для `.md`. Hea
 |---|---|---|
 | `~/.claude/CLAUDE.md` (глоб., вне репо) | Кто я как агент: кросс-проектные приоритеты; когда subagent / скрипт / memory | ✅ |
 | `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
+| `.claude/rules/workflow.md` | Процедурные правила workflow (ветка/PR-дисциплина/labels/plan→implement/гейты) — канон, always-load | ✅ |
 | `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings | ✅ |
@@ -84,7 +85,7 @@ docstring для `.py`, верхняя строка-шапка для `.md`. Hea
 
 | Файл | На какой вопрос отвечает | Single-responsibility? |
 |---|---|---|
-| `principles.md` | Микс: §I–VI принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Dev Workflow + Quality Gates + Governance | ❌ runtime-принципы + dev-process вместе |
+| `principles.md` | Микс: §I–VI принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `.claude/rules/workflow.md`) | ❌ runtime-принципы + dev-process вместе |
 | `project-map.md` (этот файл) | Какой файл на какой вопрос отвечает + где живёт какое знание (IA-policy) + карта дублей | ✅ |
 | `runtime.md` | Какие пайплайны / Protocols / data-flow | ✅ |
 | `pipeline.md` | Слои, контракты `extract_from_*`, `NormalizedItem` | ✅ |
@@ -137,9 +138,9 @@ Backlog де-дупликации. Severity: 🔴 высокая (включая
 
 | # | Факт | Где продублирован | Канонический источник | Сев. |
 |---|---|---|---|---|
-| 1 | Набор required-секций issue | `validate_issue_sections.py` (tuple) + `feature.yml` + `bug.yml` + `principles.md` проза + `CLAUDE.md` проза | скрипт (tuple); остальное → ссылка | 🔴 |
+| 1 | Набор required-секций issue | `validate_issue_sections.py` (tuple) + `feature.yml` + `bug.yml` + `principles.md` проза + ~~`CLAUDE.md` проза~~ (убрана #159) | скрипт (tuple); остальное → ссылка | 🔴 частично |
 | 2 | Набор CI-проверок | `ci_check.py` vs `ci.yml` (нет coverage-drift!) vs `ci.md` («mirrors exactly» — ложь) | `ci_check.py` (**баг-рассинхрон → #153**) | 🔴 |
-| 3 | Dev-workflow правила (ветка/no-main-push/no-self-merge/one-PR/labels/plan→implement) | `CLAUDE.md` ≈ слово-в-слово `principles.md §Dev Workflow` | один источник, второй → ссылка | 🔴 |
+| 3 | ~~Dev-workflow правила (ветка/no-main-push/no-self-merge/one-PR/labels/plan→implement)~~ | ✅ закрыт #159: канон = `.claude/rules/workflow.md` (always-load); `principles.md §Dev Workflow` и `CLAUDE.md §PR Workflow` → указатели; §Governance легализует делегирование | `.claude/rules/workflow.md` | ✅ |
 | 4 | Test-First + «no mocks of internal» | `principles.md §I/§II` ≈ `testing.md` | `principles.md` | 🟡 |
 | 5 | Bug taxonomy | `testing.md` ≈ `test-coverage.md` | `testing.md`; coverage.md → только инвентарь | 🟡 |
 | 6 | `codex-` префикс ветки | `new_branch.py` + `ci.yml` trigger + `principles.md` + `CLAUDE.md` | конфиг/скрипт | 🟡 |

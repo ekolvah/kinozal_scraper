@@ -133,48 +133,13 @@ pipeline_config.py` (or in ci_check) keeps the feedback loop human-scale.
 
 ## Development Workflow
 
-These procedural rules supplement the principles above and are equally
-binding:
-
-1. **Branch creation** — new work happens on `codex-issue-N-<slug>` branches
-   created **only** via `python scripts/new_branch.py <name>`. Direct
-   `git checkout -b` is forbidden; the script guarantees the branch starts
-   at `origin/main` HEAD, preventing squash-merge divergence (issue #66).
-2. **No direct main pushes** — main is updated exclusively through PRs.
-3. **No self-merge** — `gh pr merge` is forbidden for the AI assistant
-   without explicit per-PR human approval. The human reviewer keeps the
-   merge button.
-4. **One PR, one logical unit** — docs-only PRs are separate from
-   refactor/feature PRs (precedent: #39 → #40 had to be redone after mixing).
-5. **Issues carry labels** — every `gh issue create` includes `--label
-   bug|enhancement|documentation|testing|...`.
-6. **Pre-commit gate** — `python scripts/ci_check.py` runs ruff format +
-   lint + pytest + mypy + pip-audit + lockfile drift. The `.githooks/pre-push`
-   hook runs it automatically; do not bypass with `--no-verify`.
-7. **Dependency consistency** — when a `requirements*.in` changes,
-   `pip-compile` regenerates the corresponding `.txt` in the same commit.
-8. **Plan-driven flow** — substantive new features and bug fixes are
-   authored via the project's local workflow: `/plan #N` writes a
-   structured plan into the issue body (Context / Acceptance / Test plan /
-   Implementation outline / Docs to update / Out of scope / Architect
-   review), then `/implement #N` executes it with TDD red-green discipline.
-   Trivial fixes (typos, single-line non-behavioural tweaks) may skip the
-   workflow. See #114 for the rationale and exact contract.
-9. **Architect review gate** — the issue body MUST carry a non-empty
-   `## Architect review` section before `/implement` runs; the existing
-   `scripts/validate_issue_sections.py` gate enforces it (no separate
-   script). `/plan` fills it by running the `architect-reviewer` subagent
-   (`.claude/agents/architect-reviewer.md`) over the drafted plan, whose
-   goal function is: minimise future bugfix/support → dev+runtime tokens →
-   predictability. Trivial issues record an explicit `skipped: <reason>` —
-   the gate guarantees the review is a *consciously-decided step*, not a
-   silently-forgotten one. **Rationale:** a plan-stage architect review on
-   2026-05-29 caught defects the first plan missed — a §IV silent-skip
-   (`try/except: return ""`), a §II mock-of-internal-logic in a golden test,
-   and runtime-token overspend (LLM per item vs. a cheap pre-filter). The
-   reviewer persona used to live in out-of-repo Claude memory and was
-   re-typed by hand and easily forgotten; codifying it in-repo + gating it
-   makes the review reproducible for any contributor (#150).
+The procedural workflow rules (branch creation, PR discipline, labels,
+plan→implement flow, pre-commit gate, dependency consistency, architect-review
+gate) are an **operational procedure**, delegated to their canonical home
+[`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) (an always-loaded
+operational tier — see [`project-map.md`](project-map.md) IA-policy). They
+supplement the principles above and are **equally binding**. This file does not
+restate them — edit them there.
 
 ## Quality Gates
 
@@ -202,6 +167,17 @@ This document supersedes ad-hoc conventions in `CLAUDE.md` and the other
 implementation-detail references — kept short, kept linked, never the source
 of truth on principles.
 
+**Delegation of operational procedures.** This constitution retains the
+**principles §I–VI**, the **Quality Gates**, and this **Governance** section as
+its canon. The *operational procedural rules* (the former §Development Workflow)
+are delegated to [`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) —
+the always-loaded operational tier in Claude Code's knowledge-carrier hierarchy
+(see [`project-map.md`](project-map.md)). Delegation does **not** weaken their
+authority: those rules bind equally and `.claude/rules/workflow.md` is their
+single source of truth (other mentions are links only). Amending them happens
+in that file; amending the *delegation itself* (what is canon vs. delegated) is
+a Governance change made here.
+
 Amendments are made via PR that modifies this file. Version policy:
 
 - **MAJOR** — a principle is removed, redefined, or a procedural rule is
@@ -217,4 +193,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 2.1.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-06-13
+**Version**: 2.2.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-06-13
