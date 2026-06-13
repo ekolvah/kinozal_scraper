@@ -44,9 +44,6 @@ jobs:
       - name: Test coverage doc freshness
         run: python scripts/ci_check.py --only coverage-doc
 
-      - name: Type check
-        run: python scripts/ci_check.py --only mypy
-
       - name: Dependency audit
         run: python scripts/ci_check.py --only pip-audit
 
@@ -55,3 +52,6 @@ jobs:
 
       - name: Requirements consistency
         run: python scripts/ci_check.py --only requirements
+
+      - name: Type check
+        run: python scripts/ci_check.py --only mypy

@@ -38,7 +38,6 @@ row promoted to ✅.
 |---|---|---|
 | `youtube.py` | No Protocol boundary, requires live YouTube API | Indirect coverage via `test_kinozal_pipeline.py::TestEnrichWithTrailer` |
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
-| `scripts/ci_check.py` | Meta-tooling | None |
 
 ## Test patterns
 

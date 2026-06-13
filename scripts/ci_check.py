@@ -147,7 +147,8 @@ CHECKS: dict[str, Callable[[], None]] = {
 def run_selected(only: str | None = None) -> None:
     if only is not None:
         if only not in CHECKS:
-            sys.exit(f"unknown check {only!r}; known: {', '.join(CHECKS)}")
+            print(f"unknown check {only!r}; known: {', '.join(CHECKS)}", file=sys.stderr)
+            sys.exit(1)
         CHECKS[only]()
         return
     for fn in CHECKS.values():
