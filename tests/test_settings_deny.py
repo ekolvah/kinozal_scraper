@@ -39,10 +39,10 @@ def _declared_prohibitions() -> list[str]:
     raise AssertionError("no `Запреты` line found in implement.md")
 
 
-def _keyword(token: str) -> str:
-    """The discriminating substring a deny pattern must contain for this token."""
-    # Strip the tool prefix (`git `/`gh `) so the keyword is the action itself.
-    return re.sub(r"^(git|gh)\s+", "", token.strip())
+def _bash_arg(pattern: str) -> str:
+    """The command inside a `Bash(...)` deny pattern (empty for non-Bash)."""
+    m = re.match(r"Bash\((.*)\)$", pattern)
+    return m.group(1) if m else ""
 
 
 class TestDenyList:
@@ -55,7 +55,11 @@ class TestDenyList:
         declared = _declared_prohibitions()
         assert declared, "implement.md must declare prohibitions as inline code"
 
-        missing = [tok for tok in declared if not any(_keyword(tok) in pat for pat in patterns)]
+        # Match the full token (incl. git/gh prefix) inside the Bash(...) argument,
+        # not a stripped substring of the whole pattern — avoids a token like
+        # `git push` false-matching every push-related deny entry.
+        args = [_bash_arg(p) for p in patterns]
+        missing = [tok for tok in declared if not any(tok in arg for arg in args)]
         assert not missing, (
             f"prohibitions declared in implement.md but not enforced in settings.json deny: {missing}"
         )
