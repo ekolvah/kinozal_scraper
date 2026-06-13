@@ -1,0 +1,23 @@
+---
+paths:
+  - "tests/**"
+---
+
+# Testing — operational checklist
+
+**На какой вопрос отвечает этот файл:** какие шаги обязательны, когда пишешь или
+правишь тесты. Это **операционный чеклист**, не дизайн-документ: формулировки
+принципов — канон в [`principles.md §I`](../../docs/architecture/principles.md) (Test-First)
+и [`§II`](../../docs/architecture/principles.md) (Protocol Boundaries + DI); стратегия
+(уровни, bug-taxonomy, что мокать) — [`docs/architecture/testing.md`](../../docs/architecture/testing.md).
+**Не перефразируй сюда принцип — только ссылайся** (path-scoped: грузится лишь при работе с `tests/**`).
+
+1. **RED first** — падающий тест из issue `## Test plan` пишется до кода
+   (правило и исключения — [`principles.md §I`](../../docs/architecture/principles.md)).
+2. **Никаких моков внутренней логики** — действует [`principles.md §II`](../../docs/architecture/principles.md);
+   как это выглядит в репо (какие границы внешние, какой паттерн) — [`testing.md`](../../docs/architecture/testing.md#rule-no-mocks-of-internal-functions).
+3. **Уровень теста** выбирай по [bug-taxonomy](../../docs/architecture/testing.md#bug-taxonomy)
+   (integration-first → unit для pure-функций → e2e smoke перед merge для structure-drift).
+4. **Прогон** — `python -m pytest` инкрементально; перед коммитом `python scripts/ci_check.py`.
+5. **Структура тестов изменилась** (новый файл/класс) — `test-coverage.md` регенерится
+   `ci_check`'ом (`python scripts/gen_test_coverage.py`); инвентарь руками не правь.
