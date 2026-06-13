@@ -59,7 +59,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 Программа приведения к модели — серия PR #158–#162. Этот документ (PR #158) —
 governance-якорь; остальные двигают контент по карте ниже.
 
-| Факт / контент (сейчас) | Целевой дом | Действие | PR |
+| Факт / контент (сейчас) | Целевой дом | Действие | Issue |
 |---|---|---|---|
 | Этот IA-doc + canonical-home правило | `docs/architecture/information-architecture.md` | **создать** (governance-якорь) | #158 |
 | Dev-workflow правила (`CLAUDE.md` проза ≈ `principles.md §Dev Workflow`, дубль #3) | `.claude/rules/workflow.md` (канон. операт.) | MOVE §Dev Workflow **целиком**; старые места → указатель | #159 |
