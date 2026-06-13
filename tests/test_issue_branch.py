@@ -42,6 +42,22 @@ class TestBuildBranchName:
     def test_falls_back_when_slug_empty(self) -> None:
         assert build_branch_name(42, "русский тайтл") == "issue-42-task"
 
+    def test_prefix_matches_new_branch_constant(self) -> None:
+        # Canonical-home guard (#162): build_branch_name must derive its prefix
+        # from new_branch.BRANCH_PREFIX, so a future prefix change can't drift
+        # past new_branch.py's guard and break the issue_branch→new_branch pipe.
+        import importlib.util
+        from pathlib import Path
+
+        spec = importlib.util.spec_from_file_location(
+            "scripts.new_branch",
+            Path(__file__).resolve().parent.parent / "scripts" / "new_branch.py",
+        )
+        assert spec is not None and spec.loader is not None
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        assert build_branch_name(1, "x").startswith(mod.BRANCH_PREFIX)
+
 
 class TestFetchTitleEncoding:
     def test_cyrillic_title_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
