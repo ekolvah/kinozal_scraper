@@ -29,54 +29,29 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-dev.txt
 
+      # Each step delegates to scripts/ci_check.py --only <name>; the check set
+      # lives in ci_check's CHECKS registry only. Adding/removing a check there
+      # auto-fails tests/test_ci_check.py::TestStepParity until ci.yml matches.
       - name: Check formatting
-        run: python -m ruff format --check .
+        run: python scripts/ci_check.py --only format
 
       - name: Lint
-        run: python -m ruff check .
+        run: python scripts/ci_check.py --only lint
 
       - name: Run tests
-        run: python -m pytest
+        run: python scripts/ci_check.py --only pytest
 
-      - name: Type check
-        run: |
-          mapfile -t modules < <(find . -name "*.py" \
-            ! -path "./.venv/*" ! -path "./.git/*" ! -path "./__pycache__/*" \
-            ! -path "./.claude/*")
-          if [ "${#modules[@]}" -eq 0 ]; then
-            echo "No modules to type-check; skipping."
-          else
-            python -m mypy "${modules[@]}"
-          fi
+      - name: Test coverage doc freshness
+        run: python scripts/ci_check.py --only coverage-doc
 
       - name: Dependency audit
-        run: python -m pip_audit -r requirements.txt
+        run: python scripts/ci_check.py --only pip-audit
 
       - name: Dependency audit (dev)
-        run: python -m pip_audit -r requirements-dev.txt
+        run: python scripts/ci_check.py --only pip-audit-dev
 
       - name: Requirements consistency
-        run: |
-          python - <<'EOF'
-          import re, sys
-          from pathlib import Path
+        run: python scripts/ci_check.py --only requirements
 
-          def parse_pins(path):
-              pins = {}
-              for line in Path(path).read_text(encoding="utf-8").splitlines():
-                  m = re.match(r'^([a-zA-Z0-9_.\\-\\[\\]]+)==(.+)$', line.strip())
-                  if m:
-                      name = re.sub(r'\\[.*\\]', '', m.group(1)).lower().replace('-', '_')
-                      pins[name] = m.group(2)
-              return pins
-
-          req = parse_pins("requirements.txt")
-          dev = parse_pins("requirements-dev.txt")
-          bad = [(p, req[p], dev[p]) for p in req if p in dev and req[p] != dev[p]]
-          if bad:
-              print("requirements version mismatch — edit .in files and run pip-compile:")
-              for p, rv, dv in bad:
-                  print(f"  {p}: requirements.txt={rv}, requirements-dev.txt={dv}")
-              sys.exit(1)
-          print("requirements versions consistent")
-          EOF
+      - name: Type check
+        run: python scripts/ci_check.py --only mypy
