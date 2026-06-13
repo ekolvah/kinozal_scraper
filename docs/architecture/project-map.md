@@ -102,7 +102,7 @@ docstring для `.py`, верхняя строка-шапка для `.md`. Hea
 | Файл | На какой вопрос отвечает |
 |---|---|
 | `scripts/validate_issue_sections.py` | Содержит ли issue все 7 required секций (gate `/plan` и `/implement`) |
-| `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `codex-issue-N-*` от свежего origin/main |
+| `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
 | `scripts/ci_check.py` | Локальный pre-commit/pre-push гейт качества (зеркало CI job) |
 | `scripts/gen_test_coverage.py` | Генерация `test-coverage.md` (защита от drift) |
@@ -145,7 +145,7 @@ Backlog де-дупликации. Severity: 🔴 высокая (включая
 | 3 | ~~Dev-workflow правила (ветка/no-main-push/no-self-merge/one-PR/labels/plan→implement)~~ | ✅ закрыт #159: канон = `.claude/rules/workflow.md` (always-load); `principles.md §Dev Workflow` и `CLAUDE.md §PR Workflow` → указатели; §Governance легализует делегирование | `.claude/rules/workflow.md` | ✅ |
 | 4 | ~~Test-First + «no mocks of internal»~~ | ✅ закрыт #160: канон = `principles.md §II`; `testing.md` → указатель «Canon: §II» (не перефраз); операционный чеклист → `.claude/rules/testing.md` (path-scoped) | `principles.md §II` | ✅ |
 | 5 | Bug taxonomy | `test-coverage.md` ссылается на `testing.md#bug-taxonomy` как канон (keyed, без колонки Examples — не перефраз) | `testing.md` | ✅ resolved-by-link |
-| 6 | `codex-` префикс ветки | `new_branch.py` + `ci.yml` trigger + `principles.md` + `CLAUDE.md` | конфиг/скрипт | 🟡 |
+| 6 | ~~`codex-` префикс ветки~~ | ✅ закрыт #162: префикс `issue-`; канон = `new_branch.py` (`BRANCH_PREFIX`/`is_valid_branch_name`); прочее (`ci.yml` trigger, `workflow.md`, `CLAUDE.md`, `ci.md`) — производное. `ci.yml` держит `codex-*` в transition → #170 | `new_branch.py` (`BRANCH_PREFIX`) | ✅ |
 | 7 | `_EXCLUDE_DIRS` (mypy) | `ci_check.py` (вкл. `.audit-tmp`) vs `ci.yml` (без) — mismatch | единый источник (**→ #153**) | 🟡 |
 | 8 | Data-flow диаграмма | `runtime.md` ≈ `pipeline.md` | runtime=обзор, pipeline=деталь (терпимо) | 🟢 |
 | 9 | ~~Запреты git (push-main/force/no-verify/pr-merge/reset/branch-D)~~ | ✅ закрыт #154: `settings.json` (трекаемый) — источник истины; `tests/test_settings_deny.py` синхронит с `implement.md` | `settings.json` (энфорс) | ✅ |

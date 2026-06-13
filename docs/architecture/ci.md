@@ -22,7 +22,8 @@ Activate: `git config core.hooksPath .githooks`
 
 ## CI workflow (`ci.yml`)
 
-Triggers: PR and push to `main` / `codex-*` branches.
+Triggers: PR and push to `main` / `issue-*` branches. (Transition: `codex-*`
+is also triggered until legacy `codex-*` PRs drain — removed in #170.)
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,

@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+      - "issue-*"
+      # transition: remove once no open PRs on codex-* (gh pr list) — see #170
       - "codex-*"
 
 jobs:

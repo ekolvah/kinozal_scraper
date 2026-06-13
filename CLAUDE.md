@@ -27,7 +27,7 @@ Issue создаём с label обязательно: `gh issue create --label b
 
 ## PR Workflow
 
-Процедурные правила workflow (создание ветки `codex-issue-N-*` через `scripts/new_branch.py`, PR-дисциплина, no-main-push / no-self-merge, one-PR-one-unit, labels, `/plan #N` → `/implement #N`, architect-review гейт) живут в **[`.claude/rules/workflow.md`](.claude/rules/workflow.md)** — это их канон (always-load). Здесь не дублируем.
+Процедурные правила workflow (создание ветки `issue-N-*` через `scripts/new_branch.py`, PR-дисциплина, no-main-push / no-self-merge, one-PR-one-unit, labels, `/plan #N` → `/implement #N`, architect-review гейт) живут в **[`.claude/rules/workflow.md`](.claude/rules/workflow.md)** — это их канон (always-load). Здесь не дублируем.
 
 ## Зависимости
 - При изменении `requirements*.in` запусти `pip-compile` для соответствующего `.txt` в том же коммите.

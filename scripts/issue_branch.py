@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create a fresh `codex-issue-N-<slug>` branch from a GitHub issue title.
+"""Create a fresh `issue-N-<slug>` branch from a GitHub issue title.
 
 Usage: python scripts/issue_branch.py <issue-number>
 
@@ -10,6 +10,7 @@ slug, and delegates to `scripts/new_branch.py` to do the actual checkout
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import re
 import subprocess
@@ -30,8 +31,24 @@ def slugify(title: str) -> str:
     return "-".join(words[:MAX_SLUG_WORDS])
 
 
+def _branch_prefix() -> str:
+    """Single source of truth for the prefix: `new_branch.BRANCH_PREFIX`.
+
+    Loaded by path (scripts/ is not a package) so this value cannot drift from
+    the guard in `new_branch.py` that validates the produced branch name — a
+    drift would silently break the `issue_branch.py → new_branch.py` pipeline.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "scripts.new_branch", Path(__file__).with_name("new_branch.py")
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return str(module.BRANCH_PREFIX)
+
+
 def build_branch_name(issue_number: int, title: str) -> str:
-    return f"codex-issue-{issue_number}-{slugify(title)}"
+    return f"{_branch_prefix()}{issue_number}-{slugify(title)}"
 
 
 def _fetch_title(issue_number: int) -> str:
