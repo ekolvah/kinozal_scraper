@@ -6,11 +6,16 @@
 python scripts/ci_check.py
 ```
 
-Runs: ruff format check → ruff lint → pytest → test-coverage doc → pip-audit (runtime + dev) → requirements consistency → mypy.
+Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
+ruff format → ruff lint → pytest → test-coverage doc freshness → pip-audit
+(runtime) → pip-audit (dev) → requirements consistency → mypy.
 
-Mirrors `ci.yml` exactly — if `ci_check.py` is green, CI will be green too.
-Adds `pip-audit` (was CI-only until issue #112) and the test-coverage doc
-freshness check (CI-effectively-free; here it's enforced to avoid drift).
+**Single source of truth.** The registry is the *only* place the check set is
+defined. `ci.yml` does not re-list checks — each CI step runs
+`python scripts/ci_check.py --only <name>`, so local and CI cannot drift. If
+`ci_check.py` is green locally, CI runs the identical checks. Adding or removing
+a check in the registry without updating `ci.yml` fails
+`tests/test_ci_check.py::TestStepParity` (#153).
 
 Pre-push hook: `.githooks/pre-push` runs `ci_check.py` automatically.
 Activate: `git config core.hooksPath .githooks`
@@ -19,11 +24,15 @@ Activate: `git config core.hooksPath .githooks`
 
 Triggers: PR and push to `main` / `codex-*` branches.
 
-Steps: checkout → Python 3.12 → install deps → ruff format → ruff lint → pytest → mypy → pip-audit.
+Steps: checkout → Python 3.12 → install deps → then one
+`python scripts/ci_check.py --only <name>` step per registry check (format,
+lint, pytest, coverage-doc, pip-audit, pip-audit-dev, requirements, mypy). The
+per-step split keeps the GitHub Actions UI granular (you see *which* gate
+failed) while the check set itself stays defined once, in `ci_check.py`.
 
-mypy excludes only `scraper.py` (legacy WebDriver script with its own
-issue trail) and the `.claude` directory. All other Python files are
-type-checked.
+mypy type-checks every `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
+`__pycache__`, `.audit-tmp`, `.claude`) and any `pytest-cache-files-*` dir, via
+`ci_check._find_modules()` — the same discovery used locally.
 
 ## Claude review workflow (`claude-review.yml`)
 
