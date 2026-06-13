@@ -18,8 +18,8 @@ responsibility: один файл = чёткий ответ на один воп
 | `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings | ✅ |
-| `.claude/settings.json` | Что запрещено агенту (deny-list) + режим permissions | ⚠️ неполный deny-list (см. дубль #9) |
-| `.claude/settings.local.json` | Доп. локальные permissions (WebFetch / Skill) | ✅ |
+| `.claude/settings.json` (gitignored) | Что запрещено агенту (deny-list) + режим permissions | ⚠️ неполный deny-list (см. дубль #9); gitignored → не виден на GitHub |
+| `.claude/settings.local.json` (gitignored) | Доп. локальные permissions (WebFetch / Skill) | ✅ (gitignored) |
 
 ## `docs/architecture/`
 
