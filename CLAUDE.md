@@ -49,8 +49,7 @@ Issue создаём с label обязательно: `gh issue create --label b
 Key decisions recorded here; details in separate files to keep this file short.
 
 - **[Principles](docs/architecture/principles.md)** — source of truth: 6 core principles + dev workflow + quality gates. When this file conflicts with `principles.md`, `principles.md` wins.
-- [Information architecture](docs/architecture/information-architecture.md) — tier-модель носителей знания + canonical-home правило (какой факт в каком файле живёт и почему)
-- [Files map](docs/architecture/files-map.md) — на какой вопрос отвечает каждый файл процесса + карта известных дублей (backlog де-дупликации)
+- [Project map](docs/architecture/project-map.md) — какой файл на какой вопрос отвечает (процесс + исходники) + где живёт какое знание (tier-модель + canonical-home) + карта дублей
 - [Runtime overview](docs/architecture/runtime.md) — 4 pipelines, protocols, data flow
 - [Pipeline](docs/architecture/pipeline.md) — layers, NormalizedItem, extract_from_* contracts
 - [Storage](docs/architecture/storage.md) — Storage Protocol, DI, EAFP, row schema
