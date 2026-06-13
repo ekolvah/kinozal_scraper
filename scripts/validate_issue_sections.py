@@ -22,6 +22,11 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     "Implementation outline",
     "Docs to update",
     "Out of scope",
+    # Architect-review findings (or an explicit `skipped: <reason>`). Enforced as
+    # a gate so the review is a consciously-decided step, never silently skipped
+    # (#150). Persona lives in `.claude/agents/architect-reviewer.md`; criteria in
+    # `docs/architecture/principles.md`.
+    "Architect review",
 )
 MIN_CONTENT_CHARS = 5
 

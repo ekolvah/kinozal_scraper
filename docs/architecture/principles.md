@@ -156,10 +156,25 @@ binding:
 8. **Plan-driven flow** — substantive new features and bug fixes are
    authored via the project's local workflow: `/plan #N` writes a
    structured plan into the issue body (Context / Acceptance / Test plan /
-   Implementation outline / Docs to update / Out of scope), then
-   `/implement #N` executes it with TDD red-green discipline. Trivial fixes
-   (typos, single-line non-behavioural tweaks) may skip the workflow. See
-   #114 for the rationale and exact contract.
+   Implementation outline / Docs to update / Out of scope / Architect
+   review), then `/implement #N` executes it with TDD red-green discipline.
+   Trivial fixes (typos, single-line non-behavioural tweaks) may skip the
+   workflow. See #114 for the rationale and exact contract.
+9. **Architect review gate** — the issue body MUST carry a non-empty
+   `## Architect review` section before `/implement` runs; the existing
+   `scripts/validate_issue_sections.py` gate enforces it (no separate
+   script). `/plan` fills it by running the `architect-reviewer` subagent
+   (`.claude/agents/architect-reviewer.md`) over the drafted plan, whose
+   goal function is: minimise future bugfix/support → dev+runtime tokens →
+   predictability. Trivial issues record an explicit `skipped: <reason>` —
+   the gate guarantees the review is a *consciously-decided step*, not a
+   silently-forgotten one. **Rationale:** a plan-stage architect review on
+   2026-05-29 caught defects the first plan missed — a §IV silent-skip
+   (`try/except: return ""`), a §II mock-of-internal-logic in a golden test,
+   and runtime-token overspend (LLM per item vs. a cheap pre-filter). The
+   reviewer persona used to live in out-of-repo Claude memory and was
+   re-typed by hand and easily forgotten; codifying it in-repo + gating it
+   makes the review reproducible for any contributor (#150).
 
 ## Quality Gates
 
@@ -202,4 +217,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 2.0.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-05-27
+**Version**: 2.1.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-06-13

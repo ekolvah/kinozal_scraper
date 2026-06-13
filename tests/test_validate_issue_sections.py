@@ -19,6 +19,23 @@ def _full_body() -> str:
     return "\n".join(parts)
 
 
+# The six sections that predate the `Architect review` gate (#150). Hardcoded on
+# purpose: it lets the RED tests below assert that `Architect review` is required
+# *independently* of REQUIRED_SECTIONS, so they fail before the gate is added.
+_LEGACY_SECTIONS = (
+    "Context / Why",
+    "Acceptance criteria",
+    "Test plan",
+    "Implementation outline",
+    "Docs to update",
+    "Out of scope",
+)
+
+
+def _body_with(sections: tuple[str, ...]) -> str:
+    return "\n".join(f"## {s}\n\nReal content для {s} which is long enough.\n" for s in sections)
+
+
 class TestFindGaps:
     def test_all_sections_filled_returns_no_gaps(self) -> None:
         assert find_gaps(_full_body()) == []
@@ -41,7 +58,7 @@ class TestFindGaps:
         )
         assert find_gaps(body) == ["Context / Why"]
 
-    def test_all_six_sections_missing_returns_all_six(self) -> None:
+    def test_all_sections_missing_returns_all(self) -> None:
         assert find_gaps("") == list(REQUIRED_SECTIONS)
 
     def test_case_insensitive_header_match(self) -> None:
@@ -51,6 +68,23 @@ class TestFindGaps:
     def test_extra_section_ignored(self) -> None:
         body = _full_body() + "\n## Extra\n\nNot required.\n"
         assert find_gaps(body) == []
+
+
+class TestArchitectReviewSection:
+    """The `Architect review` gate (#150): every issue must carry the section,
+    even if filled with an explicit `skipped: <reason>`. Guarantees the review
+    is consciously decided, not silently forgotten."""
+
+    def test_architect_review_required(self) -> None:
+        # All six legacy sections filled, but no `Architect review` → must be a gap.
+        body = _body_with(_LEGACY_SECTIONS)
+        assert "Architect review" in find_gaps(body)
+
+    def test_architect_review_filled_passes(self) -> None:
+        # Narrow assertion: a filled section is not a gap. Stays correct even if
+        # an 8th section is later added (would not fail for the wrong reason).
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review"))
+        assert "Architect review" not in find_gaps(body)
 
 
 class TestFetchBodyEncoding:

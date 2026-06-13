@@ -27,6 +27,7 @@ Issue создаём с label обязательно: `gh issue create --label b
 
 ## PR Workflow
 - **Новый bug/feature → `/plan #N` → `/implement #N`** (commands в `.claude/commands/` опираются на `scripts/validate_issue_sections.py`, `scripts/issue_branch.py`, `scripts/check_red.py`, `scripts/ci_check.py`). Ручной workflow ниже — fallback для опечаток/однострочников или когда `/implement` упал на escape hatch. См. #114.
+- **`## Architect review` — обязательная 7-я секция issue** (энфорсится `validate_issue_sections.py`). `/plan` заполняет её прогоном субагента `architect-reviewer` (`.claude/agents/architect-reviewer.md`); тривиальные правки — `skipped: <причина>`. Подробнее — `docs/architecture/principles.md` §Development Workflow.
 - Каждый issue — отдельная ветка `codex-issue-N-*`. CI триггерится на `codex-*` и `main`.
 - **Создавать ветку только через `python scripts/new_branch.py codex-issue-N-<slug>`** — скрипт чекаутит main, делает `pull --ff-only` и только потом `checkout -b`. Это гарантирует, что новая ветка растёт от свежего `origin/main`, а не от соседней feature-ветки (иначе после squash-merge будет divergence — см. #66).
 - **Никогда не пушить напрямую в `main`** — только через PR.
