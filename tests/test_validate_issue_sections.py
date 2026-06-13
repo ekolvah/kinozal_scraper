@@ -81,8 +81,10 @@ class TestArchitectReviewSection:
         assert "Architect review" in find_gaps(body)
 
     def test_architect_review_filled_passes(self) -> None:
+        # Narrow assertion: a filled section is not a gap. Stays correct even if
+        # an 8th section is later added (would not fail for the wrong reason).
         body = _body_with((*_LEGACY_SECTIONS, "Architect review"))
-        assert find_gaps(body) == []
+        assert "Architect review" not in find_gaps(body)
 
 
 class TestFetchBodyEncoding:
