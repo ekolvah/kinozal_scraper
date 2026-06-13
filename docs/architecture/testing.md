@@ -6,16 +6,13 @@
 
 ## Rule: no mocks of internal functions
 
-> **Canon:** this rule is the operational elaboration of [principles.md §II](principles.md)
-> (Protocol Boundaries with Dependency Injection). The binding statement lives there;
-> below is project-specific detail, not a restatement.
+> **Canon:** the binding statement is [principles.md §II](principles.md) (Protocol
+> Boundaries with Dependency Injection). This section is the project-specific
+> elaboration: which boundaries count as external here, and the concrete pattern to follow.
 
-Mock of external I/O is acceptable. Mock of internal business logic is not.
-
-- External boundaries (Sheets, Telegram, YouTube, HTTP) → Fake implementation
-  (`InMemoryStorage`, `InMemoryNotifier`) or a saved HTML/JSON fixture.
-- Internal functions (`_extract_kinozal_items`, `run_kinozal_pipeline`, etc.)
-  → NEVER mock. Tests must call the production function directly.
+In this repo the external boundaries are Sheets, Telegram, YouTube and HTTP — substitute a
+Fake (`InMemoryStorage`, `InMemoryNotifier`) or a saved HTML/JSON fixture. Everything else
+(`_extract_kinozal_items`, `run_kinozal_pipeline`, …) is internal and is never mocked (§II).
 
 **Correct pattern (as in `test_json_pipeline.py`):**
 Call `run_*_pipeline()` directly. Pass `InMemoryStorage` and `InMemoryNotifier`.
