@@ -40,7 +40,9 @@ class TestStepParity:
 class TestFindModules:
     def test_excludes_audit_tmp_and_pytest_cache(self) -> None:
         modules = set(_find_modules())
-        assert "scripts/ci_check.py".replace("/", "\\") in modules or "scripts/ci_check.py" in modules
+        assert (
+            "scripts/ci_check.py".replace("/", "\\") in modules or "scripts/ci_check.py" in modules
+        )
         assert not any(".audit-tmp" in m for m in modules)
         assert not any("pytest-cache-files-" in m for m in modules)
 
