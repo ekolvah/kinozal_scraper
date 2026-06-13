@@ -26,6 +26,7 @@ responsibility: один файл = чёткий ответ на один воп
 | Файл | На какой вопрос отвечает | Single-responsibility? |
 |---|---|---|
 | `principles.md` | Микс: §I–VI принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Dev Workflow + Quality Gates + Governance | ❌ runtime-принципы + dev-process вместе |
+| `information-architecture.md` | Какой факт в каком файле живёт и почему: tier-модель + canonical-home правило | ✅ |
 | `runtime.md` | Какие пайплайны / Protocols / data-flow | ✅ |
 | `pipeline.md` | Слои, контракты `extract_from_*`, `NormalizedItem` | ✅ |
 | `storage.md` | Storage Protocol, DI, row-schema, инварианты колонок | ✅ |
