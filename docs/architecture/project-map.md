@@ -72,10 +72,11 @@ docstring для `.py`, верхняя строка-шапка для `.md`. Hea
 
 | Файл | На какой вопрос отвечает | Single-responsibility? |
 |---|---|---|
-| `~/.claude/CLAUDE.md` (глоб., вне репо) | Кто я как агент: кросс-проектные приоритеты; когда subagent / скрипт / memory | ✅ |
+| `~/.claude/CLAUDE.md` (глоб., вне репо) | Кросс-проектное (generic mindset для не-репо проектов). Repo-зеркало операционного mindset = `.claude/rules/mindset.md` | ✅ |
 | `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
 | `.claude/rules/workflow.md` | Процедурные правила workflow (ветка/PR-дисциплина/labels/plan→implement/гейты) — канон, always-load | ✅ |
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
+| `.claude/rules/mindset.md` | Операционный mindset main-сессии: токен-тактики (чтение/spawn/TodoWrite) + указатели на цель-функцию (`architect-reviewer.md`)/§I,§IV,§V/workflow — always-load | ✅ |
 | `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings | ✅ |
@@ -149,3 +150,4 @@ Backlog де-дупликации. Severity: 🔴 высокая (включая
 | 8 | Data-flow диаграмма | `runtime.md` ≈ `pipeline.md` | runtime=обзор, pipeline=деталь (терпимо) | 🟢 |
 | 9 | ~~Запреты git (push-main/force/no-verify/pr-merge/reset/branch-D)~~ | ✅ закрыт #154: `settings.json` (трекаемый) — источник истины; `tests/test_settings_deny.py` синхронит с `implement.md` | `settings.json` (энфорс) | ✅ |
 | 10 | `pip-compile` в том же коммите | дважды внутри одного `CLAUDE.md` | один раз | 🟢 |
+| 11 | ~~Операционный mindset / персона (приоритеты + токен-тактики)~~ | ✅ закрыт #161: канон персоны/цель-функции = `architect-reviewer.md`; токен-тактики → `.claude/rules/mindset.md` (репо, always-load); глоб. `~/.claude/CLAUDE.md` подрезается отдельным ручным шагом | `architect-reviewer.md` (персона) + `mindset.md` (тактики) | ✅ |

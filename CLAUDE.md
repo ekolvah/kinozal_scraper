@@ -44,6 +44,7 @@ Key decisions recorded here; details in separate files to keep this file short.
 
 - **[Principles](docs/architecture/principles.md)** — source of truth: 6 core principles + quality gates + governance (operational workflow delegated to [`.claude/rules/workflow.md`](.claude/rules/workflow.md)). When this file conflicts with `principles.md`, `principles.md` wins.
 - [Project map](docs/architecture/project-map.md) — какой файл на какой вопрос отвечает (процесс + исходники) + где живёт какое знание (tier-модель + canonical-home) + карта дублей
+- [Mindset](.claude/rules/mindset.md) — операционный режим агента (токен-тактики + указатели на цель-функцию/принципы/workflow), always-load
 - [Runtime overview](docs/architecture/runtime.md) — 4 pipelines, protocols, data flow
 - [Pipeline](docs/architecture/pipeline.md) — layers, NormalizedItem, extract_from_* contracts
 - [Storage](docs/architecture/storage.md) — Storage Protocol, DI, EAFP, row schema
