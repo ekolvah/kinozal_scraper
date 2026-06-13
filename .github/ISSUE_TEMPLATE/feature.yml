@@ -68,3 +68,16 @@ body:
         - Сортировка trending по stars_today (текущая desc по total stars остаётся).
     validations:
       required: true
+  - type: textarea
+    id: architect-review
+    attributes:
+      label: Architect review
+      description: Findings субагента `architect-reviewer` (цели — минимизировать багфикс/саппорт → токены → user-control) либо явное `skipped: <причина>` для тривиальных правок. Заполняется `/plan`. Гейт `validate_issue_sections.py` не даёт `/implement` стартовать с пустой секцией.
+      placeholder: |
+        - BLOCKING: ... (учтено — как именно)
+        - SHOULD-FIX: ...
+        - OK: scope — один PR, одна единица.
+
+        или: `skipped: однострочная правка плейсхолдера, новых рисков нет`
+    validations:
+      required: true

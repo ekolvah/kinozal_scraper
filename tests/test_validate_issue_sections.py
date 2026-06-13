@@ -33,9 +33,7 @@ _LEGACY_SECTIONS = (
 
 
 def _body_with(sections: tuple[str, ...]) -> str:
-    return "\n".join(
-        f"## {s}\n\nReal content для {s} which is long enough.\n" for s in sections
-    )
+    return "\n".join(f"## {s}\n\nReal content для {s} which is long enough.\n" for s in sections)
 
 
 class TestFindGaps:

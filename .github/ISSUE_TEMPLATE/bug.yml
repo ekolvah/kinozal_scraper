@@ -69,3 +69,15 @@ body:
         - SDK migration на `google.genai` (см. #107).
     validations:
       required: true
+  - type: textarea
+    id: architect-review
+    attributes:
+      label: Architect review
+      description: Findings субагента `architect-reviewer` (цели — минимизировать багфикс/саппорт → токены → user-control) либо явное `skipped: <причина>` для тривиальных фиксов. Заполняется `/plan`. Гейт `validate_issue_sections.py` не даёт `/implement` стартовать с пустой секцией.
+      placeholder: |
+        - BLOCKING: root cause не подтверждён инструментацией (§V) — ... (учтено)
+        - OK: failing-тест воспроизводит дефект до фикса (§I).
+
+        или: `skipped: однострочный фикс, root cause очевиден из стектрейса`
+    validations:
+      required: true
