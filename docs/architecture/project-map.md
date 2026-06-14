@@ -7,8 +7,7 @@
 `principles.md`).
 
 **Это индекс, не контент.** Одна строка на файл; содержимое самих файлов сюда не копируется
-(иначе индекс станет ещё одним источником рассинхрона). Где факт дублируется сегодня — см.
-раздел [«Известные дубли»](#известные-дубли-и-источник-истины).
+(иначе индекс станет ещё одним источником рассинхрона).
 
 ## IA-policy: где живёт знание
 
@@ -101,12 +100,12 @@ orientation, которого в per-file docstring нет.
 | Файл | На какой вопрос отвечает | Single-responsibility? |
 |---|---|---|
 | `principles.md` | Микс: §I–VI принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `.claude/rules/workflow.md`) | ❌ runtime-принципы + dev-process вместе |
-| `project-map.md` (этот файл) | Какой файл на какой вопрос отвечает + где живёт какое знание (IA-policy) + карта дублей | ✅ |
+| `project-map.md` (этот файл) | Какой файл на какой вопрос отвечает + где живёт какое знание (IA-policy) | ✅ |
 | `runtime.md` | Какие пайплайны / Protocols / data-flow | ✅ |
 | `pipeline.md` | Слои, контракты `extract_from_*`, `NormalizedItem` | ✅ |
 | `storage.md` | Storage Protocol, DI, row-schema, инварианты колонок | ✅ |
 | `testing.md` | Как гарантируем качество: уровни тестов, что мокать (ссылается на `principles.md §II`, не дублирует) | ✅ |
-| `test-coverage.md` | Микс: bug-taxonomy + autogen-инвентарь тестов | ❌ taxonomy дублирует testing.md (дубль #5) |
+| `test-coverage.md` | Микс: bug-taxonomy (канон — `testing.md#bug-taxonomy`, keyed-ссылка, не перефраз) + autogen-инвентарь тестов | ❌ две темы |
 | `ci.md` | Микс: local/CI-гейты (dev-process) + production env-vars (runtime) | ❌ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts | ✅ |
 
@@ -136,21 +135,8 @@ orientation, которого в per-file docstring нет.
 | Boundaries (Protocol-границы наружу) | `sheets_storage.py` (storage), `telegram_notifier.py` / `telegram_summarizer.py` (notify), `gemini_enricher.py` / `TelegramChannelSummarizer.py` (Gemini) | `storage.md` · `runtime.md` · `gemini.md` |
 | Утилиты | `youtube.py`, `text_utils.py`, `crypto.py` | — |
 
-## Известные дубли и источник истины
+---
 
-Backlog де-дупликации. Severity: 🔴 высокая (включая реальные баги-рассинхроны), 🟡 средняя,
-🟢 терпимая.
-
-| # | Факт | Где продублирован | Канонический источник | Сев. |
-|---|---|---|---|---|
-| 1 | Набор required-секций issue | `validate_issue_sections.py` (tuple) + `feature.yml` + `bug.yml` + `principles.md` проза + ~~`CLAUDE.md` проза~~ (убрана #159) | скрипт (tuple); остальное → ссылка | 🔴 частично |
-| 2 | Набор CI-проверок | `ci_check.py` vs `ci.yml` (нет coverage-drift!) vs `ci.md` («mirrors exactly» — ложь) | `ci_check.py` (**баг-рассинхрон → #153**) | 🔴 |
-| 3 | ~~Dev-workflow правила (ветка/no-main-push/no-self-merge/one-PR/labels/plan→implement)~~ | ✅ закрыт #159: канон = `.claude/rules/workflow.md` (always-load); `principles.md §Dev Workflow` и `CLAUDE.md §PR Workflow` → указатели; §Governance легализует делегирование. Последний CLAUDE.md-straggler (§Активная работа labels-строка, не пойманный #159) убран #166 | `.claude/rules/workflow.md` | ✅ |
-| 4 | ~~Test-First + «no mocks of internal»~~ | ✅ закрыт #160: канон = `principles.md §II`; `testing.md` → указатель «Canon: §II» (не перефраз); операционный чеклист → `.claude/rules/testing.md` (path-scoped) | `principles.md §II` | ✅ |
-| 5 | Bug taxonomy | `test-coverage.md` ссылается на `testing.md#bug-taxonomy` как канон (keyed, без колонки Examples — не перефраз) | `testing.md` | ✅ resolved-by-link |
-| 6 | ~~`codex-` префикс ветки~~ | ✅ закрыт #162: префикс `issue-`; канон = `new_branch.py` (`BRANCH_PREFIX`/`is_valid_branch_name`); прочее (`ci.yml` trigger, `workflow.md`, `CLAUDE.md`, `ci.md`) — производное. `ci.yml` держит `codex-*` в transition → #170 | `new_branch.py` (`BRANCH_PREFIX`) | ✅ |
-| 7 | `_EXCLUDE_DIRS` (mypy) | `ci_check.py` (вкл. `.audit-tmp`) vs `ci.yml` (без) — mismatch | единый источник (**→ #153**) | 🟡 |
-| 8 | Data-flow диаграмма | `runtime.md` ≈ `pipeline.md` | runtime=обзор, pipeline=деталь (терпимо) | 🟢 |
-| 9 | ~~Запреты git (push-main/force/no-verify/pr-merge/reset/branch-D)~~ | ✅ закрыт #154: `settings.json` (трекаемый) — источник истины; `tests/test_settings_deny.py` синхронит с `implement.md` | `settings.json` (энфорс) | ✅ |
-| 10 | ~~`pip-compile` в том же коммите~~ | ✅ закрыт #166: тройное упоминание (§Среда + §Зависимости в `CLAUDE.md` + workflow #7) свёрнуто — в `CLAUDE.md` остался один указатель §Зависимости (env-механика + симптом), канон = `workflow.md #7` | `.claude/rules/workflow.md` #7 | ✅ |
-| 11 | ~~Операционный mindset / персона (приоритеты + токен-тактики)~~ | ✅ закрыт #161: канон персоны/цель-функции = `architect-reviewer.md`; токен-тактики → `.claude/rules/mindset.md` (репо, always-load); глоб. `~/.claude/CLAUDE.md` подрезается отдельным ручным шагом | `architect-reviewer.md` (персона) + `mindset.md` (тактики) | ✅ |
+Бэклог дедупликации (статус-трекер) здесь больше не живёт — это IA-индекс, не доска задач.
+Остаточный открытый долг трекается в [issue #177](https://github.com/ekolvah/kinozal_scraper/issues/177);
+✅-закрытые пункты — в истории соответствующих PR.
