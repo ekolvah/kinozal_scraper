@@ -28,15 +28,8 @@ Configuration (env vars, secrets, CI workflows) is documented in [docs/architect
 
 ## Architecture
 
-See [docs/architecture/](docs/architecture/) for detailed design docs:
-
-- [Runtime overview](docs/architecture/runtime.md) — pipelines, protocols, data flow
-- [Pipeline](docs/architecture/pipeline.md) — layers, NormalizedItem, notification templates
-- [Storage](docs/architecture/storage.md) — Storage Protocol, DI, row schema
-- [Testing](docs/architecture/testing.md) — no mocks on external APIs, Protocol doubles
-- [Test coverage](docs/architecture/test-coverage.md) — what is tested, gaps
-- [CI & deployment](docs/architecture/ci.md) — GitHub Actions, env vars, setup
-- [Gemini enrichment](docs/architecture/gemini.md) — model rotation, quota strategy
+See [docs/architecture/](docs/architecture/) for detailed design docs.
+Full file-by-file index (what each file answers) → [project-map.md](docs/architecture/project-map.md).
 
 ## Regenerate pinned dependencies
 
