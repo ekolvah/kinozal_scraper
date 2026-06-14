@@ -1,3 +1,5 @@
+"""Поиск YouTube-трейлера (Youtube)."""
+
 from __future__ import annotations
 
 import logging

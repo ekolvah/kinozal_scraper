@@ -1,3 +1,5 @@
+"""Чтение Telegram-каналов (Telethon) + суммаризация через Gemini."""
+
 from __future__ import annotations
 
 import asyncio

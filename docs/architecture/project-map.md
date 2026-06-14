@@ -52,10 +52,23 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 
 Каждый картируемый файл несёт **header** с единственным вопросом, на который он отвечает:
 docstring для `.py`, верхняя строка-шапка для `.md`. Header — **канонический** ответ (живёт с
-файлом, виден при редактировании — там, где соблазн подмешать чужое). Раздел [«Карта файлов»](#карта-файлов)
-ниже — **производный навигационный индекс**; при дрейфе **header wins**. Авто-генерация карты из
-заголовков + drift-чек в `ci_check` (паттерн `gen_test_coverage.py`) — отдельный follow-up, не
-человеко-поддерживаемый навсегда.
+файлом, виден при редактировании — там, где соблазн подмешать чужое; агент читает его JIT, открывая
+файл). Раздел [«Карта файлов»](#карта-файлов) ниже — **производный навигационный индекс**; при
+дрейфе **header wins**.
+
+**Генерировать карту из заголовков мы сознательно НЕ стали** (#164): per-file текст «на какой вопрос
+отвечает» дословно совпадал бы с docstring — генерируемая карта была бы второй копией канона
+(редундантно с тем, что агент и так читает; статика стареет/жрёт токены; а курируемые суждения
+SR ✅/❌ и дубли скрипт всё равно не выводит). Вместо генератора — дешёвый **presence-lint**
+(`scripts/check_headers.py`, check `headers` в `ci_check`): каждый root source `.py` обязан нести
+непустой module docstring, иначе red. Для исходников карта поэтому несёт не per-file копию вопроса,
+а [**роутер уровня концернов**](#исходники-проекта) (концерн → файлы + deep-dive-указатель) —
+orientation, которого в per-file docstring нет.
+
+**Presence ≠ correctness.** Lint гарантирует, что docstring *есть* и непуст — но не что он *актуален*:
+устаревший, но непустой docstring пройдёт. Расхождение docstring ↔ реальное назначение ловит человек
+на ревью — та же честная §IV-позиция, что и для семантических дублей (зелёный детектор, дающий ложное
+покрытие, хуже честного «проверяет человек»).
 
 ### Memory ↔ repo: resolved-policy
 
@@ -112,26 +125,16 @@ docstring для `.py`, верхняя строка-шапка для `.md`. Hea
 
 ### Исходники проекта
 
-Реализация рантайма. Детали слоёв/протоколов — в deep-dive-доках колонки «Подробнее».
-Тесты (`tests/`) и хелперы здесь не перечисляем.
+**На какой вопрос отвечает каждый файл — в его module docstring** (канон, JIT при открытии; presence
+гарантируется `headers`-lint). Здесь — только **роутер концерн → файлы** + указатель в deep-dive-док
+для orientation, которого в per-file docstring нет. Тесты (`tests/`) и хелперы не перечисляем.
 
-| Файл | На какой вопрос отвечает | Подробнее |
+| Концерн | Файлы | Deep-dive |
 |---|---|---|
-| `generic_pipeline.py` | Общий слой пайплайна: `NormalizedItem`, `PipelineResult`, `extract_from_*` | `pipeline.md` |
-| `kinozal_pipeline.py` | Извлечение/нормализация топа kinozal.tv + обогащение трейлером (`run_kinozal_pipeline`) | `pipeline.md` |
-| `steam_pipeline.py` | Steam charts + appdetails + перевод (`run_steam_pipeline`) | `pipeline.md` |
-| `events_pipeline.py` | Пайплайн событий / sold-out (`run_events_pipeline`) | `pipeline.md` |
-| `json_pipeline.py` | Generic JSON-источники (`run_json_pipeline`) | `pipeline.md` |
-| `github_trending_pipeline.py` | GitHub Trending + stars-today (`run_github_trending_pipeline`) | `pipeline.md` |
-| `pipeline_config.py` | Fail-fast валидация `sources.json` + макросы (`validate_sources_config`) | `principles.md §VI` |
-| `sheets_storage.py` | Storage Protocol: Google Sheets + `InMemoryStorage`, дедуп/row-schema | `storage.md` |
-| `telegram_notifier.py` | Notifier Protocol: отправка в Telegram + `InMemoryNotifier` | `runtime.md` |
-| `gemini_enricher.py` | Enricher Protocol через Gemini: rotation / quota / retry | `gemini.md` |
-| `telegram_summarizer.py` | Доставка результатов суммаризации + technical-alert маркер | `runtime.md` |
-| `TelegramChannelSummarizer.py` | Чтение Telegram-каналов (Telethon) + суммаризация через Gemini | `gemini.md` |
-| `youtube.py` | Поиск YouTube-трейлера (`Youtube`) | `pipeline.md` |
-| `text_utils.py` | Матч названия+года (`title_year_matches`) | — |
-| `crypto.py` | Шифрование/дешифрование секретов (`encrypt_bytes`/`decrypt_bytes`) | — |
+| Слой пайплайна (ядро + контракты) | `generic_pipeline.py`, `pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
+| Extraction/нормализация по источникам | `kinozal_pipeline.py`, `steam_pipeline.py`, `events_pipeline.py`, `json_pipeline.py`, `github_trending_pipeline.py` | `pipeline.md` |
+| Boundaries (Protocol-границы наружу) | `sheets_storage.py` (storage), `telegram_notifier.py` / `telegram_summarizer.py` (notify), `gemini_enricher.py` / `TelegramChannelSummarizer.py` (Gemini) | `storage.md` · `runtime.md` · `gemini.md` |
+| Утилиты | `youtube.py`, `text_utils.py`, `crypto.py` | — |
 
 ## Известные дубли и источник истины
 

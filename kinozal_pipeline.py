@@ -1,3 +1,5 @@
+"""Извлечение/нормализация топа kinozal.tv + обогащение трейлером (run_kinozal_pipeline)."""
+
 from __future__ import annotations
 
 import logging

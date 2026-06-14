@@ -1,3 +1,5 @@
+"""Storage Protocol: Google Sheets + InMemoryStorage, дедуп/row-schema."""
+
 from __future__ import annotations
 
 from collections import defaultdict
