@@ -330,8 +330,7 @@ class TestPipelineDeduplication(unittest.TestCase):
 def _html_with_n_films(n: int) -> str:
     """Top-page HTML with n distinct films (distinct clean titles → no dedup-collapse)."""
     rows = "\n".join(
-        f'<a href="/details.php?id={i}" title="Movie {i} / 2024 / BDRip">'
-        f'<img src="/p{i}.jpg"></a>'
+        f'<a href="/details.php?id={i}" title="Movie {i} / 2024 / BDRip"><img src="/p{i}.jpg"></a>'
         for i in range(1, n + 1)
     )
     return f"<html><body>{rows}</body></html>"

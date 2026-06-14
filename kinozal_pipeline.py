@@ -176,6 +176,7 @@ def run_kinozal_pipeline(
         logger.info("kinozal pipeline: no items extracted")
         return results
 
+    raw_count = len(all_items)
     all_items = _normalize_items(all_items)
     # Re-attach items to their per-source result so callers can inspect coverage.
     items_by_source: dict[str, list[NormalizedItem]] = {}
@@ -186,6 +187,16 @@ def run_kinozal_pipeline(
 
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
+    # Visibility (§IV): log coverage on every run — including the common "0 new"
+    # path below — so a vanished film reads in the Actions log instead of looking
+    # like "no new films". raw_count is pre-normalize, exposing dedup-collapse.
+    logger.info(
+        "kinozal pipeline: %d extracted (%d after dedup-collapse), %d new, %d already-seen",
+        raw_count,
+        len(all_items),
+        len(new_items),
+        len(all_items) - len(new_items),
+    )
     if not new_items:
         logger.info("kinozal pipeline: no new items")
         return results
