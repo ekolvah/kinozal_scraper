@@ -28,6 +28,10 @@ class TestMissingDocstrings:
         _write(tmp_path, "empty.py", '""\n\nx = 1\n')
         assert "empty.py" in [Path(p).name for p in missing_docstrings(tmp_path)]
 
+    def test_whitespace_only_docstring_flagged(self, tmp_path: Path) -> None:
+        _write(tmp_path, "blank.py", '"""   """\n\nx = 1\n')
+        assert "blank.py" in [Path(p).name for p in missing_docstrings(tmp_path)]
+
     def test_test_and_conftest_excluded(self, tmp_path: Path) -> None:
         _write(tmp_path, "test_foo.py", "x = 1\n")
         _write(tmp_path, "conftest.py", "x = 1\n")
