@@ -1,3 +1,5 @@
+"""Enricher Protocol через Gemini: rotation / quota / retry."""
+
 from __future__ import annotations
 
 import logging

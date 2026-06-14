@@ -1,3 +1,5 @@
+"""Generic JSON-источники (run_json_pipeline)."""
+
 from __future__ import annotations
 
 import logging

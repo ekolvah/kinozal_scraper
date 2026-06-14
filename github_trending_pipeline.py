@@ -1,3 +1,5 @@
+"""GitHub Trending + stars-today (run_github_trending_pipeline)."""
+
 from __future__ import annotations
 
 import logging

@@ -1,3 +1,5 @@
+"""Общий слой пайплайна: NormalizedItem, PipelineResult, extract_from_*."""
+
 from __future__ import annotations
 
 import html as _html

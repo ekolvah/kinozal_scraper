@@ -1,3 +1,5 @@
+"""Матч названия+года (title_year_matches)."""
+
 from __future__ import annotations
 
 import re

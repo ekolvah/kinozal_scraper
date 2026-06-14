@@ -46,6 +46,9 @@ jobs:
       - name: Test coverage doc freshness
         run: python scripts/ci_check.py --only coverage-doc
 
+      - name: Module docstring presence
+        run: python scripts/ci_check.py --only headers
+
       - name: Dependency audit
         run: python scripts/ci_check.py --only pip-audit
 

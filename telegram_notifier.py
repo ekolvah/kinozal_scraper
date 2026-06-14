@@ -1,3 +1,5 @@
+"""Notifier Protocol: отправка в Telegram + InMemoryNotifier."""
+
 from __future__ import annotations
 
 import contextlib

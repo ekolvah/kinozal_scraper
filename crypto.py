@@ -1,3 +1,5 @@
+"""Шифрование/дешифрование секретов (encrypt_bytes/decrypt_bytes)."""
+
 from __future__ import annotations
 
 import os

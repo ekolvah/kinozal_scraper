@@ -1,3 +1,5 @@
+"""Steam charts + appdetails + перевод (run_steam_pipeline)."""
+
 from __future__ import annotations
 
 import logging

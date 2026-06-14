@@ -1,3 +1,5 @@
+"""Пайплайн событий / sold-out (run_events_pipeline)."""
+
 from __future__ import annotations
 
 import logging
