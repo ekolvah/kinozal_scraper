@@ -141,6 +141,14 @@ class TestExtractFromHtml(unittest.TestCase):
         result = extract_from_html(_MINIMAL_HTML, config)
         self.assertEqual(len(result.items), 1)
 
+    def test_limit_ge_rows_extracts_all(self) -> None:
+        # Boundary contract: a limit >= the row count does not truncate — the
+        # whole page is extracted. Guards the #173 fix (limit raised to the
+        # page size) against a future off-by-one that silently drops rows.
+        config = {**_HTML_CONFIG, "limit": 50}
+        result = extract_from_html(_MINIMAL_HTML, config)  # _MINIMAL_HTML has 2 rows
+        self.assertEqual(len(result.items), 2)
+
     def test_optional_field_absent(self) -> None:
         result = extract_from_html(_MINIMAL_HTML, _HTML_CONFIG)
         self.assertEqual(result.items[0].metric, "")
