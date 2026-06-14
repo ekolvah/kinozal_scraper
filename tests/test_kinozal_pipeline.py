@@ -10,6 +10,7 @@ from kinozal_pipeline import (
     enrich_with_trailer,
     run_kinozal_pipeline,
 )
+from pipeline_config import load_sources_config
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 from text_utils import title_year_matches as _title_year_matches
@@ -324,6 +325,66 @@ class TestPipelineDeduplication(unittest.TestCase):
         dedupe_key, title = row[0], row[1]
         self.assertEqual(dedupe_key, "Film One")
         self.assertEqual(title, "Film One")
+
+
+def _html_with_n_films(n: int) -> str:
+    """Top-page HTML with n distinct films (distinct clean titles → no dedup-collapse)."""
+    rows = "\n".join(
+        f'<a href="/details.php?id={i}" title="Movie {i} / 2024 / BDRip"><img src="/p{i}.jpg"></a>'
+        for i in range(1, n + 1)
+    )
+    return f"<html><body>{rows}</body></html>"
+
+
+class TestKinozalSourceConfig(unittest.TestCase):
+    """Regression guard for #173: the real sources.json must let the whole top
+    page through, not just the first 10. Loads the actual config (so it also
+    goes through §VI fail-fast validation) and asserts the limit covers a full
+    top.php page (50 films)."""
+
+    _FULL_PAGE = 50
+
+    def test_kinozal_movies_limit_covers_full_page(self) -> None:
+        config = load_sources_config()
+        kinozal = next(s for s in config["sources"] if s["id"] == "kinozal_movies")
+        self.assertGreaterEqual(int(kinozal["limit"]), self._FULL_PAGE)
+
+
+class TestPipelineCoverage(unittest.TestCase):
+    def test_all_top_films_notified_not_truncated(self) -> None:
+        # End-to-end against the REAL sources.json: with the production limit a
+        # 15-film page must yield 15 notifications. Before the fix (limit:10)
+        # only 10 go out — this reproduces the #173 defect.
+        html = _html_with_n_films(15)
+        storage, notifier = _run(html=html, sources_config=load_sources_config())
+        self.assertEqual(len(notifier.sent), 15)
+        self.assertEqual(len(storage.stored_rows("movies")), 15)
+
+    def test_extraction_coverage_logged(self) -> None:
+        # §IV: every run logs its coverage (extracted / new / already-seen) so a
+        # future "film vanished" reads in the Actions log instead of looking
+        # like "no new films". _KINOZAL_HTML has 2 films, none pre-existing.
+        with self.assertLogs("kinozal_pipeline", level="INFO") as cm:
+            _run()
+        joined = "\n".join(cm.output)
+        self.assertRegex(joined, r"2 extracted.*2 new.*0 already-seen")
+
+    def test_coverage_logged_even_when_no_new_items(self) -> None:
+        # The "0 new" path is the most common silent case — coverage must still
+        # surface there, before the early return.
+        with self.assertLogs("kinozal_pipeline", level="INFO") as cm:
+            _run(existing_keys={"Film One", "Film Two"})
+        joined = "\n".join(cm.output)
+        self.assertRegex(joined, r"2 extracted.*0 new.*2 already-seen")
+
+    def test_trailer_failure_still_notifies(self) -> None:
+        # Burst 10→50 raises YouTube-quota exhaustion risk. A trailer lookup
+        # failure must degrade visibly (§IV): the film still ships, sans
+        # trailer, with an ERROR logged — never a silent drop.
+        with self.assertLogs("kinozal_pipeline", level="ERROR") as cm:
+            storage, notifier = _run(youtube=_RaisingYoutube())
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertTrue(any("trailer lookup failed" in line for line in cm.output))
 
 
 class TestPipelineNotificationContent(unittest.TestCase):
