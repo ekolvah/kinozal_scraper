@@ -107,10 +107,10 @@ orientation, которого в per-file docstring нет.
 | `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
 | `.claude/rules/workflow.md` | Процедурные правила workflow (ветка/PR-дисциплина/labels/plan→implement/гейты) — канон, always-load | ✅ |
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
-| `.claude/rules/mindset.md` | Операционный mindset main-сессии: токен-тактики (чтение/spawn/TodoWrite) + указатели на цель-функцию (`architect-reviewer.md`)/§I,§IV,§V/workflow — always-load | ✅ |
+| `.claude/rules/mindset.md` | Операционный mindset main-сессии: **канон цель-функции** (3 приоритета) + токен-тактики (чтение/spawn/TodoWrite) + указатели на §I,§IV,§V/workflow — always-load | ✅ |
 | `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
-| `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings | ✅ |
+| `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings; цель-функция — **зеркало** канона `mindset.md` (сабагент не грузит always-load rules), синхрон — `tests/test_goal_function_sync.py` | ✅ |
 | `.claude/settings.json` | Что запрещено агенту (`permissions.deny`) — источник истины запретов, трекается | ✅ |
 | `.claude/settings.local.json` (gitignored) | Личный режим + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, личный) |
 
