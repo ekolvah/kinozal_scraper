@@ -31,7 +31,9 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    authored via the project's local workflow: `/plan #N` writes a
    structured plan into the issue body (Context / Acceptance / Test plan /
    Implementation outline / Docs to update / Out of scope / Architect
-   review), then `/implement #N` executes it with TDD red-green discipline.
+   review — canon набора секций: `REQUIRED_SECTIONS` в
+   `scripts/validate_issue_sections.py`, эта проза ему подчинена), then
+   `/implement #N` executes it with TDD red-green discipline.
    Trivial fixes (typos, single-line non-behavioural tweaks) may skip the
    workflow. See #114 for the rationale and exact contract.
 9. **Architect review gate** — the issue body MUST carry a non-empty

@@ -137,8 +137,6 @@ orientation, которого в per-file docstring нет.
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
 | `scripts/ci_check.py` | Локальный pre-commit/pre-push гейт качества (зеркало CI job) |
 | `scripts/gen_test_coverage.py` | Генерация `test-coverage.md` (защита от drift) |
-| `.github/ISSUE_TEMPLATE/{feature,bug}.yml` | Структура нового issue (включая поле Architect review) |
-| `.github/ISSUE_TEMPLATE/config.yml` | Конфиг чузера шаблонов issue |
 | `.github/workflows/ci.yml` | Quality job на PR/push (должен зеркалить `ci_check.py`) |
 
 ### Исходники проекта
