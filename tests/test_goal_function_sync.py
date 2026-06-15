@@ -44,6 +44,10 @@ class TestGoalFunctionSync:
             "mindset.md §Цель-функция must declare the 3 numbered priorities as the "
             f"in-repo canon, got {canon}"
         )
+        assert len(mirror) == 3, (
+            "architect-reviewer.md must declare exactly 3 priorities (mirror of canon), "
+            f"got {mirror}"
+        )
         assert canon == mirror, (
             "goal-function drift: mindset.md (canon) and architect-reviewer.md (mirror) "
             f"list different priorities or order.\n  canon : {canon}\n  mirror: {mirror}"
