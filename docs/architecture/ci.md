@@ -124,18 +124,19 @@ Steps run sequentially:
 | Variable | Type | Purpose |
 |---|---|---|
 | `API_KEY` | secret | Kinozal API key |
-| `URLS` | var | Kinozal page URLs to scrape (override; default — `base_url` из `sources.json` + `/top.php`) |
+| `URLS` | var | Kinozal page URLs to scrape, формат `label\|url;...`; local fallback — env `KINOZAL_TOP_URL` (plain url). Если не задано ни то ни другое — pipeline логирует ошибку `no URLs configured`. `sources.json` `url`/`base_url` для скрейпинга **не читается** (только schema-placeholder), см. `kinozal_pipeline.py::_kinozal_urls` |
 
 > **Зеркало при 520/недоступности `kinozal.tv`:** рабочее зеркало — **`kinozal.guru`**
-> (та же структура страниц). При даунтайме основного домена ставь
-> `URLS=https://kinozal.guru/top.php`. `sources.json` `base_url` остаётся `https://kinozal.tv`
-> (canonical origin) — зеркало применяется **только** через `URLS`, в `sources.json` его не
-> прописывать (иначе production-origin уедет на зеркало навсегда).
+> (та же структура страниц). При даунтайме основного домена переключи на зеркало `URLS`,
+> сохраняя формат `label|url;...` (например `URLS=Кинозал|https://kinozal.guru/top.php`); для
+> локального прогона проще `KINOZAL_TOP_URL=https://kinozal.guru/top.php` (plain url, fallback).
+> `sources.json` `base_url` остаётся `https://kinozal.tv` (canonical origin) — в `sources.json`
+> зеркало не прописывать.
 >
 > Сейчас потребитель — production-cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
 > `tests/test_e2e_kinozal_titles.py` станет вторым потребителем после #136 (тест безусловно
-> skip'нут, пока `kinozal.tv` отдаёт 520); его fallback-ветка на `base_url` зеркало не
-> покрывает — это ожидаемо.
+> skip'нут, пока `kinozal.tv` отдаёт 520); там зеркало надо задавать через `URLS`/`KINOZAL_TOP_URL`,
+> т.к. собственная fallback-ветка теста на `base_url` ведёт на `kinozal.tv` — это ожидаемо.
 
 ### telegram_summarizer
 
