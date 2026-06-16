@@ -23,8 +23,8 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    **Pragmatic exception:** a *temporary* CI unblock of an **unrelated**
    failing test (e.g. an E2E reddening a docs-PR via an external 520) goes
    into the branch being merged — with a **tracked follow-up issue** for the
-   real fix — not a separate off-main PR (that costs an extra merge+rebase
-   round-trip). Permanent changes are still split.
+   real fix — not a separate standalone fix PR (that costs an extra
+   merge+rebase round-trip). Permanent changes are still split.
 5. **Issues carry labels** — every `gh issue create` includes `--label
    bug|enhancement|documentation|testing|...`. Semantics: `bug` = something
    broken / current behaviour wrong; `enhancement` = improvement / new feature
