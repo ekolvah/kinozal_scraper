@@ -20,8 +20,16 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    merge button.
 4. **One PR, one logical unit** — docs-only PRs are separate from
    refactor/feature PRs (precedent: #39 → #40 had to be redone after mixing).
+   **Pragmatic exception:** a *temporary* CI unblock of an **unrelated**
+   failing test (e.g. an E2E reddening a docs-PR via an external 520) goes
+   into the branch being merged — with a **tracked follow-up issue** for the
+   real fix — not a separate off-main PR (that costs an extra merge+rebase
+   round-trip). Permanent changes are still split.
 5. **Issues carry labels** — every `gh issue create` includes `--label
-   bug|enhancement|documentation|testing|...`.
+   bug|enhancement|documentation|testing|...`. Semantics: `bug` = something
+   broken / current behaviour wrong; `enhancement` = improvement / new feature
+   / quality; `documentation` = `*.md`/`docs/`-only; `testing` = test-coverage
+   work. Full set: `gh label list` (don't hard-code the list here — it drifts).
 6. **Pre-commit gate** — `python scripts/ci_check.py` runs ruff format +
    lint + pytest + mypy + pip-audit + lockfile drift. The `.githooks/pre-push`
    hook runs it automatically; do not bypass with `--no-verify`.
@@ -51,3 +59,16 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    reviewer persona used to live in out-of-repo Claude memory and was
    re-typed by hand and easily forgotten; codifying it in-repo + gating it
    makes the review reproducible for any contributor (#150).
+10. **Dedup check before issue creation** — before `gh issue create`, run
+    `git fetch` and scan recently-merged PRs / recently-closed issues for the
+    same topic (`git log --oneline origin/main -10`, `gh issue list --state
+    closed --limit 10`); if it overlaps, open that PR/issue and check scope
+    before filing. **Prose, not a gate, on purpose:** the deterministic half
+    (`git fetch`) is one command, but judging *topic overlap* is a semantic
+    call — the same class as the semantic-dup detector we deliberately don't
+    build (`docs/architecture/project-map.md`) — so a script wouldn't remove
+    the human step and a gate doesn't pay off. `scripts/new_branch.py` only
+    pulls fresh main at branch time, too late to catch the duplicate.
+    **Precedent:** #125 re-filed the `validate_issue_sections.py` UTF-8/cp1252
+    bug already fixed in merged PR #123 (`e1548385`, closing #122); the
+    duplicate had to be closed by hand.
