@@ -124,7 +124,18 @@ Steps run sequentially:
 | Variable | Type | Purpose |
 |---|---|---|
 | `API_KEY` | secret | Kinozal API key |
-| `URLS` | var | Kinozal page URLs to scrape |
+| `URLS` | var | Kinozal page URLs to scrape (override; default — `base_url` из `sources.json` + `/top.php`) |
+
+> **Зеркало при 520/недоступности `kinozal.tv`:** рабочее зеркало — **`kinozal.guru`**
+> (та же структура страниц). При даунтайме основного домена ставь
+> `URLS=https://kinozal.guru/top.php`. `sources.json` `base_url` остаётся `https://kinozal.tv`
+> (canonical origin) — зеркало применяется **только** через `URLS`, в `sources.json` его не
+> прописывать (иначе production-origin уедет на зеркало навсегда).
+>
+> Сейчас потребитель — production-cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
+> `tests/test_e2e_kinozal_titles.py` станет вторым потребителем после #136 (тест безусловно
+> skip'нут, пока `kinozal.tv` отдаёт 520); его fallback-ветка на `base_url` зеркало не
+> покрывает — это ожидаемо.
 
 ### telegram_summarizer
 
