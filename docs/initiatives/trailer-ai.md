@@ -37,12 +37,15 @@
 Не обойти workaround'ом — починить по корню (§V). Verified 2026-06-16: оба ещё в коде, обе issue OPEN.
 
 - **§IV silent-skip** в `enrich_with_trailer` (`kinozal_pipeline.py:110,116` — docstring
-  `Returns '' on any failure` поверх `try/except`). Сейчас «нет трейлера» и «сбой YouTube/Gemini»
-  неотличимы — оба дают пустоту. Нужен видимый маркер + WARNING-лог. Чинится в #138.
+  `Returns '' on any failure` поверх `try/except`). Исключение логируется (`logger.error`,
+  `kinozal_pipeline.py:123`), но **return-значение одинаково** (`""`): caller не отличает «трейлер
+  не найден» от «запрос к YouTube/Gemini упал», т.е. в Telegram-уведомлении деградация невидима.
+  Нужен видимый маркер вместо немого `""`. Чинится в #138.
 - **§II mock-of-internal-logic**: golden-кейс `test_2026_film_skips_2015_kingsman_trailer`
   (`tests/test_kinozal_pipeline.py:165`) гоняет `_FilteringFakeYoutube`
-  (`tests/test_kinozal_pipeline.py:62,70`), который **дублирует** `title_year_matches`, а не реальный
-  путь — на нём нельзя строить honest baseline. Инвертируется на реальную стратегию в #139.
+  (`tests/test_kinozal_pipeline.py:62,70`), который **реализует ту же фильтрацию, что ожидается от
+  реального YouTube-клиента** (через вызов `title_year_matches`), а не проверяет реальный путь — на
+  нём нельзя строить honest baseline. Инвертируется на реальную стратегию в #139.
 
 ## Roadmap — граф зависимостей (канон здесь)
 
