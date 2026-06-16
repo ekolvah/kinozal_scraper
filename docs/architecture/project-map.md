@@ -41,6 +41,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 | `.claude/rules/*.md` | Операционные инструкции, **один файл = одна тема**; можно path-scoped через frontmatter `paths:` | каждую сессию (или только при работе с matching-путями) |
 | `.claude/commands/`, `.claude/agents/`, `.claude/settings*.json` | Команды (`/plan`,`/implement`) / сабагенты / permissions-deny | по вызову / при старте |
 | `docs/architecture/*.md` | Reference: как устроен код (runtime/pipeline/storage/gemini/…) + этот project-map + `principles.md` | по требованию |
+| `docs/initiatives/*.md` | Initiative/roadmap: why/scope/граф-зависимостей многошаговой инициативы (не «как устроен код») | по требованию |
 | `~/.claude/projects/<repo>/memory/` | Auto-memory: **только машинно/процессно-специфичное** (см. ниже) | `MEMORY.md` индекс — каждую сессию |
 
 **Честно про токены.** Файлы в `.claude/rules/` *без* `paths:` грузятся каждую сессию ровно как
@@ -127,6 +128,12 @@ orientation, которого в per-file docstring нет.
 | `test-coverage.md` | Микс: bug-taxonomy (канон — `testing.md#bug-taxonomy`, keyed-ссылка, не перефраз) + autogen-инвентарь тестов | ❌ две темы |
 | `ci.md` | Микс: local/CI-гейты (dev-process) + production env-vars (runtime) | ❌ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts | ✅ |
+
+### `docs/initiatives/`
+
+| Файл | На какой вопрос отвечает | Single-responsibility? |
+|---|---|---|
+| `trailer-ai.md` | Why/scope инициативы «AI-улучшение подбора трейлера» + сквозные решения + 2 root-cause-дефекта + **канон графа зависимостей** roadmap (issue #138–#145) | ✅ |
 
 ### Скрипты и шаблоны процесса
 
