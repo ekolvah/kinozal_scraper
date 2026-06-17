@@ -146,6 +146,7 @@ orientation, которого в per-file docstring нет.
 | `test-coverage.md` | Микс: bug-taxonomy (канон — `testing.md#bug-taxonomy`, keyed-ссылка, не перефраз) + autogen-инвентарь тестов | ❌ две темы |
 | `ci.md` | Микс: local/CI-гейты (dev-process) + production env-vars (runtime) | ❌ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts | ✅ |
+| `token-baseline.md` | Baseline расхода токенов dev-time (агентная разработка) по категориям + decision-matrix: какой фикс при каком пороге (#196) | ✅ |
 
 ### Скрипты и шаблоны процесса
 
