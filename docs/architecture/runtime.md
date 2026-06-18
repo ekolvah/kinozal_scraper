@@ -4,12 +4,12 @@
 
 | Entry point | Sources | Type | Schedule |
 |---|---|---|---|
-| `json_pipeline.py` | GitHub `new_popular` | JSON API | daily 04:00 UTC |
-| `github_trending_pipeline.py` | GitHub trending | HTML scraping + Gemini | daily 04:00 UTC |
-| `steam_pipeline.py` | Steam Most Played | JSON (Steam Charts + appdetails) | daily 04:00 UTC |
-| `events_pipeline.py` | Soldout events | HTML scraping | daily 04:00 UTC |
-| `kinozal_pipeline.py` | Kinozal movies | HTML scraping | daily 04:00 UTC |
-| `telegram_summarizer.py` | Telegram channels | Gemini summarization | daily 04:00 UTC, `if: always()` |
+| `json_pipeline.py` | GitHub `new_popular` | JSON API | daily |
+| `github_trending_pipeline.py` | GitHub trending | HTML scraping + Gemini | daily |
+| `steam_pipeline.py` | Steam Most Played | JSON (Steam Charts + appdetails) | daily |
+| `events_pipeline.py` | Soldout events | HTML scraping | daily |
+| `kinozal_pipeline.py` | Kinozal movies | HTML scraping | daily |
+| `telegram_summarizer.py` | Telegram channels | Gemini summarization | daily, `if: always()` |
 
 All pipelines except `telegram_summarizer` follow the generic pipeline
 pattern. `telegram_summarizer` uses `TelegramChannelSummarizer` (Telethon

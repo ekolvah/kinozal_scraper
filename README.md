@@ -2,7 +2,7 @@
 
 Multi-source notification pipeline that monitors Kinozal, GitHub, Steam, and Soldout for new content, deduplicates via Google Sheets, and sends alerts to Telegram. Also summarizes Telegram channels via Gemini.
 
-Runs daily at 04:00 UTC via GitHub Actions.
+Runs daily via GitHub Actions (schedule in `.github/workflows/run-script.yml`).
 
 ## Sources
 
