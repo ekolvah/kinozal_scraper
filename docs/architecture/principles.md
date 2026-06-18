@@ -127,8 +127,8 @@ fields, mismatched sheet schemas.
 class of config error becomes possible, the validator MUST grow a check for
 it in the same PR.
 
-**Rationale:** every config-validation gap shows up at 04:00 UTC in cron
-logs, days after the typo was introduced. Catching it on `python
+**Rationale:** every config-validation gap shows up in the daily cron
+run, days after the typo was introduced. Catching it on `python
 pipeline_config.py` (or in ci_check) keeps the feedback loop human-scale.
 
 ## Development Workflow

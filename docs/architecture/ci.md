@@ -75,7 +75,7 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 
 ## Production workflow (`run-script.yml`)
 
-Schedule: `0 4 * * *` UTC + manual `workflow_dispatch`.
+Schedule: daily cron (UTC) defined in `run-script.yml` + manual `workflow_dispatch`.
 
 Steps run sequentially:
 1. **pytest** — smoke gate, fails fast

@@ -1,7 +1,7 @@
 # kinozal_scraper — контекст для Claude
 
 ## Что делает приложение
-Парсит топ kinozal.tv по расписанию (GitHub Actions, 04:00 UTC), дедуплицирует через Google Sheets, отправляет новинки в Telegram. Параллельно суммаризует Telegram-каналы через Gemini.
+Парсит топ kinozal.tv по расписанию (GitHub Actions, cron в `.github/workflows/run-script.yml`), дедуплицирует через Google Sheets, отправляет новинки в Telegram. Параллельно суммаризует Telegram-каналы через Gemini.
 
 ## Среда
 
