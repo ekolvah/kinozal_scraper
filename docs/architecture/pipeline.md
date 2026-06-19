@@ -107,4 +107,4 @@ Field selectors use `css@attr` syntax to extract attributes.
 ## Macro expansion
 
 Handled by `pipeline_config.py` before the pipeline runs.
-Supported macros: `{{TODAY}}`, `{{DATE_MINUS_7_DAYS}}`, `{{GITHUB_TOP_LIMIT}}`, `{{STEAM_TOP_LIMIT}}`.
+Supported macros: `{{TODAY}}`, `{{DATE_MINUS_7_DAYS}}`, `{{GH_TOP_LIMIT}}`, `{{GH_TRENDING_LIMIT}}`, `{{STEAM_TOP_LIMIT}}`.

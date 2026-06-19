@@ -43,6 +43,7 @@ class TestBuildMacroContext(unittest.TestCase):
     def test_env_macro_defaults(self) -> None:
         ctx = build_macro_context(today=date(2024, 1, 1), env={})
         self.assertEqual(ctx["GH_TOP_LIMIT"], "10")
+        self.assertEqual(ctx["GH_TRENDING_LIMIT"], "10")
         self.assertEqual(ctx["STEAM_TOP_LIMIT"], "10")
         self.assertEqual(ctx["SOLDOUT_URL"], "")
 
@@ -54,10 +55,12 @@ class TestBuildMacroContext(unittest.TestCase):
 
     def test_env_macro_overrides(self) -> None:
         ctx = build_macro_context(
-            today=date(2024, 1, 1), env={"GH_TOP_LIMIT": "25", "STEAM_TOP_LIMIT": "50"}
+            today=date(2024, 1, 1),
+            env={"GH_TOP_LIMIT": "25", "STEAM_TOP_LIMIT": "50", "GH_TRENDING_LIMIT": "5"},
         )
         self.assertEqual(ctx["GH_TOP_LIMIT"], "25")
         self.assertEqual(ctx["STEAM_TOP_LIMIT"], "50")
+        self.assertEqual(ctx["GH_TRENDING_LIMIT"], "5")
 
 
 class TestExpandMacros(unittest.TestCase):

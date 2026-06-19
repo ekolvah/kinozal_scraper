@@ -37,6 +37,7 @@ jobs:
       - name: Run GitHub trending pipeline
         run: python github_trending_pipeline.py
         env:
+          GH_TRENDING_LIMIT: ${{ vars.GH_TRENDING_LIMIT || '10' }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}

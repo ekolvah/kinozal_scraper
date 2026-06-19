@@ -46,7 +46,7 @@
       "url": "https://github.com/trending?since=daily",
       "base_url": "https://github.com",
       "row_selector": "article.Box-row",
-      "limit": 25,
+      "limit": "{{GH_TRENDING_LIMIT}}",
       "sheet_tab": "github_projects",
       "dedupe_key": "h2 a@href",
       "fields": {
