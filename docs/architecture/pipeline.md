@@ -34,10 +34,39 @@ load_sources_config()
       extract_from_json / extract_from_html  → PipelineResult
       storage.get_existing_keys(sheet_tab)   → set[str]  ← raises SchemaError on mismatch
       new_items = [i for i if i.dedupe_key not in existing_keys]
+      new_items, dropped = filter_by_min_metric(new_items, source.min_metric)  ← optional, before enrich
       sent, failed = notifier.send(new_items)
       storage.append_rows(sheet_tab, [i.to_row() for i in sent])
       failed notifications -> PipelineResult.errors
 ```
+
+## Importance threshold (`min_metric`)
+
+Optional per-source knob in `sources.json` that drops low-signal items **after**
+dedup and **before** enrichment (so no LLM tokens are spent on items that won't
+be sent). Shape — validated fail-fast by `pipeline_config.py`:
+
+```json
+"min_metric": { "field": "stars_today", "value": 500 }
+```
+
+`field == "metric"` compares `item.metric`; any other `field` compares
+`item.raw[field]` (e.g. `stars_today` for `github_trending`). Implemented by the
+pure `filter_by_min_metric(items, min_metric) → (kept, dropped)` in
+`generic_pipeline.py`. Semantics:
+
+- **value comparison is `>=`** — an item at exactly the threshold is kept.
+- **`"0"` is dropped** when below threshold (a real zero, distinct from empty).
+- **empty / unparseable signal → KEPT**, and the caller logs a `WARNING` with the
+  `dedupe_key` (visible-anomaly over silent-skip, §IV): a page-layout drift that
+  blanks the field must not silently swallow the whole feed.
+- **dropped items are NOT written to Sheets** — they stay "new" and are
+  re-evaluated next run, so an item that crosses the threshold later is still
+  delivered. Tune the threshold by editing the number in `sources.json` and
+  watching the logged `filtered N below <field>>=<value>` line.
+
+Currently used only by `github_trending` (issue #200) to cut trending spam by the
+daily-delta `stars_today` signal rather than a blunt count cap.
 
 ## Error policy
 

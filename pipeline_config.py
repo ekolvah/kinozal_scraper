@@ -116,6 +116,31 @@ def validate_sources_config(config: Any) -> None:
                 f"Source '{source_id}': 'limit' must be a positive integer, got {limit}"
             )
 
+        # #200: optional importance threshold — validate shape at load time so a
+        # malformed knob fails fast here, never as a KeyError / silent-keep mid-run.
+        min_metric = source.get("min_metric")
+        if min_metric is not None:
+            if not isinstance(min_metric, dict):
+                raise ConfigError(
+                    f"Source '{source_id}': 'min_metric' must be an object, got {min_metric!r}"
+                )
+            if "field" not in min_metric or "value" not in min_metric:
+                raise ConfigError(
+                    f"Source '{source_id}': 'min_metric' requires 'field' and 'value'"
+                )
+            if not isinstance(min_metric["field"], str):
+                raise ConfigError(
+                    f"Source '{source_id}': 'min_metric.field' must be a string, "
+                    f"got {min_metric['field']!r}"
+                )
+            try:
+                int(min_metric["value"])
+            except (TypeError, ValueError) as exc:
+                raise ConfigError(
+                    f"Source '{source_id}': 'min_metric.value' must be an integer, "
+                    f"got {min_metric['value']!r}"
+                ) from exc
+
 
 def load_sources_config(path: str | Path = "sources.json") -> dict[str, Any]:
     try:

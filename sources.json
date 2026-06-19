@@ -47,6 +47,7 @@
       "base_url": "https://github.com",
       "row_selector": "article.Box-row",
       "limit": 25,
+      "min_metric": { "field": "stars_today", "value": 500 },
       "sheet_tab": "github_projects",
       "dedupe_key": "h2 a@href",
       "fields": {

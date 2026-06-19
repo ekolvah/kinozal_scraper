@@ -200,6 +200,39 @@ def extract_from_html(
     return result
 
 
+def filter_by_min_metric(
+    items: list[NormalizedItem],
+    min_metric: dict[str, Any] | None,
+) -> tuple[list[NormalizedItem], list[NormalizedItem]]:
+    """Split `items` by a numeric importance threshold (#200).
+
+    `min_metric = {"field": <name>, "value": <int>}`. `field == "metric"` reads
+    `item.metric`; any other field reads `item.raw.get(field, "")`. Both are
+    already digit-only strings at this stage (normalised upstream).
+
+    Returns `(kept, dropped)`. An empty/unparseable signal → **kept**
+    (visible-anomaly over silent-skip, §IV): a page-layout drift that blanks the
+    field must not silently swallow the whole feed — the caller logs it. `"0"` is
+    a real zero and is dropped when below threshold (distinct from empty).
+    """
+    if not min_metric:
+        return list(items), []
+    field: str = min_metric["field"]
+    threshold = int(min_metric["value"])
+    kept: list[NormalizedItem] = []
+    dropped: list[NormalizedItem] = []
+    for item in items:
+        raw_value = item.metric if field == "metric" else str(item.raw.get(field, ""))
+        digits = raw_value.strip()
+        if not digits.isdigit():
+            kept.append(item)  # empty/unparseable → visible-anomaly (caller warns)
+        elif int(digits) < threshold:
+            dropped.append(item)
+        else:
+            kept.append(item)
+    return kept, dropped
+
+
 _URL_FIELDS: frozenset[str] = frozenset({"url", "image_url", "trailer_url"})
 _NUMBER_FIELDS: frozenset[str] = frozenset({"metric"})
 _HTML_FIELDS: frozenset[str] = frozenset({"title_link", "trailer_link"})
