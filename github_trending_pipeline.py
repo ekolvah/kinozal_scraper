@@ -16,7 +16,6 @@ from generic_pipeline import (
     PipelineResult,
     build_notification,
     extract_from_html,
-    filter_by_min_metric,
 )
 from pipeline_config import load_sources_config
 from sheets_storage import Storage
@@ -164,39 +163,6 @@ def run_github_trending_pipeline(
             logger.info("[%s] no new items", source["id"])
             results.append(result)
             continue
-
-        # #200: importance threshold — drop low-signal items before enrichment
-        # (so we never spend LLM tokens on items we won't send). An empty/
-        # unparseable signal is KEPT but logged as a visible anomaly (§IV) so a
-        # page-layout drift can't silently re-open the spam floodgate.
-        min_metric = source.get("min_metric")
-        if min_metric:
-            metric_field: str = min_metric["field"]
-            new_items, dropped = filter_by_min_metric(new_items, min_metric)
-            for item in new_items:
-                signal = (
-                    item.metric if metric_field == "metric" else str(item.raw.get(metric_field, ""))
-                )
-                if not signal.strip().isdigit():
-                    logger.warning(
-                        "[%s] item '%s' kept despite empty/unparseable %s — "
-                        "page layout may have drifted",
-                        source["id"],
-                        item.dedupe_key,
-                        metric_field,
-                    )
-            if dropped:
-                logger.info(
-                    "[%s] filtered %d below %s>=%s",
-                    source["id"],
-                    len(dropped),
-                    metric_field,
-                    min_metric["value"],
-                )
-            if not new_items:
-                logger.info("[%s] no items above threshold", source["id"])
-                results.append(result)
-                continue
 
         enrich_config = source.get("enrich")
         if enrich_config and enricher is not None:

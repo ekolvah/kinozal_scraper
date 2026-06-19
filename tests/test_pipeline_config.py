@@ -272,41 +272,5 @@ class TestConfigValidationKnownGaps(unittest.TestCase):
         validate_sources_config(_make_config([bad_source]))
 
 
-# ── #200: optional min_metric fail-fast validation ───────────────────────────
-
-
-class TestMinMetricValidation(unittest.TestCase):
-    """`min_metric` is optional, but if present it must be a well-formed dict
-    (`field`: str, `value`: int-castable) — caught at load (fail-fast, §VI),
-    not as a KeyError / silent-keep mid-run."""
-
-    def _source_with(self, min_metric: object) -> dict:
-        return {**dict(_MINIMAL_SOURCE), "min_metric": min_metric}
-
-    def test_valid_min_metric_passes(self) -> None:
-        cfg = _make_config([self._source_with({"field": "stars_today", "value": 500})])
-        validate_sources_config(cfg)  # must not raise
-
-    def test_value_not_int_raises(self) -> None:
-        cfg = _make_config([self._source_with({"field": "stars_today", "value": "abc"})])
-        with self.assertRaises(ConfigError):
-            validate_sources_config(cfg)
-
-    def test_min_metric_not_dict_raises(self) -> None:
-        cfg = _make_config([self._source_with("stars_today")])
-        with self.assertRaises(ConfigError):
-            validate_sources_config(cfg)
-
-    def test_missing_field_raises(self) -> None:
-        cfg = _make_config([self._source_with({"value": 500})])
-        with self.assertRaises(ConfigError):
-            validate_sources_config(cfg)
-
-    def test_field_not_str_raises(self) -> None:
-        cfg = _make_config([self._source_with({"field": 5, "value": 500})])
-        with self.assertRaises(ConfigError):
-            validate_sources_config(cfg)
-
-
 if __name__ == "__main__":
     unittest.main()
