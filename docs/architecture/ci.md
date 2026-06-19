@@ -103,6 +103,7 @@ Steps run sequentially:
 |---|---|---|
 | `GITHUB_TOKEN` | secret | GitHub API auth (json_pipeline only) |
 | `GH_TOP_LIMIT` | var | max GitHub repos to fetch (json_pipeline only) |
+| `GH_TRENDING_LIMIT` | var | max GitHub trending repos to fetch (github_trending_pipeline; default 10) |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |
 | `GEMINI_EXCLUDED_MODELS` | var | comma-separated models to skip |
