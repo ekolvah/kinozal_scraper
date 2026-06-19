@@ -467,6 +467,110 @@ class TestDegradedEnrichmentVisibility(unittest.TestCase):
                 )
 
 
+# ── #200: min_metric threshold (stars_today) ─────────────────────────────────
+
+
+def _trending_article(
+    owner_repo: str, stars_total: str = "14,113", stars_today: str | None = "900"
+) -> str:
+    """One trending row. `stars_today=None` omits the daily-delta span entirely
+    (simulates a GitHub layout drift that blanks the field)."""
+    delta = (
+        f'<span class="d-inline-block float-sm-right">{stars_today} stars today</span>'
+        if stars_today is not None
+        else ""
+    )
+    return (
+        '<article class="Box-row">'
+        f'<h2><a href="/{owner_repo}">{owner_repo}</a></h2>'
+        "<p>description</p>"
+        f'<a href="/{owner_repo}/stargazers">{stars_total}</a>'
+        f"{delta}</article>"
+    )
+
+
+def _trending_doc(*articles: str) -> str:
+    return "<html><body>" + "".join(articles) + "</body></html>"
+
+
+_MIN_METRIC_SOURCE: dict[str, Any] = {
+    **_TRENDING_SOURCE,
+    "min_metric": {"field": "stars_today", "value": 500},
+}
+_MIN_METRIC_CONFIG: dict[str, Any] = {"version": 1, "sources": [_MIN_METRIC_SOURCE]}
+
+_MIN_METRIC_ENRICH_SOURCE: dict[str, Any] = {
+    **_TRENDING_SOURCE_WITH_ENRICH,
+    "min_metric": {"field": "stars_today", "value": 500},
+}
+_MIN_METRIC_ENRICH_CONFIG: dict[str, Any] = {
+    "version": 1,
+    "sources": [_MIN_METRIC_ENRICH_SOURCE],
+}
+
+
+class _CountingEnricher:
+    def __init__(self) -> None:
+        self.enriched_keys: list[str] = []
+
+    def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
+        self.enriched_keys.append(item.dedupe_key)
+        return "Для кого: x\nЗачем: y"
+
+
+class TestMinMetricThreshold(unittest.TestCase):
+    """#200: github_trending must drop items whose `stars_today` is below the
+    configured threshold, instead of sending every never-seen item."""
+
+    def test_min_metric_drops_below_threshold(self) -> None:
+        html = _trending_doc(
+            _trending_article("hot/repo", stars_today="900"),
+            _trending_article("cold/repo", stars_today="120"),
+        )
+        storage, notifier = _run(html=html, sources_config=_MIN_METRIC_CONFIG)
+        sent = {n.id for n in notifier.sent}
+        stored = {row[0] for row in storage.stored_rows("github_projects")}
+        self.assertIn("hot/repo", sent)
+        self.assertNotIn("cold/repo", sent)
+        self.assertNotIn("cold/repo", stored)
+
+    def test_min_metric_keeps_at_or_above_threshold(self) -> None:
+        html = _trending_doc(_trending_article("edge/repo", stars_today="500"))
+        _, notifier = _run(html=html, sources_config=_MIN_METRIC_CONFIG)
+        self.assertEqual({n.id for n in notifier.sent}, {"edge/repo"})
+
+    def test_min_metric_zero_is_dropped(self) -> None:
+        html = _trending_doc(_trending_article("zero/repo", stars_today="0"))
+        _, notifier = _run(html=html, sources_config=_MIN_METRIC_CONFIG)
+        self.assertEqual(notifier.sent, [])
+
+    def test_min_metric_empty_stars_today_kept_with_warning(self) -> None:
+        html = _trending_doc(_trending_article("blank/repo", stars_today=None))
+        with self.assertLogs("github_trending_pipeline", level="WARNING") as caplog:
+            _, notifier = _run(html=html, sources_config=_MIN_METRIC_CONFIG)
+        self.assertEqual({n.id for n in notifier.sent}, {"blank/repo"})
+        joined = "\n".join(caplog.output)
+        self.assertIn("blank/repo", joined)
+        self.assertIn("stars_today", joined)
+
+    def test_min_metric_filters_before_enrich(self) -> None:
+        html = _trending_doc(
+            _trending_article("hot/repo", stars_today="900"),
+            _trending_article("cold/repo", stars_today="120"),
+        )
+        enricher = _CountingEnricher()
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "github_trending_pipeline._fetch_html",
+            return_value=html,
+        ):
+            run_github_trending_pipeline(
+                storage, notifier, enricher=enricher, sources_config=_MIN_METRIC_ENRICH_CONFIG
+            )
+        self.assertEqual(enricher.enriched_keys, ["hot/repo"])
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     unittest.main()

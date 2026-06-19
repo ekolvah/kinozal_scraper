@@ -6,6 +6,7 @@ from generic_pipeline import (
     build_notification,
     extract_from_html,
     extract_from_json,
+    filter_by_min_metric,
 )
 
 _JSON_CONFIG = {
@@ -290,6 +291,58 @@ class TestBuildNotificationLinks(unittest.TestCase):
         note = build_notification(item, "{title_link}\n{trailer_link}")
         self.assertIn('<a href="https://kinozal.tv/details.php?id=1">', note.text)
         self.assertIn('<a href="https://www.youtube.com/watch?v=xyz">Trailer</a>', note.text)
+
+
+# ── #200: min_metric threshold (pure filter) ─────────────────────────────────
+
+
+class TestFilterByMinMetric(unittest.TestCase):
+    """Pure `filter_by_min_metric` — config-driven importance threshold (#200).
+
+    Contract: `field=='metric'` reads `item.metric`, any other field reads
+    `item.raw[field]`. Values are already digit-only strings at this stage.
+    Empty/unparseable signal → KEPT (visible-anomaly over silent-skip, §IV);
+    `"0"` is a real zero and is dropped below threshold (≠ empty).
+    """
+
+    @staticmethod
+    def _item(key: str, stars_today: str) -> NormalizedItem:
+        return NormalizedItem(
+            dedupe_key=key,
+            title=key,
+            source_id="github_trending",
+            raw={"stars_today": stars_today},
+        )
+
+    def test_filters_raw_field_by_threshold(self) -> None:
+        items = [
+            self._item("a/above", "900"),
+            self._item("a/below", "120"),
+            self._item("a/zero", "0"),
+            self._item("a/empty", ""),
+        ]
+        kept, dropped = filter_by_min_metric(items, {"field": "stars_today", "value": 500})
+        self.assertEqual({i.dedupe_key for i in kept}, {"a/above", "a/empty"})
+        self.assertEqual({i.dedupe_key for i in dropped}, {"a/below", "a/zero"})
+
+    def test_boundary_value_is_kept(self) -> None:
+        kept, dropped = filter_by_min_metric(
+            [self._item("a/edge", "500")], {"field": "stars_today", "value": 500}
+        )
+        self.assertEqual([i.dedupe_key for i in kept], ["a/edge"])
+        self.assertEqual(dropped, [])
+
+    def test_none_config_keeps_all(self) -> None:
+        items = [self._item("a/b", "1")]
+        kept, dropped = filter_by_min_metric(items, None)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(dropped, [])
+
+    def test_field_metric_reads_item_metric(self) -> None:
+        item = NormalizedItem(dedupe_key="a/b", title="a/b", source_id="s", metric="42")
+        kept, dropped = filter_by_min_metric([item], {"field": "metric", "value": 100})
+        self.assertEqual(kept, [])
+        self.assertEqual([i.dedupe_key for i in dropped], ["a/b"])
 
 
 if __name__ == "__main__":
