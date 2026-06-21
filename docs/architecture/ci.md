@@ -35,6 +35,13 @@ mypy type-checks every `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
 `__pycache__`, `.audit-tmp`, `.claude`) and any `pytest-cache-files-*` dir, via
 `ci_check._find_modules()` — the same discovery used locally.
 
+Flat imports between `src/` modules (`from generic_pipeline import …`) resolve
+**because `_find_modules()` always hands mypy the whole file list at once** —
+mypy registers each `src/*.py` under its bare stem, so cross-imports cling to an
+already-registered module. There is deliberately **no `mypy_path`**. The catch:
+mypy on a single file (`mypy src/json_pipeline.py`) would break that resolution —
+always invoke it through `ci_check` (full list), never per-file.
+
 ## Claude review workflow (`claude-review.yml`)
 
 Triggers: every `pull_request: opened/synchronize`.
