@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import yaml
@@ -29,7 +29,7 @@ def _ci_yml_on() -> dict[str, Any]:
     """The ci.yml `on:` trigger block. PyYAML parses bare `on:` as the boolean
     key `True` (YAML 1.1), not the string "on" — so the block lives at spec[True]."""
     spec = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
-    return spec[True]
+    return cast(dict[str, Any], spec[True])
 
 
 class TestStepParity:
