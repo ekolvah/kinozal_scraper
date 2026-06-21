@@ -25,6 +25,13 @@ def _ci_yml_check_names() -> set[str]:
     return names
 
 
+def _ci_yml_on() -> dict[str, Any]:
+    """The ci.yml `on:` trigger block. PyYAML parses bare `on:` as the boolean
+    key `True` (YAML 1.1), not the string "on" — so the block lives at spec[True]."""
+    spec = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
+    return spec[True]
+
+
 class TestStepParity:
     """The core defect (#153): ci.yml duplicated the check list by hand and drifted —
     coverage-doc and the `.in`-without-pin check were missing in CI. After the registry
@@ -35,6 +42,29 @@ class TestStepParity:
             "ci.yml --only steps must cover exactly the ci_check registry — "
             "any divergence is the drift this issue fixes"
         )
+
+
+class TestCITriggers:
+    """anti-double-run (#206): ci.yml had `push: [main, "issue-*"]` alongside
+    `pull_request`, so every push to an issue-branch with an open PR ran the
+    `quality` job twice (push + pull_request events report the same context).
+    The fix drops `issue-*` from push — PRs are covered by `pull_request`, and
+    the required status check is the bare context `quality` (event-agnostic), so
+    nothing is orphaned. Do NOT "fix" CI-not-running-on-a-branch by re-adding
+    `issue-*` here — that resurrects the duplicate run."""
+
+    def test_push_trigger_excludes_issue_branches(self) -> None:
+        branches = _ci_yml_on()["push"]["branches"]
+        assert "main" in branches, "push must still cover main (post-merge gate)"
+        assert "issue-*" not in branches, (
+            "issue-* in push re-introduces the double quality run — PR branches "
+            "are already covered by the pull_request trigger (#206)"
+        )
+
+    def test_pull_request_trigger_present(self) -> None:
+        # Presence check, not truthiness: `pull_request:` is empty → value is None.
+        # The dedup relies on pull_request being the sole coverage of issue-branches.
+        assert "pull_request" in _ci_yml_on()
 
 
 class TestFindModules:
