@@ -34,6 +34,7 @@ line-ending = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra -p no:cacheprovider"
+pythonpath = ["src"]
 
 [tool.mypy]
 python_version = "3.12"
