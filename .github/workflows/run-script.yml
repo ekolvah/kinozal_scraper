@@ -22,7 +22,7 @@ jobs:
         run: python -m pytest tests/ -x
 
       - name: Run JSON sources pipeline
-        run: python json_pipeline.py
+        run: python src/json_pipeline.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOP_LIMIT: ${{ vars.GH_TOP_LIMIT }}
@@ -35,7 +35,7 @@ jobs:
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
       - name: Run GitHub trending pipeline
-        run: python github_trending_pipeline.py
+        run: python src/github_trending_pipeline.py
         env:
           GH_TRENDING_LIMIT: ${{ vars.GH_TRENDING_LIMIT || '10' }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -47,7 +47,7 @@ jobs:
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
       - name: Run Steam charts pipeline
-        run: python steam_pipeline.py
+        run: python src/steam_pipeline.py
         env:
           STEAM_TOP_LIMIT: ${{ vars.STEAM_TOP_LIMIT }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -56,7 +56,7 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
 
       - name: Run events pipeline
-        run: python events_pipeline.py
+        run: python src/events_pipeline.py
         env:
           SOLDOUT_URL: ${{ vars.SOLDOUT_URL }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -65,7 +65,7 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
 
       - name: Run Kinozal pipeline
-        run: python kinozal_pipeline.py
+        run: python src/kinozal_pipeline.py
         env:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -76,7 +76,7 @@ jobs:
 
       - name: Run Telegram summarizer
         if: always()
-        run: python telegram_summarizer.py
+        run: python src/telegram_summarizer.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}

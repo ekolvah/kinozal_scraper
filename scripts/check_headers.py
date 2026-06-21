@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Presence-lint: every root source .py must carry a module docstring.
+"""Presence-lint: every source .py under src/ must carry a module docstring.
 
 The docstring is the canonical answer to "what question does this file
 answer" (it lives with the code, read just-in-time when the file is opened).
@@ -37,18 +37,18 @@ def missing_docstrings(root: Path) -> list[str]:
 
 
 def main() -> None:
-    root = Path(".")
+    root = Path("src")
     try:
         missing = missing_docstrings(root)
     except SyntaxError as exc:
         print(f"unparseable file (fix the syntax error first): {exc.filename}: {exc.msg}")
         sys.exit(1)
     if missing:
-        print("root source .py files missing a module docstring (the canonical answer):")
+        print("src/ source .py files missing a module docstring (the canonical answer):")
         for name in missing:
             print(f"  {name}")
         sys.exit(1)
-    print(f"ok: all root source .py carry a module docstring ({root.resolve().name})")
+    print(f"ok: all src/ source .py carry a module docstring ({root.resolve().name})")
 
 
 if __name__ == "__main__":

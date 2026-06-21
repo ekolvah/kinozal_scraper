@@ -45,5 +45,5 @@ class TestMissingDocstrings:
             missing_docstrings(tmp_path)
 
     def test_repo_clean(self) -> None:
-        # Contract guard: every root source .py must carry a module docstring.
-        assert missing_docstrings(_REPO_ROOT) == []
+        # Contract guard: every source .py under src/ must carry a module docstring.
+        assert missing_docstrings(_REPO_ROOT / "src") == []

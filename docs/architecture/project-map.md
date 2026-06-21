@@ -166,10 +166,10 @@ orientation, которого в per-file docstring нет.
 
 | Концерн | Файлы | Deep-dive |
 |---|---|---|
-| Слой пайплайна (ядро + контракты) | `generic_pipeline.py`, `pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
-| Extraction/нормализация по источникам | `kinozal_pipeline.py`, `steam_pipeline.py`, `events_pipeline.py`, `json_pipeline.py`, `github_trending_pipeline.py` | `pipeline.md` |
-| Boundaries (Protocol-границы наружу) | `sheets_storage.py` (storage), `telegram_notifier.py` / `telegram_summarizer.py` (notify), `gemini_enricher.py` / `TelegramChannelSummarizer.py` (Gemini) | `storage.md` · `runtime.md` · `gemini.md` |
-| Утилиты | `youtube.py`, `text_utils.py`, `crypto.py` | — |
+| Слой пайплайна (ядро + контракты) | `src/generic_pipeline.py`, `src/pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
+| Extraction/нормализация по источникам | `src/kinozal_pipeline.py`, `src/steam_pipeline.py`, `src/events_pipeline.py`, `src/json_pipeline.py`, `src/github_trending_pipeline.py` | `pipeline.md` |
+| Boundaries (Protocol-границы наружу) | `src/sheets_storage.py` (storage), `src/telegram_notifier.py` / `src/telegram_summarizer.py` (notify), `src/gemini_enricher.py` / `src/TelegramChannelSummarizer.py` (Gemini) | `storage.md` · `runtime.md` · `gemini.md` |
+| Утилиты | `src/youtube.py`, `src/text_utils.py`, `src/crypto.py` | — |
 
 ---
 

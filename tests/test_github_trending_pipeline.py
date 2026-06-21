@@ -218,12 +218,12 @@ class TestUS3Visibility(unittest.TestCase):
                 "SPREADSHEET_URL": "https://docs.google.com/spreadsheets/d/x",
                 "TELEGRAM_BOT_TOKEN": "x",
                 "TELEGRAM_CHAT_ID": "x",
-                "PYTHONPATH": str(Path(__file__).resolve().parents[1]),
+                "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                 "GITHUB_TRENDING_SOURCES_PATH": str(sources_path),
                 "GITHUB_TRENDING_DRY_RUN": "1",
             }
             proc = subprocess.run(
-                [sys.executable, "github_trending_pipeline.py"],
+                [sys.executable, "src/github_trending_pipeline.py"],
                 cwd=str(Path(__file__).resolve().parents[1]),
                 env=env,
                 capture_output=True,
