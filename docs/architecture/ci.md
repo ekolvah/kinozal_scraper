@@ -23,7 +23,16 @@ Activate: `git config core.hooksPath .githooks`
 
 ## CI workflow (`ci.yml`)
 
-Triggers: PR and push to `main` / `issue-*` branches.
+Triggers: `pull_request` (covers every PR branch) + `push` to `main` only
+(post-merge gate — catches a semantic conflict between two PRs each green
+in isolation). `issue-*` is deliberately **not** a push trigger: a PR branch
+push would otherwise fire the `quality` job twice (once per event) for the
+same commit. The required status check is the bare context `quality`
+(event-agnostic — confirmed via `gh api …/required_status_checks` →
+`contexts: ["quality"]`), so the `pull_request` run satisfies branch
+protection on its own and dropping `issue-*` orphans nothing (#206). Do not
+re-add `issue-*` to `push` to "get CI on a branch" — the `.githooks/pre-push`
+hook already runs the identical `ci_check.py` locally before every push.
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,
