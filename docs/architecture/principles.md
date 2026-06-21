@@ -22,7 +22,9 @@ to make them GREEN (see #114).
 Exceptions, all narrow: (a) rename / move of an already-tested symbol, (b)
 documentation-only PRs, (c) one-line non-behavioural fixes (typos, comments).
 Anything that changes what the code *does* needs a test that would have caught
-the prior behaviour.
+the prior behaviour. The converse — when a *non-behavioural* regression still
+does not earn a guard test (a resource-only cost, not correctness/safety) — is
+in [testing.md](testing.md#rule-when-a-test-is-not-worth-writing).
 
 A test that pins a known production bug (`TestConfigValidationKnownGaps` style)
 is allowed only when an issue tracks the fix; when fixed, the test MUST be

@@ -14,6 +14,9 @@ paths:
 
 1. **RED first** — падающий тест из issue `## Test plan` пишется до кода
    (правило и исключения — [`principles.md §I`](../../docs/architecture/principles.md)).
+   Но прежде — **стоит ли тест писать вообще:** регресс ломает корректность/безопасность
+   (→ тест) или только тратит ресурсы CI-минут/токенов (→ forcing-function, не guard-тест)?
+   Канон — [`testing.md`](../../docs/architecture/testing.md#rule-when-a-test-is-not-worth-writing).
 2. **Никаких моков внутренней логики** — действует [`principles.md §II`](../../docs/architecture/principles.md);
    как это выглядит в репо (какие границы внешние, какой паттерн) — [`testing.md`](../../docs/architecture/testing.md#rule-no-mocks-of-internal-functions).
 3. **Уровень теста** выбирай по [bug-taxonomy](../../docs/architecture/testing.md#bug-taxonomy)
