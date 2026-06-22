@@ -10,6 +10,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, cast
 
+from bs4 import BeautifulSoup
+from soupsieve import SelectorSyntaxError
+
+from generic_pipeline import _selector_css_part
+
 _MACRO_RE = re.compile(r"\{\{(\w+)\}\}")
 
 _SUPPORTED_VERSIONS = {1}
@@ -28,6 +33,17 @@ _SUPPORTED_TYPES = {"json", "html", "steam_charts"}
 
 class ConfigError(ValueError):
     pass
+
+
+def _check_css_selector(source_id: str, where: str, selector: str) -> None:
+    """Compile a CSS selector at load time so a typo surfaces before the cron
+    run instead of mid-extraction inside BeautifulSoup (taxonomy D, §IV)."""
+    try:
+        BeautifulSoup("", "html.parser").select(selector)
+    except SelectorSyntaxError as exc:
+        raise ConfigError(
+            f"Source '{source_id}': invalid CSS in {where}: {selector!r}: {exc}"
+        ) from exc
 
 
 def build_macro_context(
@@ -103,8 +119,26 @@ def validate_sources_config(config: Any) -> None:
         if source["type"] not in _SUPPORTED_TYPES:
             raise ConfigError(f"Source '{source_id}' has unsupported type: {source['type']!r}")
 
-        if source["type"] == "html" and not source.get("row_selector"):
-            raise ConfigError(f"Source '{source_id}' has type='html' but no 'row_selector' field")
+        if source["type"] == "html":
+            if not source.get("row_selector"):
+                raise ConfigError(
+                    f"Source '{source_id}' has type='html' but no 'row_selector' field"
+                )
+            # row_selector is fed verbatim to soup.select(); field selectors carry
+            # an optional @attr suffix, so validate only their CSS part — the exact
+            # string runtime hands to select_one (shared `_selector_css_part`).
+            _check_css_selector(source_id, "row_selector", source["row_selector"])
+            fields = source.get("fields") or {}
+            candidates = {
+                "dedupe_key": source.get("dedupe_key"),
+                **{f"fields.{k}": v for k, v in fields.items()},
+            }
+            for where, selector in candidates.items():
+                if not isinstance(selector, str):
+                    continue
+                css = _selector_css_part(selector)
+                if css:
+                    _check_css_selector(source_id, where, css)
 
         try:
             limit = int(source["limit"])
