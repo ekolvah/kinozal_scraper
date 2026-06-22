@@ -80,7 +80,11 @@ Choose the cheapest reliable test for each category.
 
 ## What does NOT get tested in this repo
 
-- `SheetsStorage` internals (gspread call order, worksheet creation).
+- `SheetsStorage` gspread wiring — call order, worksheet creation.
+  (Its **retry-on-429** and **schema validation** *are* tested — see
+  `test_sheets_storage.py::TestSheetsStorageRetryOn429` / `TestSchemaValidation` and the
+  C/E rows of [test-coverage.md](test-coverage.md) — because those are correctness logic
+  mocked at the `gspread.Client` boundary, not internal call order.)
 - `TelegramChannelSummarizer` / Telethon calls.
 - Any code path that requires live credentials.
 
