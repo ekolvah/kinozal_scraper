@@ -129,6 +129,10 @@ def validate_sources_config(config: Any) -> None:
             # string runtime hands to select_one (shared `_selector_css_part`).
             _check_css_selector(source_id, "row_selector", source["row_selector"])
             fields = source.get("fields") or {}
+            if not isinstance(fields, dict):
+                raise ConfigError(
+                    f"Source '{source_id}': 'fields' must be a JSON object, got {fields!r}"
+                )
             candidates = {
                 "dedupe_key": source.get("dedupe_key"),
                 **{f"fields.{k}": v for k, v in fields.items()},

@@ -178,6 +178,17 @@ class TestValidateSourcesConfig(unittest.TestCase):
         }
         validate_sources_config(_make_config([source]))
 
+    def test_non_dict_fields_raises(self) -> None:
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "fields": "title",
+        }
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        self.assertIn("fields", str(ctx.exception))
+
 
 class TestLoadSourcesConfig(unittest.TestCase):
     def test_loads_valid_file(self) -> None:
