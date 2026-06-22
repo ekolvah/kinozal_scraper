@@ -84,6 +84,53 @@ Choose the cheapest reliable test for each category.
 - `TelegramChannelSummarizer` / Telethon calls.
 - Any code path that requires live credentials.
 
+> **Scope-skip vs cost-skip.** The list above is a *scope* skip — those paths can't run
+> without live credentials. The rule below is a *cost* skip — the code is perfectly
+> testable, but a test wouldn't pay for itself.
+
+## Rule: when a test is NOT worth writing
+
+Not every regression deserves a test. Decide by what the regression actually breaks:
+
+- **Correctness or safety regression → write the test.** A wrong row, a dropped item, a
+  leaked secret, a broken import — the test guards a real failure mode (e.g.
+  `test_repo_layout` guards import correctness, `test_settings_deny` guards a security
+  invariant).
+- **Resource-only regression (CI minutes, tokens) → no guard test; use a forcing-function
+  instead** (a doc note, a deny-list, a config gate). A test here costs maintenance plus CI
+  time to guard something that, if it regresses, only ever wastes CI time — net negative
+  (goal-function priority (2), [mindset.md](../../.claude/rules/mindset.md)).
+
+**Precedent (#207):** a duplicate CI run (one `quality` job fired by both `pull_request`
+and a `push: issue-*` event for the same commit) wasted CI minutes. The fix was a one-line
+trigger removal; a guard test asserting "no duplicate trigger" was added, then removed as
+work-for-work — the regression it guarded cost only CI minutes, not correctness. The
+forcing-function lives in [ci.md](ci.md) ("do not re-add `issue-*` to push") instead.
+
+## Rule: test behaviour, not implementation
+
+Test through the public entry point (`run_*_pipeline()`) and assert on observable **state**,
+never on which internal methods were called in which order. A test that mirrors the
+implementation is a *change-detector*: it breaks on every refactor without catching a bug —
+**negative value**. The aim is an *unchanging* test that fails only when behaviour actually
+changes. This is the positive framing of [§II no-internal-mocks](principles.md): mocking an
+internal function is the most common way a test ends up asserting interaction instead of
+state.
+
+### Change type → test response
+
+| Change | Test response |
+|---|---|
+| Pure refactor (behaviour identical) | Tests unchanged — if they break, they were change-detectors |
+| New feature | Add new tests only; existing tests stay green |
+| Bug fix | Add a case reproducing the bug, then fix |
+| Behaviour change | Change the tests deliberately (this is the signal, not noise) |
+
+The "behaviour change needs a test" half is canon in [principles.md §I](principles.md)
+(Test-First) — see its exceptions for what legitimately skips a test (rename/move,
+docs-only, one-line non-behavioural). This table is the refactor-vs-feature companion to §I,
+not a restatement of it.
+
 ## Test runner
 
 ```bash
