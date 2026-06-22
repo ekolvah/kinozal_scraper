@@ -7,9 +7,8 @@ python scripts/ci_check.py
 ```
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
-ruff format → ruff lint → pytest → test-coverage doc freshness → module
-docstring presence → pip-audit (runtime) → pip-audit (dev) → requirements
-consistency → mypy.
+ruff format → ruff lint → pytest → module docstring presence → pip-audit
+(runtime) → pip-audit (dev) → requirements consistency → mypy.
 
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
@@ -36,7 +35,7 @@ hook already runs the identical `ci_check.py` locally before every push.
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,
-lint, pytest, coverage-doc, headers, pip-audit, pip-audit-dev, requirements, mypy). The
+lint, pytest, headers, pip-audit, pip-audit-dev, requirements, mypy). The
 per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 

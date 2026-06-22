@@ -27,8 +27,8 @@ def _ci_yml_check_names() -> set[str]:
 
 class TestStepParity:
     """The core defect (#153): ci.yml duplicated the check list by hand and drifted —
-    coverage-doc and the `.in`-without-pin check were missing in CI. After the registry
-    refactor, ci.yml references check *names* only, so parity is enforceable."""
+    some registry checks were silently missing in CI. After the registry refactor,
+    ci.yml references check *names* only, so parity is enforceable."""
 
     def test_ci_yml_runs_every_registered_check(self) -> None:
         assert _ci_yml_check_names() == set(CHECKS), (

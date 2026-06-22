@@ -155,7 +155,6 @@ orientation, которого в per-file docstring нет.
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
 | `scripts/ci_check.py` | Локальный pre-commit/pre-push гейт качества (зеркало CI job) |
-| `scripts/gen_test_coverage.py` | Генерация `test-coverage.md` (защита от drift) |
 | `.github/workflows/ci.yml` | Quality job на PR/push (должен зеркалить `ci_check.py`) |
 
 ### Исходники проекта

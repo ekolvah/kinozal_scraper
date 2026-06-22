@@ -40,9 +40,6 @@ jobs:
       - name: Run tests
         run: python scripts/ci_check.py --only pytest
 
-      - name: Test coverage doc freshness
-        run: python scripts/ci_check.py --only coverage-doc
-
       - name: Module docstring presence
         run: python scripts/ci_check.py --only headers
 
