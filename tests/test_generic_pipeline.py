@@ -3,6 +3,7 @@ import unittest
 from generic_pipeline import (
     NormalizedItem,
     PipelineResult,
+    _selector_css_part,
     build_notification,
     extract_from_html,
     extract_from_json,
@@ -290,6 +291,26 @@ class TestBuildNotificationLinks(unittest.TestCase):
         note = build_notification(item, "{title_link}\n{trailer_link}")
         self.assertIn('<a href="https://kinozal.tv/details.php?id=1">', note.text)
         self.assertIn('<a href="https://www.youtube.com/watch?v=xyz">Trailer</a>', note.text)
+
+
+class TestSelectorCssPart(unittest.TestCase):
+    """Contract of the shared `field_selector → css part` extraction reused by
+    both `_html_field` (runtime) and `validate_sources_config` (load-time)."""
+
+    def test_css_with_attr(self) -> None:
+        self.assertEqual(_selector_css_part("h2 a@href"), "h2 a")
+
+    def test_attr_only_has_no_css(self) -> None:
+        self.assertFalse(_selector_css_part("@href"))
+
+    def test_plain_css_passthrough(self) -> None:
+        self.assertEqual(_selector_css_part("p"), "p")
+
+    def test_broken_at_keeps_css_part(self) -> None:
+        self.assertEqual(_selector_css_part("div[bad@href"), "div[bad")
+
+    def test_none_returns_none(self) -> None:
+        self.assertIsNone(_selector_css_part(None))
 
 
 if __name__ == "__main__":

@@ -140,6 +140,44 @@ class TestValidateSourcesConfig(unittest.TestCase):
         source = {**_MINIMAL_SOURCE, "type": "html", "row_selector": "article.Box-row"}
         validate_sources_config(_make_config([source]))
 
+    def test_invalid_css_row_selector_raises(self) -> None:
+        source = {**_MINIMAL_SOURCE, "type": "html", "row_selector": "div[unclosed-bracket"}
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        self.assertIn("row_selector", str(ctx.exception))
+
+    def test_invalid_css_field_selector_raises(self) -> None:
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "fields": {"title": "h2[unclosed"},
+        }
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        self.assertIn("fields.title", str(ctx.exception))
+
+    def test_broken_at_selector_rejects_css_part(self) -> None:
+        # rsplit("@", 1) leaves css part "div[bad" — must be compiled and rejected.
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "fields": {"url": "div[bad@href"},
+        }
+        with self.assertRaises(ConfigError):
+            validate_sources_config(_make_config([source]))
+
+    def test_valid_selectors_with_attr_pass(self) -> None:
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "dedupe_key": "h2 a@href",
+            "fields": {"title": "h2 a@href", "url": "@href", "metric": 'a[href$="/stargazers"]'},
+        }
+        validate_sources_config(_make_config([source]))
+
 
 class TestLoadSourcesConfig(unittest.TestCase):
     def test_loads_valid_file(self) -> None:
@@ -256,23 +294,6 @@ class TestRussianEnrichPrompts(unittest.TestCase):
             template,
             f"{source_id}.message_template must use {{description_ru}}",
         )
-
-
-class TestConfigValidationKnownGaps(unittest.TestCase):
-    """Documents gaps in `validate_sources_config` (taxonomy D — config errors)."""
-
-    def test_invalid_css_row_selector_not_caught_by_validator(self) -> None:
-        """A broken CSS row_selector reaches BeautifulSoup unchecked.
-
-        Expected future fix: try compiling selectors against a dummy parser at
-        load time so misconfiguration is surfaced before the next cron run.
-        """
-        bad_source = {
-            **_MINIMAL_SOURCE,
-            "type": "html",
-            "row_selector": "div[unclosed-bracket",
-        }
-        validate_sources_config(_make_config([bad_source]))
 
 
 if __name__ == "__main__":
