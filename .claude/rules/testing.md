@@ -22,5 +22,6 @@ paths:
 3. **Уровень теста** выбирай по [bug-taxonomy](../../docs/architecture/testing.md#bug-taxonomy)
    (integration-first → unit для pure-функций → e2e smoke перед merge для structure-drift).
 4. **Прогон** — `python -m pytest` инкрементально; перед коммитом `python scripts/ci_check.py`.
-5. **Структура тестов изменилась** (новый файл/класс) — `test-coverage.md` регенерится
-   `ci_check`'ом (`python scripts/gen_test_coverage.py`); инвентарь руками не правь.
+5. **Покрытие сместилось** (новый bug-class, закрытая дыра, инвертирован documents-current-bug
+   тест) — обнови curated-таблицу в [`test-coverage.md`](../../docs/architecture/test-coverage.md)
+   руками: это hand-curated карта «какой тест какой баг ловит», не авто-генерация.

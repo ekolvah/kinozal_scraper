@@ -141,5 +141,5 @@ python scripts/ci_check.py  # full CI mirror: format + lint + tests + mypy
 ## Test coverage map
 
 For a structured inventory of what is tested and where gaps exist,
-see [test-coverage.md](test-coverage.md). The inventory table is auto-generated;
-run `python scripts/gen_test_coverage.py` to refresh after adding or removing tests.
+see [test-coverage.md](test-coverage.md) — a hand-curated map of which tests
+catch which bug category, kept current by hand when test structure changes.

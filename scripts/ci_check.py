@@ -49,19 +49,6 @@ def check_pytest() -> None:
     _run([sys.executable, "-m", "pytest"])
 
 
-def check_coverage_doc() -> None:
-    print("==> gen_test_coverage")
-    _run([sys.executable, "scripts/gen_test_coverage.py"])
-    if (
-        subprocess.run(
-            ["git", "diff", "--exit-code", "docs/architecture/test-coverage.md"]
-        ).returncode
-        != 0
-    ):
-        print("docs/architecture/test-coverage.md is out of date — stage it and re-run")
-        sys.exit(1)
-
-
 def check_headers() -> None:
     print("==> check_headers")
     _run([sys.executable, "scripts/check_headers.py"])
@@ -141,7 +128,6 @@ CHECKS: dict[str, Callable[[], None]] = {
     "format": check_format,
     "lint": check_lint,
     "pytest": check_pytest,
-    "coverage-doc": check_coverage_doc,
     "headers": check_headers,
     "pip-audit": check_pip_audit,
     "pip-audit-dev": check_pip_audit_dev,
