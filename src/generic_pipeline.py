@@ -55,6 +55,20 @@ def _json_field(record: dict[str, Any], key: str | None) -> str:
     return _str(record.get(key)) if key else ""
 
 
+def _selector_css_part(selector: str | None) -> str | None:
+    """The CSS portion of a field selector (`"css@attr"`, `"@attr"`, `"css"`).
+
+    Returns the stripped CSS string that runtime feeds to `select_one`/`select`,
+    or a falsy value when there is none (empty selector, or `@attr`-only). Shared
+    by `_html_field` (runtime) and `validate_sources_config` (load-time) so both
+    compile the exact same selector string.
+    """
+    if not selector:
+        return None
+    css = selector.rsplit("@", 1)[0] if "@" in selector else selector
+    return css.strip()
+
+
 def _html_field(row: Tag, selector: str | None) -> str:
     """Extract a field from an HTML row element.
 
@@ -67,8 +81,9 @@ def _html_field(row: Tag, selector: str | None) -> str:
     if not selector:
         return ""
     if "@" in selector:
-        css, attr = selector.rsplit("@", 1)
-        el: Tag | None = row.select_one(css.strip()) if css.strip() else row
+        _, attr = selector.rsplit("@", 1)
+        css = _selector_css_part(selector)
+        el: Tag | None = row.select_one(css) if css else row
         return _str(el.get(attr) if el else None)
     el = row.select_one(selector)
     return el.get_text(strip=True) if el else ""

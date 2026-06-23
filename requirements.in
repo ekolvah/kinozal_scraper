@@ -1,5 +1,6 @@
 selenium
 bs4
+soupsieve
 requests
 pandas
 openpyxl
