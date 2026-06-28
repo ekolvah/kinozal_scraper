@@ -272,7 +272,7 @@ def _run(
     notifier = notifier if notifier is not None else InMemoryNotifier(fail_ids=fail_ids)
 
     with (
-        unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=html),
+        unittest.mock.patch("kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
             {"URLS": "top|https://test.example/top.php"},
@@ -439,7 +439,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
-            unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=_KINOZAL_HTML),
+            unittest.mock.patch("kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML),
             unittest.mock.patch.dict(os.environ, {}, clear=False),
         ):
             os.environ.pop("URLS", None)
@@ -449,11 +449,11 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
     def test_fetch_failure_isolated_pipeline_continues(self) -> None:
-        """A failed _fetch_html for one URL shouldn't crash the pipeline."""
+        """A failed fetch_html for one URL shouldn't crash the pipeline."""
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
-            unittest.mock.patch("kinozal_pipeline._fetch_html", side_effect=RuntimeError("boom")),
+            unittest.mock.patch("kinozal_pipeline.fetch_html", side_effect=RuntimeError("boom")),
             unittest.mock.patch.dict(
                 os.environ,
                 {"URLS": "top|https://test.example/top.php"},
@@ -476,7 +476,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
-            unittest.mock.patch("kinozal_pipeline._fetch_html", side_effect=RuntimeError("boom")),
+            unittest.mock.patch("kinozal_pipeline.fetch_html", side_effect=RuntimeError("boom")),
             unittest.mock.patch.dict(
                 os.environ,
                 {"URLS": "top|https://test.example/top.php"},
@@ -499,7 +499,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
         storage2 = InMemoryStorage()
         notifier2 = InMemoryNotifier()
         with (
-            unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=_KINOZAL_HTML),
+            unittest.mock.patch("kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML),
             unittest.mock.patch.dict(
                 os.environ,
                 {"URLS": "top|https://test.example/top.php"},
@@ -517,7 +517,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
-            unittest.mock.patch("kinozal_pipeline._fetch_html", return_value="<html></html>"),
+            unittest.mock.patch("kinozal_pipeline.fetch_html", return_value="<html></html>"),
             unittest.mock.patch.dict(
                 os.environ,
                 {"URLS": "top|https://test.example/top.php"},
@@ -573,7 +573,7 @@ def _run_results(
         storage.seed_existing("movies", existing_keys)
     notifier = InMemoryNotifier(fail_ids=fail_ids)
     with (
-        unittest.mock.patch("kinozal_pipeline._fetch_html", return_value=html),
+        unittest.mock.patch("kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
             {"URLS": "top|https://test.example/top.php"},

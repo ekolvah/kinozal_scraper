@@ -8,10 +8,9 @@ from __future__ import annotations
 import unittest
 from typing import Any, ClassVar
 
-import requests
-
 from generic_pipeline import extract_from_html
-from github_trending_pipeline import _FETCH_HEADERS, _normalize_items
+from github_trending_pipeline import _normalize_items
+from http_fetch import fetch_html
 from pipeline_config import load_sources_config
 
 
@@ -29,11 +28,9 @@ class TestGitHubTrendingE2E(unittest.TestCase):
             raise unittest.SkipTest("github_trending source not enabled in sources.json")
         cls.source = trending[0]
         try:
-            resp = requests.get(cls.source["url"], headers=_FETCH_HEADERS, timeout=30)
-            resp.raise_for_status()
-        except requests.RequestException as exc:
+            cls.html = fetch_html(cls.source["url"])
+        except Exception as exc:
             raise unittest.SkipTest(f"network unavailable: {exc}") from exc
-        cls.html = resp.text
 
     def test_extracts_at_least_one_row(self) -> None:
         result = extract_from_html(self.html, self.source)

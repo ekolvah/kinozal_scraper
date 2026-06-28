@@ -2,6 +2,7 @@ selenium
 bs4
 soupsieve
 requests
+curl_cffi
 pandas
 openpyxl
 gspread
