@@ -449,7 +449,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
     def test_fetch_failure_isolated_pipeline_continues(self) -> None:
-        """A failed _fetch_html for one URL shouldn't crash the pipeline."""
+        """A failed fetch_html for one URL shouldn't crash the pipeline."""
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (

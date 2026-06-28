@@ -28,9 +28,11 @@ class TestFetchHtml(unittest.TestCase):
     def test_raises_on_http_error(self) -> None:
         mock_resp = unittest.mock.Mock()
         mock_resp.raise_for_status.side_effect = RuntimeError("403")
-        with unittest.mock.patch("http_fetch.requests.get", return_value=mock_resp):
-            with self.assertRaises(RuntimeError):
-                fetch_html("https://example.com")
+        with (
+            unittest.mock.patch("http_fetch.requests.get", return_value=mock_resp),
+            self.assertRaises(RuntimeError),
+        ):
+            fetch_html("https://example.com")
 
 
 if __name__ == "__main__":

@@ -7,8 +7,6 @@ import os
 import re
 from typing import Any
 
-import requests
-
 from generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
@@ -17,26 +15,12 @@ from generic_pipeline import (
     build_notification,
     extract_from_html,
 )
+from http_fetch import fetch_html
 from pipeline_config import load_sources_config
 from sheets_storage import Storage
 from telegram_notifier import Notifier
 
 logger = logging.getLogger(__name__)
-
-_FETCH_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 6.1; WOW64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/46.0.2490.80 Safari/537.36"
-    ),
-    "Content-Type": "text/html",
-}
-
-
-def _fetch_html(url: str) -> str:
-    resp = requests.get(url, headers=_FETCH_HEADERS, timeout=30)
-    resp.raise_for_status()
-    return resp.text
 
 
 def _kinozal_urls() -> list[str]:
@@ -160,7 +144,7 @@ def run_kinozal_pipeline(
         result = PipelineResult(source_id=source["id"])
         for url in urls:
             try:
-                html_text = _fetch_html(url)
+                html_text = fetch_html(url)
             except Exception as exc:
                 logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
