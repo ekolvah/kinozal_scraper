@@ -57,7 +57,7 @@ def _run(
     config = sources_config or _SOURCES_CONFIG
 
     with unittest.mock.patch(
-        "github_trending_pipeline._fetch_html",
+        "github_trending_pipeline.fetch_html",
         return_value=html if html is not None else _fixture_html(),
     ):
         run_github_trending_pipeline(storage, notifier, sources_config=config)
@@ -141,7 +141,7 @@ class TestUS2CrossSourceDedupe(unittest.TestCase):
         storage.seed_existing("github_projects", seeded)
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "github_trending_pipeline._fetch_html",
+            "github_trending_pipeline.fetch_html",
             return_value=_fixture_html(),
         ):
             run_github_trending_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
@@ -158,7 +158,7 @@ class TestUS3Visibility(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "github_trending_pipeline._fetch_html",
+            "github_trending_pipeline.fetch_html",
             return_value="<html><body></body></html>",
         ):
             results = run_github_trending_pipeline(
@@ -331,7 +331,7 @@ class TestPipelineMechanics(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier(fail_ids={failed_key})
         with unittest.mock.patch(
-            "github_trending_pipeline._fetch_html",
+            "github_trending_pipeline.fetch_html",
             return_value=_fixture_html(),
         ):
             results = run_github_trending_pipeline(
@@ -375,7 +375,7 @@ def _run_with_enricher(
     notifier = InMemoryNotifier()
 
     with unittest.mock.patch(
-        "github_trending_pipeline._fetch_html",
+        "github_trending_pipeline.fetch_html",
         return_value=html if html is not None else _fixture_html(),
     ):
         run_github_trending_pipeline(

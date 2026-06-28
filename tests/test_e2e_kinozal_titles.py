@@ -15,7 +15,8 @@ import unittest
 from typing import ClassVar
 
 from generic_pipeline import NormalizedItem
-from kinozal_pipeline import _extract_kinozal_items, _fetch_html, _kinozal_urls
+from http_fetch import fetch_html
+from kinozal_pipeline import _extract_kinozal_items, _kinozal_urls
 from pipeline_config import load_sources_config
 
 
@@ -34,7 +35,7 @@ class TestKinozalTitlesE2E(unittest.TestCase):
         urls = _kinozal_urls()
         fallback_url = kinozal_sources[0]["base_url"] + "/top.php"
         url = urls[0] if urls else fallback_url
-        html = _fetch_html(url)
+        html = fetch_html(url)
         cls.items = _extract_kinozal_items(html, kinozal_sources[0]).items
 
     def test_items_extracted(self) -> None:
