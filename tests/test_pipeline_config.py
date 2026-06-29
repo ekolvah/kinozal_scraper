@@ -128,6 +128,14 @@ class TestValidateSourcesConfig(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_sources_config(_make_config([source]))
 
+    def test_limit_one_is_valid(self) -> None:
+        # Pins the "minimum positive" boundary: limit == 1 must pass. Kills the
+        # `limit <= 0` → `limit <= 1` mutant (#220, audit #219), which would
+        # reject a valid limit of 1. test_zero_limit/test_negative_limit raise
+        # under both variants, so only this boundary distinguishes them.
+        source = {**_MINIMAL_SOURCE, "limit": 1}
+        validate_sources_config(_make_config([source]))
+
     def test_html_requires_row_selector(self) -> None:
         source = {**_MINIMAL_SOURCE, "type": "html"}
         source.pop("row_selector", None)
@@ -244,6 +252,39 @@ class TestLoadSourcesConfig(unittest.TestCase):
         with self.assertRaises(ConfigError) as ctx:
             load_sources_config(path)
         self.assertIn("{{NOPE}}", str(ctx.exception))
+
+    def test_html_field_css_validated_through_load_path(self) -> None:
+        # Exercises html selector-validation through the *real* load path
+        # (json.loads), not validate_sources_config with a Python-literal type.
+        # Kills two #220 mutants at once (audit #219):
+        #  * L142 `continue`→`break`: dedupe_key is null (non-string, iterated
+        #    first in `candidates`); `break` would skip validating fields.* —
+        #    the broken `fields.title` CSS must still raise.
+        #  * L122 `==`→`is`: json.loads does not intern string *values*, so
+        #    `source["type"] is "html"` is False → the whole html branch would
+        #    be silently skipped. `==` is the only correct comparison here.
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "dedupe_key": None,
+            "fields": {"title": "h2[unclosed"},
+        }
+        path = _write_tmp(_make_config([source]))
+        with self.assertRaises(ConfigError) as ctx:
+            load_sources_config(path)
+        self.assertIn("fields.title", str(ctx.exception))
+
+    def test_load_dict_source_without_limit_raises_config_error(self) -> None:
+        # A dict source missing `limit` must surface as a clean ConfigError
+        # (missing-field), not a KeyError. Kills the L175 `and`→`or` mutant
+        # (#220): under `or`, `int(source["limit"])` runs on the key-less source
+        # → KeyError (not caught by contextlib.suppress(TypeError, ValueError)).
+        source = {k: v for k, v in _MINIMAL_SOURCE.items() if k != "limit"}
+        path = _write_tmp(_make_config([source]))
+        with self.assertRaises(ConfigError) as ctx:
+            load_sources_config(path)
+        self.assertIn("limit", str(ctx.exception))
 
 
 class TestRussianEnrichPrompts(unittest.TestCase):
