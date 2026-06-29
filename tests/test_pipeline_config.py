@@ -229,23 +229,34 @@ class TestValidateSourcesConfig(unittest.TestCase):
         self.assertIn("fields.title", msg)
         self.assertIn("string", msg)
 
-    def test_empty_field_selector_raises(self) -> None:
-        # §VI fail-fast (#223): an empty/whitespace selector string passes the
-        # `isinstance str` check but `_selector_css_part` returns falsy, so the
-        # old code skipped validation; at runtime an empty selector silently
-        # collapses dedup. Must raise with a "non-empty" message. The check is
-        # on the raw input, so attr-only "@href" (non-empty input) stays valid
-        # (pinned by test_valid_selectors_with_attr_pass).
+    def test_none_field_selector_is_allowed(self) -> None:
+        # Regression guard (#223): `fields.*: null` is the documented
+        # "this field has no selector / is not extracted" sentinel (see
+        # `_html_field`), used in the real sources.json (description / metric /
+        # image_url). The non-string fail-fast must NOT reject it.
         source = {
             **_MINIMAL_SOURCE,
             "type": "html",
             "row_selector": "article.Box-row",
-            "fields": {"title": ""},
+            "dedupe_key": "h2 a@href",
+            "fields": {"title": "h2 a", "image_url": None},
+        }
+        validate_sources_config(_make_config([source]))
+
+    def test_empty_dedupe_key_raises(self) -> None:
+        # §VI fail-fast (#223): dedupe_key is the required dedup identity — an
+        # empty/whitespace string silently collapses dedup at runtime, so it
+        # must raise at load (unlike an optional empty field selector).
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "dedupe_key": "   ",
         }
         with self.assertRaises(ConfigError) as ctx:
             validate_sources_config(_make_config([source]))
         msg = str(ctx.exception)
-        self.assertIn("fields.title", msg)
+        self.assertIn("dedupe_key", msg)
         self.assertIn("non-empty", msg)
 
 
@@ -307,18 +318,20 @@ class TestLoadSourcesConfig(unittest.TestCase):
     def test_html_field_css_validated_through_load_path(self) -> None:
         # Exercises html selector-validation through the *real* load path
         # (json.loads), not validate_sources_config with a Python-literal type.
-        # Kills two #220 mutants at once (audit #219):
-        #  * L142 `continue`→`break`: dedupe_key is null (non-string, iterated
-        #    first in `candidates`); `break` would skip validating fields.* —
-        #    the broken `fields.title` CSS must still raise.
-        #  * L122 `==`→`is`: json.loads does not intern string *values*, so
-        #    `source["type"] is "html"` is False → the whole html branch would
-        #    be silently skipped. `==` is the only correct comparison here.
+        # Kills the L122 `==`→`is` mutant (#220, audit #219): json.loads does
+        # not intern string *values*, so `source["type"] is "html"` is False →
+        # the whole html branch would be silently skipped. `==` is the only
+        # correct comparison here. With a valid string `dedupe_key`, the loop
+        # reaches the broken `fields.title` CSS, which must raise.
+        # (#223 turned the old non-string `continue` into a hard raise, so this
+        # test now uses a real selector for dedupe_key — a null would raise on
+        # dedupe_key first; non-string fail-fast is covered by
+        # TestValidateSourcesConfig::test_non_string_dedupe_key_raises.)
         source = {
             **_MINIMAL_SOURCE,
             "type": "html",
             "row_selector": "article.Box-row",
-            "dedupe_key": None,
+            "dedupe_key": "h2 a@href",
             "fields": {"title": "h2[unclosed"},
         }
         path = _write_tmp(_make_config([source]))

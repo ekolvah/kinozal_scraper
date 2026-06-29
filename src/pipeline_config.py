@@ -138,8 +138,28 @@ def validate_sources_config(config: Any) -> None:
                 **{f"fields.{k}": v for k, v in fields.items()},
             }
             for where, selector in candidates.items():
-                if not isinstance(selector, str):
-                    continue
+                if where == "dedupe_key":
+                    # Required dedup identity — a null / empty / non-string here
+                    # silently collapses dedup (all rows share one key) instead
+                    # of failing at load. Fail fast (§IV/§VI).
+                    if not isinstance(selector, str) or not selector.strip():
+                        raise ConfigError(
+                            f"Source '{source_id}': dedupe_key must be a non-empty string "
+                            f"CSS selector, got {selector!r}"
+                        )
+                else:
+                    # Optional field selector. `null` is the documented
+                    # "no selector for this field" sentinel (see `_html_field`),
+                    # so skip it. A non-string, non-null value (int/list/dict)
+                    # is a misconfiguration that the old `continue` swallowed →
+                    # it reached runtime extraction silently; fail fast (§VI).
+                    if selector is None:
+                        continue
+                    if not isinstance(selector, str):
+                        raise ConfigError(
+                            f"Source '{source_id}': {where} must be a string CSS selector, "
+                            f"got {selector!r}"
+                        )
                 css = _selector_css_part(selector)
                 if css:
                     _check_css_selector(source_id, where, css)
