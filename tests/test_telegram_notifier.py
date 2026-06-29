@@ -173,14 +173,17 @@ class TestTelegramNotifierRetry(unittest.TestCase):
 
 class TestTelegramNotifierImageFallback(unittest.TestCase):
     def test_photo_400_falls_back_to_text_send(self) -> None:
-        """Broken image URL: sendPhoto → 400 must fall back to sendMessage and succeed."""
+        """Downloaded poster but sendPhoto → 400: must fall back to sendMessage
+        and succeed, AND now emit a visible WARNING (#225, §IV — the dropped
+        poster must reach the operator as a marker, not silently)."""
         session = _make_session(
             (400, {"ok": False, "description": "wrong file identifier"}, {}),
             (200, {"ok": True}, {}),
         )
-        notifier = _notifier(session)
-        notif = Notification(id="k1", text="caption", image_url="https://broken.example/404.jpg")
-        sent, failed = notifier.send_items([notif])
+        notifier = _notifier(session, image_fetcher=lambda _url: b"\x89PNG")
+        notif = Notification(id="k1", text="caption", image_url="https://host.example/p.jpg")
+        with self.assertLogs("telegram_notifier", level="WARNING") as logs:
+            sent, failed = notifier.send_items([notif])
         self.assertEqual(sent, [notif])
         self.assertEqual(failed, [])
         self.assertEqual(session.post.call_count, 2)
@@ -188,6 +191,81 @@ class TestTelegramNotifierImageFallback(unittest.TestCase):
         second_url = session.post.call_args_list[1].args[0]
         self.assertIn("sendPhoto", first_url)
         self.assertIn("sendMessage", second_url)
+        self.assertTrue(any("k1" in m for m in logs.output))
+
+
+class TestTelegramNotifierImageUpload(unittest.TestCase):
+    def test_image_downloaded_and_sent_as_multipart_file(self) -> None:
+        """#225: the poster is downloaded our side (curl_cffi bypasses the
+        Cloudflare 403 that blocks Telegram's URL fetch) and uploaded as a
+        multipart file, not passed as a `photo` URL for Telegram to fetch."""
+        fetched: list[str] = []
+
+        def _fetch(url: str) -> bytes:
+            fetched.append(url)
+            return b"\x89PNGDATA"
+
+        session = _make_session((200, {"ok": True}, {}))
+        notifier = _notifier(session, image_fetcher=_fetch)
+        notif = Notification(id="k1", text="caption", image_url="https://host.example/p.jpg")
+        sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [notif])
+        self.assertEqual(failed, [])
+        self.assertEqual(fetched, ["https://host.example/p.jpg"])
+        call = session.post.call_args_list[0]
+        self.assertIn("sendPhoto", call.args[0])
+        # multipart upload: bytes in files=, NOT a photo URL in json=
+        self.assertIn("photo", call.kwargs.get("files", {}))
+        self.assertEqual(call.kwargs["files"]["photo"][1], b"\x89PNGDATA")
+        self.assertNotIn("photo", call.kwargs.get("json", {}) or {})
+
+    def test_image_fetch_failure_logs_warning_and_sends_text(self) -> None:
+        """#225 §IV: if the poster download fails, degrade to text WITH a
+        visible WARNING (id + cause) — never a silent drop. sendPhoto must not
+        be attempted (no bytes to upload)."""
+
+        def _fetch(_url: str) -> bytes:
+            raise RuntimeError("cloudflare 403")
+
+        session = _make_session((200, {"ok": True}, {}))
+        notifier = _notifier(session, image_fetcher=_fetch)
+        notif = Notification(id="k1", text="caption", image_url="https://host.example/p.jpg")
+        with self.assertLogs("telegram_notifier", level="WARNING") as logs:
+            sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [notif])
+        self.assertEqual(failed, [])
+        self.assertEqual(session.post.call_count, 1)
+        self.assertIn("sendMessage", session.post.call_args_list[0].args[0])
+        joined = "\n".join(logs.output)
+        self.assertIn("k1", joined)
+        self.assertIn("cloudflare 403", joined)
+
+    def test_photo_429_then_200_reuses_bytes(self) -> None:
+        """#225 (architect-review BLOCKING/SHOULD-FIX): the poster is downloaded
+        exactly ONCE before the retry loop, and the same `bytes` are reused
+        across a 429 retry (a one-shot stream would send an empty body on the
+        second POST)."""
+        fetch_calls = 0
+
+        def _fetch(_url: str) -> bytes:
+            nonlocal fetch_calls
+            fetch_calls += 1
+            return b"\x89PNGDATA"
+
+        session = _make_session(
+            (429, {"parameters": {"retry_after": 0}}, {}),
+            (200, {"ok": True}, {}),
+        )
+        notifier = _notifier(session, image_fetcher=_fetch)
+        notif = Notification(id="k1", text="caption", image_url="https://host.example/p.jpg")
+        sent, failed = notifier.send_items([notif])
+        self.assertEqual(sent, [notif])
+        self.assertEqual(failed, [])
+        self.assertEqual(fetch_calls, 1)
+        self.assertEqual(session.post.call_count, 2)
+        for call in session.post.call_args_list:
+            self.assertIn("sendPhoto", call.args[0])
+            self.assertEqual(call.kwargs["files"]["photo"][1], b"\x89PNGDATA")
 
 
 class TestTelegramNotifierMessageLimits(unittest.TestCase):
