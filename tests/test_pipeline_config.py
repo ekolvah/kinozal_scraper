@@ -197,6 +197,57 @@ class TestValidateSourcesConfig(unittest.TestCase):
             validate_sources_config(_make_config([source]))
         self.assertIn("fields", str(ctx.exception))
 
+    def test_non_string_dedupe_key_raises(self) -> None:
+        # §VI fail-fast (#223): a non-string dedupe_key selector on an html
+        # source must raise at load time, not be silently skipped (old
+        # `continue`) and crash/break-dedup at runtime. The message must name
+        # `dedupe_key` and flag the type, distinct from the broken-CSS message.
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "dedupe_key": None,
+        }
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        msg = str(ctx.exception)
+        self.assertIn("dedupe_key", msg)
+        self.assertIn("string", msg)
+        self.assertNotIn("invalid CSS", msg)
+
+    def test_non_string_field_selector_raises(self) -> None:
+        # §VI fail-fast (#223): a non-string `fields.*` selector must raise.
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "fields": {"title": 123},
+        }
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        msg = str(ctx.exception)
+        self.assertIn("fields.title", msg)
+        self.assertIn("string", msg)
+
+    def test_empty_field_selector_raises(self) -> None:
+        # §VI fail-fast (#223): an empty/whitespace selector string passes the
+        # `isinstance str` check but `_selector_css_part` returns falsy, so the
+        # old code skipped validation; at runtime an empty selector silently
+        # collapses dedup. Must raise with a "non-empty" message. The check is
+        # on the raw input, so attr-only "@href" (non-empty input) stays valid
+        # (pinned by test_valid_selectors_with_attr_pass).
+        source = {
+            **_MINIMAL_SOURCE,
+            "type": "html",
+            "row_selector": "article.Box-row",
+            "fields": {"title": ""},
+        }
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        msg = str(ctx.exception)
+        self.assertIn("fields.title", msg)
+        self.assertIn("non-empty", msg)
+
 
 class TestLoadSourcesConfig(unittest.TestCase):
     def test_loads_valid_file(self) -> None:
