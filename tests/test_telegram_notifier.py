@@ -240,7 +240,8 @@ class TestTelegramNotifierImageUpload(unittest.TestCase):
         self.assertIn("k1", joined)
         self.assertIn("cloudflare 403", joined)
 
-    def test_photo_429_then_200_reuses_bytes(self) -> None:
+    @patch("telegram_notifier.time.sleep")
+    def test_photo_429_then_200_reuses_bytes(self, _mock_sleep: MagicMock) -> None:
         """#225 (architect-review BLOCKING/SHOULD-FIX): the poster is downloaded
         exactly ONCE before the retry loop, and the same `bytes` are reused
         across a 429 retry (a one-shot stream would send an empty body on the
@@ -253,7 +254,7 @@ class TestTelegramNotifierImageUpload(unittest.TestCase):
             return b"\x89PNGDATA"
 
         session = _make_session(
-            (429, {"parameters": {"retry_after": 0}}, {}),
+            (429, {"parameters": {"retry_after": 5}}, {}),
             (200, {"ok": True}, {}),
         )
         notifier = _notifier(session, image_fetcher=_fetch)
