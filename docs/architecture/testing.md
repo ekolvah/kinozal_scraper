@@ -111,6 +111,24 @@ trigger removal; a guard test asserting "no duplicate trigger" was added, then r
 work-for-work — the regression it guarded cost only CI minutes, not correctness. The
 forcing-function lives in [ci.md](ci.md) ("do not re-add `issue-*` to push") instead.
 
+## Rule: reading mutation-test output
+
+Mutation testing (a *survived* mutant = behaviour no test guards) is the only systematic way to
+catch a test that passed RED→GREEN but later rotted into a for-show test. It is a **one-shot
+diagnostic, never a per-PR CI gate** — a survival-% gate breeds for-show tests (the exact failure
+mode it's meant to find) and burns CI minutes (priority (2)). When you do run it:
+
+- **Filter equivalent mutants before triaging.** PEP-604 union-type annotations (`X | None`,
+  `str | Path`) are real expressions whose result is only `__annotations__` metadata — never
+  checked at runtime — so every `|`-operator mutant on them *survives* without being a gap. They
+  typically dominate the raw survivor count, making the raw survival-% misleading. Triage the
+  operator, not the count.
+- **Pin the test-command to the deterministic offline subset** (`--ignore-glob=tests/test_e2e_*.py`):
+  e2e-smoke / credential-gated tests flake → uninterpretable survivors.
+- **Tooling:** `mutmut` refuses on Windows (wants WSL); `cosmic-ray` runs natively. Run it from an
+  ephemeral venv (no `requirements*.in` edit — one-shot, not infra). Set `PYTHONUTF8=1` or
+  cosmic-ray crashes decoding non-ASCII (cp1252) test output.
+
 ## Rule: test behaviour, not implementation
 
 Test through the public entry point (`run_*_pipeline()`) and assert on observable **state**,

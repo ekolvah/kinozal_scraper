@@ -38,6 +38,8 @@ row promoted to ✅.
 |---|---|---|
 | `youtube.py` | No Protocol boundary, requires live YouTube API | Indirect coverage via `test_kinozal_pipeline.py::TestEnrichWithTrailer` |
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
+| `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env (`json`/`kinozal`/`events`/`github_trending`/`steam`) — needs live credentials | **Scope-skip**, exercised by the daily cron (§IV «cron = E2E smoke»): a wiring break → red CI / zero-row next run. The large uncovered blocks in the `coverage.py` map are these `__main__` runners, not logic gaps |
+| `crypto.py` (`crypto.save_/load_encrypter_session`) | File-IO glue (read/write `secret.key`/`anon.session*`) around the **tested** pure helpers `encrypt_bytes`/`decrypt_bytes` | **Cost-skip**: mocking the filesystem to guard trivial glue is negative-ROI; failure is loud (`KeyError`/`InvalidToken` crashes cron start immediately, §IV-visible) |
 
 ## Test patterns
 
