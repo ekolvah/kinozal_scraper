@@ -37,7 +37,41 @@ row promoted to ✅.
 | Module | Reason | Mitigation |
 |---|---|---|
 | `youtube.py` | No Protocol boundary, requires live YouTube API | Indirect coverage via `test_kinozal_pipeline.py::TestEnrichWithTrailer` |
-| `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
+| `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` — **mutation-verified** (audit below: 0 survivors, the indirect coverage is real, not for-show) |
+| `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env (`json`/`kinozal`/`events`/`github_trending`/`steam`) — needs live credentials | **Scope-skip**, exercised by the daily cron (§IV «cron = E2E smoke»): a wiring break → red CI / zero-row next run. The large uncovered blocks in the `coverage.py` map are these `__main__` runners, not logic gaps |
+| `crypto.py` (`crypto.save_/load_encrypter_session`) | File-IO glue (read/write `secret.key`/`anon.session*`) around the **tested** pure helpers `encrypt_bytes`/`decrypt_bytes` | **Cost-skip**: mocking the filesystem to guard trivial glue is negative-ROI; failure is loud (`KeyError`/`InvalidToken` crashes cron start immediately, §IV-visible) |
+
+## Mutation & coverage audit (one-shot, 2026-06-29, #219)
+
+A measurement-first diagnostic (not a CI gate) to answer two questions the curated map above
+can't: (1) do the tests actually catch bugs or pass for-show, and (2) is any uncovered code an
+*accidental* gap. Tools: `coverage.py` (breadth — every module) + `cosmic-ray` mutation testing
+(depth — representative core modules). **No per-PR gate was added** (a coverage-% gate breeds
+for-show tests; see [#219](https://github.com/ekolvah/kinozal_scraper/issues/219) Out of scope).
+
+**Q1 — are the tests real? (mutation testing)**
+
+| Module | Mutants | Survived | Verdict |
+|---|---|---|---|
+| `pipeline_config.py` | 133 | 38 → **5** after filtering | 33 survivors are **equivalent mutants** (PEP-604 `\|` in *type annotations* — no runtime effect); 5 are genuine weaknesses → [#220](https://github.com/ekolvah/kinozal_scraper/issues/220) |
+| `text_utils.py` | 2 | 0 | indirect-only coverage is **real** |
+
+The 5 genuine `pipeline_config.py` survivors (most notable: `continue`→`break` at the field-CSS
+validation loop — CSS validation of `fields.*` is **not exercised when `dedupe_key` is absent**,
+a hole in the #57 feature) are tracked in [#220](https://github.com/ekolvah/kinozal_scraper/issues/220).
+
+**Q2 — is any uncovered code an accidental gap? (coverage.py)**
+
+No accidental gaps. Every uncovered region resolves to a *conscious* skip — the `__main__` CLI
+runners (scope-skip, live creds, cron-exercised) and `crypto.py` IO glue (cost-skip) — now
+documented in the table above. The audit's only Q2 action was documenting those two classes.
+
+**Method caveat (reusable):** raw mutation survival-% is misleading — PEP-604 union-type
+annotations (`X | None`) generate many `\|`-operator mutants with no runtime effect; filter them
+as equivalent *before* triaging. See [testing.md](testing.md#rule-reading-mutation-test-output).
+Reproduce: ephemeral `cosmic-ray` (mutmut refuses on Windows → WSL; cosmic-ray runs natively),
+`PYTHONUTF8=1` to avoid a cp1252-decode crash on non-ASCII test output, test-command pinned to the
+offline subset (`--ignore-glob=tests/test_e2e_*.py`).
 
 ## Test patterns
 
