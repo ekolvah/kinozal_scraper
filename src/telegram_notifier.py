@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import contextlib
+import logging
 import time
+from collections.abc import Callable
 from typing import Protocol, runtime_checkable
 
 import requests
 
 from generic_pipeline import Notification
+from http_fetch import fetch_bytes
+
+logger = logging.getLogger(__name__)
 
 _TG_TEXT_LIMIT = 4096
 _TG_CAPTION_LIMIT = 1024
@@ -39,6 +44,7 @@ class TelegramNotifier:
         max_retry_sleep: float = 60.0,
         http_timeout: float = 30.0,
         session: requests.Session | None = None,
+        image_fetcher: Callable[[str], bytes] = fetch_bytes,
     ) -> None:
         self._url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         self._photo_url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
@@ -48,6 +54,7 @@ class TelegramNotifier:
         self._max_retry_sleep = max_retry_sleep
         self._http_timeout = http_timeout
         self._session = session or requests.Session()
+        self._image_fetcher = image_fetcher
 
     def send_text(self, text: str) -> bool:
         return self._send_one(text)
@@ -58,7 +65,7 @@ class TelegramNotifier:
         sent: list[Notification] = []
         failed: list[Notification] = []
         for i, notif in enumerate(notifications):
-            if self._send_one(notif.text, notif.image_url):
+            if self._send_one(notif.text, notif.image_url, notif.id):
                 sent.append(notif)
             else:
                 failed.append(notif)
@@ -66,26 +73,53 @@ class TelegramNotifier:
                 time.sleep(self._inter_message_delay)
         return sent, failed
 
-    def _send_one(self, text: str, image_url: str = "") -> bool:
+    def _send_one(self, text: str, image_url: str = "", notif_id: str = "") -> bool:
         # Caption limit (1024) is much tighter than text limit (4096); if the
         # message wouldn't fit as a caption, skip sendPhoto entirely.
         use_caption = bool(image_url) and len(text) <= _TG_CAPTION_LIMIT
         message_text = _truncate(text, _TG_TEXT_LIMIT)
+
+        # Download the poster ONCE, before the retry loop (#225): sendPhoto-by-URL
+        # is fetched by Telegram's own servers, which Cloudflare-fronted hosts 403
+        # — so we fetch the bytes our side (curl_cffi, like #217) and upload them
+        # as a multipart file. Fetching inside the loop would re-download on every
+        # 429/5xx retry. A failed download degrades to text WITH a visible WARNING
+        # (§IV: the dropped poster reaches the operator as a marker, not silently).
+        image_bytes: bytes | None = None
+        if use_caption:
+            try:
+                image_bytes = self._image_fetcher(image_url)
+            except Exception as exc:  # noqa: BLE001 — any fetch failure degrades to text, not crash
+                logger.warning(
+                    "[telegram] poster dropped (image fetch failed) for %s: %s: %s",
+                    notif_id,
+                    image_url,
+                    exc,
+                )
+                use_caption = False
+
         for _ in range(self._max_retries):
             try:
-                if use_caption:
+                if image_bytes is not None:  # ⟺ use_caption stayed True (poster downloaded)
+                    # `bytes` (not a one-shot stream): requests re-encodes the body
+                    # on each POST, so the same poster survives a 429 retry (#225).
                     resp = self._session.post(
                         self._photo_url,
-                        json={
+                        data={
                             "chat_id": self._chat_id,
-                            "photo": image_url,
                             "caption": text,
                             "parse_mode": "HTML",
                         },
+                        files={"photo": ("poster.jpg", image_bytes)},
                         timeout=self._http_timeout,
                     )
                     if resp.status_code == 400:
-                        # fallback: broken image URL or caption issue → plain text
+                        # fallback: broken image or caption issue → plain text.
+                        logger.warning(
+                            "[telegram] poster dropped (sendPhoto 400) for %s: %s",
+                            notif_id,
+                            image_url,
+                        )
                         resp = self._session.post(
                             self._url,
                             json={
