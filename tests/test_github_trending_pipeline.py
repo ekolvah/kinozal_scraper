@@ -222,8 +222,10 @@ class TestUS3Visibility(unittest.TestCase):
                 "GITHUB_TRENDING_SOURCES_PATH": str(sources_path),
                 "GITHUB_TRENDING_DRY_RUN": "1",
             }
+            # `-m` runs the package entry point; PYTHONPATH=src (set in env above)
+            # puts the package on sys.path without depending on an editable install.
             proc = subprocess.run(
-                [sys.executable, "src/github_trending_pipeline.py"],
+                [sys.executable, "-m", "kinozal_scraper.github_trending_pipeline"],
                 cwd=str(Path(__file__).resolve().parents[1]),
                 env=env,
                 capture_output=True,
