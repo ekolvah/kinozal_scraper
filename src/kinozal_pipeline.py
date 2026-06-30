@@ -19,7 +19,7 @@ from generic_pipeline import (
     extract_from_html,
 )
 from http_fetch import fetch_html
-from kinozal_auth import KinozalLoginError, fetch_authenticated, login
+from kinozal_auth import fetch_authenticated, login
 from pipeline_config import load_sources_config
 from sheets_storage import Storage
 from telegram_notifier import Notifier
@@ -98,7 +98,12 @@ class _KinozalFetcher:
             raise RuntimeError(f"mirror login failed earlier: {self._login_error}")
         try:
             self._session = login(self._username, self._password)
-        except KinozalLoginError as exc:
+        except Exception as exc:
+            # Cache ANY login failure (bad creds → KinozalLoginError, but also
+            # transport errors like a timeout if kinozal.guru is itself under
+            # Cloudflare distress) so the "login at most once per run" guarantee
+            # holds — otherwise every subsequent URL retries a dead login,
+            # costing N×timeout seconds.
             self._login_error = str(exc)
             logger.error("kinozal mirror login failed: %s", exc)
             raise RuntimeError(f"mirror login failed: {exc}") from exc

@@ -280,11 +280,8 @@ def _run(
             clear=False,
         ),
     ):
-        # Drop ambient KINOZAL_* creds so a developer who set them for a local
-        # E2E trial doesn't make these mocked tests call real login() against
-        # kinozal.guru. Restored on patch.dict exit.
-        os.environ.pop("KINOZAL_USERNAME", None)
-        os.environ.pop("KINOZAL_PASSWORD", None)
+        # Ambient KINOZAL_* creds are cleared globally by the autouse fixture in
+        # conftest.py, so a failed fetch_html here never triggers a real login().
         run_kinozal_pipeline(
             storage,
             notifier,
@@ -665,7 +662,8 @@ class TestPipelineAuth(unittest.TestCase):
     def _run_with_env(
         self, env: dict[str, str], urls: str | None = None
     ) -> tuple[list[PipelineResult], InMemoryStorage, InMemoryNotifier]:
-        # Start from a known state: drop any ambient KINOZAL_* creds, then apply.
+        # Ambient KINOZAL_* creds are cleared by the conftest.py autouse fixture;
+        # `env` sets exactly the credentials each test wants to exercise.
         full = dict(self._URLS)
         if urls is not None:
             full["URLS"] = urls
@@ -673,10 +671,6 @@ class TestPipelineAuth(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch.dict(os.environ, full, clear=False):
-            os.environ.pop("KINOZAL_USERNAME", None)
-            os.environ.pop("KINOZAL_PASSWORD", None)
-            for k, v in env.items():
-                os.environ[k] = v
             results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         return results, storage, notifier
 
