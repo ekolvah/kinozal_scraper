@@ -72,7 +72,7 @@ def _resolve_name(appid: int, source_id: str) -> tuple[str, str]:
     """
     try:
         details = _fetch_appdetails(appid)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 — appdetails failure degrades to None, item still notified
         logger.warning("[%s] appdetails fetch failed for %s: %s", source_id, appid, exc)
         details = None
     if details and details.get("name"):
@@ -189,8 +189,8 @@ def run_steam_pipeline(
     for source in steam_sources:
         try:
             result = _run_single_source(source, storage, notifier, enricher)
-        except Exception as exc:
-            logger.error("[%s] unhandled error: %s", source["id"], exc)
+        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+            logger.exception("[%s] unhandled error: %s", source["id"], exc)
             result = PipelineResult(source_id=source["id"])
             result.errors.append(f"unhandled error: {exc}")
         results.append(result)
@@ -214,8 +214,8 @@ def _run_single_source(
     # 1. Fetch the Most Played charts payload.
     try:
         data = _fetch_charts(url)
-    except Exception as exc:
-        logger.error("[%s] charts fetch failed: %s", source_id, exc)
+    except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+        logger.exception("[%s] charts fetch failed: %s", source_id, exc)
         result.errors.append(f"charts fetch failed: {exc}")
         return result
 

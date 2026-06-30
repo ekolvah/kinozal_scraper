@@ -92,8 +92,8 @@ def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:
         if send_required_text(notifier, format_technical_alert(results)):
             try:
                 mark_technical_alert_sent()
-            except Exception as exc:
-                logger.error("Could not write technical alert marker: %s", exc)
+            except Exception as exc:  # noqa: BLE001 — marker write failure must not crash the alert path
+                logger.exception("Could not write technical alert marker: %s", exc)
         return 1
 
     return 0

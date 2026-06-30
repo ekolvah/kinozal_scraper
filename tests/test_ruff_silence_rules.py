@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 _REPO = Path(__file__).resolve().parents[1]
 _PYPROJECT = _REPO / "pyproject.toml"
@@ -27,7 +27,7 @@ _DISABLE_TOKENS = {"BLE", "BLE001", "TRY400"}
 
 def _lint_config() -> dict[str, Any]:
     data = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
-    return data["tool"]["ruff"]["lint"]
+    return cast("dict[str, Any]", data["tool"]["ruff"]["lint"])
 
 
 class TestRuffSilenceRules:
@@ -37,7 +37,7 @@ class TestRuffSilenceRules:
         # (a) present in effective select (select ∪ extend-select) — robust to
         # a future move to extend-select (architect NICE #6).
         selected = set(lint.get("select", [])) | set(lint.get("extend-select", []))
-        assert _SILENCE_CODES <= selected, (
+        assert selected >= _SILENCE_CODES, (
             "silence-detection codes must be in ruff select (§IV/§V gate); "
             f"missing: {_SILENCE_CODES - selected}"
         )

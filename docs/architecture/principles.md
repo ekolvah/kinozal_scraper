@@ -99,6 +99,16 @@ technical alerts MUST NOT be collapsed into "no new items/messages."
 Forbidden: `try: ... except Exception: pass`, swallowing parse errors with
 default empty values, "fail open" branches that hide drift.
 
+Partly **machine-enforced** (not prose-only): ruff `BLE001` (no blind
+`except` swallow) and `TRY400` (`logger.exception`, not `logger.error`, inside
+handlers — preserve the traceback for §V) gate this in `ci_check`. A *deliberate*
+broad catch that is already visible (logs + surfaces the failure via
+`PipelineResult.errors` / a re-raise) opts out with an inline `# noqa: BLE001`
+carrying its rationale — keeping the exception a **consciously-decided** visible
+degradation, not a silent one. Config-level disabling (`select` removal or
+`ignore`/`per-file-ignores`) is itself blocked by
+`tests/test_ruff_silence_rules.py` ([#231](https://github.com/ekolvah/kinozal_scraper/issues/231)).
+
 **Rationale:** silent degradation is the worst kind of bug — users assume
 the system is working when it isn't, so nobody investigates. A visible gap
 or a red CI badge is a forcing function for someone to look.

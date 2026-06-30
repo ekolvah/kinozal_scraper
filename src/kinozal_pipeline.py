@@ -69,7 +69,7 @@ class _KinozalFetcher:
     def fetch(self, url: str) -> str:
         try:
             return fetch_html(url)
-        except Exception as primary_exc:
+        except Exception as primary_exc:  # noqa: BLE001 — any primary-fetch failure falls back to the mirror
             return self._from_mirror(url, primary_exc)
 
     def _from_mirror(self, url: str, primary_exc: Exception) -> str:
@@ -105,7 +105,7 @@ class _KinozalFetcher:
             # holds — otherwise every subsequent URL retries a dead login,
             # costing N×timeout seconds.
             self._login_error = str(exc)
-            logger.error("kinozal mirror login failed: %s", exc)
+            logger.error("kinozal mirror login failed: %s", exc)  # noqa: TRY400 — re-raised as RuntimeError with `from exc`; traceback surfaces at the isolation boundary
             raise RuntimeError(f"mirror login failed: {exc}") from exc
         return self._session
 
@@ -177,8 +177,8 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
         year = int(year_match.group(1)) if year_match else None
         return youtube.get_trailer_url(clean, year=year) or ""
-    except Exception as exc:
-        logger.error("trailer lookup failed for %r: %s", item.title, exc)
+    except Exception as exc:  # noqa: BLE001 — trailer lookup degrades to no-trailer, item still notified
+        logger.exception("trailer lookup failed for %r: %s", item.title, exc)
         return ""
 
 
@@ -233,8 +233,8 @@ def run_kinozal_pipeline(
         for url in urls:
             try:
                 html_text = fetcher.fetch(url)
-            except Exception as exc:
-                logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
+            except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
+                logger.exception("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
                 continue
             extracted = _extract_kinozal_items(html_text, source)
