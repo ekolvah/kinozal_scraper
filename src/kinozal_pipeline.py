@@ -6,6 +6,9 @@ import logging
 import os
 import re
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
+
+from curl_cffi.requests import Session as _MirrorSession
 
 from generic_pipeline import (
     ROW_HEADERS,
@@ -16,6 +19,7 @@ from generic_pipeline import (
     extract_from_html,
 )
 from http_fetch import fetch_html
+from kinozal_auth import fetch_authenticated, login
 from pipeline_config import load_sources_config
 from sheets_storage import Storage
 from telegram_notifier import Notifier
@@ -34,6 +38,76 @@ def _kinozal_urls() -> list[str]:
         return [pair.split("|")[1] for pair in urls_env.split(";") if "|" in pair]
     fallback = os.environ.get("KINOZAL_TOP_URL", "")
     return [fallback] if fallback else []
+
+
+_MIRROR_HOST = "kinozal.guru"
+
+
+def _mirror_url(url: str) -> str:
+    """Map a kinozal.tv page URL to its kinozal.guru mirror — host swap, the
+    path and query (top.php filters) preserved."""
+    return urlunsplit(urlsplit(url)._replace(netloc=_MIRROR_HOST))
+
+
+class _KinozalFetcher:
+    """Anonymous kinozal.tv primary with a lazy authenticated kinozal.guru
+    mirror fallback.
+
+    The mirror is hit only when a primary fetch raises (e.g. kinozal.tv 522),
+    and login happens at most once per run, on the first fallback — so a healthy
+    .tv run pays no login cost and needs no credentials. When credentials are
+    absent or partial the mirror is disabled and the primary failure propagates
+    as before, surfacing visibly (§IV)."""
+
+    def __init__(self, username: str, password: str) -> None:
+        self._username = username
+        self._password = password
+        self._mirror_enabled = bool(username) and bool(password)
+        self._session: _MirrorSession | None = None
+        self._login_error: str | None = None
+
+    def fetch(self, url: str) -> str:
+        try:
+            return fetch_html(url)
+        except Exception as primary_exc:
+            return self._from_mirror(url, primary_exc)
+
+    def _from_mirror(self, url: str, primary_exc: Exception) -> str:
+        if not self._mirror_enabled:
+            raise RuntimeError(f"{primary_exc} (mirror fallback disabled — credentials not set)")
+        session = self._ensure_login()
+        mirror_url = _mirror_url(url)
+        try:
+            html = fetch_authenticated(session, mirror_url)
+        except Exception as mirror_exc:
+            raise RuntimeError(
+                f"primary failed ({primary_exc}); mirror {mirror_url} also failed ({mirror_exc})"
+            ) from mirror_exc
+        logger.info(
+            "[kinozal] primary %s failed (%s) — served from mirror %s",
+            url,
+            primary_exc,
+            mirror_url,
+        )
+        return html
+
+    def _ensure_login(self) -> _MirrorSession:
+        if self._session is not None:
+            return self._session
+        if self._login_error is not None:
+            raise RuntimeError(f"mirror login failed earlier: {self._login_error}")
+        try:
+            self._session = login(self._username, self._password)
+        except Exception as exc:
+            # Cache ANY login failure (bad creds → KinozalLoginError, but also
+            # transport errors like a timeout if kinozal.guru is itself under
+            # Cloudflare distress) so the "login at most once per run" guarantee
+            # holds — otherwise every subsequent URL retries a dead login,
+            # costing N×timeout seconds.
+            self._login_error = str(exc)
+            logger.error("kinozal mirror login failed: %s", exc)
+            raise RuntimeError(f"mirror login failed: {exc}") from exc
+        return self._session
 
 
 def _kinozal_title(raw: str) -> str:
@@ -136,6 +210,20 @@ def run_kinozal_pipeline(
             results.append(result)
         return results
 
+    # Primary transport is anonymous kinozal.tv; the authenticated kinozal.guru
+    # mirror is a lazy fallback used only when a primary fetch fails (e.g. 522).
+    # A healthy .tv run needs no credentials and pays no login cost. Partial
+    # credentials disable the fallback with a visible WARNING rather than redden
+    # an otherwise-healthy run (§IV/§VI).
+    username = os.environ.get("KINOZAL_USERNAME", "")
+    password = os.environ.get("KINOZAL_PASSWORD", "")
+    if bool(username) != bool(password):
+        logger.warning(
+            "kinozal: partial credentials — mirror fallback disabled "
+            "(set BOTH KINOZAL_USERNAME and KINOZAL_PASSWORD)"
+        )
+    fetcher = _KinozalFetcher(username, password)
+
     # Fetch HTML for every (source × url) pair, recording per-source fetch and
     # extraction errors. Items keep their source_id from extract_from_html so
     # the per-source result below picks them up correctly.
@@ -144,7 +232,7 @@ def run_kinozal_pipeline(
         result = PipelineResult(source_id=source["id"])
         for url in urls:
             try:
-                html_text = fetch_html(url)
+                html_text = fetcher.fetch(url)
             except Exception as exc:
                 logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
