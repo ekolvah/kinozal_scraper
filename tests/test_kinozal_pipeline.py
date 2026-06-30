@@ -4,6 +4,7 @@ import unittest.mock
 from typing import Any
 
 from generic_pipeline import NormalizedItem, PipelineResult, extract_from_html
+from kinozal_auth import KinozalLoginError
 from kinozal_pipeline import (
     _kinozal_title,
     _kinozal_urls,
@@ -635,6 +636,83 @@ class TestKinozalKnownBugs(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 2)
         for notif in notifier.sent:
             self.assertNotIn("youtube.com", notif.text)
+
+
+class TestPipelineAuth(unittest.TestCase):
+    """Authenticated mirror access (issue #227). The mirror kinozal.guru gates
+    top.php behind login; the pipeline must use a logged-in session when creds
+    are present and surface login failures visibly (§IV), never silently fetch
+    the login page → 0 items."""
+
+    _URLS = {"URLS": "top|https://kinozal.guru/top.php"}
+
+    def _run_with_env(self, env: dict[str, str]):
+        # Start from a known state: drop any ambient KINOZAL_* creds, then apply.
+        full = dict(self._URLS)
+        full.update(env)
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch.dict(os.environ, full, clear=False):
+            os.environ.pop("KINOZAL_USERNAME", None)
+            os.environ.pop("KINOZAL_PASSWORD", None)
+            for k, v in env.items():
+                os.environ[k] = v
+            results = run_kinozal_pipeline(
+                storage, notifier, _FakeYoutube(), _SOURCES_CONFIG
+            )
+        return results, storage, notifier
+
+    def test_login_failure_recorded_as_visible_error(self) -> None:
+        with unittest.mock.patch(
+            "kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
+        ):
+            results, _, _ = self._run_with_env(
+                {"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}
+            )
+        errs = [e for r in results for e in r.errors]
+        self.assertTrue(any("login failed" in e for e in errs), errs)
+        # Distinct from the 522/anonymous-fetch failure path and not silent.
+        self.assertFalse(any("fetch failed" in e for e in errs), errs)
+        self.assertTrue(any(not r.ok for r in results))  # → exit 1
+
+    def test_no_credentials_uses_anonymous_fetch(self) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+            ) as mfetch,
+            unittest.mock.patch("kinozal_pipeline.login") as mlogin,
+        ):
+            self._run_with_env({})
+        mfetch.assert_called()
+        mlogin.assert_not_called()
+
+    def test_credentials_use_authenticated_fetch(self) -> None:
+        sentinel = unittest.mock.Mock()
+        with (
+            unittest.mock.patch(
+                "kinozal_pipeline.login", return_value=sentinel
+            ) as mlogin,
+            unittest.mock.patch(
+                "kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
+            ) as mauth,
+            unittest.mock.patch("kinozal_pipeline.fetch_html") as manon,
+        ):
+            self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
+        mlogin.assert_called_once()
+        mauth.assert_called()
+        manon.assert_not_called()  # authenticated path used, not anonymous
+
+    def test_partial_credentials_fail_fast(self) -> None:
+        with (
+            unittest.mock.patch("kinozal_pipeline.login") as mlogin,
+            unittest.mock.patch("kinozal_pipeline.fetch_html") as mfetch,
+        ):
+            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u"})
+        errs = [e for r in results for e in r.errors]
+        self.assertTrue(any("credential" in e.lower() for e in errs), errs)
+        mlogin.assert_not_called()
+        mfetch.assert_not_called()  # no silent anonymous fallback
+        self.assertTrue(any(not r.ok for r in results))  # → exit 1
 
 
 if __name__ == "__main__":
