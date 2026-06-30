@@ -16,6 +16,7 @@ from generic_pipeline import (
     extract_from_html,
 )
 from http_fetch import fetch_html
+from kinozal_auth import KinozalLoginError, fetch_authenticated, login
 from pipeline_config import load_sources_config
 from sheets_storage import Storage
 from telegram_notifier import Notifier
@@ -136,6 +137,33 @@ def run_kinozal_pipeline(
             results.append(result)
         return results
 
+    # Authenticated mirror access (kinozal.guru) when credentials are present;
+    # otherwise the anonymous transport (kinozal.tv, when its origin is up).
+    # Partial credentials are a configuration error — fail visibly (§IV/§VI)
+    # rather than silently fall back to anonymous (which the gated mirror would
+    # answer with the login page → 0 items).
+    username = os.environ.get("KINOZAL_USERNAME", "")
+    password = os.environ.get("KINOZAL_PASSWORD", "")
+    session = None
+    if bool(username) != bool(password):
+        message = "partial credentials — set BOTH KINOZAL_USERNAME and KINOZAL_PASSWORD"
+        logger.error("kinozal: %s", message)
+        for source in kinozal_sources:
+            result = PipelineResult(source_id=source["id"])
+            result.errors.append(f"kinozal: {message}")
+            results.append(result)
+        return results
+    if username and password:
+        try:
+            session = login(username, password)
+        except KinozalLoginError as exc:
+            logger.error("kinozal login failed: %s", exc)
+            for source in kinozal_sources:
+                result = PipelineResult(source_id=source["id"])
+                result.errors.append(f"kinozal login failed: {exc}")
+                results.append(result)
+            return results
+
     # Fetch HTML for every (source × url) pair, recording per-source fetch and
     # extraction errors. Items keep their source_id from extract_from_html so
     # the per-source result below picks them up correctly.
@@ -144,7 +172,13 @@ def run_kinozal_pipeline(
         result = PipelineResult(source_id=source["id"])
         for url in urls:
             try:
-                html_text = fetch_html(url)
+                html_text = (
+                    fetch_authenticated(session, url) if session is not None else fetch_html(url)
+                )
+            except KinozalLoginError as exc:
+                logger.error("[%s] kinozal login failed for %s: %s", source["id"], url, exc)
+                result.errors.append(f"kinozal login failed for {url}: {exc}")
+                continue
             except Exception as exc:
                 logger.error("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")

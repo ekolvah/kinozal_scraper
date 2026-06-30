@@ -646,7 +646,9 @@ class TestPipelineAuth(unittest.TestCase):
 
     _URLS = {"URLS": "top|https://kinozal.guru/top.php"}
 
-    def _run_with_env(self, env: dict[str, str]):
+    def _run_with_env(
+        self, env: dict[str, str]
+    ) -> tuple[list[PipelineResult], InMemoryStorage, InMemoryNotifier]:
         # Start from a known state: drop any ambient KINOZAL_* creds, then apply.
         full = dict(self._URLS)
         full.update(env)
@@ -657,18 +659,14 @@ class TestPipelineAuth(unittest.TestCase):
             os.environ.pop("KINOZAL_PASSWORD", None)
             for k, v in env.items():
                 os.environ[k] = v
-            results = run_kinozal_pipeline(
-                storage, notifier, _FakeYoutube(), _SOURCES_CONFIG
-            )
+            results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         return results, storage, notifier
 
     def test_login_failure_recorded_as_visible_error(self) -> None:
         with unittest.mock.patch(
             "kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
         ):
-            results, _, _ = self._run_with_env(
-                {"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}
-            )
+            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
         errs = [e for r in results for e in r.errors]
         self.assertTrue(any("login failed" in e for e in errs), errs)
         # Distinct from the 522/anonymous-fetch failure path and not silent.
@@ -689,9 +687,7 @@ class TestPipelineAuth(unittest.TestCase):
     def test_credentials_use_authenticated_fetch(self) -> None:
         sentinel = unittest.mock.Mock()
         with (
-            unittest.mock.patch(
-                "kinozal_pipeline.login", return_value=sentinel
-            ) as mlogin,
+            unittest.mock.patch("kinozal_pipeline.login", return_value=sentinel) as mlogin,
             unittest.mock.patch(
                 "kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ) as mauth,

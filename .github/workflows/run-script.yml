@@ -73,6 +73,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
           API_KEY: ${{ secrets.API_KEY }}
           URLS: ${{ vars.URLS }}
+          KINOZAL_USERNAME: ${{ secrets.KINOZAL_USERNAME }}
+          KINOZAL_PASSWORD: ${{ secrets.KINOZAL_PASSWORD }}
 
       - name: Run Telegram summarizer
         if: always()

@@ -11,7 +11,9 @@ import unittest.mock
 from kinozal_auth import KinozalLoginError, fetch_authenticated, login
 
 
-def _resp(status: int = 200, location: str | None = None, text: str = "<html>listing</html>"):
+def _resp(
+    status: int = 200, location: str | None = None, text: str = "<html>listing</html>"
+) -> unittest.mock.Mock:
     r = unittest.mock.Mock()
     r.status_code = status
     r.headers = {"Location": location} if location else {}
@@ -20,7 +22,11 @@ def _resp(status: int = 200, location: str | None = None, text: str = "<html>lis
     return r
 
 
-def _session(cookies: dict, post_resp=None, get_resp=None):
+def _session(
+    cookies: dict,
+    post_resp: unittest.mock.Mock | None = None,
+    get_resp: unittest.mock.Mock | None = None,
+) -> unittest.mock.Mock:
     """A fake curl_cffi Session. `cookies` is a plain dict (dict(session.cookies)
     is how the production code reads the jar — verified in recon)."""
     s = unittest.mock.Mock()
@@ -77,7 +83,9 @@ class TestAuthenticatedFetch(unittest.TestCase):
     def test_redirect_to_login_raises_login_error(self) -> None:
         # A gated response must raise a distinct error, NOT silently return the
         # login-page HTML (which would extract 0 items — §IV silent skip).
-        sess = _session(get_resp=_resp(status=302, location="//kinozal.guru/login.php?m=5"), cookies={})
+        sess = _session(
+            get_resp=_resp(status=302, location="//kinozal.guru/login.php?m=5"), cookies={}
+        )
         with self.assertRaises(KinozalLoginError):
             fetch_authenticated(sess, "https://kinozal.guru/top.php")
 
