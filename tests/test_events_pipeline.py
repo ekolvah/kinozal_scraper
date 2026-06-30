@@ -4,6 +4,7 @@ from typing import Any
 
 from events_pipeline import run_events_pipeline
 from generic_pipeline import PipelineResult, extract_from_html
+from pipeline_config import load_sources_config
 from sheets_storage import InMemoryStorage
 from telegram_notifier import InMemoryNotifier
 
@@ -44,7 +45,7 @@ _SOLDOUT_SOURCE: dict[str, Any] = {
         "metric": None,
         "image_url": ".imgEvent@src",
     },
-    "message_template": "<b>{title}</b>\n{image_url}\n{url}",
+    "message_template": "<b>{title_link}</b>",
 }
 
 _SOURCES_CONFIG: dict[str, Any] = {"version": 1, "sources": [_SOLDOUT_SOURCE]}
@@ -163,6 +164,39 @@ class TestEventsPipelineNotificationContent(unittest.TestCase):
     def test_url_in_notification_text(self) -> None:
         _, notifier = _run()
         self.assertIn("soldoutticketbox.com", notifier.sent[0].text)
+
+    def test_title_is_clickable_bold_hyperlink(self) -> None:
+        # #229: title must render as a bold clickable anchor like every other
+        # source (<b>{title_link}</b>), not a bare bold string + raw url line.
+        # assertNotIn("\n") pins acceptance #2 — the old template put the raw url
+        # on its own line; the fixed one is a single clickable title.
+        _, notifier = _run()
+        text = notifier.sent[0].text
+        self.assertIn('<b><a href="', text)
+        self.assertIn(">Event One</a>", text)
+        self.assertNotIn("\n", text)
+
+
+class TestEventsRealConfig(unittest.TestCase):
+    """#229 real-config guard: exercise the PRODUCTION sources.json, not the
+    fixture copy. The two tests above run through _SOLDOUT_SOURCE, whose template
+    this PR also edits — so they'd stay green even if the sources.json edit were
+    botched. This guard loads load_sources_config() (mirrors the #173 pattern in
+    test_kinozal_pipeline.py) so a wrong/leftover placeholder in the real artifact
+    reddens CI."""
+
+    def test_real_sources_renders_hyperlink_no_raw_url(self) -> None:
+        # SOLDOUT_URL must be set or {{SOLDOUT_URL}} → "" and the source is skipped
+        # (see test_missing_url_skips_source). The fetch itself is patched in _run.
+        with unittest.mock.patch.dict(
+            "os.environ", {"SOLDOUT_URL": "https://www.soldoutticketbox.com/events"}
+        ):
+            config = load_sources_config()
+        _, notifier = _run(sources_config=config)
+        self.assertTrue(notifier.sent, "no events notification produced from real config")
+        text = notifier.sent[0].text
+        self.assertIn('<b><a href="', text)
+        self.assertNotIn("\n", text)
 
 
 # ── edge cases ────────────────────────────────────────────────────────────────
