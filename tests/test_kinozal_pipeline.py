@@ -869,42 +869,44 @@ class TestFetchPoster(unittest.TestCase):
             return b"M"
 
         with (
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
-            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_authenticated"
-            ) as mauth,
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_authenticated") as mauth,
         ):
             self._kinozal().fetch_poster(_POSTER_TV)
         mlogin.assert_not_called()  # poster mirror-fetch is anonymous (verified 200)
         mauth.assert_not_called()
 
     def test_third_party_host_failure_propagates(self) -> None:
-        with unittest.mock.patch(
-            "kinozal_scraper.kinozal_pipeline.fetch_bytes",
-            side_effect=RuntimeError("boom"),
-        ) as mfetch:
-            with self.assertRaises(Exception):
-                self._kinozal().fetch_poster("https://i123.fastpic.org/big/x.jpg")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes",
+                side_effect=RuntimeError("boom"),
+            ) as mfetch,
+            self.assertRaises(RuntimeError),
+        ):
+            self._kinozal().fetch_poster("https://i123.fastpic.org/big/x.jpg")
         mfetch.assert_called_once()  # third-party host: no kinozal-mirror retry
 
     def test_both_primary_and_mirror_fail_propagates(self) -> None:
-        with unittest.mock.patch(
-            "kinozal_scraper.kinozal_pipeline.fetch_bytes",
-            side_effect=RuntimeError("522 everywhere"),
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes",
+                side_effect=RuntimeError("522 everywhere"),
+            ),
+            self.assertRaises(RuntimeError),
         ):
-            with self.assertRaises(Exception):
-                self._kinozal().fetch_poster(_POSTER_TV)  # double-fail surfaces (§IV)
+            self._kinozal().fetch_poster(_POSTER_TV)  # double-fail surfaces (§IV)
 
     def test_already_mirror_host_not_reswapped(self) -> None:
-        with unittest.mock.patch(
-            "kinozal_scraper.kinozal_pipeline.fetch_bytes",
-            side_effect=RuntimeError("522"),
-        ) as mfetch:
-            with self.assertRaises(Exception):
-                self._kinozal().fetch_poster("https://kinozal.guru/i/poster/x.jpg")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes",
+                side_effect=RuntimeError("522"),
+            ) as mfetch,
+            self.assertRaises(RuntimeError),
+        ):
+            self._kinozal().fetch_poster("https://kinozal.guru/i/poster/x.jpg")
         mfetch.assert_called_once()  # already on mirror — no pointless re-swap retry
 
 
