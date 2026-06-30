@@ -137,7 +137,7 @@ class GeminiSummarizer:
                     failures.append(f"{model_name}: unavailable: {exc}")
                     logger.warning("model %s unavailable, trying next: %s", model_name, exc)
                     continue
-                logger.error("Error with model %s: %s", model_name, exc)
+                logger.error("Error with model %s: %s", model_name, exc)  # noqa: TRY400 — re-raised as SummarizationFailed with `from exc`; traceback surfaces upstream
                 raise SummarizationFailed("api_error", f"{model_name}: {exc}") from exc
 
         logger.error("all models exhausted, could not summarize")
@@ -234,8 +234,8 @@ class TelethonReader:
 
             result = "\n".join(formatted_messages)
             return channel_title, result, is_broadcast
-        except Exception as exc:
-            logger.error("Error processing channel %s: %s", channel_url, exc)
+        except Exception as exc:  # noqa: BLE001 — per-channel isolation: one channel error must not abort the run
+            logger.exception("Error processing channel %s: %s", channel_url, exc)
             return None, "", False
         finally:
             await client.disconnect()

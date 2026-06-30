@@ -20,6 +20,8 @@ select = [
     "UP",
     "B",
     "SIM",
+    "BLE",
+    "TRY400",
 ]
 ignore = [
     "E501",

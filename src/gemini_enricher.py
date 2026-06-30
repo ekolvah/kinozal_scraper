@@ -239,8 +239,8 @@ def get_generation_models() -> list[str]:
             and _is_text_gemini(m.name)
             and m.name not in _EXCLUDED_MODELS
         ]
-    except Exception:
-        logger.warning("cannot list models")
+    except Exception:  # noqa: BLE001 — list-models failure degrades to []; now visible via logger.exception (not silent)
+        logger.exception("cannot list models")
         return []
 
     names.sort(key=_model_version_key, reverse=True)

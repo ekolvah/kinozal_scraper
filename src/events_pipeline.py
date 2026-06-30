@@ -42,8 +42,8 @@ def run_events_pipeline(
         result = PipelineResult(source_id=source["id"])
         try:
             html_text = fetch_html(url)
-        except Exception as exc:
-            logger.error("[%s] fetch failed: %s", source["id"], exc)
+        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+            logger.exception("[%s] fetch failed: %s", source["id"], exc)
             result.errors.append(f"fetch failed: {exc}")
             results.append(result)
             continue

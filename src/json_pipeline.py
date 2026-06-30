@@ -58,8 +58,8 @@ def run_json_pipeline(
     for source in json_sources:
         try:
             result = _run_single_source(source, storage, notifier, enricher)
-        except Exception as exc:
-            logger.error("[%s] unhandled error: %s", source["id"], exc)
+        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+            logger.exception("[%s] unhandled error: %s", source["id"], exc)
             result = PipelineResult(source_id=source["id"])
             result.errors.append(f"unhandled error: {exc}")
         results.append(result)
@@ -82,8 +82,8 @@ def _run_single_source(
             source.get("params", {}),
             source.get("headers", {}),
         )
-    except Exception as exc:
-        logger.error("[%s] fetch failed: %s", source_id, exc)
+    except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+        logger.exception("[%s] fetch failed: %s", source_id, exc)
         result.errors.append(f"fetch failed: {exc}")
         return result
 
