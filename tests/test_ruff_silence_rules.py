@@ -22,7 +22,7 @@ _PYPROJECT = _REPO / "pyproject.toml"
 _SILENCE_CODES = {"BLE", "TRY400"}
 # Any of these tokens, if present in ignore / per-file-ignores, disables a
 # silence rule while leaving `select` untouched — the threat-model of #231.
-_DISABLE_TOKENS = {"BLE", "BLE001", "TRY400"}
+_DISABLE_TOKENS = {"BLE", "BLE001", "TRY", "TRY400"}
 
 
 def _lint_config() -> dict[str, Any]:
