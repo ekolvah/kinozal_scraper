@@ -94,6 +94,16 @@ class TestAuthenticatedFetch(unittest.TestCase):
         html = fetch_authenticated(sess, "https://kinozal.guru/top.php")
         self.assertEqual(html, "<html>top listing</html>")
 
+    def test_unexpected_non_login_redirect_raises(self) -> None:
+        # A 3xx that is NOT a login redirect (e.g. maintenance) must not slip
+        # through raise_for_status (which only fires on 4xx/5xx) and return an
+        # empty body silently → 0 items (§IV).
+        sess = _session(
+            get_resp=_resp(status=302, location="//kinozal.guru/maintenance.php"), cookies={}
+        )
+        with self.assertRaises(KinozalLoginError):
+            fetch_authenticated(sess, "https://kinozal.guru/top.php")
+
 
 if __name__ == "__main__":
     unittest.main()

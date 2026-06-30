@@ -69,5 +69,13 @@ def fetch_authenticated(session: requests.Session, url: str) -> str:
     resp = session.get(url, allow_redirects=False)
     if _is_login_redirect(resp):
         raise KinozalLoginError(f"session not authenticated for {url} (redirected to login)")
+    # raise_for_status() only fires on 4xx/5xx; a 3xx we don't follow
+    # (allow_redirects=False) would otherwise slip through with an empty body
+    # and read as "0 items" (§IV silent skip). Surface any unexpected redirect.
+    if 300 <= resp.status_code < 400:
+        raise KinozalLoginError(
+            f"unexpected redirect {resp.status_code} for {url} "
+            f"(Location={resp.headers.get('Location', '')!r})"
+        )
     resp.raise_for_status()
     return str(resp.text)

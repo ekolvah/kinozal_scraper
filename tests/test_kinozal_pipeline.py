@@ -280,6 +280,11 @@ def _run(
             clear=False,
         ),
     ):
+        # Drop ambient KINOZAL_* creds so a developer who set them for a local
+        # E2E trial doesn't make these mocked tests call real login() against
+        # kinozal.guru. Restored on patch.dict exit.
+        os.environ.pop("KINOZAL_USERNAME", None)
+        os.environ.pop("KINOZAL_PASSWORD", None)
         run_kinozal_pipeline(
             storage,
             notifier,
