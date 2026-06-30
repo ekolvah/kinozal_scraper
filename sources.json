@@ -132,7 +132,7 @@
         "metric": null,
         "image_url": ".imgEvent@src"
       },
-      "message_template": "<b>{title}</b>\n{image_url}\n{url}"
+      "message_template": "<b>{title_link}</b>"
     }
   ]
 }

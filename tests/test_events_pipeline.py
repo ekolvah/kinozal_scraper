@@ -45,7 +45,7 @@ _SOLDOUT_SOURCE: dict[str, Any] = {
         "metric": None,
         "image_url": ".imgEvent@src",
     },
-    "message_template": "<b>{title}</b>\n{image_url}\n{url}",
+    "message_template": "<b>{title_link}</b>",
 }
 
 _SOURCES_CONFIG: dict[str, Any] = {"version": 1, "sources": [_SOLDOUT_SOURCE]}
