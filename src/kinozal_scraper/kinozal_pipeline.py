@@ -245,6 +245,10 @@ def run_kinozal_pipeline(
     notifier: Notifier,
     youtube: Any,
     sources_config: dict[str, Any] | None = None,
+    # Covers listing fetches only. Poster mirror-routing lives in the notifier's
+    # `image_fetcher`, so a caller passing `kinozal=` MUST also build the notifier
+    # via `_build_notifier(bot_token, chat_id, kinozal)` — otherwise posters keep
+    # hitting the dead origin (the #241 bug). `__main__` does both.
     kinozal: Kinozal | None = None,
 ) -> list[PipelineResult]:
     results: list[PipelineResult] = []
