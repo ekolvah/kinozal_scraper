@@ -10,7 +10,7 @@ import gspread
 import gspread.exceptions
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from generic_pipeline import ROW_HEADERS
+from kinozal_scraper.generic_pipeline import ROW_HEADERS
 
 
 class SchemaError(ValueError):

@@ -14,10 +14,10 @@ from __future__ import annotations
 import unittest
 from typing import ClassVar
 
-from generic_pipeline import NormalizedItem
-from http_fetch import fetch_html
-from kinozal_pipeline import _extract_kinozal_items, _kinozal_urls
-from pipeline_config import load_sources_config
+from kinozal_scraper.generic_pipeline import NormalizedItem
+from kinozal_scraper.http_fetch import fetch_html
+from kinozal_scraper.kinozal_pipeline import _extract_kinozal_items, _kinozal_urls
+from kinozal_scraper.pipeline_config import load_sources_config
 
 
 @unittest.skip("temporarily disabled while kinozal.tv returns 520; re-enable in #136")

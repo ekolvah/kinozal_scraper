@@ -4,11 +4,11 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from gemini_enricher import QuotaExhausted
-from generic_pipeline import NormalizedItem, PipelineResult
-from sheets_storage import InMemoryStorage
-from steam_pipeline import run_steam_pipeline
-from telegram_notifier import InMemoryNotifier
+from kinozal_scraper.gemini_enricher import QuotaExhausted
+from kinozal_scraper.generic_pipeline import NormalizedItem, PipelineResult
+from kinozal_scraper.sheets_storage import InMemoryStorage
+from kinozal_scraper.steam_pipeline import run_steam_pipeline
+from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 _SOURCE: dict[str, Any] = {
     "id": "steam_charts_mostplayed",
@@ -71,11 +71,11 @@ def _run(
 
     with (
         unittest.mock.patch(
-            "steam_pipeline._fetch_charts",
+            "kinozal_scraper.steam_pipeline._fetch_charts",
             return_value=charts if charts is not None else _CHARTS_RESPONSE,
         ),
         unittest.mock.patch(
-            "steam_pipeline._fetch_appdetails",
+            "kinozal_scraper.steam_pipeline._fetch_appdetails",
             side_effect=fake_appdetails,
         ),
     ):
@@ -164,7 +164,7 @@ class TestAppDetailsFailure(unittest.TestCase):
             578080: _APPDETAILS[578080],
             570: _APPDETAILS[570],
         }
-        with self.assertLogs("steam_pipeline", level="WARNING") as caplog:
+        with self.assertLogs("kinozal_scraper.steam_pipeline", level="WARNING") as caplog:
             _, notifier = _run(appdetails=appd)
         self.assertEqual(len(notifier.sent), 3)
         cs2 = next(n for n in notifier.sent if n.id == "730")
@@ -182,8 +182,12 @@ class TestAppDetailsFailure(unittest.TestCase):
             return _APPDETAILS.get(appid)
 
         with (
-            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
-            unittest.mock.patch("steam_pipeline._fetch_appdetails", side_effect=boom),
+            unittest.mock.patch(
+                "kinozal_scraper.steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE
+            ),
+            unittest.mock.patch(
+                "kinozal_scraper.steam_pipeline._fetch_appdetails", side_effect=boom
+            ),
         ):
             storage = InMemoryStorage()
             notifier = InMemoryNotifier()
@@ -200,7 +204,7 @@ class TestVisibility(unittest.TestCase):
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "steam_pipeline._fetch_charts",
+                "kinozal_scraper.steam_pipeline._fetch_charts",
                 return_value={"response": {"rollup_date": 0, "ranks": []}},
             ),
         ):
@@ -210,7 +214,9 @@ class TestVisibility(unittest.TestCase):
     def test_charts_fetch_exception_marks_failure(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
-        with unittest.mock.patch("steam_pipeline._fetch_charts", side_effect=RuntimeError("boom")):
+        with unittest.mock.patch(
+            "kinozal_scraper.steam_pipeline._fetch_charts", side_effect=RuntimeError("boom")
+        ):
             results = run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertTrue(any(not r.ok for r in results))
         self.assertTrue(
@@ -226,8 +232,12 @@ class TestVisibility(unittest.TestCase):
             return _APPDETAILS.get(appid)
 
         with (
-            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
-            unittest.mock.patch("steam_pipeline._fetch_appdetails", side_effect=fake_appdetails),
+            unittest.mock.patch(
+                "kinozal_scraper.steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE
+            ),
+            unittest.mock.patch(
+                "kinozal_scraper.steam_pipeline._fetch_appdetails", side_effect=fake_appdetails
+            ),
         ):
             results = run_steam_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertTrue(all(r.ok for r in results))
@@ -249,9 +259,11 @@ class TestLimit(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
-            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
             unittest.mock.patch(
-                "steam_pipeline._fetch_appdetails", side_effect=tracking_appdetails
+                "kinozal_scraper.steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE
+            ),
+            unittest.mock.patch(
+                "kinozal_scraper.steam_pipeline._fetch_appdetails", side_effect=tracking_appdetails
             ),
         ):
             run_steam_pipeline(storage, notifier, sources_config=sources_config)
@@ -307,9 +319,11 @@ def _run_with_enricher(
     notifier = InMemoryNotifier()
     config = sources_config or {"version": 1, "sources": [_RU_SOURCE]}
     with (
-        unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
         unittest.mock.patch(
-            "steam_pipeline._fetch_appdetails",
+            "kinozal_scraper.steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE
+        ),
+        unittest.mock.patch(
+            "kinozal_scraper.steam_pipeline._fetch_appdetails",
             side_effect=lambda appid: _APPDETAILS.get(appid),
         ),
     ):
@@ -351,7 +365,7 @@ class TestSteamRussianDescription(unittest.TestCase):
         """`FALLBACK_MARKER` (from `TruncatedResponse`) and empty string
         (from `on_error`) are distinct return paths — both must fall back to
         English. Claude-review #126 flagged this as an untested branch."""
-        from gemini_enricher import FALLBACK_MARKER
+        from kinozal_scraper.gemini_enricher import FALLBACK_MARKER
 
         class _MarkerThenEmpty:
             def __init__(self) -> None:
@@ -363,7 +377,7 @@ class TestSteamRussianDescription(unittest.TestCase):
                     return FALLBACK_MARKER
                 return ""
 
-        with self.assertLogs("steam_pipeline", level="WARNING") as caplog:
+        with self.assertLogs("kinozal_scraper.steam_pipeline", level="WARNING") as caplog:
             _, notifier = _run_with_enricher(_MarkerThenEmpty())
         self.assertEqual(len(notifier.sent), 3)
         sent_by_id = {n.id: n.text for n in notifier.sent}
@@ -385,9 +399,11 @@ def _run_results(
     storage = InMemoryStorage()
     notifier = InMemoryNotifier(fail_ids=fail_ids)
     with (
-        unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
         unittest.mock.patch(
-            "steam_pipeline._fetch_appdetails",
+            "kinozal_scraper.steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE
+        ),
+        unittest.mock.patch(
+            "kinozal_scraper.steam_pipeline._fetch_appdetails",
             side_effect=lambda appid: _APPDETAILS.get(appid),
         ),
     ):
@@ -446,9 +462,11 @@ class TestSourceIsolation(unittest.TestCase):
         storage = _FlakyStorage()
         notifier = InMemoryNotifier()
         with (
-            unittest.mock.patch("steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE),
             unittest.mock.patch(
-                "steam_pipeline._fetch_appdetails",
+                "kinozal_scraper.steam_pipeline._fetch_charts", return_value=_CHARTS_RESPONSE
+            ),
+            unittest.mock.patch(
+                "kinozal_scraper.steam_pipeline._fetch_appdetails",
                 side_effect=lambda appid: _APPDETAILS.get(appid),
             ),
         ):

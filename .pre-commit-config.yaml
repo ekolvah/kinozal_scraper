@@ -3,9 +3,9 @@ repos:
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: ^(anon\.session\.encrypted|src/TelegramChannelSummarizer\.py|src/crypto\.py|scraper\.py|\.github/workflows/run-script\.yml)$
+        exclude: ^(anon\.session\.encrypted|src/kinozal_scraper/TelegramChannelSummarizer\.py|src/kinozal_scraper/crypto\.py|scraper\.py|\.github/workflows/run-script\.yml)$
       - id: end-of-file-fixer
-        exclude: ^(anon\.session\.encrypted|src/TelegramChannelSummarizer\.py|src/crypto\.py|scraper\.py|\.github/workflows/run-script\.yml)$
+        exclude: ^(anon\.session\.encrypted|src/kinozal_scraper/TelegramChannelSummarizer\.py|src/kinozal_scraper/crypto\.py|scraper\.py|\.github/workflows/run-script\.yml)$
       - id: check-yaml
       - id: check-toml
       - id: check-json

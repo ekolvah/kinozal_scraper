@@ -13,7 +13,7 @@ import google.api_core.exceptions
 import google.generativeai as genai
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
-from generic_pipeline import NormalizedItem
+from kinozal_scraper.generic_pipeline import NormalizedItem
 
 logger = logging.getLogger(__name__)
 

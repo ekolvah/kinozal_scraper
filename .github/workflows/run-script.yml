@@ -16,13 +16,15 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt -r requirements-dev.txt
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt
+          pip install -e . --no-deps  # entry points run as `python -m kinozal_scraper.X`
 
       - name: Run pure logic tests
         run: python -m pytest tests/ -x
 
       - name: Run JSON sources pipeline
-        run: python src/json_pipeline.py
+        run: python -m kinozal_scraper.json_pipeline
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOP_LIMIT: ${{ vars.GH_TOP_LIMIT }}
@@ -35,7 +37,7 @@ jobs:
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
       - name: Run GitHub trending pipeline
-        run: python src/github_trending_pipeline.py
+        run: python -m kinozal_scraper.github_trending_pipeline
         env:
           GH_TRENDING_LIMIT: ${{ vars.GH_TRENDING_LIMIT || '10' }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -47,7 +49,7 @@ jobs:
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
       - name: Run Steam charts pipeline
-        run: python src/steam_pipeline.py
+        run: python -m kinozal_scraper.steam_pipeline
         env:
           STEAM_TOP_LIMIT: ${{ vars.STEAM_TOP_LIMIT }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -56,7 +58,7 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
 
       - name: Run events pipeline
-        run: python src/events_pipeline.py
+        run: python -m kinozal_scraper.events_pipeline
         env:
           SOLDOUT_URL: ${{ vars.SOLDOUT_URL }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -65,7 +67,7 @@ jobs:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
 
       - name: Run Kinozal pipeline
-        run: python src/kinozal_pipeline.py
+        run: python -m kinozal_scraper.kinozal_pipeline
         env:
           CREDENTIALS: ${{ secrets.CREDENTIALS }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
@@ -78,7 +80,7 @@ jobs:
 
       - name: Run Telegram summarizer
         if: always()
-        run: python src/telegram_summarizer.py
+        run: python -m kinozal_scraper.telegram_summarizer
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}

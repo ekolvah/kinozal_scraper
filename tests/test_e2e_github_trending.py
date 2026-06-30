@@ -8,10 +8,10 @@ from __future__ import annotations
 import unittest
 from typing import Any, ClassVar
 
-from generic_pipeline import extract_from_html
-from github_trending_pipeline import _normalize_items
-from http_fetch import fetch_html
-from pipeline_config import load_sources_config
+from kinozal_scraper.generic_pipeline import extract_from_html
+from kinozal_scraper.github_trending_pipeline import _normalize_items
+from kinozal_scraper.http_fetch import fetch_html
+from kinozal_scraper.pipeline_config import load_sources_config
 
 
 class TestGitHubTrendingE2E(unittest.TestCase):

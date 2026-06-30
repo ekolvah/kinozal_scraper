@@ -4,10 +4,10 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from generic_pipeline import PipelineResult
-from json_pipeline import _unwrap_records, run_json_pipeline
-from sheets_storage import InMemoryStorage
-from telegram_notifier import InMemoryNotifier
+from kinozal_scraper.generic_pipeline import PipelineResult
+from kinozal_scraper.json_pipeline import _unwrap_records, run_json_pipeline
+from kinozal_scraper.sheets_storage import InMemoryStorage
+from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 _GITHUB_RESPONSE: dict[str, Any] = {
     "total_count": 3,
@@ -64,7 +64,7 @@ _CONFIG: dict[str, Any] = {"version": 1, "sources": [_GITHUB_SOURCE]}
 
 
 def _patch_fetch(response: Any) -> unittest.mock._patch[unittest.mock.MagicMock]:
-    return unittest.mock.patch("json_pipeline._fetch_json", return_value=response)
+    return unittest.mock.patch("kinozal_scraper.json_pipeline._fetch_json", return_value=response)
 
 
 class TestUnwrapRecords(unittest.TestCase):
@@ -202,7 +202,9 @@ class TestJsonPipelineSourceIsolation(unittest.TestCase):
                 raise ConnectionError("network down")
             return _GITHUB_RESPONSE
 
-        with unittest.mock.patch("json_pipeline._fetch_json", side_effect=side_effect):
+        with unittest.mock.patch(
+            "kinozal_scraper.json_pipeline._fetch_json", side_effect=side_effect
+        ):
             run_json_pipeline(storage, notifier, sources_config=config)
 
         self.assertEqual(len(notifier.sent), 3)
@@ -219,7 +221,7 @@ class TestJsonPipelineExitCodeSurface(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "json_pipeline._fetch_json", side_effect=ConnectionError("network down")
+            "kinozal_scraper.json_pipeline._fetch_json", side_effect=ConnectionError("network down")
         ):
             results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
         self.assertIsInstance(results, list)
@@ -255,7 +257,9 @@ class TestJsonPipelineExitCodeSurface(unittest.TestCase):
                 raise ConnectionError("network down")
             return _GITHUB_RESPONSE
 
-        with unittest.mock.patch("json_pipeline._fetch_json", side_effect=side_effect):
+        with unittest.mock.patch(
+            "kinozal_scraper.json_pipeline._fetch_json", side_effect=side_effect
+        ):
             results = run_json_pipeline(storage, notifier, sources_config=config)
 
         self.assertEqual(len(results), 2)
@@ -271,7 +275,7 @@ class TestEmptyAuthHeaderStripped(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
 
-        with unittest.mock.patch("json_pipeline.requests.get") as mock_get:
+        with unittest.mock.patch("kinozal_scraper.json_pipeline.requests.get") as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = _GITHUB_RESPONSE
             mock_get.return_value.raise_for_status = lambda: None
@@ -327,7 +331,7 @@ class _FakeEnricher:
 
 class TestEnricherIntegration(unittest.TestCase):
     def test_null_enricher_sets_empty_field(self) -> None:
-        from gemini_enricher import NullEnricher
+        from kinozal_scraper.gemini_enricher import NullEnricher
 
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -347,7 +351,9 @@ class TestEnricherIntegration(unittest.TestCase):
         notifier = InMemoryNotifier()
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
-        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+        with unittest.mock.patch(
+            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+        ):
             run_json_pipeline(
                 storage, notifier, enricher=_FakeEnricher(), sources_config=_ENRICH_CONFIG
             )
@@ -361,7 +367,9 @@ class TestEnricherIntegration(unittest.TestCase):
         notifier = InMemoryNotifier()
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
-        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+        with unittest.mock.patch(
+            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+        ):
             run_json_pipeline(storage, notifier, enricher=None, sources_config=_ENRICH_CONFIG)
 
         self.assertEqual(len(notifier.sent), 3)
@@ -372,7 +380,7 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
     def test_quota_stops_enrichment_but_sends_all(self) -> None:
         import copy
 
-        from gemini_enricher import QuotaExhausted
+        from kinozal_scraper.gemini_enricher import QuotaExhausted
 
         call_count = 0
 
@@ -388,7 +396,9 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         notifier = InMemoryNotifier()
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
-        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+        with unittest.mock.patch(
+            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+        ):
             run_json_pipeline(
                 storage, notifier, enricher=_QuotaEnricher(), sources_config=_ENRICH_CONFIG
             )
@@ -407,7 +417,7 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         """
         import copy
 
-        from gemini_enricher import QuotaExhausted
+        from kinozal_scraper.gemini_enricher import QuotaExhausted
 
         class _AlwaysExhaustedEnricher:
             def enrich(self, item: Any, enrich_config: dict[str, Any]) -> str:
@@ -421,7 +431,9 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         notifier = InMemoryNotifier()
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
-        with unittest.mock.patch("json_pipeline._fetch_json", return_value=fresh_response):
+        with unittest.mock.patch(
+            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+        ):
             run_json_pipeline(
                 storage, notifier, enricher=_AlwaysExhaustedEnricher(), sources_config=config
             )

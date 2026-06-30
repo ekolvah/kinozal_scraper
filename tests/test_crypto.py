@@ -4,7 +4,7 @@ import unittest
 
 from cryptography.fernet import Fernet, InvalidToken
 
-from crypto import decrypt_bytes, encrypt_bytes
+from kinozal_scraper.crypto import decrypt_bytes, encrypt_bytes
 
 
 class TestCryptoRoundTrip(unittest.TestCase):

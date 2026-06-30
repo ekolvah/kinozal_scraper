@@ -6,13 +6,13 @@ from typing import Any
 
 import google.api_core.exceptions
 
-from telegram_summarizer import (
+from kinozal_scraper.telegram_summarizer import (
     deliver_results,
     format_summary_message,
     format_technical_alert,
     send_required_text,
 )
-from TelegramChannelSummarizer import (
+from kinozal_scraper.TelegramChannelSummarizer import (
     ChannelMessages,
     ChannelProcessResult,
     ChannelSummary,
@@ -138,7 +138,9 @@ class _FakeResponse:
 class TestGeminiSummarizerQuota(unittest.TestCase):
     def test_empty_text_short_circuits(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
             result = summ.summarize("", False)
         self.assertEqual(result, "")
         mock_model.assert_not_called()
@@ -158,7 +160,7 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
             return instance
 
         with unittest.mock.patch(
-            "TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
         ):
             result = summ.summarize("text", is_broadcast=False)
         self.assertEqual(result, "from-b")
@@ -177,14 +179,16 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
             return instance
 
         with unittest.mock.patch(
-            "TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
         ):
             result = summ.summarize("text", is_broadcast=False)
         self.assertEqual(result, "from-b")
 
     def test_all_models_exhausted_raises_failure(self) -> None:
         summ = GeminiSummarizer(models=["m1", "m2"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
             mock_model.return_value.generate_content.side_effect = (
                 google.api_core.exceptions.ResourceExhausted("quota")
             )
@@ -200,7 +204,9 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
         next model on a generic failure (different from `ResourceExhausted`
         which is per-model)."""
         summ = GeminiSummarizer(models=["m1", "m2"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
             mock_model.return_value.generate_content.side_effect = RuntimeError("net down")
             with self.assertRaises(SummarizationFailed) as ctx:
                 summ.summarize("text", False)
@@ -210,7 +216,9 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
 
     def test_no_candidates_raises_failure(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
             mock_model.return_value.generate_content.return_value = _FakeResponse(
                 "", has_candidates=False
             )
@@ -220,7 +228,9 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
 
     def test_broadcast_uses_broadcast_prompt(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="BROADCAST", chat_prompt="CHAT")
-        with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
             mock_model.return_value.generate_content.return_value = _FakeResponse("ok")
             summ.summarize("payload", is_broadcast=True)
         called_request = mock_model.return_value.generate_content.call_args.args[0]
@@ -229,7 +239,9 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
 
     def test_chat_uses_chat_prompt(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="BROADCAST", chat_prompt="CHAT")
-        with unittest.mock.patch("TelegramChannelSummarizer.genai.GenerativeModel") as mock_model:
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
             mock_model.return_value.generate_content.return_value = _FakeResponse("ok")
             summ.summarize("payload", is_broadcast=False)
         called_request = mock_model.return_value.generate_content.call_args.args[0]
@@ -261,7 +273,7 @@ class TestTelethonReaderErrorSwallow(unittest.TestCase):
         mock_client.disconnect = unittest.mock.AsyncMock()
 
         with unittest.mock.patch(
-            "TelegramChannelSummarizer.TelegramClient",
+            "kinozal_scraper.TelegramChannelSummarizer.TelegramClient",
             return_value=mock_client,
         ):
             result = reader.fetch_channel("https://t.me/whatever")
@@ -379,7 +391,7 @@ class TestDeliverResults(unittest.TestCase):
         notifier = _RecordingNotifier()
         results = [_summarized("a"), _summarized("b"), _failed("c")]
 
-        with unittest.mock.patch("telegram_summarizer.mark_technical_alert_sent"):
+        with unittest.mock.patch("kinozal_scraper.telegram_summarizer.mark_technical_alert_sent"):
             code = deliver_results(notifier, results)
 
         self.assertEqual(code, 1)
@@ -398,7 +410,7 @@ class TestDeliverResults(unittest.TestCase):
 
     def test_all_failed_sends_alert_no_no_news(self) -> None:
         notifier = _RecordingNotifier()
-        with unittest.mock.patch("telegram_summarizer.mark_technical_alert_sent"):
+        with unittest.mock.patch("kinozal_scraper.telegram_summarizer.mark_technical_alert_sent"):
             code = deliver_results(notifier, [_failed("a"), _failed("b")])
         self.assertEqual(code, 1)
         self.assertTrue(any(t.startswith("⚠️") for t in notifier.sent))
@@ -416,7 +428,8 @@ class TestDeliverResults(unittest.TestCase):
         instead of crashing and double-firing the workflow fallback alert."""
         notifier = _RecordingNotifier()
         with unittest.mock.patch(
-            "telegram_summarizer.mark_technical_alert_sent", side_effect=OSError("no .run/")
+            "kinozal_scraper.telegram_summarizer.mark_technical_alert_sent",
+            side_effect=OSError("no .run/"),
         ):
             code = deliver_results(notifier, [_failed("a")])
         self.assertEqual(code, 1)

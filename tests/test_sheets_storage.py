@@ -7,8 +7,8 @@ import gspread
 import gspread.exceptions
 import requests
 
-from generic_pipeline import ROW_HEADERS, NormalizedItem
-from sheets_storage import InMemoryStorage, SchemaError, SheetsStorage, Storage
+from kinozal_scraper.generic_pipeline import ROW_HEADERS, NormalizedItem
+from kinozal_scraper.sheets_storage import InMemoryStorage, SchemaError, SheetsStorage, Storage
 
 
 def _api_error(code: int, message: str) -> gspread.exceptions.APIError:

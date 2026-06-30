@@ -13,7 +13,7 @@ from typing import Any, cast
 from bs4 import BeautifulSoup
 from soupsieve import SelectorSyntaxError
 
-from generic_pipeline import _selector_css_part
+from kinozal_scraper.generic_pipeline import _selector_css_part
 
 _MACRO_RE = re.compile(r"\{\{(\w+)\}\}")
 
