@@ -141,28 +141,30 @@ Steps run sequentially:
 |---|---|---|
 | `API_KEY` | secret | Kinozal API key |
 | `URLS` | var | Kinozal page URLs to scrape, формат `label\|url;...`; local fallback — env `KINOZAL_TOP_URL` (plain url). Если не задано ни то ни другое — pipeline логирует ошибку `no URLs configured`. `sources.json` `url`/`base_url` для скрейпинга **не читается** (только schema-placeholder), см. `kinozal_pipeline.py::_kinozal_urls` |
-| `KINOZAL_USERNAME` | secret | Логин аккаунта на зеркале `kinozal.guru` (см. блок ниже). Опционально: задан вместе с `KINOZAL_PASSWORD` → authenticated-режим; **partial** (только один из двух) → fail-fast visible error |
-| `KINOZAL_PASSWORD` | secret | Пароль аккаунта `kinozal.guru`. Парный к `KINOZAL_USERNAME` |
+| `KINOZAL_USERNAME` | secret | **Опционально.** Логин аккаунта на зеркале `kinozal.guru` — включает автоматический fallback на зеркало при сбое `kinozal.tv` (см. блок ниже). Парный к `KINOZAL_PASSWORD`; **partial** (только один из двух) → WARNING + fallback отключён (не fail) |
+| `KINOZAL_PASSWORD` | secret | **Опционально.** Пароль аккаунта `kinozal.guru`. Парный к `KINOZAL_USERNAME` |
 
-> **Зеркало при 522/недоступности `kinozal.tv`:** рабочее зеркало — **`kinozal.guru`**
-> (та же структура страниц). ⚠️ **Анонимный свап домена больше не работает** (проверено
-> 2026-06-30, #227): `kinozal.guru` гейтит весь контент за логином — `/top.php`, `/browse.php`,
-> `/details.php`, даже `/` → `302 //kinozal.guru/login.php?m=5`. Простой
-> `URLS=Кинозал|https://kinozal.guru/top.php` без авторизации скачает страницу логина → 0 items →
-> тот же сбой, что при 522.
+> **Fallback на зеркало при недоступности `kinozal.tv` (#227):** primary —
+> анонимный `kinozal.tv` (`URLS` остаётся `.tv`, **переключать не нужно**). Если fetch какого-то
+> URL падает (напр. 522), пайплайн автоматически повторяет тот же топ на зеркале **`kinozal.guru`**
+> через авторизованную сессию. Логин **ленивый** — выполняется максимум раз за прогон и только при
+> первом срабатывании fallback, поэтому здоровый `.tv`-прогон не платит за логин и не требует кредов.
 >
-> **Authenticated-режим (`kinozal_auth.py`):** задай секреты `KINOZAL_USERNAME` +
-> `KINOZAL_PASSWORD` (оба) и переключи `URLS`/`KINOZAL_TOP_URL` на `https://kinozal.guru/top.php`.
-> Пайплайн логинится один раз на прогон (`POST /takelogin.php`), сессия переиспользуется для всех
-> URL. Провал логина / редирект на `login.php` → `KinozalLoginError` → видимая ошибка в
-> `result.errors` + exit 1 (НЕ тихий 0-items). Без кредов — анонимный путь (`.tv`, пока origin жив).
-> `sources.json` `base_url` остаётся `https://kinozal.tv` (canonical origin) — зеркало в
+> ⚠️ **Анонимный свап домена на `.guru` не работает** (проверено 2026-06-30): `kinozal.guru` гейтит
+> весь контент за логином — `/top.php`, `/browse.php`, даже `/` → `302 .../login.php?m=5`. Поэтому
+> fallback идёт через `kinozal_auth.py` (`POST /takelogin.php`, обычного не-VIP аккаунта достаточно —
+> подтверждено живым прогоном).
+>
+> **Включение fallback:** задай оба секрета `KINOZAL_USERNAME` + `KINOZAL_PASSWORD`. Без них (или при
+> partial) fallback отключён, и сбой `.tv` доходит видимой ошибкой `fetch failed ... (mirror
+> fallback disabled)` + exit 1 (§IV) — как было до #227. Провал логина / both-failed тоже видимы:
+> `mirror login failed` / `primary failed (...); mirror ... also failed (...)`. `sources.json`
+> `base_url` остаётся `https://kinozal.tv` (canonical origin для ссылок в уведомлениях) — зеркало в
 > `sources.json` не прописывать.
 >
 > Сейчас потребитель — production-cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
 > `tests/test_e2e_kinozal_titles.py` станет вторым потребителем после #136 (тест безусловно
-> skip'нут, пока `kinozal.tv` отдаёт 522); там зеркало надо задавать через `URLS`/`KINOZAL_TOP_URL`,
-> т.к. собственная fallback-ветка теста на `base_url` ведёт на `kinozal.tv` — это ожидаемо.
+> skip'нут, пока `kinozal.tv` отдаёт 522).
 
 ### telegram_summarizer
 

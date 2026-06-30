@@ -643,19 +643,32 @@ class TestKinozalKnownBugs(unittest.TestCase):
             self.assertNotIn("youtube.com", notif.text)
 
 
-class TestPipelineAuth(unittest.TestCase):
-    """Authenticated mirror access (issue #227). The mirror kinozal.guru gates
-    top.php behind login; the pipeline must use a logged-in session when creds
-    are present and surface login failures visibly (§IV), never silently fetch
-    the login page → 0 items."""
+class TestMirrorUrl(unittest.TestCase):
+    def test_swaps_host_keeps_path_and_query(self) -> None:
+        from kinozal_pipeline import _mirror_url
 
-    _URLS = {"URLS": "top|https://kinozal.guru/top.php"}
+        self.assertEqual(
+            _mirror_url("https://kinozal.tv/top.php?j=&t=0&d=14"),
+            "https://kinozal.guru/top.php?j=&t=0&d=14",
+        )
+
+
+class TestPipelineAuth(unittest.TestCase):
+    """Mirror failover (issue #227): anonymous kinozal.tv is primary; the
+    authenticated kinozal.guru mirror is a lazy fallback used only when a
+    primary fetch fails. Login happens at most once per run, on first fallback.
+    Failover and both-failed are visible (§IV); credentials are an optional
+    backup, not a hard requirement."""
+
+    _URLS = {"URLS": "top|https://kinozal.tv/top.php?d=14"}
 
     def _run_with_env(
-        self, env: dict[str, str]
+        self, env: dict[str, str], urls: str | None = None
     ) -> tuple[list[PipelineResult], InMemoryStorage, InMemoryNotifier]:
         # Start from a known state: drop any ambient KINOZAL_* creds, then apply.
         full = dict(self._URLS)
+        if urls is not None:
+            full["URLS"] = urls
         full.update(env)
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -667,53 +680,106 @@ class TestPipelineAuth(unittest.TestCase):
             results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         return results, storage, notifier
 
-    def test_login_failure_recorded_as_visible_error(self) -> None:
-        with unittest.mock.patch(
-            "kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
-        ):
-            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
-        errs = [e for r in results for e in r.errors]
-        self.assertTrue(any("login failed" in e for e in errs), errs)
-        # Distinct from the 522/anonymous-fetch failure path and not silent.
-        self.assertFalse(any("fetch failed" in e for e in errs), errs)
-        self.assertTrue(any(not r.ok for r in results))  # → exit 1
-
-    def test_no_credentials_uses_anonymous_fetch(self) -> None:
+    def test_primary_success_skips_login_and_mirror(self) -> None:
         with (
             unittest.mock.patch(
                 "kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
             ) as mfetch,
             unittest.mock.patch("kinozal_pipeline.login") as mlogin,
+            unittest.mock.patch("kinozal_pipeline.fetch_authenticated") as mauth,
         ):
-            self._run_with_env({})
+            self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
         mfetch.assert_called()
-        mlogin.assert_not_called()
+        mlogin.assert_not_called()  # healthy .tv run pays no login cost
+        mauth.assert_not_called()
 
-    def test_credentials_use_authenticated_fetch(self) -> None:
+    def test_primary_failure_falls_back_to_authenticated_mirror(self) -> None:
         sentinel = unittest.mock.Mock()
         with (
+            unittest.mock.patch(
+                "kinozal_pipeline.fetch_html", side_effect=RuntimeError("HTTP Error 522")
+            ),
             unittest.mock.patch("kinozal_pipeline.login", return_value=sentinel) as mlogin,
             unittest.mock.patch(
                 "kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ) as mauth,
-            unittest.mock.patch("kinozal_pipeline.fetch_html") as manon,
         ):
-            self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
+            _, _, notifier = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
         mlogin.assert_called_once()
-        mauth.assert_called()
-        manon.assert_not_called()  # authenticated path used, not anonymous
+        mirror_url = mauth.call_args[0][1]
+        self.assertIn("kinozal.guru", mirror_url)  # fetched the mirror host
+        self.assertEqual(len(notifier.sent), 2)  # items served from mirror
 
-    def test_partial_credentials_fail_fast(self) -> None:
+    def test_login_is_lazy_and_once_across_urls(self) -> None:
+        sentinel = unittest.mock.Mock()
+        two_urls = "a|https://kinozal.tv/top.php?d=14;b|https://kinozal.tv/top.php?d=0"
         with (
+            unittest.mock.patch("kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")),
+            unittest.mock.patch("kinozal_pipeline.login", return_value=sentinel) as mlogin,
+            unittest.mock.patch(
+                "kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
+            ) as mauth,
+        ):
+            self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}, urls=two_urls)
+        mlogin.assert_called_once()  # one login for the whole run
+        self.assertEqual(mauth.call_count, 2)  # both urls retried via mirror
+
+    def test_no_credentials_primary_failure_surfaces_without_mirror(self) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_pipeline.fetch_html", side_effect=RuntimeError("HTTP Error 522")
+            ),
             unittest.mock.patch("kinozal_pipeline.login") as mlogin,
-            unittest.mock.patch("kinozal_pipeline.fetch_html") as mfetch,
+            unittest.mock.patch("kinozal_pipeline.fetch_authenticated") as mauth,
+        ):
+            results, _, _ = self._run_with_env({})
+        mlogin.assert_not_called()
+        mauth.assert_not_called()
+        errs = [e for r in results for e in r.errors]
+        self.assertTrue(any("522" in e for e in errs), errs)
+        self.assertTrue(any("mirror" in e.lower() and "disabled" in e.lower() for e in errs), errs)
+        self.assertTrue(any(not r.ok for r in results))  # → exit 1
+
+    def test_mirror_login_failure_surfaces_visible_error(self) -> None:
+        with (
+            unittest.mock.patch("kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")),
+            unittest.mock.patch(
+                "kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
+            ),
+            unittest.mock.patch("kinozal_pipeline.fetch_authenticated") as mauth,
+        ):
+            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
+        mauth.assert_not_called()
+        errs = [e for r in results for e in r.errors]
+        self.assertTrue(any("login failed" in e.lower() for e in errs), errs)
+        self.assertTrue(any(not r.ok for r in results))  # → exit 1
+
+    def test_both_primary_and_mirror_fail_records_combined(self) -> None:
+        sentinel = unittest.mock.Mock()
+        with (
+            unittest.mock.patch("kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")),
+            unittest.mock.patch("kinozal_pipeline.login", return_value=sentinel),
+            unittest.mock.patch(
+                "kinozal_pipeline.fetch_authenticated", side_effect=RuntimeError("mirror 500")
+            ),
+        ):
+            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
+        errs = [e for r in results for e in r.errors]
+        self.assertTrue(any("522" in e and "mirror" in e.lower() for e in errs), errs)
+        self.assertTrue(any(not r.ok for r in results))  # → exit 1
+
+    def test_partial_credentials_warn_and_disable_mirror(self) -> None:
+        with (
+            unittest.mock.patch("kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")),
+            unittest.mock.patch("kinozal_pipeline.login") as mlogin,
+            unittest.mock.patch("kinozal_pipeline.fetch_authenticated") as mauth,
+            self.assertLogs("kinozal_pipeline", level="WARNING") as cm,
         ):
             results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u"})
-        errs = [e for r in results for e in r.errors]
-        self.assertTrue(any("credential" in e.lower() for e in errs), errs)
-        mlogin.assert_not_called()
-        mfetch.assert_not_called()  # no silent anonymous fallback
-        self.assertTrue(any(not r.ok for r in results))  # → exit 1
+        mlogin.assert_not_called()  # partial creds → mirror disabled, no login
+        mauth.assert_not_called()
+        self.assertTrue(any("partial credentials" in line for line in cm.output))
+        self.assertTrue(any(not r.ok for r in results))  # primary 522 still red
 
 
 if __name__ == "__main__":
