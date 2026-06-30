@@ -2,11 +2,11 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from events_pipeline import run_events_pipeline
-from generic_pipeline import PipelineResult, extract_from_html
-from pipeline_config import load_sources_config
-from sheets_storage import InMemoryStorage
-from telegram_notifier import InMemoryNotifier
+from kinozal_scraper.events_pipeline import run_events_pipeline
+from kinozal_scraper.generic_pipeline import PipelineResult, extract_from_html
+from kinozal_scraper.pipeline_config import load_sources_config
+from kinozal_scraper.sheets_storage import InMemoryStorage
+from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 _SOLDOUT_HTML = """
 <html><body>
@@ -66,7 +66,7 @@ def _run(
     notifier = InMemoryNotifier()
     config = sources_config or _SOURCES_CONFIG
 
-    with unittest.mock.patch("events_pipeline.fetch_html", return_value=html):
+    with unittest.mock.patch("kinozal_scraper.events_pipeline.fetch_html", return_value=html):
         run_events_pipeline(storage, notifier, sources_config=config)
 
     return storage, notifier
@@ -123,7 +123,7 @@ class TestEventsFetchTransport(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "events_pipeline.fetch_html", return_value=_SOLDOUT_HTML
+            "kinozal_scraper.events_pipeline.fetch_html", return_value=_SOLDOUT_HTML
         ) as mfetch:
             run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         mfetch.assert_called_once()
@@ -229,7 +229,9 @@ class TestEventsPipelineEdgeCases(unittest.TestCase):
     def test_fetch_failure_isolated_pipeline_continues(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
-        with unittest.mock.patch("events_pipeline.fetch_html", side_effect=RuntimeError("boom")):
+        with unittest.mock.patch(
+            "kinozal_scraper.events_pipeline.fetch_html", side_effect=RuntimeError("boom")
+        ):
             run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("events"), [])
         self.assertEqual(notifier.sent, [])
@@ -245,7 +247,9 @@ class TestEventsPipelineExitCodeSurface(unittest.TestCase):
     def test_fetch_failure_returns_not_ok_result(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
-        with unittest.mock.patch("events_pipeline.fetch_html", side_effect=RuntimeError("boom")):
+        with unittest.mock.patch(
+            "kinozal_scraper.events_pipeline.fetch_html", side_effect=RuntimeError("boom")
+        ):
             results = run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertIsInstance(results, list)
         self.assertEqual(len(results), 1)
@@ -261,7 +265,9 @@ class TestEventsPipelineExitCodeSurface(unittest.TestCase):
         # Re-invoke directly to capture the return value (helper discards it).
         storage2 = InMemoryStorage()
         notifier2 = InMemoryNotifier()
-        with unittest.mock.patch("events_pipeline.fetch_html", return_value=_SOLDOUT_HTML):
+        with unittest.mock.patch(
+            "kinozal_scraper.events_pipeline.fetch_html", return_value=_SOLDOUT_HTML
+        ):
             results = run_events_pipeline(storage2, notifier2, sources_config=_SOURCES_CONFIG)
         self.assertTrue(all(r.ok for r in results))
         self.assertEqual([r.source_id for r in results], ["soldout_events"])
@@ -278,7 +284,7 @@ def _run_results(
     returning the PipelineResult list for delivery-truthfulness assertions."""
     storage = InMemoryStorage()
     notifier = InMemoryNotifier(fail_ids=fail_ids)
-    with unittest.mock.patch("events_pipeline.fetch_html", return_value=html):
+    with unittest.mock.patch("kinozal_scraper.events_pipeline.fetch_html", return_value=html):
         results = run_events_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
     return storage, notifier, results
 

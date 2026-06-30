@@ -4,8 +4,13 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
-from generic_pipeline import NormalizedItem, Notification, _format_field, build_notification
-from telegram_notifier import InMemoryNotifier, Notifier, TelegramNotifier
+from kinozal_scraper.generic_pipeline import (
+    NormalizedItem,
+    Notification,
+    _format_field,
+    build_notification,
+)
+from kinozal_scraper.telegram_notifier import InMemoryNotifier, Notifier, TelegramNotifier
 
 
 def _item(
@@ -132,7 +137,7 @@ class TestTelegramNotifierSuccess(unittest.TestCase):
 
 
 class TestTelegramNotifierRetry(unittest.TestCase):
-    @patch("telegram_notifier.time.sleep")
+    @patch("kinozal_scraper.telegram_notifier.time.sleep")
     def test_429_with_json_retry_after_retries_and_succeeds(self, mock_sleep: MagicMock) -> None:
         session = _make_session(
             (429, {"parameters": {"retry_after": 5}}, {}),
@@ -145,7 +150,7 @@ class TestTelegramNotifierRetry(unittest.TestCase):
         self.assertEqual(failed, [])
         mock_sleep.assert_any_call(5)
 
-    @patch("telegram_notifier.time.sleep")
+    @patch("kinozal_scraper.telegram_notifier.time.sleep")
     def test_429_with_retry_after_header_retries_and_succeeds(self, mock_sleep: MagicMock) -> None:
         session = _make_session(
             (429, {}, {"Retry-After": "10"}),
@@ -158,7 +163,7 @@ class TestTelegramNotifierRetry(unittest.TestCase):
         self.assertEqual(failed, [])
         mock_sleep.assert_any_call(10)
 
-    @patch("telegram_notifier.time.sleep")
+    @patch("kinozal_scraper.telegram_notifier.time.sleep")
     def test_429_retry_after_exceeds_max_retry_sleep_returns_failed(
         self, mock_sleep: MagicMock
     ) -> None:
@@ -182,7 +187,7 @@ class TestTelegramNotifierImageFallback(unittest.TestCase):
         )
         notifier = _notifier(session, image_fetcher=lambda _url: b"\x89PNG")
         notif = Notification(id="k1", text="caption", image_url="https://host.example/p.jpg")
-        with self.assertLogs("telegram_notifier", level="WARNING") as logs:
+        with self.assertLogs("kinozal_scraper.telegram_notifier", level="WARNING") as logs:
             sent, failed = notifier.send_items([notif])
         self.assertEqual(sent, [notif])
         self.assertEqual(failed, [])
@@ -230,7 +235,7 @@ class TestTelegramNotifierImageUpload(unittest.TestCase):
         session = _make_session((200, {"ok": True}, {}))
         notifier = _notifier(session, image_fetcher=_fetch)
         notif = Notification(id="k1", text="caption", image_url="https://host.example/p.jpg")
-        with self.assertLogs("telegram_notifier", level="WARNING") as logs:
+        with self.assertLogs("kinozal_scraper.telegram_notifier", level="WARNING") as logs:
             sent, failed = notifier.send_items([notif])
         self.assertEqual(sent, [notif])
         self.assertEqual(failed, [])
@@ -240,7 +245,7 @@ class TestTelegramNotifierImageUpload(unittest.TestCase):
         self.assertIn("k1", joined)
         self.assertIn("cloudflare 403", joined)
 
-    @patch("telegram_notifier.time.sleep")
+    @patch("kinozal_scraper.telegram_notifier.time.sleep")
     def test_photo_429_then_200_reuses_bytes(self, _mock_sleep: MagicMock) -> None:
         """#225 (architect-review BLOCKING/SHOULD-FIX): the poster is downloaded
         exactly ONCE before the retry loop, and the same `bytes` are reused

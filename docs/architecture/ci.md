@@ -43,12 +43,17 @@ mypy type-checks every `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
 `__pycache__`, `.audit-tmp`, `.claude`) and any `pytest-cache-files-*` dir, via
 `ci_check._find_modules()` — the same discovery used locally.
 
-Flat imports between `src/` modules (`from generic_pipeline import …`) resolve
-**because `_find_modules()` always hands mypy the whole file list at once** —
-mypy registers each `src/*.py` under its bare stem, so cross-imports cling to an
-already-registered module. There is deliberately **no `mypy_path`**. The catch:
-mypy on a single file (`mypy src/json_pipeline.py`) would break that resolution —
-always invoke it through `ci_check` (full list), never per-file.
+Imports between modules (`from kinozal_scraper.generic_pipeline import …`) are
+absolute package imports: the sources live in the installable package
+`src/kinozal_scraper/`, so mypy resolves them natively by package name — no
+`mypy_path`, no whole-file-list trick, and a single-file invocation
+(`mypy src/kinozal_scraper/json_pipeline.py`) resolves the same way. The package
+layout also makes mypy a **load-bearing** guard for the entry points: a
+`python -m` module's `if __name__ == "__main__"` block is type-checked here even
+though `import`-based tests never execute it (#237). The package must be
+importable — CI runs `pip install -e . --no-deps` before the checks (the
+canonical dependency source stays `requirements*.in/.txt`; the editable install
+adds only the package itself, never shadowing the lockfile).
 
 ## Claude review workflow (`claude-review.yml`)
 

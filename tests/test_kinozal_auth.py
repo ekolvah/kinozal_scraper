@@ -8,7 +8,7 @@ logic is NOT mocked — that is the internal behaviour under test (§II).
 import unittest
 import unittest.mock
 
-from kinozal_auth import KinozalLoginError, fetch_authenticated, login
+from kinozal_scraper.kinozal_auth import KinozalLoginError, fetch_authenticated, login
 
 
 def _resp(
@@ -41,7 +41,9 @@ class TestKinozalLogin(unittest.TestCase):
         # Non-empty jar after takelogin AND probe top.php returns a listing (no
         # redirect to login). Detect is cookie-name-agnostic — any cookie name.
         sess = _session(cookies={"someauth": "v"}, get_resp=_resp(status=200))
-        with unittest.mock.patch("kinozal_auth.requests.Session", return_value=sess):
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_auth.requests.Session", return_value=sess
+        ):
             result = login("user", "pass")
         self.assertIs(result, sess)
 
@@ -49,7 +51,7 @@ class TestKinozalLogin(unittest.TestCase):
         # Bad creds → server returns the login page with no Set-Cookie → jar empty.
         sess = _session(cookies={})
         with (
-            unittest.mock.patch("kinozal_auth.requests.Session", return_value=sess),
+            unittest.mock.patch("kinozal_scraper.kinozal_auth.requests.Session", return_value=sess),
             self.assertRaises(KinozalLoginError),
         ):
             login("user", "wrong")
@@ -62,14 +64,16 @@ class TestKinozalLogin(unittest.TestCase):
             get_resp=_resp(status=302, location="//kinozal.guru/login.php?m=5"),
         )
         with (
-            unittest.mock.patch("kinozal_auth.requests.Session", return_value=sess),
+            unittest.mock.patch("kinozal_scraper.kinozal_auth.requests.Session", return_value=sess),
             self.assertRaises(KinozalLoginError),
         ):
             login("user", "pass")
 
     def test_login_posts_credentials_to_takelogin(self) -> None:
         sess = _session(cookies={"someauth": "v"}, get_resp=_resp(status=200))
-        with unittest.mock.patch("kinozal_auth.requests.Session", return_value=sess):
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_auth.requests.Session", return_value=sess
+        ):
             login("alice", "secret")
         sess.post.assert_called_once()
         args, kwargs = sess.post.call_args

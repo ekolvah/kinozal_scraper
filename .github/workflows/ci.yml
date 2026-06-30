@@ -27,6 +27,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -r requirements.txt -r requirements-dev.txt
+          python -m pip install -e . --no-deps  # `kinozal_scraper` package resolvable for -m / mypy
 
       # Each step delegates to scripts/ci_check.py --only <name>; the check set
       # lives in ci_check's CHECKS registry only. Adding/removing a check there

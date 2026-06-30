@@ -1,6 +1,6 @@
 import unittest
 
-from generic_pipeline import (
+from kinozal_scraper.generic_pipeline import (
     NormalizedItem,
     PipelineResult,
     _selector_css_part,

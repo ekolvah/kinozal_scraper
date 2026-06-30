@@ -10,8 +10,8 @@ from typing import Protocol, runtime_checkable
 
 import requests
 
-from generic_pipeline import Notification
-from http_fetch import fetch_bytes
+from kinozal_scraper.generic_pipeline import Notification
+from kinozal_scraper.http_fetch import fetch_bytes
 
 logger = logging.getLogger(__name__)
 

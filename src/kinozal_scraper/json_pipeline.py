@@ -7,16 +7,16 @@ from typing import Any
 
 import requests
 
-from gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
-from generic_pipeline import (
+from kinozal_scraper.gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
+from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     PipelineResult,
     build_notification,
     extract_from_json,
 )
-from pipeline_config import load_sources_config
-from sheets_storage import Storage
-from telegram_notifier import Notifier
+from kinozal_scraper.pipeline_config import load_sources_config
+from kinozal_scraper.sheets_storage import Storage
+from kinozal_scraper.telegram_notifier import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -162,9 +162,9 @@ if __name__ == "__main__":
 
     import gspread
 
-    from gemini_enricher import build_default_enricher
-    from sheets_storage import SheetsStorage
-    from telegram_notifier import TelegramNotifier
+    from kinozal_scraper.gemini_enricher import build_default_enricher
+    from kinozal_scraper.sheets_storage import SheetsStorage
+    from kinozal_scraper.telegram_notifier import TelegramNotifier
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 

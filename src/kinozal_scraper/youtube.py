@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 from googleapiclient.discovery import build
 
-from text_utils import title_year_matches
+from kinozal_scraper.text_utils import title_year_matches
 
 logger = logging.getLogger(__name__)
 

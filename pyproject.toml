@@ -1,3 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kinozal_scraper"
+version = "0.0.0"
+description = "Declarative scraping pipelines for kinozal.tv, Steam, GitHub trending and Telegram-channel summaries."
+requires-python = ">=3.12"
+# Runtime dependencies are deliberately NOT declared here. The canonical source
+# stays requirements*.in/.txt + pip-compile (workflow #7); install the package
+# itself with `pip install -e . --no-deps` so it never shadows the lockfile.
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
 [tool.ruff]
 target-version = "py312"
 line-length = 100
@@ -36,6 +52,8 @@ line-ending = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 addopts = "-ra -p no:cacheprovider"
+# Put src/ on sys.path so `import kinozal_scraper.<module>` resolves in tests
+# without requiring an editable install — the package dir is src/kinozal_scraper.
 pythonpath = ["src"]
 
 [tool.mypy]

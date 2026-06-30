@@ -5,7 +5,7 @@ import unittest
 import unittest.mock
 from typing import Any
 
-from gemini_enricher import (
+from kinozal_scraper.gemini_enricher import (
     FALLBACK_MARKER,
     Enricher,
     GeminiEnricher,
@@ -17,7 +17,7 @@ from gemini_enricher import (
     TryNextModel,
     build_default_enricher,
 )
-from generic_pipeline import NormalizedItem
+from kinozal_scraper.generic_pipeline import NormalizedItem
 
 
 class _FakeCandidate:
@@ -108,7 +108,8 @@ class TestGenerateFinishReason(unittest.TestCase):
         response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
         with (
             unittest.mock.patch(
-                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
             ),
             self.assertRaises(TruncatedResponse),
         ):
@@ -122,7 +123,8 @@ class TestGenerateFinishReason(unittest.TestCase):
         response = _FakeResponse(text="…", finish_reason="SAFETY")
         with (
             unittest.mock.patch(
-                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
             ),
             self.assertRaises(TruncatedResponse),
         ):
@@ -135,7 +137,8 @@ class TestGenerateFinishReason(unittest.TestCase):
         enricher = GeminiEnricher("test-model")
         response = _FakeResponse(text="  Для кого: X\nЗачем: Y\n  ", finish_reason="STOP")
         with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+            return_value=_FakeGenerativeModel(response),
         ):
             result = enricher._generate(
                 "p",
@@ -155,7 +158,8 @@ class TestEnrichTruncationRotates(unittest.TestCase):
         response = _FakeResponse(text="Для кого: разработчи", finish_reason="MAX_TOKENS")
         with (
             unittest.mock.patch(
-                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
             ),
             self.assertRaises(TryNextModel),
         ):
@@ -169,7 +173,8 @@ class TestEnrichTruncationRotates(unittest.TestCase):
         response = _FakeResponse(text="…", finish_reason="SAFETY")
         with (
             unittest.mock.patch(
-                "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
             ),
             self.assertRaises(TryNextModel),
         ):
@@ -186,7 +191,8 @@ class TestEnrichFormatValidation(unittest.TestCase):
         # Real-world bad output captured 19.05.2026: model echoed the instruction.
         response = _FakeResponse(text="строка 1:\nстрока 2:", finish_reason="STOP")
         with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+            return_value=_FakeGenerativeModel(response),
         ):
             result = enricher.enrich(_item(), _TWO_LINE_CFG)
         self.assertEqual(result, FALLBACK_MARKER)
@@ -197,7 +203,8 @@ class TestEnrichFormatValidation(unittest.TestCase):
         wrapped = "```\nДля кого: разработчиков\nЗачем: ускорить сборку\n```"
         response = _FakeResponse(text=wrapped, finish_reason="STOP")
         with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+            return_value=_FakeGenerativeModel(response),
         ):
             result = enricher.enrich(_item(), _TWO_LINE_CFG)
         self.assertEqual(result, "Для кого: разработчиков\nЗачем: ускорить сборку")
@@ -208,7 +215,8 @@ class TestEnrichFormatValidation(unittest.TestCase):
             text="Для кого: разработчиков\nЗачем: ускорить сборку", finish_reason="STOP"
         )
         with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+            return_value=_FakeGenerativeModel(response),
         ):
             result = enricher.enrich(_item(), _TWO_LINE_CFG)
         self.assertEqual(result, "Для кого: разработчиков\nЗачем: ускорить сборку")
@@ -221,7 +229,8 @@ class TestEnrichFormatValidation(unittest.TestCase):
         enricher = GeminiEnricher("test-model")
         response = _FakeResponse(text="anything goes here", finish_reason="STOP")
         with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+            return_value=_FakeGenerativeModel(response),
         ):
             result = enricher.enrich(_item(), cfg)
         self.assertEqual(result, "anything goes here")
@@ -248,7 +257,9 @@ class TestPromptSanitization(unittest.TestCase):
             finish_reason="STOP",
         )
         fake = _FakeGenerativeModel(response)
-        with unittest.mock.patch("gemini_enricher.genai.GenerativeModel", return_value=fake):
+        with unittest.mock.patch(
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel", return_value=fake
+        ):
             enricher.enrich(item, _TWO_LINE_CFG)
         # description was the raw markdown blob — it should NOT appear verbatim
         # in the prompt sent to the model.
@@ -265,7 +276,9 @@ class TestPromptSanitization(unittest.TestCase):
         )
         response = _FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP")
         fake = _FakeGenerativeModel(response)
-        with unittest.mock.patch("gemini_enricher.genai.GenerativeModel", return_value=fake):
+        with unittest.mock.patch(
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel", return_value=fake
+        ):
             enricher.enrich(item, _TWO_LINE_CFG)
         # Bound: sanitized text + ellipsis. Allow some slack for word-boundary
         # truncation but ensure we're well below the original 1000.
@@ -278,7 +291,7 @@ class TestGeminiEnricherQuota(unittest.TestCase):
         import google.api_core.exceptions
         from tenacity import RetryError
 
-        from gemini_enricher import GeminiEnricher
+        from kinozal_scraper.gemini_enricher import GeminiEnricher
 
         enricher = GeminiEnricher("test-model")
         exc = google.api_core.exceptions.ResourceExhausted("quota")
@@ -295,7 +308,7 @@ class TestGeminiEnricherQuota(unittest.TestCase):
         """After #130, any unexpected exception (network timeout,
         InvalidArgument, …) asks the rotator to try the next model rather
         than silently returning `on_error` for this single item."""
-        from gemini_enricher import GeminiEnricher
+        from kinozal_scraper.gemini_enricher import GeminiEnricher
 
         enricher = GeminiEnricher("test-model")
         with (
@@ -307,7 +320,7 @@ class TestGeminiEnricherQuota(unittest.TestCase):
 
 class TestModelVersionSorting(unittest.TestCase):
     def test_newer_models_first(self) -> None:
-        from gemini_enricher import _model_version_key
+        from kinozal_scraper.gemini_enricher import _model_version_key
 
         names = [
             "models/gemini-1.0-pro",
@@ -327,14 +340,14 @@ class TestModelVersionSorting(unittest.TestCase):
         )
 
     def test_unknown_format_gets_zero_version(self) -> None:
-        from gemini_enricher import _model_version_key
+        from kinozal_scraper.gemini_enricher import _model_version_key
 
         self.assertEqual(_model_version_key("models/chat-bison-001")[0], 0.0)
 
 
 class TestIsTextGemini(unittest.TestCase):
     def test_accepts_text_models(self) -> None:
-        from gemini_enricher import _is_text_gemini
+        from kinozal_scraper.gemini_enricher import _is_text_gemini
 
         self.assertTrue(_is_text_gemini("models/gemini-2.5-flash"))
         self.assertTrue(_is_text_gemini("models/gemini-2.0-flash-lite"))
@@ -342,7 +355,7 @@ class TestIsTextGemini(unittest.TestCase):
         self.assertTrue(_is_text_gemini("models/gemini-2.5-flash-lite"))
 
     def test_rejects_specialized_models(self) -> None:
-        from gemini_enricher import _is_text_gemini
+        from kinozal_scraper.gemini_enricher import _is_text_gemini
 
         self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-tts-preview"))
         self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-image-preview"))
@@ -351,7 +364,7 @@ class TestIsTextGemini(unittest.TestCase):
         self.assertFalse(_is_text_gemini("models/gemini-robotics-er-1.6-preview"))
 
     def test_rejects_non_gemini(self) -> None:
-        from gemini_enricher import _is_text_gemini
+        from kinozal_scraper.gemini_enricher import _is_text_gemini
 
         self.assertFalse(_is_text_gemini("models/gemma-3-27b-it"))
         self.assertFalse(_is_text_gemini("models/lyria-3-pro-preview"))
@@ -398,7 +411,7 @@ class TestRotatingGeminiEnricher(unittest.TestCase):
         enricher.enrich(_item("2"), _ENRICH_CFG)
         self.assertEqual(call_log, ["b", "b"])
 
-    @unittest.mock.patch("gemini_enricher.time.sleep")
+    @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_all_models_exhausted_sleeps_and_retries(self, mock_sleep: Any) -> None:
         call_count = 0
 
@@ -417,7 +430,7 @@ class TestRotatingGeminiEnricher(unittest.TestCase):
         self.assertEqual(result, "recovered")
         mock_sleep.assert_called_once_with(60)
 
-    @unittest.mock.patch("gemini_enricher.time.sleep")
+    @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_all_models_exhausted_twice_raises(self, mock_sleep: Any) -> None:
         def always_fail(item: Any, cfg: Any) -> str:
             raise QuotaExhausted
@@ -497,7 +510,7 @@ class TestRotatingGeminiEnricherModelUnavailable(unittest.TestCase):
         self.assertEqual(a_calls, 1, "dead model must not be retried for every item")
         self.assertEqual(b_calls, 5)
 
-    @unittest.mock.patch("gemini_enricher.time.sleep")
+    @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_all_models_unavailable_raises_quota_exhausted(self, mock_sleep: Any) -> None:
         """When every rotated model 404s, surface a single quota-style
         exception so the pipeline switches to the visible fallback marker.
@@ -527,7 +540,8 @@ class TestRotateOnTryNextModel(unittest.TestCase):
         enricher = GeminiEnricher("test-model")
         response = _FakeResponse(text="строка 1:\nстрока 2:", finish_reason="STOP")
         with unittest.mock.patch(
-            "gemini_enricher.genai.GenerativeModel", return_value=_FakeGenerativeModel(response)
+            "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+            return_value=_FakeGenerativeModel(response),
         ):
             result = enricher.enrich(_item(), _TWO_LINE_CFG)
         self.assertEqual(result, FALLBACK_MARKER)
@@ -576,7 +590,7 @@ class TestRotatingGeminiEnricherTryNext(unittest.TestCase):
         self.assertEqual(a_calls, 2, "model-a must remain live after TryNextModel")
         self.assertNotIn(0, rotator._dead)
 
-    @unittest.mock.patch("gemini_enricher.time.sleep")
+    @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_all_models_truncated_raises_quota_exhausted(self, mock_sleep: Any) -> None:
         """When every model fails on the same item — even if every failure
         is `TryNextModel` rather than 429 — the rotator surfaces a single
@@ -592,7 +606,7 @@ class TestRotatingGeminiEnricherTryNext(unittest.TestCase):
         with self.assertRaises(QuotaExhausted):
             rotator.enrich(_item(), _ENRICH_CFG)
 
-    @unittest.mock.patch("gemini_enricher.time.sleep")
+    @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_all_try_next_skips_cooldown(self, mock_sleep: Any) -> None:
         """Per claude-review #131: if every model raised only `TryNextModel`
         (no quota / no unavailable), the 60s cooldown buys nothing — the same
@@ -610,7 +624,7 @@ class TestRotatingGeminiEnricherTryNext(unittest.TestCase):
             rotator.enrich(_item(), _ENRICH_CFG)
         mock_sleep.assert_not_called()
 
-    @unittest.mock.patch("gemini_enricher.time.sleep")
+    @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_quota_in_first_rotation_still_uses_cooldown(self, mock_sleep: Any) -> None:
         """Cooldown stays for the original use case: if any model hit quota
         (or 404) in the first rotation, a 60s wait can let the window roll
@@ -655,8 +669,10 @@ class TestBuildDefaultEnricher(unittest.TestCase):
     def test_api_key_with_no_models_returns_null_enricher_and_warns(self) -> None:
         log = logging.getLogger("test_build_default_enricher.no_models")
         with (
-            unittest.mock.patch("gemini_enricher.genai.configure"),
-            unittest.mock.patch("gemini_enricher.get_generation_models", return_value=[]),
+            unittest.mock.patch("kinozal_scraper.gemini_enricher.genai.configure"),
+            unittest.mock.patch(
+                "kinozal_scraper.gemini_enricher.get_generation_models", return_value=[]
+            ),
             self.assertLogs(log, level="WARNING") as captured,
         ):
             result = build_default_enricher("real-key", log)
@@ -666,9 +682,11 @@ class TestBuildDefaultEnricher(unittest.TestCase):
     def test_api_key_with_models_returns_rotating_enricher(self) -> None:
         log = logging.getLogger("test_build_default_enricher.ok")
         with (
-            unittest.mock.patch("gemini_enricher.genai.configure") as mock_configure,
             unittest.mock.patch(
-                "gemini_enricher.get_generation_models",
+                "kinozal_scraper.gemini_enricher.genai.configure"
+            ) as mock_configure,
+            unittest.mock.patch(
+                "kinozal_scraper.gemini_enricher.get_generation_models",
                 return_value=["models/gemini-2.5-flash", "models/gemini-2.0-flash"],
             ),
         ):

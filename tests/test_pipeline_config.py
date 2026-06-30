@@ -4,7 +4,7 @@ from datetime import date
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from pipeline_config import (
+from kinozal_scraper.pipeline_config import (
     ConfigError,
     build_macro_context,
     expand_macros,

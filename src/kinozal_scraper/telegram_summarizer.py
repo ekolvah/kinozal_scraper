@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from TelegramChannelSummarizer import ChannelProcessResult, ChannelSummary
+from kinozal_scraper.TelegramChannelSummarizer import ChannelProcessResult, ChannelSummary
 
 logger = logging.getLogger(__name__)
 
@@ -104,10 +104,10 @@ if __name__ == "__main__":
 
     import google.generativeai as genai
 
-    from crypto import crypto
-    from gemini_enricher import get_generation_models
-    from telegram_notifier import TelegramNotifier
-    from TelegramChannelSummarizer import (
+    from kinozal_scraper.crypto import crypto
+    from kinozal_scraper.gemini_enricher import get_generation_models
+    from kinozal_scraper.telegram_notifier import TelegramNotifier
+    from kinozal_scraper.TelegramChannelSummarizer import (
         GeminiSummarizer,
         TelethonReader,
         summarize_channel_results,

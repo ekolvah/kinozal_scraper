@@ -6,14 +6,14 @@ import unittest.mock
 from pathlib import Path
 from typing import Any
 
-from gemini_enricher import FALLBACK_MARKER, QuotaExhausted
-from generic_pipeline import extract_from_html
-from github_trending_pipeline import (
+from kinozal_scraper.gemini_enricher import FALLBACK_MARKER, QuotaExhausted
+from kinozal_scraper.generic_pipeline import extract_from_html
+from kinozal_scraper.github_trending_pipeline import (
     _normalize_items,
     run_github_trending_pipeline,
 )
-from sheets_storage import InMemoryStorage
-from telegram_notifier import InMemoryNotifier
+from kinozal_scraper.sheets_storage import InMemoryStorage
+from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 _FIXTURE_PATH = Path(__file__).parent / "fixtures" / "github_trending" / "trending_daily.html"
 
@@ -57,7 +57,7 @@ def _run(
     config = sources_config or _SOURCES_CONFIG
 
     with unittest.mock.patch(
-        "github_trending_pipeline.fetch_html",
+        "kinozal_scraper.github_trending_pipeline.fetch_html",
         return_value=html if html is not None else _fixture_html(),
     ):
         run_github_trending_pipeline(storage, notifier, sources_config=config)
@@ -91,7 +91,7 @@ class TestUS1Extraction(unittest.TestCase):
           </article>
         </body></html>
         """
-        with self.assertLogs("github_trending_pipeline", level="WARNING") as caplog:
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
             _, notifier = _run(html=html)
         self.assertEqual(len(notifier.sent), 1)
         joined = "\n".join(caplog.output)
@@ -141,7 +141,7 @@ class TestUS2CrossSourceDedupe(unittest.TestCase):
         storage.seed_existing("github_projects", seeded)
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "github_trending_pipeline.fetch_html",
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
             return_value=_fixture_html(),
         ):
             run_github_trending_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
@@ -158,7 +158,7 @@ class TestUS3Visibility(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "github_trending_pipeline.fetch_html",
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
             return_value="<html><body></body></html>",
         ):
             results = run_github_trending_pipeline(
@@ -177,7 +177,7 @@ class TestUS3Visibility(unittest.TestCase):
           </article>
         </body></html>
         """
-        with self.assertLogs("github_trending_pipeline", level="WARNING") as caplog:
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
             _, notifier = _run(html=html)
         self.assertEqual(len(notifier.sent), 1)
         joined = "\n".join(caplog.output)
@@ -333,7 +333,7 @@ class TestPipelineMechanics(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier(fail_ids={failed_key})
         with unittest.mock.patch(
-            "github_trending_pipeline.fetch_html",
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
             return_value=_fixture_html(),
         ):
             results = run_github_trending_pipeline(
@@ -377,7 +377,7 @@ def _run_with_enricher(
     notifier = InMemoryNotifier()
 
     with unittest.mock.patch(
-        "github_trending_pipeline.fetch_html",
+        "kinozal_scraper.github_trending_pipeline.fetch_html",
         return_value=html if html is not None else _fixture_html(),
     ):
         run_github_trending_pipeline(

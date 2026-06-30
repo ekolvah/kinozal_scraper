@@ -10,7 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from curl_cffi.requests import Session as _MirrorSession
 
-from generic_pipeline import (
+from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     Notification,
@@ -18,11 +18,11 @@ from generic_pipeline import (
     build_notification,
     extract_from_html,
 )
-from http_fetch import fetch_html
-from kinozal_auth import fetch_authenticated, login
-from pipeline_config import load_sources_config
-from sheets_storage import Storage
-from telegram_notifier import Notifier
+from kinozal_scraper.http_fetch import fetch_html
+from kinozal_scraper.kinozal_auth import fetch_authenticated, login
+from kinozal_scraper.pipeline_config import load_sources_config
+from kinozal_scraper.sheets_storage import Storage
+from kinozal_scraper.telegram_notifier import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -309,9 +309,9 @@ if __name__ == "__main__":
 
     import gspread
 
-    from sheets_storage import SheetsStorage
-    from telegram_notifier import TelegramNotifier
-    from youtube import Youtube
+    from kinozal_scraper.sheets_storage import SheetsStorage
+    from kinozal_scraper.telegram_notifier import TelegramNotifier
+    from kinozal_scraper.youtube import Youtube
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 

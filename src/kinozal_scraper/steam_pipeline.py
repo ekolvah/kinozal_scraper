@@ -7,17 +7,17 @@ from typing import Any
 
 import requests
 
-from gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
-from generic_pipeline import (
+from kinozal_scraper.gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
+from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     PipelineResult,
     build_notification,
     extract_from_json,
 )
-from pipeline_config import load_sources_config
-from sheets_storage import Storage
-from telegram_notifier import Notifier
+from kinozal_scraper.pipeline_config import load_sources_config
+from kinozal_scraper.sheets_storage import Storage
+from kinozal_scraper.telegram_notifier import Notifier
 
 logger = logging.getLogger(__name__)
 
@@ -297,22 +297,22 @@ if __name__ == "__main__":
         prod_config = None
 
     if dry_run:
-        from sheets_storage import InMemoryStorage
-        from telegram_notifier import InMemoryNotifier
+        from kinozal_scraper.sheets_storage import InMemoryStorage
+        from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
         prod_storage: Storage = InMemoryStorage()
         prod_notifier: Notifier = InMemoryNotifier()
     else:
         import gspread
 
-        from sheets_storage import SheetsStorage
-        from telegram_notifier import TelegramNotifier
+        from kinozal_scraper.sheets_storage import SheetsStorage
+        from kinozal_scraper.telegram_notifier import TelegramNotifier
 
         gc = gspread.service_account_from_dict(_json.loads(os.environ["CREDENTIALS"]))
         prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
         prod_notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
 
-    from gemini_enricher import build_default_enricher
+    from kinozal_scraper.gemini_enricher import build_default_enricher
 
     prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
 

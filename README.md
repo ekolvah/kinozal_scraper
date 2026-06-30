@@ -20,9 +20,14 @@ Adding a new JSON source requires only a config entry in `sources.json` — no P
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
+pip install -e . --no-deps   # installs the kinozal_scraper package (entry points run as `python -m kinozal_scraper.<pipeline>`)
 git config core.hooksPath .githooks
 python scripts/ci_check.py   # local CI: format + lint + tests + mypy
 ```
+
+The runnable pipelines live under `src/kinozal_scraper/` and are launched as
+`python -m kinozal_scraper.<module>` (e.g. `python -m kinozal_scraper.json_pipeline`);
+the production schedule wires them in `.github/workflows/run-script.yml`.
 
 Configuration (env vars, secrets, CI workflows) is documented in [docs/architecture/ci.md](docs/architecture/ci.md).
 
