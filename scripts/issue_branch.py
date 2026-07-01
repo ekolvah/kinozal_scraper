@@ -20,18 +20,10 @@ from pathlib import Path
 MAX_SLUG_WORDS = 4
 FALLBACK_SLUG = "task"
 _PREFIX_TAG_RE = re.compile(r"^\s*\[[^\]]+\]\s*")
-# Conventional-commit type prefix (`feat:`, `refactor(ci):`) — since #256 the
-# type lives in a label, not the title, but a leftover prefix must not leak
-# into the slug. Anchored to the *closed* type axis from workflow.md #5 (not a
-# bare `\w+`), so a plain title like `docker: bump base image` keeps its first
-# word. Optional (scope) + colon + space (the space keeps it from eating
-# `label-таксономии:` / `url:8080`).
-_TYPE_AXIS = "bug|enhancement|refactor|perf|security|testing|ci|documentation|chore|feat|fix|docs"
-_PREFIX_TYPE_RE = re.compile(rf"^\s*(?:{_TYPE_AXIS})(?:\([^)]*\))?:\s+")
 
 
 def slugify(title: str) -> str:
-    no_tag = _PREFIX_TYPE_RE.sub("", _PREFIX_TAG_RE.sub("", title))
+    no_tag = _PREFIX_TAG_RE.sub("", title)
     ascii_only = re.sub(r"[^a-zA-Z0-9\s-]", " ", no_tag).lower()
     words = [w for w in re.split(r"[\s-]+", ascii_only) if w]
     if not words:
