@@ -67,7 +67,7 @@ def run_json_pipeline(
     return results
 
 
-def _run_single_source(
+def _run_single_source(  # noqa: C901
     source: dict[str, Any],
     storage: Storage,
     notifier: Notifier,

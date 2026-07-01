@@ -89,7 +89,7 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
         item.raw["stars_today"] = by_href.get(key, "")
 
 
-def run_github_trending_pipeline(
+def run_github_trending_pipeline(  # noqa: C901, PLR0912, PLR0915
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None = None,

@@ -38,10 +38,19 @@ select = [
     "SIM",
     "BLE",
     "TRY400",
+    # Complexity ratchet (#233) — hold back method sprawl on new/changed code.
+    "C901",     # mccabe cyclomatic complexity
+    "PLR0912",  # too-many-branches
+    "PLR0915",  # too-many-statements
 ]
 ignore = [
     "E501",
 ]
+
+[tool.ruff.lint.mccabe]
+# Align C901 with PLR0912's default branch threshold (12) rather than tuning to
+# today's code. PLR0912/PLR0915 stay on ruff defaults (12 branches / 50 statements).
+max-complexity = 12
 
 [tool.ruff.format]
 quote-style = "double"

@@ -92,7 +92,7 @@ def _check_no_residual_macros(value: Any, known_macros: list[str], path: str = "
             _check_no_residual_macros(item, known_macros, f"{path}[{i}]")
 
 
-def validate_sources_config(config: Any) -> None:
+def validate_sources_config(config: Any) -> None:  # noqa: C901, PLR0912
     if not isinstance(config, dict):
         raise ConfigError("Config must be a JSON object")
 
