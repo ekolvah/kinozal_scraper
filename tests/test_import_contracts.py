@@ -43,6 +43,7 @@ _ADAPTERS = {
     f"{_PKG}.gemini_enricher",
 }
 _AUTH = {f"{_PKG}.crypto", f"{_PKG}.kinozal_auth"}
+_CORE = {f"{_PKG}.generic_pipeline"}  # the layers contract's bottom layer
 
 
 def _config() -> configparser.ConfigParser:
@@ -76,7 +77,9 @@ class TestImportContracts:
 
         layers_sec = cp["importlinter:contract:pipeline-layers"]
         tokens = set(layers_sec["layers"].replace("|", " ").split())
-        missing = (_ORCHESTRATORS | _ADAPTERS) - tokens
+        # _CORE included so dropping the bottom layer entirely (which would gut
+        # the direction guard) is caught, not just dropping an orchestrator/adapter.
+        missing = (_ORCHESTRATORS | _ADAPTERS | _CORE) - tokens
         assert not missing, f"pipeline-layers dropped layered modules: {missing}"
 
     def test_contracts_currently_kept(self) -> None:
