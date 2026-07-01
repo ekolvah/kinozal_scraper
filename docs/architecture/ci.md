@@ -7,9 +7,10 @@ python scripts/ci_check.py
 ```
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
-ruff format → ruff lint → pytest → module docstring presence → pip-audit
-(runtime) → pip-audit (dev) → requirements consistency → mypy → import
-contracts.
+ruff format → ruff lint → pytest → pip-audit (runtime) → pip-audit (dev) →
+requirements consistency → mypy → import contracts. (Module-docstring presence
+is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
+see the Module-docstring gate below.)
 
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
@@ -36,7 +37,7 @@ hook already runs the identical `ci_check.py` locally before every push.
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,
-lint, pytest, headers, pip-audit, pip-audit-dev, requirements, mypy, imports).
+lint, pytest, pip-audit, pip-audit-dev, requirements, mypy, imports).
 The per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 
@@ -132,6 +133,45 @@ ruff `F` (F401/F841). vulture is FP-prone on this codebase's dynamic shape
 needs per-CI triage, to guard a hypothetical. Deferred **wait-for-pain**: revisit
 if real cross-module dead code appears that `ERA001` cannot catch (#235 Out of
 scope).
+
+### Module-docstring gate (lint, #253)
+
+Every source `.py` under `src/` must carry a non-empty top-level docstring — the
+canonical "what question does this file answer", read just-in-time when the file
+is opened. This was a bespoke 78-line `scripts/check_headers.py` (+ its test);
+it is now three ruff rules riding on `check_lint`, no separate step, no
+dependency:
+
+- `D100` — missing docstring in a public **module**;
+- `D104` — missing docstring in a public **package** (`__init__.py`; `D100`
+  does **not** cover it — the delta that would have silently dropped the
+  `kinozal_scraper/__init__.py` docstring requirement);
+- `D419` — **empty**/whitespace-only docstring (reproduces the script's
+  `doc.strip()` half).
+
+Scope is a superset of the old gate: the script scanned `src/` only; the rules
+run repo-wide with `per-file-ignores` `"tests/**" = [D100, D104, D419]` (tests
+were never docstring-checked), so `src/` **and** `scripts/`/root are now
+covered (both measured clean; `scripts/__init__.py` got a one-line docstring).
+`D101`/`D103` (class/function docstrings) are deliberately **not** selected —
+the gate is module/package-level only. One consciously-accepted narrowing vs.
+the old script: `D100`/`D104` flag only *public* modules/packages, so a future
+underscore-private `src/kinozal_scraper/_internal.py` would slip the gate where
+the name-agnostic script caught it — low risk (no such module today), noted here
+rather than silently. `tests/test_ruff_docstring_rule.py` is an
+anti-drift guard (mirrors the silence/complexity/dead-code guards): it pins the
+three codes in the effective select, out of global `ignore`, and not
+neutralised for any `src`/`scripts` path via `per-file-ignores`.
+
+The script's **§IV no-op guard** (fail if the scan found zero files — a
+mis-pointed/empty `src/` going silently green, #237 B1) was **retired, not
+lost**: that failure mode was an artefact of the script's parameterised
+`root.rglob(Path("src"))`; `ruff check .` recurses the whole tree from cwd and
+cannot miss the package that way. The residual "package vanished/empty" case is
+caught **strictly harder** by `test_package_importable.py` (17 hard-coded
+`import_module` asserts) + `test_repo_layout.py` (flat/root-drift) + mypy +
+import-linter. Keeping a bespoke no-op mini-gate would be the very velcro this
+change removes.
 
 ## Claude review workflow (`claude-review.yml`)
 

@@ -49,11 +49,6 @@ def check_pytest() -> None:
     _run([sys.executable, "-m", "pytest"])
 
 
-def check_headers() -> None:
-    print("==> check_headers")
-    _run([sys.executable, "scripts/check_headers.py"])
-
-
 def check_pip_audit() -> None:
     print("==> pip-audit (runtime)")
     _run([sys.executable, "-m", "pip_audit", "-r", "requirements.txt"])
@@ -148,7 +143,6 @@ CHECKS: dict[str, Callable[[], None]] = {
     "format": check_format,
     "lint": check_lint,
     "pytest": check_pytest,
-    "headers": check_headers,
     "pip-audit": check_pip_audit,
     "pip-audit-dev": check_pip_audit_dev,
     "requirements": check_requirements,

@@ -44,10 +44,19 @@ select = [
     "C901",     # mccabe cyclomatic complexity
     "PLR0912",  # too-many-branches
     "PLR0915",  # too-many-statements
+    # Module-docstring gate (#253) — replaced bespoke scripts/check_headers.py.
+    "D100",     # missing docstring in public module
+    "D104",     # missing docstring in public package (__init__.py)
+    "D419",     # empty/whitespace-only docstring
 ]
 ignore = [
     "E501",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests were never docstring-checked (check_headers scanned src/ only); keep
+# them out of the D100/D104/D419 gate (#253).
+"tests/**" = ["D100", "D104", "D419"]
 
 [tool.ruff.lint.mccabe]
 # Align C901 with PLR0912's default branch threshold (12) rather than tuning to
