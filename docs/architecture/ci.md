@@ -191,9 +191,19 @@ next source slip back into the cascade.
 > **Включение fallback:** задай оба секрета `KINOZAL_USERNAME` + `KINOZAL_PASSWORD`. Без них (или при
 > partial) fallback отключён, и сбой `.tv` доходит видимой ошибкой `fetch failed ... (mirror
 > fallback disabled)` + exit 1 (§IV) — как было до #227. Провал логина / both-failed тоже видимы:
-> `mirror login failed` / `primary failed (...); mirror ... also failed (...)`. `sources.json`
-> `base_url` остаётся `https://kinozal.tv` (canonical origin для ссылок в уведомлениях) — зеркало в
-> `sources.json` не прописывать.
+> `mirror login failed` / `primary failed (...); mirror ... also failed (...)`.
+> `sources.json` `base_url` остаётся `https://kinozal.tv` (дефолтный origin, когда primary жив) —
+> зеркало туда не прописывать.
+>
+> **Ссылки следуют за фактическим origin (#247):** `Kinozal.fetch_listing` возвращает
+> `(html, effective_base_url)` — `kinozal.tv` при успехе primary, `kinozal.guru` при mirror-fallback.
+> Пайплайн резолвит относительные `url`/`image_url` листинга против этого базового хоста (per-fetch
+> override статичного `base_url`), поэтому mirror-прогон даёт **`.guru`-ссылки** — живые для
+> залогиненного получателя, а не мёртвые `.tv`. Это осознанный разворот исходного #227/#241 решения
+> «`base_url` всегда `.tv` — canonical origin для ссылок» (основание: получатель залогинен на `.guru`,
+> login-wall для него неактуален). Смешанный прогон (часть топов с `.tv`, часть с зеркала) даёт
+> корректный хост у каждого item; dedupe стабилен (ключ — чистый title, host в него не входит →
+> миграция старых `.tv`-строк в Sheet не нужна).
 >
 > Сейчас потребитель — production-cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
 > `tests/test_e2e_kinozal_titles.py` станет вторым потребителем после #136 (тест безусловно

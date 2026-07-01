@@ -396,7 +396,9 @@ class TestPipelineNotificationContent(unittest.TestCase):
         storage, notifier = _run()
         text = notifier.sent[0].text
         self.assertIn("<b>", text)
-        self.assertIn("kinozal.tv/details.php", text)
+        # Link host follows the origin that served the listing (#247); _run mocks
+        # the fetch at https://test.example, so the resolved link does too.
+        self.assertIn("test.example/details.php", text)
 
     def test_trailer_included_when_present(self) -> None:
         storage, notifier = _run()
@@ -933,6 +935,128 @@ class TestNotifierWiring(unittest.TestCase):
         ):
             data = notifier._image_fetcher(_POSTER_TV)
         self.assertEqual(data, b"MIRROR")  # poster reached via mirror, not dropped
+
+
+# ── link origin follows the serving host (issue #247) ─────────────────────────
+
+# Distinct-title fixtures for the mixed-origin run: same-title collapse would
+# make "which host won" ambiguous, so each URL yields its own title.
+_HTML_A = (
+    '<html><body><a href="/details.php?id=1" title="Alpha Film / 2024">'
+    '<img src="/img/a.jpg"></a></body></html>'
+)
+_HTML_B = (
+    '<html><body><a href="/details.php?id=2" title="Beta Film / 2024">'
+    '<img src="/img/b.jpg"></a></body></html>'
+)
+
+
+class TestFetchListingOrigin(unittest.TestCase):
+    """`fetch_listing` surfaces the origin that actually served the HTML (#247):
+    kinozal.tv on primary success, kinozal.guru on mirror fallback — so the
+    pipeline can resolve links against the host the listing truly came from."""
+
+    def test_primary_success_returns_tv_base_url(self) -> None:
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+        ):
+            html, base = Kinozal("u", "p").fetch_listing("https://kinozal.tv/top.php?d=14")
+        self.assertEqual(html, _KINOZAL_HTML)
+        self.assertEqual(base, "https://kinozal.tv")
+
+    def test_mirror_fallback_returns_guru_base_url(self) -> None:
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        sentinel = unittest.mock.Mock()
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                side_effect=RuntimeError("HTTP Error 522"),
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
+            ),
+        ):
+            html, base = Kinozal("u", "p").fetch_listing("https://kinozal.tv/top.php?d=14")
+        self.assertEqual(html, _KINOZAL_HTML)
+        self.assertEqual(base, "https://kinozal.guru")
+
+
+class TestLinkOriginFollowsHost(unittest.TestCase):
+    """End-to-end (#247): notification links resolve against the host that served
+    the listing. Injection stays on the HTTP boundary (fetch_html / login /
+    fetch_authenticated) — never mock Kinozal.fetch_listing/_from_mirror (§II)."""
+
+    _CREDS = {"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}
+
+    def _run(self, urls: str) -> InMemoryNotifier:
+        full = {"URLS": urls, **self._CREDS}
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch.dict(os.environ, full, clear=False):
+            run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
+        return notifier
+
+    def test_mirror_fallback_links_use_guru_origin(self) -> None:
+        sentinel = unittest.mock.Mock()
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                side_effect=RuntimeError("HTTP Error 522"),
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
+            ),
+        ):
+            notifier = self._run("top|https://kinozal.tv/top.php?d=14")
+        texts = "\n".join(n.text for n in notifier.sent)
+        self.assertIn("kinozal.guru/details.php", texts)
+        self.assertNotIn("kinozal.tv/details.php", texts)
+
+    def test_mirror_fallback_poster_uses_guru_origin(self) -> None:
+        sentinel = unittest.mock.Mock()
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                side_effect=RuntimeError("HTTP Error 522"),
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
+            ),
+        ):
+            notifier = self._run("top|https://kinozal.tv/top.php?d=14")
+        posters = [n.image_url for n in notifier.sent]
+        # item 1 has a relative poster (/img/p1.jpg); the mirror origin must win.
+        self.assertIn("https://kinozal.guru/img/p1.jpg", posters)
+
+    def test_mixed_origin_each_link_matches_its_listing(self) -> None:
+        def _fake_fetch(url: str) -> str:
+            if "d=14" in url:  # URL-A: primary .tv succeeds
+                return _HTML_A
+            raise RuntimeError("HTTP Error 522")  # URL-B: 522 → mirror
+
+        sentinel = unittest.mock.Mock()
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fake_fetch
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_HTML_B
+            ),
+        ):
+            notifier = self._run(
+                "a|https://kinozal.tv/top.php?d=14;b|https://kinozal.tv/top.php?d=0"
+            )
+        alpha = next(n for n in notifier.sent if "Alpha Film" in n.text)
+        beta = next(n for n in notifier.sent if "Beta Film" in n.text)
+        self.assertIn("kinozal.tv/details.php?id=1", alpha.text)  # served by primary
+        self.assertIn("kinozal.guru/details.php?id=2", beta.text)  # served by mirror
 
 
 if __name__ == "__main__":

@@ -51,6 +51,14 @@ def _mirror_url(url: str) -> str:
     return urlunsplit(urlsplit(url)._replace(netloc=_MIRROR_HOST))
 
 
+def _origin(url: str) -> str:
+    """scheme://host of a URL — the base against which relative links/posters in
+    that listing must resolve (#247). Derived from the URL actually fetched, so
+    it follows origin→mirror failover instead of a hardcoded canonical host."""
+    parts = urlsplit(url)
+    return f"{parts.scheme}://{parts.netloc}"
+
+
 class Kinozal:
     """Facade for all kinozal IO: anonymous kinozal.tv primary with a lazy
     kinozal.guru mirror fallback. One object owns the origin-vs-mirror decision
@@ -88,11 +96,17 @@ class Kinozal:
             )
         return cls(username, password)
 
-    def fetch_listing(self, url: str) -> str:
+    def fetch_listing(self, url: str) -> tuple[str, str]:
+        """Return (html, effective_base_url): the HTML plus the origin that
+        actually served it (#247). Primary success → the requested origin
+        (kinozal.tv); mirror fallback → kinozal.guru. The pipeline resolves the
+        listing's relative links/posters against this base, so a mirror-served
+        page yields .guru links (live for the logged-in user) instead of dead
+        .tv ones — reversing #227/#241's fixed canonical-origin choice."""
         try:
-            return fetch_html(url)
+            return fetch_html(url), _origin(url)
         except Exception as primary_exc:  # noqa: BLE001 — any primary-fetch failure falls back to the mirror
-            return self._from_mirror(url, primary_exc)
+            return self._from_mirror(url, primary_exc), _origin(_mirror_url(url))
 
     def fetch_poster(self, url: str) -> bytes:
         """Download a poster, sharing the listing's origin→mirror failover (#241).
@@ -173,8 +187,16 @@ def _kinozal_title(raw: str) -> str:
     return raw.split(" / ")[0].strip()
 
 
-def _extract_kinozal_items(html: str, source: dict[str, Any]) -> PipelineResult:
+def _extract_kinozal_items(
+    html: str, source: dict[str, Any], base_url: str | None = None
+) -> PipelineResult:
     """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
+
+    `base_url`, when given, overrides `source["base_url"]` for this one fetch so
+    relative links AND posters resolve against the host that actually served the
+    HTML (#247). `extract_from_html` resolves both `url` and `image_url` through
+    the same base, so mirror-served posters follow to .guru for free. The source
+    dict is shallow-copied, never mutated (it is shared across the run).
 
     Returns the underlying `extract_from_html` result (errors included) so the
     runner can propagate failures to its own PipelineResult. Earlier revision
@@ -186,6 +208,8 @@ def _extract_kinozal_items(html: str, source: dict[str, Any]) -> PipelineResult:
     dropping them would just look like "no new films" to the user. The WARNING
     is the dev-side tripwire for the same situation in logs.
     """
+    if base_url is not None:
+        source = {**source, "base_url": base_url}
     result = extract_from_html(html, source)
     if not result.ok:
         logger.error("[%s] extraction errors: %s", source["id"], result.errors)
@@ -290,12 +314,14 @@ def run_kinozal_pipeline(
         result = PipelineResult(source_id=source["id"])
         for url in urls:
             try:
-                html_text = fetcher.fetch_listing(url)
+                html_text, effective_base_url = fetcher.fetch_listing(url)
             except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
                 logger.exception("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
                 continue
-            extracted = _extract_kinozal_items(html_text, source)
+            # Resolve this listing's links/posters against the origin that served
+            # it (.tv on primary, .guru on mirror fallback) — not a fixed host (#247).
+            extracted = _extract_kinozal_items(html_text, source, base_url=effective_base_url)
             if not extracted.ok:
                 result.errors.extend(extracted.errors)
                 continue
