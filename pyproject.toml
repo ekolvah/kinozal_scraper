@@ -38,6 +38,8 @@ select = [
     "SIM",
     "BLE",
     "TRY400",
+    # Dead-code ratchet (#235) — flag commented-out code on new/changed code.
+    "ERA001",
     # Complexity ratchet (#233) — hold back method sprawl on new/changed code.
     "C901",     # mccabe cyclomatic complexity
     "PLR0912",  # too-many-branches

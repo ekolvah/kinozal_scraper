@@ -248,8 +248,8 @@ class TestMetricColumnSemantics(unittest.TestCase):
         storage, _ = _run()
         rows = storage.stored_rows("github_projects")
         self.assertGreaterEqual(len(rows), 1)
-        # Row schema (generic_pipeline.ROW_HEADERS):
-        # [dedupe_key, title, url, metric, source_id, notified_at]
+        # Row columns (generic_pipeline.ROW_HEADERS): dedupe_key, title, url,
+        # metric, source_id, notified_at
         for row in rows:
             metric = str(row[3])
             with self.subTest(metric=metric):

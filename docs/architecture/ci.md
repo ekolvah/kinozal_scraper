@@ -109,6 +109,30 @@ tracked in #251 (§V documented-mitigation, not a silent assumption). `RUF100`
 unused-noqa across the repo — a separate cleanup, not this gate (#233 Out of
 scope).
 
+### Dead-code ratchet (lint, #235)
+
+The `lint` check also enforces ruff `ERA001` (commented-out code) as a
+**preventive ratchet**: new commented-out code fails CI. No new dependency; it
+rides on the existing `check_lint`. The repo measured **clean** — the only hit
+was an illustrative schema comment (`# [dedupe_key, title, ...]`) that ruff
+mis-parses as a list literal; it was fixed by **rewording to prose**, not a
+`# noqa` (the code was never dead, so suppressing a real detector would train
+the escape hatch on a non-exception — §IV). For a *genuine* future false
+positive, the escape hatch is a per-site `# noqa: ERA001` with a reason, not a
+per-file ignore. `tests/test_ruff_dead_code_rule.py` is an anti-drift guard
+(mirrors `test_ruff_silence_rules.py` / `test_complexity_ratchet.py`): it pins
+that `ERA001` stays in the effective select and is not neutralised via
+`ignore` / `per-file-ignores`.
+
+**`vulture` (cross-module unused) was consciously dropped**, not added: the repo
+measured **zero** cross-module dead code, and local unused is already caught by
+ruff `F` (F401/F841). vulture is FP-prone on this codebase's dynamic shape
+(pipeline registry, declarative config, `Protocol` impls, pytest fixtures,
+`__main__` entrypoints) — it would add a dependency, a gate and a whitelist that
+needs per-CI triage, to guard a hypothetical. Deferred **wait-for-pain**: revisit
+if real cross-module dead code appears that `ERA001` cannot catch (#235 Out of
+scope).
+
 ## Claude review workflow (`claude-review.yml`)
 
 Triggers: every `pull_request: opened/synchronize`.
