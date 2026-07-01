@@ -272,7 +272,7 @@ class RotatingGeminiEnricher:
             self._current = (self._current + 1) % len(self._enrichers)
         return False
 
-    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:  # noqa: C901, PLR0912
         last_exc: Exception | None = None
         # Cooldown only helps if some failure was Quota or Unavailable —
         # those can roll over / recover during the 60s wait. A pure

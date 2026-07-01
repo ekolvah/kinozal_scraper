@@ -264,7 +264,7 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         return ""
 
 
-def run_kinozal_pipeline(
+def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
     storage: Storage,
     notifier: Notifier,
     youtube: Any,

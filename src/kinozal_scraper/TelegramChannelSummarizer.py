@@ -168,7 +168,7 @@ class TelethonReader:
     def fetch_channel(self, channel_url: str) -> ChannelMessages:
         return asyncio.run(self._fetch_channel_async(channel_url))
 
-    async def _fetch_channel_async(self, channel_url: str) -> ChannelMessages:
+    async def _fetch_channel_async(self, channel_url: str) -> ChannelMessages:  # noqa: C901, PLR0912
         target: str | int = channel_url
         if isinstance(channel_url, str) and channel_url.lstrip("-").isdigit():
             target = int(channel_url)

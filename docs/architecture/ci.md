@@ -82,6 +82,33 @@ deferred to a Protocol-extraction refactor (#234 Out of scope). `principles.md`
 is deliberately **not** edited: §II is tool-agnostic canon, so the tool mention
 lives here and in `runtime.md`, not in the constitution.
 
+### Complexity ratchet (lint, #233)
+
+The `lint` check also enforces three ruff complexity rules — `C901` (mccabe
+cyclomatic), `PLR0912` (too-many-branches), `PLR0915` (too-many-statements) —
+as a **ratchet against method sprawl**: new/changed code over threshold fails
+CI, legacy is grandfathered. No new dependency; it rides on the existing
+`check_lint`. Thresholds: `max-complexity = 12` (`[tool.ruff.lint.mccabe]`),
+PLR0912/PLR0915 on ruff defaults (12 branches / 50 statements). The C901 value
+is **aligned with PLR0912's default branch threshold (12)**, not tuned to
+today's code — that keeps the choice defensible against Goodhart/bikeshedding.
+
+Six current violators are grandfathered with a per-function `# noqa: <exact
+codes>` on the `def` line (precise, self-documenting at the site — not a
+per-file ignore, which would blind the whole file to *new* sprawl).
+`tests/test_complexity_ratchet.py` is an anti-drift guard (mirrors
+`test_ruff_silence_rules.py` / `test_import_contracts.py`): it pins that the
+codes stay in the effective select and the threshold keeps its value, so the
+gate can't be silently gutted via `pyproject.toml`.
+
+**Known limitation:** a blanket `# noqa` lets a grandfathered function grow *more*
+complex undetected — ruff has no native baseline, so the ratchet protects new
+code and new functions, not the frozen six. The real fix is splitting them,
+tracked in #251 (§V documented-mitigation, not a silent assumption). `RUF100`
+(self-cleaning noqa) was considered but deferred: it flags 18 pre-existing
+unused-noqa across the repo — a separate cleanup, not this gate (#233 Out of
+scope).
+
 ## Claude review workflow (`claude-review.yml`)
 
 Triggers: every `pull_request: opened/synchronize`.
