@@ -396,7 +396,9 @@ class TestPipelineNotificationContent(unittest.TestCase):
         storage, notifier = _run()
         text = notifier.sent[0].text
         self.assertIn("<b>", text)
-        self.assertIn("kinozal.tv/details.php", text)
+        # Link host follows the origin that served the listing (#247); _run mocks
+        # the fetch at https://test.example, so the resolved link does too.
+        self.assertIn("test.example/details.php", text)
 
     def test_trailer_included_when_present(self) -> None:
         storage, notifier = _run()
@@ -973,9 +975,7 @@ class TestFetchListingOrigin(unittest.TestCase):
                 "kinozal_scraper.kinozal_pipeline.fetch_html",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.login", return_value=sentinel
-            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ),
@@ -1007,9 +1007,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
                 "kinozal_scraper.kinozal_pipeline.fetch_html",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.login", return_value=sentinel
-            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ),
@@ -1026,9 +1024,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
                 "kinozal_scraper.kinozal_pipeline.fetch_html",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.login", return_value=sentinel
-            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ),
@@ -1049,9 +1045,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fake_fetch
             ),
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.login", return_value=sentinel
-            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_HTML_B
             ),
