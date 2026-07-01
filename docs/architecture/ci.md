@@ -97,14 +97,42 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 
 Schedule: daily cron (UTC) defined in `run-script.yml` + manual `workflow_dispatch`.
 
-Steps run sequentially:
-1. **pytest** — smoke gate, fails fast
+Steps, in order:
+1. **pytest** — smoke gate (`id: tests`), fails fast; a red gate blocks every prod pipeline below
 2. **json_pipeline.py** — GitHub `new_popular`
 3. **github_trending_pipeline.py** — GitHub trending (HTML + enrichment)
 4. **steam_pipeline.py** — Steam Most Played (Steam Charts API + appdetails)
 5. **events_pipeline.py** — Soldout events
 6. **kinozal_pipeline.py** — Kinozal movies
 7. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
+
+### Pipeline-step isolation (#245)
+
+**Root cause it fixes:** GitHub Actions steps carry an *implicit* `if: success()`. So a
+single step's `exit 1` used to cascade into **skipping every later step** — a transient
+third-party 403 in `events_pipeline` skipped `kinozal_pipeline` and suppressed movie
+delivery for that run ([run 28493805028](https://github.com/ekolvah/kinozal_scraper/actions/runs/28493805028)).
+Per-source isolation existed *inside* each `run_*_pipeline`, but not *between* the workflow
+steps.
+
+**Fix:** each pipeline step (2–6) carries
+`if: ${{ !cancelled() && steps.tests.outcome == 'success' }}`:
+
+- `!cancelled()` — the step runs even if an **earlier pipeline** step failed (defeats the
+  implicit `if: success()` cascade), so a flaky source can't suppress an unrelated one.
+- `steps.tests.outcome == 'success'` — but a **red smoke gate still skips every pipeline**
+  (the hard prerequisite is preserved; that's why the gate carries `id: tests`).
+- **No `continue-on-error`** — a failed source still exits 1 → job goes red → the existing
+  `Send fallback failure alert` (`if: failure()`) fires. Failure stays visible (§IV); it is
+  *not* masked into a green job. This is why a `continue-on-error` + aggregate-gate design
+  was rejected: it masks `conclusion` and adds a moving part.
+
+`telegram_summarizer` (step 7) is deliberately **not** isolated — it keeps `if: always()`
+and no `continue-on-error`, so its own failure hard-fails the job (§IV). The invariant is
+guarded statically by `tests/test_workflow_isolation.py::TestPipelineStepIsolation`, which
+*derives* the pipeline set from the workflow (any step running `kinozal_scraper.*_pipeline`)
+so a newly-added source is automatically held to it — a hand-maintained list would let the
+next source slip back into the cascade.
 
 ## Environment variables
 
