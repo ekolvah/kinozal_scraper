@@ -28,8 +28,7 @@ in [testing.md](testing.md#rule-when-a-test-is-not-worth-writing).
 
 A test that pins a known production bug (`TestConfigValidationKnownGaps` style)
 is allowed only when an issue tracks the fix; when fixed, the test MUST be
-inverted to assert the correct behaviour and the test-coverage row promoted
-from ⚠ documents-current-bug to ✅.
+inverted to assert the correct behaviour.
 
 **Rationale:** historical inversion (code → tests post-hoc) hid drifts like
 issue #57 for months. Writing the test first makes the contract explicit and
@@ -162,8 +161,9 @@ A PR MAY merge only when:
   logic gets an integration test against a saved HTML/JSON fixture; new
   config rules get a unit test; new pipeline orchestration gets a
   Protocol-doubles test.
-- `docs/architecture/test-coverage.md` is updated when test structure
-  changes (new file, new class, or category status flips).
+- A newly *rejected* coverage decision (a consciously-accepted gap, a scope-/cost-skip)
+  is recorded in [testing.md](testing.md#consciously-accepted-coverage-gaps) so it isn't
+  silently re-litigated — there is no auto-generated coverage inventory to update.
 - The `Claude code review` workflow has commented on the PR (status sticky
   comment present); a hard block on its verdict is not enforced, but
   unaddressed concerns must be answered in PR comments before merge.
