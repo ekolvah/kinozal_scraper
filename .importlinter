@@ -1,0 +1,34 @@
+; §II Protocol-boundaries as a machine contract (#234).
+; Since #238 the code is an installed package `kinozal_scraper`; grimp builds the
+; graph from that single root_package (src on sys.path via the editable install /
+; pytest pythonpath=["src"]). grimp is static/AST, so the `__main__` wiring blocks
+; never execute during analysis.
+;
+; NOTE on granularity: the Protocol classes (Storage/Notifier/Enricher) live in
+; the SAME module as their concrete impls (sheets_storage holds both `Storage`
+; and `SheetsStorage`). So a module-level contract cannot express "orchestrators
+; import only Protocol modules" — these contracts pin dependency *direction*
+; instead. A stricter protocol-only contract needs a Protocol-extraction refactor
+; (out of scope, see #234).
+
+[importlinter]
+root_package = kinozal_scraper
+
+[importlinter:contract:pipeline-layers]
+name = Pipeline dependency direction (§II)
+type = layers
+layers =
+    kinozal_scraper.kinozal_pipeline | kinozal_scraper.json_pipeline | kinozal_scraper.steam_pipeline | kinozal_scraper.github_trending_pipeline | kinozal_scraper.events_pipeline
+    kinozal_scraper.sheets_storage | kinozal_scraper.telegram_notifier | kinozal_scraper.gemini_enricher
+    kinozal_scraper.generic_pipeline
+
+[importlinter:contract:adapter-no-auth]
+name = Service adapters take ready clients, not credentials (§II)
+type = forbidden
+source_modules =
+    kinozal_scraper.sheets_storage
+    kinozal_scraper.telegram_notifier
+    kinozal_scraper.gemini_enricher
+forbidden_modules =
+    kinozal_scraper.crypto
+    kinozal_scraper.kinozal_auth

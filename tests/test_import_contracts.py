@@ -67,10 +67,10 @@ class TestImportContracts:
         forbidden_sec = cp["importlinter:contract:adapter-no-auth"]
         source = set(forbidden_sec["source_modules"].split())
         forbidden = set(forbidden_sec["forbidden_modules"].split())
-        assert _ADAPTERS <= source, (
+        assert source >= _ADAPTERS, (
             f"adapter-no-auth.source_modules dropped adapters: {_ADAPTERS - source}"
         )
-        assert _AUTH <= forbidden, (
+        assert forbidden >= _AUTH, (
             f"adapter-no-auth.forbidden_modules dropped auth modules: {_AUTH - forbidden}"
         )
 
