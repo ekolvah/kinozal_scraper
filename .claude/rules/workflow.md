@@ -25,11 +25,27 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    into the branch being merged — with a **tracked follow-up issue** for the
    real fix — not a separate standalone fix PR (that costs an extra
    merge+rebase round-trip). Permanent changes are still split.
-5. **Issues carry labels** — every `gh issue create` includes `--label
-   bug|enhancement|documentation|testing|...`. Semantics: `bug` = something
-   broken / current behaviour wrong; `enhancement` = improvement / new feature
-   / quality; `documentation` = `*.md`/`docs/`-only; `testing` = test-coverage
-   work. Full set: `gh label list` (don't hard-code the list here — it drifts).
+5. **Issues carry exactly one type-label** — the *type* of change lives in a
+   label, **not** in the title (the title is a plain description). `gh issue
+   create` sets exactly one label off the **type axis** (a *closed* semantic
+   set of nine — spelling it out here is a spec of the axis, not a hard-coded
+   drifting list). The type-label is the creator's call; `/plan` never touches
+   labels (`commands/plan.md`). Pick it by this **first-match** tree:
+     1. Something is broken / current behaviour is wrong → **`bug`**.
+     2. Changes user-visible behaviour or value: speed-only → **`perf`**;
+        closes a vulnerability / hardening → **`security`**; otherwise →
+        **`enhancement`**.
+     3. Behaviour unchanged: production code under `src/` (structure) →
+        **`refactor`**; `tests/`-only → **`testing`**; CI pipeline / quality
+        gates (`.github/workflows`, `ci_check`, lint/type/audit config) →
+        **`ci`**; `*.md`/`docs/`-only → **`documentation`**; other housekeeping
+        (non-CI dev scripts, dep bumps, repo config) → **`chore`**.
+   Example: `gh issue create --label refactor` (one, off the tree). Git *commit*
+   messages keep their conventional prefixes (`feat(ci): …` — changelog/history
+   is a separate axis from the issue title). The full set of **non-type** labels
+   (`wontfix`, `duplicate`, `help wanted`, future area-labels) still lives in
+   `gh label list` (don't hard-code *those* here — they drift); the type axis
+   above is closed and canonical.
 6. **Pre-commit gate** — `python scripts/ci_check.py` runs ruff format +
    lint + pytest + mypy + pip-audit + lockfile drift. The `.githooks/pre-push`
    hook runs it automatically; do not bypass with `--no-verify`.
