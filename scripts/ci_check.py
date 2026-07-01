@@ -122,6 +122,26 @@ def check_mypy() -> None:
         print("No modules to type-check; skipping.")
 
 
+def check_imports() -> None:
+    """§II protocol-boundaries as a machine gate (#234).
+
+    Runs the import-linter contracts in `.importlinter` via its Python API — not
+    the `lint-imports` console script (unreliable-on-PATH on Windows + the #109
+    subprocess-stdout pitfall). grimp is static/AST, so nothing in the package
+    actually executes. `src` is put on sys.path to mirror pytest's
+    pythonpath=["src"], so the gate resolves `kinozal_scraper` even without the
+    editable install present.
+    """
+    print("==> import-linter (§II boundaries)")
+    src = str(Path("src").resolve())
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    from importlinter import api
+
+    if not api.use_cases.lint_imports(config_filename=".importlinter"):
+        sys.exit(1)
+
+
 # Registry — the single source of truth for the quality check set. Order is the
 # run order for a full pre-commit pass. ci.yml references these names via --only.
 CHECKS: dict[str, Callable[[], None]] = {
@@ -133,6 +153,7 @@ CHECKS: dict[str, Callable[[], None]] = {
     "pip-audit-dev": check_pip_audit_dev,
     "requirements": check_requirements,
     "mypy": check_mypy,
+    "imports": check_imports,
 }
 
 

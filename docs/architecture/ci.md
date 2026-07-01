@@ -8,7 +8,8 @@ python scripts/ci_check.py
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
 ruff format → ruff lint → pytest → module docstring presence → pip-audit
-(runtime) → pip-audit (dev) → requirements consistency → mypy.
+(runtime) → pip-audit (dev) → requirements consistency → mypy → import
+contracts.
 
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
@@ -35,8 +36,8 @@ hook already runs the identical `ci_check.py` locally before every push.
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,
-lint, pytest, headers, pip-audit, pip-audit-dev, requirements, mypy). The
-per-step split keeps the GitHub Actions UI granular (you see *which* gate
+lint, pytest, headers, pip-audit, pip-audit-dev, requirements, mypy, imports).
+The per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 
 mypy type-checks every `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
@@ -54,6 +55,32 @@ though `import`-based tests never execute it (#237). The package must be
 importable — CI runs `pip install -e . --no-deps` before the checks (the
 canonical dependency source stays `requirements*.in/.txt`; the editable install
 adds only the package itself, never shadowing the lockfile).
+
+The `imports` check runs [import-linter](https://github.com/seddonym/import-linter)
+against `.importlinter` (repo root), turning part of §II (Protocol Boundaries +
+DI) into a deterministic gate. Two contracts, both green today — value is
+*preventing future drift*, not cleaning existing violations (#234):
+
+- **`adapter-no-auth`** (`forbidden`) — the real §II win: the service adapters
+  (`sheets_storage`/`telegram_notifier`/`gemini_enricher`) must not import
+  `crypto`/`kinozal_auth`. Encodes "implementations receive ready clients, not
+  credentials — auth lives in the caller" as a machine rule.
+- **`pipeline-layers`** (`layers`) — pins dependency *direction*: orchestrators
+  (`*_pipeline`) may import the adapters and the shared `generic_pipeline` core,
+  never the reverse, and no orchestrator/adapter imports a sibling.
+
+`check_imports()` calls import-linter's **Python API** (`importlinter.api`), not
+the `lint-imports` console script — the console entry point is unreliable-on-PATH
+on Windows and would reintroduce the #109 `subprocess stdout=None` pitfall. grimp
+builds the graph statically (AST), so the `__main__` wiring blocks never execute.
+`tests/test_import_contracts.py` is an anti-drift guard: it asserts the
+contracts' *load-bearing fields* (which modules are forbidden/layered), so an
+agent can't quietly gut a contract while keeping its name. A stricter
+"orchestrators import only Protocol modules" contract is not expressible today —
+the `Protocol` classes share a module with their concrete impls — and is
+deferred to a Protocol-extraction refactor (#234 Out of scope). `principles.md`
+is deliberately **not** edited: §II is tool-agnostic canon, so the tool mention
+lives here and in `runtime.md`, not in the constitution.
 
 ## Claude review workflow (`claude-review.yml`)
 

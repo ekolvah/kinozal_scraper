@@ -1,4 +1,5 @@
 detect-secrets
+import-linter
 mypy
 pip-audit
 pip-tools
