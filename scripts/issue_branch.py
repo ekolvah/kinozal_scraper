@@ -19,12 +19,10 @@ from pathlib import Path
 
 MAX_SLUG_WORDS = 4
 FALLBACK_SLUG = "task"
-_PREFIX_TAG_RE = re.compile(r"^\s*\[[^\]]+\]\s*")
 
 
 def slugify(title: str) -> str:
-    no_tag = _PREFIX_TAG_RE.sub("", title)
-    ascii_only = re.sub(r"[^a-zA-Z0-9\s-]", " ", no_tag).lower()
+    ascii_only = re.sub(r"[^a-zA-Z0-9\s-]", " ", title).lower()
     words = [w for w in re.split(r"[\s-]+", ascii_only) if w]
     if not words:
         return FALLBACK_SLUG

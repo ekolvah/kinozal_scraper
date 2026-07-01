@@ -13,12 +13,6 @@ class TestSlugify:
     def test_ascii_title_lowercased_and_dashed(self) -> None:
         assert slugify("Fix Telegram Notifier Bug") == "fix-telegram-notifier-bug"
 
-    def test_strips_type_prefix_tag(self) -> None:
-        assert slugify("[bug] gemini truncates summary") == "gemini-truncates-summary"
-
-    def test_strips_feat_prefix_tag(self) -> None:
-        assert slugify("[feat] Add github trending source") == "add-github-trending-source"
-
     def test_caps_at_four_words(self) -> None:
         assert slugify("one two three four five six") == "one-two-three-four"
 
@@ -26,7 +20,7 @@ class TestSlugify:
         assert slugify("починить геминай") == "task"
 
     def test_mixed_ascii_and_cyrillic_keeps_ascii(self) -> None:
-        assert slugify("[bug] gemini обрезает summary") == "gemini-summary"
+        assert slugify("gemini обрезает summary") == "gemini-summary"
 
     def test_empty_title_falls_back_to_task(self) -> None:
         assert slugify("") == "task"
@@ -37,7 +31,7 @@ class TestSlugify:
 
 class TestBuildBranchName:
     def test_concatenates_with_issue_number(self) -> None:
-        assert build_branch_name(114, "[feat] add commands") == "issue-114-add-commands"
+        assert build_branch_name(114, "add commands") == "issue-114-add-commands"
 
     def test_falls_back_when_slug_empty(self) -> None:
         assert build_branch_name(42, "русский тайтл") == "issue-42-task"
@@ -61,7 +55,7 @@ class TestBuildBranchName:
 
 class TestFetchTitleEncoding:
     def test_cyrillic_title_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        cyrillic_title = "[bug] /plan и /implement не работают после PR #121"
+        cyrillic_title = "/plan и /implement не работают после PR #121"
         payload = json.dumps({"state": "OPEN", "title": cyrillic_title}, ensure_ascii=False)
 
         def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
