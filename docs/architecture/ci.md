@@ -191,7 +191,7 @@ next source slip back into the cascade.
 > **Включение fallback:** задай оба секрета `KINOZAL_USERNAME` + `KINOZAL_PASSWORD`. Без них (или при
 > partial) fallback отключён, и сбой `.tv` доходит видимой ошибкой `fetch failed ... (mirror
 > fallback disabled)` + exit 1 (§IV) — как было до #227. Провал логина / both-failed тоже видимы:
-> `mirror login failed` / `primary failed (...); mirror ... also failed (...)`. `sources.json`
+> `mirror login failed` / `primary failed (...); mirror ... also failed (...)`.
 > `sources.json` `base_url` остаётся `https://kinozal.tv` (дефолтный origin, когда primary жив) —
 > зеркало туда не прописывать.
 >
