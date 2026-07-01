@@ -18,11 +18,11 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_html,
 )
-from kinozal_scraper.http_fetch import fetch_html
+from kinozal_scraper.http_fetch import fetch_bytes, fetch_html
 from kinozal_scraper.kinozal_auth import fetch_authenticated, login
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
-from kinozal_scraper.telegram_notifier import Notifier
+from kinozal_scraper.telegram_notifier import Notifier, TelegramNotifier
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,9 @@ def _kinozal_urls() -> list[str]:
     return [fallback] if fallback else []
 
 
+_ORIGIN_HOST = "kinozal.tv"
 _MIRROR_HOST = "kinozal.guru"
+_KINOZAL_HOSTS = frozenset({_ORIGIN_HOST, _MIRROR_HOST})
 
 
 def _mirror_url(url: str) -> str:
@@ -49,15 +51,19 @@ def _mirror_url(url: str) -> str:
     return urlunsplit(urlsplit(url)._replace(netloc=_MIRROR_HOST))
 
 
-class _KinozalFetcher:
-    """Anonymous kinozal.tv primary with a lazy authenticated kinozal.guru
-    mirror fallback.
+class Kinozal:
+    """Facade for all kinozal IO: anonymous kinozal.tv primary with a lazy
+    kinozal.guru mirror fallback. One object owns the origin-vs-mirror decision
+    so consumers (the pipeline, the notifier's poster download) stay host-agnostic
+    — no split where the listing comes from the mirror but the poster keeps
+    hitting the dead origin (#241).
 
-    The mirror is hit only when a primary fetch raises (e.g. kinozal.tv 522),
-    and login happens at most once per run, on the first fallback — so a healthy
-    .tv run pays no login cost and needs no credentials. When credentials are
-    absent or partial the mirror is disabled and the primary failure propagates
-    as before, surfacing visibly (§IV)."""
+    HTML listings use the authenticated mirror (login at most once per run, on
+    the first fallback) — so a healthy .tv run pays no login cost and needs no
+    credentials. Posters use the mirror *anonymously* (kinozal.guru serves
+    /i/poster/ 200 without login, verified). When credentials are absent or
+    partial the HTML mirror is disabled and the primary failure propagates,
+    surfacing visibly (§IV)."""
 
     def __init__(self, username: str, password: str) -> None:
         self._username = username
@@ -66,11 +72,52 @@ class _KinozalFetcher:
         self._session: _MirrorSession | None = None
         self._login_error: str | None = None
 
-    def fetch(self, url: str) -> str:
+    @classmethod
+    def from_env(cls) -> Kinozal:
+        """Build from KINOZAL_USERNAME/PASSWORD, warning on partial credentials.
+
+        Single home for the credential read + partial-creds WARNING so both the
+        default `run_kinozal_pipeline` path and `__main__` share it (the WARNING
+        used to live inline in the runner)."""
+        username = os.environ.get("KINOZAL_USERNAME", "")
+        password = os.environ.get("KINOZAL_PASSWORD", "")
+        if bool(username) != bool(password):
+            logger.warning(
+                "kinozal: partial credentials — mirror fallback disabled "
+                "(set BOTH KINOZAL_USERNAME and KINOZAL_PASSWORD)"
+            )
+        return cls(username, password)
+
+    def fetch_listing(self, url: str) -> str:
         try:
             return fetch_html(url)
         except Exception as primary_exc:  # noqa: BLE001 — any primary-fetch failure falls back to the mirror
             return self._from_mirror(url, primary_exc)
+
+    def fetch_poster(self, url: str) -> bytes:
+        """Download a poster, sharing the listing's origin→mirror failover (#241).
+
+        Try the URL as-is; on failure retry the kinozal.guru mirror ONLY when the
+        URL is a kinozal host that is not already the mirror. A third-party host
+        (e.g. an uploader's fastpic image) has no kinozal mirror, so its failure
+        propagates and the notifier degrades to text + WARNING (§IV). A
+        primary-on-.guru failure isn't re-swapped to the same host. The mirror
+        poster fetch is anonymous — no _ensure_login, so one dead-origin poster
+        on an otherwise-healthy run pays no login cost."""
+        try:
+            return fetch_bytes(url)
+        except Exception as primary_exc:  # noqa: BLE001 — mirror-retry for kinozal hosts, else propagate to §IV degrade
+            host = urlsplit(url).netloc
+            if host not in _KINOZAL_HOSTS or host == _MIRROR_HOST:
+                raise
+            mirror_url = _mirror_url(url)
+            logger.warning(
+                "[kinozal] poster primary %s failed (%s) — retrying mirror %s",
+                url,
+                primary_exc,
+                mirror_url,
+            )
+            return fetch_bytes(mirror_url)
 
     def _from_mirror(self, url: str, primary_exc: Exception) -> str:
         if not self._mirror_enabled:
@@ -108,6 +155,17 @@ class _KinozalFetcher:
             logger.error("kinozal mirror login failed: %s", exc)  # noqa: TRY400 — re-raised as RuntimeError with `from exc`; traceback surfaces at the isolation boundary
             raise RuntimeError(f"mirror login failed: {exc}") from exc
         return self._session
+
+
+def _build_notifier(bot_token: str, chat_id: str, kinozal: Kinozal) -> TelegramNotifier:
+    """`__main__` factory: wire the kinozal mirror-aware poster fetcher into the
+    notifier so posters share the listing's origin→mirror failover (#241).
+
+    Extracted from `__main__` so the wiring itself is testable — a test that
+    re-built the notifier by hand would only prove the seam, not that prod
+    actually routes posters through `kinozal.fetch_poster` (the bug was a
+    `__main__` that built the notifier *without* `image_fetcher`)."""
+    return TelegramNotifier(bot_token, chat_id, image_fetcher=kinozal.fetch_poster)
 
 
 def _kinozal_title(raw: str) -> str:
@@ -187,6 +245,11 @@ def run_kinozal_pipeline(
     notifier: Notifier,
     youtube: Any,
     sources_config: dict[str, Any] | None = None,
+    # Covers listing fetches only. Poster mirror-routing lives in the notifier's
+    # `image_fetcher`, so a caller passing `kinozal=` MUST also build the notifier
+    # via `_build_notifier(bot_token, chat_id, kinozal)` — otherwise posters keep
+    # hitting the dead origin (the #241 bug). `__main__` does both.
+    kinozal: Kinozal | None = None,
 ) -> list[PipelineResult]:
     results: list[PipelineResult] = []
     config = sources_config or load_sources_config()
@@ -214,15 +277,10 @@ def run_kinozal_pipeline(
     # mirror is a lazy fallback used only when a primary fetch fails (e.g. 522).
     # A healthy .tv run needs no credentials and pays no login cost. Partial
     # credentials disable the fallback with a visible WARNING rather than redden
-    # an otherwise-healthy run (§IV/§VI).
-    username = os.environ.get("KINOZAL_USERNAME", "")
-    password = os.environ.get("KINOZAL_PASSWORD", "")
-    if bool(username) != bool(password):
-        logger.warning(
-            "kinozal: partial credentials — mirror fallback disabled "
-            "(set BOTH KINOZAL_USERNAME and KINOZAL_PASSWORD)"
-        )
-    fetcher = _KinozalFetcher(username, password)
+    # an otherwise-healthy run (§IV/§VI) — see `Kinozal.from_env`. `__main__`
+    # injects the same object it wires into the notifier, so the listing and its
+    # posters share one origin-vs-mirror decision (#241).
+    fetcher = kinozal or Kinozal.from_env()
 
     # Fetch HTML for every (source × url) pair, recording per-source fetch and
     # extraction errors. Items keep their source_id from extract_from_html so
@@ -232,7 +290,7 @@ def run_kinozal_pipeline(
         result = PipelineResult(source_id=source["id"])
         for url in urls:
             try:
-                html_text = fetcher.fetch(url)
+                html_text = fetcher.fetch_listing(url)
             except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
                 logger.exception("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
@@ -310,7 +368,6 @@ if __name__ == "__main__":
     import gspread
 
     from kinozal_scraper.sheets_storage import SheetsStorage
-    from kinozal_scraper.telegram_notifier import TelegramNotifier
     from kinozal_scraper.youtube import Youtube
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -319,12 +376,16 @@ if __name__ == "__main__":
     gc = gspread.service_account_from_dict(credentials)
 
     storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
-    notifier = TelegramNotifier(
+    # One Kinozal object wired into both the notifier (posters) and the pipeline
+    # (listings) — single origin-vs-mirror decision for all kinozal IO (#241).
+    kinozal = Kinozal.from_env()
+    notifier = _build_notifier(
         os.environ["TELEGRAM_BOT_TOKEN"],
         os.environ["TELEGRAM_CHAT_ID"],
+        kinozal,
     )
     youtube = Youtube()
-    prod_results = run_kinozal_pipeline(storage, notifier, youtube)
+    prod_results = run_kinozal_pipeline(storage, notifier, youtube, kinozal=kinozal)
 
     if any(not r.ok for r in prod_results):
         sys.exit(1)

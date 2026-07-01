@@ -801,5 +801,139 @@ class TestPipelineAuth(unittest.TestCase):
         self.assertTrue(any(not r.ok for r in results))  # primary 522 still red
 
 
+_POSTER_TV = "https://kinozal.tv/i/poster/2/7/2136727.jpg"
+
+
+class TestFetchPoster(unittest.TestCase):
+    """Poster download shares the listing's origin→mirror failover (#241).
+
+    The kinozal.tv origin can 522 while the same poster path is served 200 by
+    the kinozal.guru mirror — anonymously (verified). Before #241 the poster was
+    fetched by the generic notifier straight at the dead origin, so it dropped to
+    text even though the mirror had it. `Kinozal.fetch_poster` closes that split:
+    one object, one origin-vs-mirror decision, for HTML *and* posters."""
+
+    def _kinozal(self) -> Any:
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        return Kinozal("u", "p")
+
+    def test_primary_success_returns_origin_bytes_no_mirror(self) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes", return_value=b"PRIMARY"
+            ) as mfetch,
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
+        ):
+            data = self._kinozal().fetch_poster(_POSTER_TV)
+        self.assertEqual(data, b"PRIMARY")
+        mfetch.assert_called_once_with(_POSTER_TV)
+        mlogin.assert_not_called()
+
+    def test_kinozal_host_failure_falls_back_to_mirror_host(self) -> None:
+        calls: list[str] = []
+
+        def _fetch(url: str) -> bytes:
+            calls.append(url)
+            if "kinozal.tv" in url:
+                raise RuntimeError("HTTP Error 522")
+            return b"MIRROR"
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
+        ):
+            data = self._kinozal().fetch_poster(_POSTER_TV)
+        self.assertEqual(data, b"MIRROR")
+        self.assertEqual(len(calls), 2)
+        self.assertIn("kinozal.guru", calls[1])
+
+    def test_mirror_host_swap_preserves_path_and_query(self) -> None:
+        calls: list[str] = []
+
+        def _fetch(url: str) -> bytes:
+            calls.append(url)
+            if "kinozal.tv" in url:
+                raise RuntimeError("522")
+            return b"M"
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
+        ):
+            self._kinozal().fetch_poster("https://kinozal.tv/i/poster/2/7/2136727.jpg?x=1")
+        self.assertEqual(calls[1], "https://kinozal.guru/i/poster/2/7/2136727.jpg?x=1")
+
+    def test_mirror_poster_fetch_is_anonymous(self) -> None:
+        def _fetch(url: str) -> bytes:
+            if "kinozal.tv" in url:
+                raise RuntimeError("522")
+            return b"M"
+
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_authenticated") as mauth,
+        ):
+            self._kinozal().fetch_poster(_POSTER_TV)
+        mlogin.assert_not_called()  # poster mirror-fetch is anonymous (verified 200)
+        mauth.assert_not_called()
+
+    def test_third_party_host_failure_propagates(self) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes",
+                side_effect=RuntimeError("boom"),
+            ) as mfetch,
+            self.assertRaises(RuntimeError),
+        ):
+            self._kinozal().fetch_poster("https://i123.fastpic.org/big/x.jpg")
+        mfetch.assert_called_once()  # third-party host: no kinozal-mirror retry
+
+    def test_both_primary_and_mirror_fail_propagates(self) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes",
+                side_effect=RuntimeError("522 everywhere"),
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            self._kinozal().fetch_poster(_POSTER_TV)  # double-fail surfaces (§IV)
+
+    def test_already_mirror_host_not_reswapped(self) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_bytes",
+                side_effect=RuntimeError("522"),
+            ) as mfetch,
+            self.assertRaises(RuntimeError),
+        ):
+            self._kinozal().fetch_poster("https://kinozal.guru/i/poster/x.jpg")
+        mfetch.assert_called_once()  # already on mirror — no pointless re-swap retry
+
+
+class TestNotifierWiring(unittest.TestCase):
+    """Payoff guard (#241): proves prod actually routes posters through the
+    mirror-aware fetcher, not the default `fetch_bytes`. The bug lived in the
+    `__main__` wiring (notifier built without `image_fetcher`); a test that
+    re-built the notifier by hand would only prove the seam, not the wiring.
+    This asserts the `__main__` factory wires `Kinozal.fetch_poster`."""
+
+    def test_prod_factory_routes_poster_through_mirror(self) -> None:
+        from kinozal_scraper.kinozal_pipeline import Kinozal, _build_notifier
+
+        kinozal = Kinozal("u", "p")
+        notifier = _build_notifier("tok", "chat", kinozal)
+
+        def _fetch(url: str) -> bytes:
+            if "kinozal.tv" in url:
+                raise RuntimeError("522")
+            return b"MIRROR"
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
+        ):
+            data = notifier._image_fetcher(_POSTER_TV)
+        self.assertEqual(data, b"MIRROR")  # poster reached via mirror, not dropped
+
+
 if __name__ == "__main__":
     unittest.main()
