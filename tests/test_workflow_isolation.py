@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
 
@@ -31,7 +31,7 @@ _PIPELINE_RUN = re.compile(r"python -m kinozal_scraper\.\w+_pipeline")
 
 def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    return data["jobs"]["run-script"]["steps"]
+    return cast("list[dict[str, Any]]", data["jobs"]["run-script"]["steps"])
 
 
 def _pipeline_steps() -> list[dict[str, Any]]:
