@@ -38,9 +38,9 @@ jobs:
             - Security issues
             - Adherence to the conventions in CLAUDE.md (PR workflow, branch
               naming, dependency rules, no workarounds without root cause)
-            - Whether the change has matching test coverage and whether
-              `docs/architecture/test-coverage.md` is updated when test
-              structure changes
+            - Whether the change has matching test coverage, and whether a
+              consciously-rejected coverage decision is recorded in the
+              `docs/architecture/testing.md` accepted-gaps ledger
 
             Skip nitpicks — ruff handles formatting/lint. Skip docstring style
             and small wording issues unless they obscure intent.

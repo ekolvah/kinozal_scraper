@@ -142,8 +142,7 @@ orientation, которого в per-file docstring нет.
 | `runtime.md` | Какие пайплайны / Protocols / data-flow | ✅ |
 | `pipeline.md` | Слои, контракты `extract_from_*`, `NormalizedItem` | ✅ |
 | `storage.md` | Storage Protocol, DI, row-schema, инварианты колонок | ✅ |
-| `testing.md` | Как гарантируем качество: уровни тестов, что мокать (ссылается на `principles.md §II`, не дублирует) | ✅ |
-| `test-coverage.md` | Микс: bug-taxonomy (канон — `testing.md#bug-taxonomy`, keyed-ссылка, не перефраз) + autogen-инвентарь тестов | ❌ две темы |
+| `testing.md` | Как гарантируем качество: уровни тестов, что мокать (ссылается на `principles.md §II`, не дублирует) + ledger сознательно-принятых дыр покрытия | ✅ |
 | `ci.md` | Микс: local/CI-гейты (dev-process) + production env-vars (runtime) | ❌ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts | ✅ |
 

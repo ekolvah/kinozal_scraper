@@ -1,8 +1,11 @@
 # Testing philosophy
 
-> **Question this document answers:** How do we plan to guarantee product quality?
+> **Question this document answers:** How do we plan to guarantee product quality — the
+> levels, the taxonomy, what we mock, and which coverage gaps we consciously accept.
 >
-> For the actual coverage map (which tests catch which category of bugs and where the gaps are), see [test-coverage.md](test-coverage.md).
+> Navigation «which tests touch module X» is `grep` by module name, not a hand-curated
+> table. The one thing grep can't answer — *why we deliberately don't test Y* — is the
+> [Consciously-accepted coverage gaps](#consciously-accepted-coverage-gaps) ledger below.
 
 ## Rule: no mocks of internal functions
 
@@ -82,9 +85,8 @@ Choose the cheapest reliable test for each category.
 
 - `SheetsStorage` gspread wiring — call order, worksheet creation.
   (Its **retry-on-429** and **schema validation** *are* tested — see
-  `test_sheets_storage.py::TestSheetsStorageRetryOn429` / `TestSchemaValidation` and the
-  C/E rows of [test-coverage.md](test-coverage.md) — because those are correctness logic
-  mocked at the `gspread.Client` boundary, not internal call order.)
+  `test_sheets_storage.py::TestSheetsStorageRetryOn429` / `TestSchemaValidation` — because
+  those are correctness logic mocked at the `gspread.Client` boundary, not internal call order.)
 - `TelegramChannelSummarizer` / Telethon calls.
 - Any code path that requires live credentials.
 
@@ -160,8 +162,38 @@ python -m pytest          # via pyproject.toml config
 python scripts/ci_check.py  # full CI mirror: format + lint + tests + mypy
 ```
 
-## Test coverage map
+## Consciously-accepted coverage gaps
 
-For a structured inventory of what is tested and where gaps exist,
-see [test-coverage.md](test-coverage.md) — a hand-curated map of which tests
-catch which bug category, kept current by hand when test structure changes.
+Every bug category in the [taxonomy](#bug-taxonomy) is covered by tests today (navigate to
+them with `grep` by module/feature name — there is no hand-curated per-category index, it
+only drifts). What `grep` *can't* tell you is where we **deliberately don't test** and why —
+that ledger lives here so a rejected-as-negative-ROI decision isn't silently re-opened as
+work-for-work (goal-function priority (2)).
+
+**Rejected as negative-ROI (a test would only ever guard CI minutes, not correctness):**
+
+- **A. Structure drift — no *live* E2E for GitHub `new_popular` / Steam JSON.** Integration
+  tests cover parsing with saved fixtures; the daily cron is the E2E smoke (zero-row drift →
+  red CI next run). A dedicated live-E2E was rejected per the «cron = E2E smoke» doctrine
+  ([Test levels](#test-levels)). Live E2E *does* exist where structure drift is silent and
+  frequent: `test_e2e_kinozal_titles.py`, `test_e2e_github_trending.py`.
+- **C. Auth & quota — GitHub 401 not tested.** The token rarely 401s and a downstream
+  zero-row → red CI catches the outage; a dedicated 401 guard is negative-ROI.
+
+**Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
+
+- **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no
+  overlap → a crash/concurrency simulation would be work-for-work). Realistic failure modes
+  *are* covered: rerun-after-crash idempotency (dedupe index re-read) and notify-then-store
+  ordering (a failed-notify item isn't stored → retried next run, no silent loss).
+  Cell-level partial `gspread` writes are scope-skip (live credentials).
+
+### Modules without dedicated tests
+
+| Module | Reason | Mitigation |
+|---|---|---|
+| `youtube.py` | No Protocol boundary, requires live YouTube API | Indirect coverage via `test_kinozal_pipeline.py::TestEnrichWithTrailer` |
+| `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
+| `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
+| Package import-resolution & repo layout | A module failing to resolve as `kinozal_scraper.X`, or source drifting back to a flat `src/*.py` layout | `test_package_importable.py::TestPackage` (all modules import as `kinozal_scraper.X`); `test_repo_layout.py::TestLayout`; `test_check_headers.py` empty-/nested-scan guards ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237) B1) |
+| `crypto.py` (`save_/load_encrypter_session`) | File-IO glue around the **tested** pure helpers `encrypt_bytes`/`decrypt_bytes` | **Cost-skip**: mocking the filesystem to guard trivial glue is negative-ROI; failure is loud (`KeyError`/`InvalidToken` crashes cron start immediately, §IV-visible) |

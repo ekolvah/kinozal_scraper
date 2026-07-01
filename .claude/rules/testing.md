@@ -22,6 +22,8 @@ paths:
 3. **Уровень теста** выбирай по [bug-taxonomy](../../docs/architecture/testing.md#bug-taxonomy)
    (integration-first → unit для pure-функций → e2e smoke перед merge для structure-drift).
 4. **Прогон** — `python -m pytest` инкрементально; перед коммитом `python scripts/ci_check.py`.
-5. **Покрытие сместилось** (новый bug-class, закрытая дыра, инвертирован documents-current-bug
-   тест) — обнови curated-таблицу в [`test-coverage.md`](../../docs/architecture/test-coverage.md)
-   руками: это hand-curated карта «какой тест какой баг ловит», не авто-генерация.
+5. **Сознательно отклонил покрытие** (новый scope-/cost-skip, live-E2E признан negative-ROI,
+   parallel-режим — non-target) — запиши решение в ledger
+   [`testing.md#consciously-accepted-coverage-gaps`](../../docs/architecture/testing.md#consciously-accepted-coverage-gaps),
+   чтобы его не переоткрыли как work-for-work. Инвентаря «какой тест какой баг ловит» нет —
+   навигация к тестам через `grep` по модулю, не через ручную таблицу.

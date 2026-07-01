@@ -413,7 +413,7 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         """When every Gemini model is exhausted, the very first enrich() raises.
 
         Caller (run_json_pipeline) must substitute `on_error` from sources.json
-        into every item so notifications still go out — gap C in test-coverage.md.
+        into every item so notifications still go out — bug taxonomy category C (testing.md).
         """
         import copy
 
