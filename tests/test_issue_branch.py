@@ -40,6 +40,12 @@ class TestSlugify:
         assert slugify("feat(ci): add complexity ratchet") == "add-complexity-ratchet"
         assert slugify("refactor: unify extraction guard") == "unify-extraction-guard"
 
+    def test_keeps_non_type_word_before_colon(self) -> None:
+        # Anchored to the closed type axis: a plain title that merely starts with
+        # `word:` (not a real type) keeps its first word — no over-stripping.
+        assert slugify("docker: bump base image version") == "docker-bump-base-image"
+        assert slugify("note: revisit rate limiting") == "note-revisit-rate-limiting"
+
 
 class TestBuildBranchName:
     def test_concatenates_with_issue_number(self) -> None:
