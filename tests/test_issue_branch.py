@@ -34,6 +34,12 @@ class TestSlugify:
     def test_special_chars_dropped(self) -> None:
         assert slugify("Add /plan + /implement commands!") == "add-plan-implement-commands"
 
+    def test_strips_conventional_type_prefix(self) -> None:
+        # Type moved out of the title into a label (#256); a leftover conventional
+        # prefix must not leak into the branch slug (feat/ci/scope are noise).
+        assert slugify("feat(ci): add complexity ratchet") == "add-complexity-ratchet"
+        assert slugify("refactor: unify extraction guard") == "unify-extraction-guard"
+
 
 class TestBuildBranchName:
     def test_concatenates_with_issue_number(self) -> None:
