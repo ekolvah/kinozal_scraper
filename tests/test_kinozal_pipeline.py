@@ -1,8 +1,10 @@
 import os
+import re
 import unittest
 import unittest.mock
 from typing import Any
 
+import kinozal_scraper.kinozal_pipeline as kp
 from kinozal_scraper.generic_pipeline import NormalizedItem, PipelineResult, extract_from_html
 from kinozal_scraper.kinozal_auth import KinozalLoginError
 from kinozal_scraper.kinozal_pipeline import (
@@ -217,37 +219,53 @@ class TestTitleYearMatches(unittest.TestCase):
 
 
 class TestKinozalUrls(unittest.TestCase):
-    def test_reads_existing_URLS_variable(self) -> None:
-        with unittest.mock.patch.dict(
-            os.environ,
-            {"URLS": "топ|https://kinozal.tv/top.php;новинки|https://kinozal.tv/new.php"},
-            clear=False,
-        ):
-            urls = _kinozal_urls()
-        self.assertEqual(urls, ["https://kinozal.tv/top.php", "https://kinozal.tv/new.php"])
-
     def test_falls_back_to_KINOZAL_TOP_URL(self) -> None:
         env = {"KINOZAL_TOP_URL": "https://kinozal.tv/top.php"}
         with unittest.mock.patch.dict(os.environ, env, clear=False):
-            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_URLS", None)
             urls = _kinozal_urls()
         self.assertEqual(urls, ["https://kinozal.tv/top.php"])
 
     def test_returns_empty_when_nothing_configured(self) -> None:
         with unittest.mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_URLS", None)
             os.environ.pop("KINOZAL_TOP_URL", None)
             urls = _kinozal_urls()
         self.assertEqual(urls, [])
 
-    def test_URLS_takes_priority_over_KINOZAL_TOP_URL(self) -> None:
+    def test_KINOZAL_URLS_takes_priority_over_KINOZAL_TOP_URL(self) -> None:
         env = {
-            "URLS": "label|https://kinozal.tv/top.php",
+            "KINOZAL_URLS": "label|https://kinozal.tv/top.php",
             "KINOZAL_TOP_URL": "https://other.example.com",
         }
         with unittest.mock.patch.dict(os.environ, env, clear=False):
             urls = _kinozal_urls()
         self.assertEqual(urls, ["https://kinozal.tv/top.php"])
+
+    def test_reads_KINOZAL_URLS(self) -> None:
+        # After the URLS→KINOZAL_URLS rename (#263): the new variable is the one read.
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"KINOZAL_URLS": "топ|https://kinozal.tv/top.php;новинки|https://kinozal.tv/new.php"},
+            clear=False,
+        ):
+            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_TOP_URL", None)
+            urls = _kinozal_urls()
+        self.assertEqual(urls, ["https://kinozal.tv/top.php", "https://kinozal.tv/new.php"])
+
+    def test_old_URLS_not_read(self) -> None:
+        # Clean cut (#263): the legacy URLS name is no longer a fallback. With only
+        # URLS set and no KINOZAL_URLS/KINOZAL_TOP_URL, the pipeline sees no URLs.
+        with unittest.mock.patch.dict(
+            os.environ,
+            {"URLS": "топ|https://kinozal.tv/top.php"},
+            clear=False,
+        ):
+            os.environ.pop("KINOZAL_URLS", None)
+            os.environ.pop("KINOZAL_TOP_URL", None)
+            urls = _kinozal_urls()
+        self.assertEqual(urls, [])
 
 
 # ── run_kinozal_pipeline (direct invocation, no helper duplicating prod logic) ─
@@ -262,7 +280,7 @@ def _run(
     notifier: InMemoryNotifier | None = None,
     storage: InMemoryStorage | None = None,
 ) -> tuple[InMemoryStorage, InMemoryNotifier]:
-    """Run the real run_kinozal_pipeline with HTTP patched and URLS env set.
+    """Run the real run_kinozal_pipeline with HTTP patched and KINOZAL_URLS env set.
 
     This invokes production code directly so tests fail if the pipeline
     behaviour changes — no inline copy of the orchestration logic.
@@ -276,7 +294,7 @@ def _run(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
-            {"URLS": "top|https://test.example/top.php"},
+            {"KINOZAL_URLS": "top|https://test.example/top.php"},
             clear=False,
         ),
     ):
@@ -440,7 +458,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
     def test_no_urls_configured_does_nothing(self) -> None:
-        """Pipeline early-exits when neither URLS nor KINOZAL_TOP_URL is set."""
+        """Pipeline early-exits when neither KINOZAL_URLS nor KINOZAL_TOP_URL is set."""
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
@@ -449,7 +467,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             ),
             unittest.mock.patch.dict(os.environ, {}, clear=False),
         ):
-            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_URLS", None)
             os.environ.pop("KINOZAL_TOP_URL", None)
             run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("movies"), [])
@@ -465,7 +483,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -490,7 +508,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -515,7 +533,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -535,7 +553,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -591,7 +609,7 @@ def _run_results(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
-            {"URLS": "top|https://test.example/top.php"},
+            {"KINOZAL_URLS": "top|https://test.example/top.php"},
             clear=False,
         ),
     ):
@@ -669,7 +687,7 @@ class TestPipelineAuth(unittest.TestCase):
     Failover and both-failed are visible (§IV); credentials are an optional
     backup, not a hard requirement."""
 
-    _URLS = {"URLS": "top|https://kinozal.tv/top.php?d=14"}
+    _URLS = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php?d=14"}
 
     def _run_with_env(
         self, env: dict[str, str], urls: str | None = None
@@ -678,7 +696,7 @@ class TestPipelineAuth(unittest.TestCase):
         # `env` sets exactly the credentials each test wants to exercise.
         full = dict(self._URLS)
         if urls is not None:
-            full["URLS"] = urls
+            full["KINOZAL_URLS"] = urls
         full.update(env)
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -993,7 +1011,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
     _CREDS = {"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}
 
     def _run(self, urls: str) -> InMemoryNotifier:
-        full = {"URLS": urls, **self._CREDS}
+        full = {"KINOZAL_URLS": urls, **self._CREDS}
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch.dict(os.environ, full, clear=False):
@@ -1057,6 +1075,220 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
         beta = next(n for n in notifier.sent if "Beta Film" in n.text)
         self.assertIn("kinozal.tv/details.php?id=1", alpha.text)  # served by primary
         self.assertIn("kinozal.guru/details.php?id=2", beta.text)  # served by mirror
+
+
+# ── genre exclusion filter (issue #263) ───────────────────────────────────────
+
+
+def _details_html(genre: str) -> str:
+    """Synthetic kinozal details page mirroring the REAL markup (verified against
+    the live page): the `Жанр:` value is tag-wrapped (`<span class="lnks_tobrs">`),
+    NOT a bare text node, sits after a whitespace node, and is terminated by <br>.
+    A parser reading `next_sibling`/`str()` naively would get '' or raw HTML here."""
+    return (
+        "<html><body><h2>"
+        "<b>Год выпуска:</b> 2024<br>"
+        f'<b>Жанр:</b> <span class="lnks_tobrs">{genre}</span><br>'
+        "<b>Разработчик:</b> X"
+        "</h2></body></html>"
+    )
+
+
+# Listing with two distinct items → two details pages keyed by id.
+_GENRE_LISTING = (
+    "<html><body>"
+    '<a href="/details.php?id=1" title="Game A / RU / Hidden objects / 2024 / PC">'
+    '<img src="/p1.jpg"></a>'
+    '<a href="/details.php?id=2" title="Movie B / 2025 / BDRip"><img src="/p2.jpg"></a>'
+    "</body></html>"
+)
+_GENRE_BY_ID = {"1": "Hidden objects", "2": "драма"}
+
+
+class TestParseGenre(unittest.TestCase):
+    """`_parse_genre` reads the `Жанр:` value off a details page (pure)."""
+
+    def test_extracts_tag_wrapped_genre_as_plain_text(self) -> None:
+        # Real markup wraps the value in <span>; must return visible text, never
+        # the raw '<span ...>' HTML (would break denylist matching).
+        result = kp._parse_genre(_details_html("Hidden objects"))
+        self.assertEqual(result, "Hidden objects")
+        self.assertNotIn("<span", result)
+
+    def test_extracts_multivalue_genre(self) -> None:
+        # Multiple tag-wrapped genres separated by a comma text node.
+        html = (
+            "<html><body><h2><b>Жанр:</b> "
+            '<span class="lnks_tobrs">боевик</span>, '
+            '<span class="lnks_tobrs">триллер</span><br>'
+            "<b>Разработчик:</b> X</h2></body></html>"
+        )
+        parsed = kp._parse_genre(html)
+        self.assertIn("боевик", parsed)
+        self.assertIn("триллер", parsed)
+        # And the parsed value must be matchable by the denylist splitter.
+        self.assertTrue(kp._genre_excluded(parsed, {"триллер"}))
+
+    def test_returns_empty_when_no_genre_field(self) -> None:
+        self.assertEqual(kp._parse_genre("<html><body><h2>no genre here</h2></body></html>"), "")
+
+
+class TestGenreMatching(unittest.TestCase):
+    """`_genre_excluded` splits a (possibly multi-valued) genre string and tests
+    membership against the denylist, case-insensitively and trimmed (pure)."""
+
+    def test_multivalue_comma_any_match(self) -> None:
+        self.assertTrue(kp._genre_excluded("боевик, триллер", {"триллер"}))
+
+    def test_case_insensitive_trim(self) -> None:
+        self.assertTrue(kp._genre_excluded(" Hidden Objects ", {"hidden objects"}))
+
+    def test_not_excluded(self) -> None:
+        self.assertFalse(kp._genre_excluded("драма", {"hidden objects"}))
+
+
+class TestExcludedGenresEnv(unittest.TestCase):
+    """`_excluded_genres` parses the `KINOZAL_EXCLUDED_GENRES` env into a
+    normalized set (`;`-separated, lower/trim); unset → empty set."""
+
+    def test_parses_semicolon_list(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ, {"KINOZAL_EXCLUDED_GENRES": "Hidden objects; Эротика"}, clear=False
+        ):
+            self.assertEqual(kp._excluded_genres(), {"hidden objects", "эротика"})
+
+    def test_empty_when_unset(self) -> None:
+        with unittest.mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("KINOZAL_EXCLUDED_GENRES", None)
+            self.assertEqual(kp._excluded_genres(), set())
+
+
+def _run_genre_filter(
+    excluded: str | None,
+    listing: str = _GENRE_LISTING,
+    genre_by_id: dict[str, str] | None = None,
+    details_error: bool = False,
+) -> tuple[InMemoryStorage, InMemoryNotifier, list[str]]:
+    """Drive run_kinozal_pipeline with the genre filter, injecting at the HTTP
+    boundary (`fetch_html`) like the #247 origin tests — NOT by mocking the
+    Kinozal facade (§II). `fetch_html` dispatches by URL: a details.php URL
+    returns that item's genre page (and is recorded), anything else the listing.
+    Returns (storage, notifier, list-of-details-URLs-fetched).
+    """
+    genre_by_id = genre_by_id if genre_by_id is not None else _GENRE_BY_ID
+    details_calls: list[str] = []
+
+    def _fetch(url: str) -> str:
+        if "details.php" in url:
+            details_calls.append(url)
+            if details_error:
+                raise RuntimeError("details fetch boom")
+            match = re.search(r"id=(\d+)", url)
+            gid = match.group(1) if match else ""
+            return _details_html(genre_by_id.get(gid, "unknown"))
+        return listing
+
+    storage = InMemoryStorage()
+    notifier = InMemoryNotifier()
+    env = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php"}
+    if excluded is not None:
+        env["KINOZAL_EXCLUDED_GENRES"] = excluded
+    with (
+        unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
+        unittest.mock.patch.dict(os.environ, env, clear=False),
+    ):
+        os.environ.pop("KINOZAL_TOP_URL", None)
+        if excluded is None:
+            os.environ.pop("KINOZAL_EXCLUDED_GENRES", None)
+        run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
+    return storage, notifier, details_calls
+
+
+class TestGenreFilter(unittest.TestCase):
+    """#263: new items whose details-page genre ∈ KINOZAL_EXCLUDED_GENRES are
+    dropped from notifications but still stored (dedup), fetch degrades visibly."""
+
+    def test_excluded_genre_item_not_notified(self) -> None:
+        _, notifier, _ = _run_genre_filter(excluded="Hidden objects")
+        sent_ids = {n.id for n in notifier.sent}
+        self.assertNotIn("Game A", sent_ids)  # Hidden objects → filtered
+        self.assertIn("Movie B", sent_ids)  # драма → kept
+
+    def test_non_excluded_item_notified(self) -> None:
+        _, notifier, _ = _run_genre_filter(excluded="Hidden objects")
+        self.assertIn("Movie B", {n.id for n in notifier.sent})
+
+    def test_filtered_item_is_stored(self) -> None:
+        storage, notifier, _ = _run_genre_filter(excluded="Hidden objects")
+        stored = {row[0] for row in storage.stored_rows("movies")}
+        self.assertIn("Game A", stored)  # stored so it isn't re-fetched next run
+        self.assertNotIn("Game A", {n.id for n in notifier.sent})  # but not notified
+
+    def test_all_filtered_still_stored(self) -> None:
+        # Every new item excluded → kept empty, sent empty; filtered must STILL be
+        # stored (store-guard keys on items_to_store, not on sent) and not crash.
+        storage, notifier, _ = _run_genre_filter(excluded="Hidden objects; драма")
+        self.assertEqual(notifier.sent, [])
+        stored = {row[0] for row in storage.stored_rows("movies")}
+        self.assertEqual(stored, {"Game A", "Movie B"})
+
+    def test_details_fetch_failure_fails_open_and_warns(self) -> None:
+        # §IV: unknown genre (fetch failed) must not silently drop the item —
+        # it ships (fail-open) with a WARNING tripwire.
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
+            _, notifier, _ = _run_genre_filter(excluded="Hidden objects", details_error=True)
+        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})
+        self.assertTrue(any("genre" in line.lower() for line in cm.output), cm.output)
+
+    def test_no_details_fetch_when_denylist_empty(self) -> None:
+        # Zero runtime overhead on the healthy default: empty denylist → no
+        # details fetch at all. (Guard; passes trivially pre-implementation.)
+        _, notifier, details_calls = _run_genre_filter(excluded=None)
+        self.assertEqual(details_calls, [])
+        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})
+
+    def test_filter_count_logged(self) -> None:
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            _run_genre_filter(excluded="Hidden objects")
+        joined = "\n".join(cm.output)
+        self.assertRegex(joined, r"(?i)filter.*1|1.*excluded genre")
+
+    def test_unparsed_genre_logged_but_item_kept(self) -> None:
+        # §IV: a successfully-fetched item with no parseable genre (e.g. the
+        # `Жанр:` selector drifted) is kept (fail-open) AND surfaced in the log,
+        # so a silent filter-wide no-op can't hide. Distinct from the fetch-error
+        # WARNING path — this is the successful-fetch-but-empty case.
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            _, notifier, _ = _run_genre_filter(
+                excluded="Hidden objects", genre_by_id={"1": "", "2": "драма"}
+            )
+        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})  # both kept
+        joined = "\n".join(cm.output)
+        self.assertRegex(joined, r"(?i)no parseable genre")
+        self.assertIn("Game A", joined)
+
+
+class TestKinozalFacade(unittest.TestCase):
+    """`Kinozal.fetch_details` shares the listing origin→mirror failover (#263),
+    injected at the HTTP boundary like the #247 fetch_listing tests (§II)."""
+
+    def test_fetch_details_falls_back_to_mirror(self) -> None:
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        sentinel = unittest.mock.Mock()
+        mirror_html = _details_html("Hidden objects")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                side_effect=RuntimeError("HTTP Error 522"),
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=mirror_html
+            ),
+        ):
+            html = Kinozal("u", "p").fetch_details("https://kinozal.tv/details.php?id=1")
+        self.assertEqual(html, mirror_html)
 
 
 if __name__ == "__main__":

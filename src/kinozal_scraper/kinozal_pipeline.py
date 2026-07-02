@@ -8,6 +8,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
+from bs4 import BeautifulSoup, Tag
 from curl_cffi.requests import Session as _MirrorSession
 
 from kinozal_scraper.generic_pipeline import (
@@ -28,16 +29,61 @@ logger = logging.getLogger(__name__)
 
 
 def _kinozal_urls() -> list[str]:
-    """Read Kinozal URLs from the existing URLS env variable (format: 'label|url;...').
+    """Read Kinozal URLs from the KINOZAL_URLS env variable (format: 'label|url;...').
 
-    Falls back to KINOZAL_TOP_URL if URLS is not set, so the runner works both
-    in production (URLS already configured) and in local testing.
+    Falls back to KINOZAL_TOP_URL (a single plain URL) for local testing. The
+    legacy name `URLS` is NOT read (clean rename, #263): a stale `URLS` no longer
+    silently masks a missing `KINOZAL_URLS`.
     """
-    urls_env = os.environ.get("URLS", "")
+    urls_env = os.environ.get("KINOZAL_URLS", "")
     if urls_env:
         return [pair.split("|")[1] for pair in urls_env.split(";") if "|" in pair]
     fallback = os.environ.get("KINOZAL_TOP_URL", "")
     return [fallback] if fallback else []
+
+
+def _excluded_genres() -> set[str]:
+    """Denylist of genres to suppress from notifications (#263).
+
+    Read from KINOZAL_EXCLUDED_GENRES (`;`-separated), normalized to lower/trim.
+    Empty/unset → empty set → the genre filter is off (no details fetch at all).
+    """
+    raw = os.environ.get("KINOZAL_EXCLUDED_GENRES", "")
+    return {g.strip().lower() for g in raw.split(";") if g.strip()}
+
+
+def _parse_genre(details_html: str) -> str:
+    """Read the `Жанр:` value off a kinozal details page (#263).
+
+    Real markup (verified against the live page): the value follows the
+    `<b>Жанр:</b>` label as tag-wrapped links/spans
+    (`<span class="lnks_tobrs">Hidden objects</span>`), terminated by a `<br>`,
+    and may be multi-valued (comma-separated). We collect the *visible text* of
+    the siblings up to the `<br>` — `str(sibling)` would serialize raw HTML for a
+    tag-wrapped value, and `next_sibling` alone is just the whitespace text node.
+    Returns '' if the field is absent (caller treats '' as unknown → keep)."""
+    soup = BeautifulSoup(details_html, "html.parser")
+    for label in soup.find_all("b"):
+        if not label.get_text(strip=True).startswith("Жанр"):
+            continue
+        parts: list[str] = []
+        for sib in label.next_siblings:
+            if getattr(sib, "name", None) in ("br", "b"):
+                break
+            text = sib.get_text(" ", strip=True) if isinstance(sib, Tag) else str(sib).strip()
+            if text:
+                parts.append(text)
+        return " ".join(parts).strip()
+    return ""
+
+
+def _genre_excluded(genre_raw: str, excluded: set[str]) -> bool:
+    """True if any comma-separated genre in `genre_raw` is in `excluded`.
+
+    Matching is case-insensitive and trimmed (both sides normalized). Empty
+    `excluded` → False."""
+    genres = {g.strip().lower() for g in genre_raw.split(",") if g.strip()}
+    return bool(genres & excluded)
 
 
 _ORIGIN_HOST = "kinozal.tv"
@@ -98,15 +144,24 @@ class Kinozal:
 
     def fetch_listing(self, url: str) -> tuple[str, str]:
         """Return (html, effective_base_url): the HTML plus the origin that
-        actually served it (#247). Primary success → the requested origin
+        actually served it (#247) — anonymous primary, authenticated mirror on
+        any primary failure. Primary success → the requested origin
         (kinozal.tv); mirror fallback → kinozal.guru. The pipeline resolves the
         listing's relative links/posters against this base, so a mirror-served
         page yields .guru links (live for the logged-in user) instead of dead
-        .tv ones — reversing #227/#241's fixed canonical-origin choice."""
+        .tv ones — reversing #227/#241's fixed canonical-origin choice.
+
+        `fetch_details` reuses this origin→mirror decision (#263)."""
         try:
             return fetch_html(url), _origin(url)
         except Exception as primary_exc:  # noqa: BLE001 — any primary-fetch failure falls back to the mirror
             return self._from_mirror(url, primary_exc), _origin(_mirror_url(url))
+
+    def fetch_details(self, url: str) -> str:
+        """Fetch a details.php page for genre filtering (#263), sharing the
+        listing's origin→mirror failover. Returns just the HTML — the `Жанр:`
+        field is read from it, no base_url resolution needed."""
+        return self.fetch_listing(url)[0]
 
     def fetch_poster(self, url: str) -> bytes:
         """Download a poster, sharing the listing's origin→mirror failover (#241).
@@ -264,6 +319,50 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         return ""
 
 
+def _split_by_excluded_genre(
+    items: list[NormalizedItem], fetcher: Kinozal, excluded: set[str]
+) -> tuple[list[NormalizedItem], list[NormalizedItem]]:
+    """Partition new items into (kept, filtered) by their details-page genre (#263).
+
+    Fetches each item's details page (+1 HTTP/item — only reached when the
+    denylist is non-empty) and drops those whose genre ∈ excluded. A details
+    fetch failure fails OPEN: the item is KEPT with a WARNING — an unknown genre
+    must reach the user as a visible item, never be silently suppressed (§IV).
+    """
+    kept: list[NormalizedItem] = []
+    filtered: list[NormalizedItem] = []
+    unparsed: list[NormalizedItem] = []
+    for item in items:
+        try:
+            genre = _parse_genre(fetcher.fetch_details(item.url))
+        except Exception as exc:  # noqa: BLE001 — details-fetch degrade: unknown genre → keep + WARN, never silent-drop (§IV)
+            logger.warning(
+                "[%s] genre lookup failed for %r (%s) — keeping item (fail-open)",
+                item.source_id,
+                item.title,
+                exc,
+            )
+            kept.append(item)
+            continue
+        if not genre:
+            # Fetched OK but no genre parsed — kept (fail-open). Tracked so a drifted
+            # `Жанр:` selector surfaces as a visible anomaly (§IV) instead of the
+            # filter silently becoming a no-op for every item.
+            unparsed.append(item)
+            kept.append(item)
+        elif _genre_excluded(genre, excluded):
+            filtered.append(item)
+        else:
+            kept.append(item)
+    if unparsed:
+        logger.info(
+            "kinozal pipeline: %d item(s) fetched with no parseable genre (kept) — %s",
+            len(unparsed),
+            ", ".join(sorted(i.title for i in unparsed)),
+        )
+    return kept, filtered
+
+
 def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
     storage: Storage,
     notifier: Notifier,
@@ -286,14 +385,14 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
 
     source_map = {s["id"]: s for s in kinozal_sources}
 
-    # URLs come from the existing URLS env variable (same format as legacy scraper).
+    # URLs come from the KINOZAL_URLS env variable (label|url;... format).
     # sources.json url field is only a schema placeholder / local fallback.
     urls = _kinozal_urls()
     if not urls:
-        logger.error("kinozal pipeline: no URLs configured (set URLS or KINOZAL_TOP_URL)")
+        logger.error("kinozal pipeline: no URLs configured (set KINOZAL_URLS or KINOZAL_TOP_URL)")
         for source in kinozal_sources:
             result = PipelineResult(source_id=source["id"])
-            result.errors.append("no URLs configured (set URLS or KINOZAL_TOP_URL)")
+            result.errors.append("no URLs configured (set KINOZAL_URLS or KINOZAL_TOP_URL)")
             results.append(result)
         return results
 
@@ -357,25 +456,45 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
         logger.info("kinozal pipeline: no new items")
         return results
 
+    # Genre denylist (#263): drop items whose details-page genre ∈ excluded. The
+    # details fetch (+1 HTTP/item) only runs when the denylist is non-empty, so a
+    # healthy default (unset var) pays zero overhead. `filtered` items are NOT
+    # notified but ARE stored below (dedup) so they aren't re-fetched every run —
+    # a conscious terminal non-delivery, ≠ a failed delivery (Principle III retries
+    # only failures).
+    excluded = _excluded_genres()
+    if excluded:
+        kept, filtered = _split_by_excluded_genre(new_items, fetcher, excluded)
+        if filtered:
+            logger.info(
+                "kinozal pipeline: filtered %d item(s) by excluded genre: %s",
+                len(filtered),
+                ", ".join(sorted(i.title for i in filtered)),
+            )
+    else:
+        kept, filtered = new_items, []
+
     notifications: list[Notification] = []
-    for item in new_items:
+    for item in kept:
         item.trailer_url = enrich_with_trailer(item, youtube)
         template = source_map[item.source_id]["message_template"]
         notifications.append(build_notification(item, template))
 
-    # Persist only confirmed-delivered items (Principle III). Failed deliveries
-    # stay unstored so the next run retries them, and surface as a visible
-    # anomaly via result.errors + non-zero exit (Principle IV).
+    # Persist confirmed-delivered items PLUS genre-filtered ones (Principle III).
+    # Failed deliveries stay unstored so the next run retries them, and surface as
+    # a visible anomaly via result.errors + non-zero exit (Principle IV). The
+    # store-guard keys on `items_to_store` (not `sent`) so filtered items are
+    # persisted even when every new item was filtered and nothing was sent.
     sent, failed = notifier.send_items(notifications)
 
-    if sent:
-        sent_ids = {n.id for n in sent}
-        items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
+    sent_ids = {n.id for n in sent}
+    items_to_store = [i for i in kept if i.dedupe_key in sent_ids] + filtered
+    if items_to_store:
         storage.append_rows("movies", ROW_HEADERS, [i.to_row() for i in items_to_store])
 
     if failed:
         result_by_source = {r.source_id: r for r in results}
-        item_by_key = {i.dedupe_key: i for i in new_items}
+        item_by_key = {i.dedupe_key: i for i in kept}
         for notif in failed:
             # notif.id is always a new_item dedupe_key whose source has a result,
             # so both lookups must succeed — a KeyError here is a real bug.

@@ -1,6 +1,6 @@
 """E2E: fetch real kinozal.tv and verify that titles are free of technical metadata.
 
-Uses URLS/KINOZAL_TOP_URL env var if set, falls back to the public top page.
+Uses KINOZAL_URLS/KINOZAL_TOP_URL env var if set, falls back to the public top page.
 
 Temporarily disabled: this test hits the live kinozal.tv top page, which is
 currently returning HTTP 520 (origin down), so it fails any unrelated PR's CI.
