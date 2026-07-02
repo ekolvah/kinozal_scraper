@@ -1081,9 +1081,17 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
 
 
 def _details_html(genre: str) -> str:
-    """Synthetic kinozal details page carrying a `Жанр:` field, matching the
-    real structure (`<h2>...<b>Жанр:</b> <value> ...</h2>`, verified by PoC)."""
-    return f"<html><body><h2><b>Жанр:</b> {genre}</h2></body></html>"
+    """Synthetic kinozal details page mirroring the REAL markup (verified against
+    the live page): the `Жанр:` value is tag-wrapped (`<span class="lnks_tobrs">`),
+    NOT a bare text node, sits after a whitespace node, and is terminated by <br>.
+    A parser reading `next_sibling`/`str()` naively would get '' or raw HTML here."""
+    return (
+        "<html><body><h2>"
+        "<b>Год выпуска:</b> 2024<br>"
+        f'<b>Жанр:</b> <span class="lnks_tobrs">{genre}</span><br>'
+        "<b>Разработчик:</b> X"
+        "</h2></body></html>"
+    )
 
 
 # Listing with two distinct items → two details pages keyed by id.
@@ -1100,8 +1108,26 @@ _GENRE_BY_ID = {"1": "Hidden objects", "2": "драма"}
 class TestParseGenre(unittest.TestCase):
     """`_parse_genre` reads the `Жанр:` value off a details page (pure)."""
 
-    def test_extracts_genre_from_details_html(self) -> None:
-        self.assertEqual(kp._parse_genre(_details_html("Hidden objects")), "Hidden objects")
+    def test_extracts_tag_wrapped_genre_as_plain_text(self) -> None:
+        # Real markup wraps the value in <span>; must return visible text, never
+        # the raw '<span ...>' HTML (would break denylist matching).
+        result = kp._parse_genre(_details_html("Hidden objects"))
+        self.assertEqual(result, "Hidden objects")
+        self.assertNotIn("<span", result)
+
+    def test_extracts_multivalue_genre(self) -> None:
+        # Multiple tag-wrapped genres separated by a comma text node.
+        html = (
+            "<html><body><h2><b>Жанр:</b> "
+            '<span class="lnks_tobrs">боевик</span>, '
+            '<span class="lnks_tobrs">триллер</span><br>'
+            "<b>Разработчик:</b> X</h2></body></html>"
+        )
+        parsed = kp._parse_genre(html)
+        self.assertIn("боевик", parsed)
+        self.assertIn("триллер", parsed)
+        # And the parsed value must be matchable by the denylist splitter.
+        self.assertTrue(kp._genre_excluded(parsed, {"триллер"}))
 
     def test_returns_empty_when_no_genre_field(self) -> None:
         self.assertEqual(kp._parse_genre("<html><body><h2>no genre here</h2></body></html>"), "")
@@ -1226,6 +1252,20 @@ class TestGenreFilter(unittest.TestCase):
             _run_genre_filter(excluded="Hidden objects")
         joined = "\n".join(cm.output)
         self.assertRegex(joined, r"(?i)filter.*1|1.*excluded genre")
+
+    def test_unparsed_genre_logged_but_item_kept(self) -> None:
+        # §IV: a successfully-fetched item with no parseable genre (e.g. the
+        # `Жанр:` selector drifted) is kept (fail-open) AND surfaced in the log,
+        # so a silent filter-wide no-op can't hide. Distinct from the fetch-error
+        # WARNING path — this is the successful-fetch-but-empty case.
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            _, notifier, _ = _run_genre_filter(
+                excluded="Hidden objects", genre_by_id={"1": "", "2": "драма"}
+            )
+        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})  # both kept
+        joined = "\n".join(cm.output)
+        self.assertRegex(joined, r"(?i)no parseable genre")
+        self.assertIn("Game A", joined)
 
 
 class TestKinozalFacade(unittest.TestCase):

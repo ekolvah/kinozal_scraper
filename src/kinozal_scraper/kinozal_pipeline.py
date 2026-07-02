@@ -8,7 +8,7 @@ import re
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from curl_cffi.requests import Session as _MirrorSession
 
 from kinozal_scraper.generic_pipeline import (
@@ -55,15 +55,25 @@ def _excluded_genres() -> set[str]:
 def _parse_genre(details_html: str) -> str:
     """Read the `Жанр:` value off a kinozal details page (#263).
 
-    The field lives as `<b>Жанр:</b> <value>` inside the info block (verified by
-    PoC); the value may be multi-valued (comma-separated). Returns the raw value
-    string, or '' if the field is absent (caller treats '' as unknown → keep)."""
+    Real markup (verified against the live page): the value follows the
+    `<b>Жанр:</b>` label as tag-wrapped links/spans
+    (`<span class="lnks_tobrs">Hidden objects</span>`), terminated by a `<br>`,
+    and may be multi-valued (comma-separated). We collect the *visible text* of
+    the siblings up to the `<br>` — `str(sibling)` would serialize raw HTML for a
+    tag-wrapped value, and `next_sibling` alone is just the whitespace text node.
+    Returns '' if the field is absent (caller treats '' as unknown → keep)."""
     soup = BeautifulSoup(details_html, "html.parser")
-    for b in soup.find_all("b"):
-        if b.get_text(strip=True).startswith("Жанр"):
-            nxt = b.next_sibling
-            if nxt is not None:
-                return str(nxt).strip()
+    for label in soup.find_all("b"):
+        if not label.get_text(strip=True).startswith("Жанр"):
+            continue
+        parts: list[str] = []
+        for sib in label.next_siblings:
+            if getattr(sib, "name", None) in ("br", "b"):
+                break
+            text = sib.get_text(" ", strip=True) if isinstance(sib, Tag) else str(sib).strip()
+            if text:
+                parts.append(text)
+        return " ".join(parts).strip()
     return ""
 
 
@@ -324,6 +334,7 @@ def _split_by_excluded_genre(
     """
     kept: list[NormalizedItem] = []
     filtered: list[NormalizedItem] = []
+    unparsed: list[NormalizedItem] = []
     for item in items:
         try:
             genre = _parse_genre(fetcher.fetch_details(item.url))
@@ -336,10 +347,22 @@ def _split_by_excluded_genre(
             )
             kept.append(item)
             continue
-        if genre and _genre_excluded(genre, excluded):
+        if not genre:
+            # Fetched OK but no genre parsed — kept (fail-open). Tracked so a drifted
+            # `Жанр:` selector surfaces as a visible anomaly (§IV) instead of the
+            # filter silently becoming a no-op for every item.
+            unparsed.append(item)
+            kept.append(item)
+        elif _genre_excluded(genre, excluded):
             filtered.append(item)
         else:
             kept.append(item)
+    if unparsed:
+        logger.info(
+            "kinozal pipeline: %d item(s) fetched with no parseable genre (kept) — %s",
+            len(unparsed),
+            ", ".join(sorted(i.title for i in unparsed)),
+        )
     return kept, filtered
 
 
