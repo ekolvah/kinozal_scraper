@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
 from typing import Any
 
 import pytest
 
+import scripts.issue_branch as issue_branch
 from scripts.issue_branch import _fetch_title, build_branch_name, slugify
 
 
@@ -66,3 +68,42 @@ class TestFetchTitleEncoding:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         assert _fetch_title(122) == cyrillic_title
+
+
+class TestDirectDelegation:
+    """`issue_branch.main()` must build the branch in-process via
+    `new_branch.create_branch`, not by re-spawning a second interpreter
+    (`subprocess.run([sys.executable, ...])`, #254). This is also the first
+    coverage of `main()`'s orchestration.
+    """
+
+    def test_main_delegates_to_create_branch_in_process(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        class _FakeNewBranch:
+            BRANCH_PREFIX = "issue-"
+
+            @staticmethod
+            def create_branch(name: str) -> None:
+                calls.append(name)
+
+        monkeypatch.setattr(issue_branch, "_fetch_title", lambda n: "add commands")
+        # Single seam for both the prefix (build_branch_name) and the branch
+        # creation, so patching it fully isolates the git side-effects.
+        monkeypatch.setattr(
+            issue_branch, "_new_branch_module", lambda: _FakeNewBranch, raising=False
+        )
+        # Spy so the pre-refactor re-spawn path cannot shell out to real git
+        # during RED; the contract asserted below is the delegate call, not this.
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0] if a else [], 0, "", ""),
+        )
+        monkeypatch.setattr(sys, "argv", ["issue_branch.py", "254"])
+
+        issue_branch.main()
+
+        assert calls == ["issue-254-add-commands"]

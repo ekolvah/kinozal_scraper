@@ -132,5 +132,26 @@ class TestBranchNameGuard(unittest.TestCase):
         self.assertFalse(new_branch.is_valid_branch_name("foo-bar"))
 
 
+class TestCreateBranchVisibility(unittest.TestCase):
+    """The `create_branch` helper extracted from `main()` (#254) must keep the
+    dirty-tree guard a hard failure (non-zero exit), so a dirty working tree
+    cannot be silently skipped when `create_branch` is driven in-process from
+    `issue_branch` (§IV visibility).
+    """
+
+    def test_dirty_tree_exits_nonzero(self) -> None:
+        new_branch = _load_new_branch_module()
+
+        def fake_run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
+            if cmd[:3] == ["git", "status", "--porcelain"]:
+                return subprocess.CompletedProcess(cmd, 0, stdout=" M dirty.py\n", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with unittest.mock.patch.object(new_branch, "_run", side_effect=fake_run):
+            with self.assertRaises(SystemExit) as ctx:
+                new_branch.create_branch("issue-254-x")
+        self.assertNotEqual(ctx.exception.code, 0)
+
+
 if __name__ == "__main__":
     unittest.main()
