@@ -1,4 +1,5 @@
 import os
+import re
 import unittest
 import unittest.mock
 from typing import Any
@@ -218,32 +219,23 @@ class TestTitleYearMatches(unittest.TestCase):
 
 
 class TestKinozalUrls(unittest.TestCase):
-    def test_reads_existing_URLS_variable(self) -> None:
-        with unittest.mock.patch.dict(
-            os.environ,
-            {"URLS": "топ|https://kinozal.tv/top.php;новинки|https://kinozal.tv/new.php"},
-            clear=False,
-        ):
-            urls = _kinozal_urls()
-        self.assertEqual(urls, ["https://kinozal.tv/top.php", "https://kinozal.tv/new.php"])
-
     def test_falls_back_to_KINOZAL_TOP_URL(self) -> None:
         env = {"KINOZAL_TOP_URL": "https://kinozal.tv/top.php"}
         with unittest.mock.patch.dict(os.environ, env, clear=False):
-            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_URLS", None)
             urls = _kinozal_urls()
         self.assertEqual(urls, ["https://kinozal.tv/top.php"])
 
     def test_returns_empty_when_nothing_configured(self) -> None:
         with unittest.mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_URLS", None)
             os.environ.pop("KINOZAL_TOP_URL", None)
             urls = _kinozal_urls()
         self.assertEqual(urls, [])
 
-    def test_URLS_takes_priority_over_KINOZAL_TOP_URL(self) -> None:
+    def test_KINOZAL_URLS_takes_priority_over_KINOZAL_TOP_URL(self) -> None:
         env = {
-            "URLS": "label|https://kinozal.tv/top.php",
+            "KINOZAL_URLS": "label|https://kinozal.tv/top.php",
             "KINOZAL_TOP_URL": "https://other.example.com",
         }
         with unittest.mock.patch.dict(os.environ, env, clear=False):
@@ -288,7 +280,7 @@ def _run(
     notifier: InMemoryNotifier | None = None,
     storage: InMemoryStorage | None = None,
 ) -> tuple[InMemoryStorage, InMemoryNotifier]:
-    """Run the real run_kinozal_pipeline with HTTP patched and URLS env set.
+    """Run the real run_kinozal_pipeline with HTTP patched and KINOZAL_URLS env set.
 
     This invokes production code directly so tests fail if the pipeline
     behaviour changes — no inline copy of the orchestration logic.
@@ -302,7 +294,7 @@ def _run(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
-            {"URLS": "top|https://test.example/top.php"},
+            {"KINOZAL_URLS": "top|https://test.example/top.php"},
             clear=False,
         ),
     ):
@@ -466,7 +458,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
     def test_no_urls_configured_does_nothing(self) -> None:
-        """Pipeline early-exits when neither URLS nor KINOZAL_TOP_URL is set."""
+        """Pipeline early-exits when neither KINOZAL_URLS nor KINOZAL_TOP_URL is set."""
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
@@ -475,7 +467,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             ),
             unittest.mock.patch.dict(os.environ, {}, clear=False),
         ):
-            os.environ.pop("URLS", None)
+            os.environ.pop("KINOZAL_URLS", None)
             os.environ.pop("KINOZAL_TOP_URL", None)
             run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("movies"), [])
@@ -491,7 +483,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -516,7 +508,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -541,7 +533,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -561,7 +553,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php"},
                 clear=False,
             ),
         ):
@@ -617,7 +609,7 @@ def _run_results(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
-            {"URLS": "top|https://test.example/top.php"},
+            {"KINOZAL_URLS": "top|https://test.example/top.php"},
             clear=False,
         ),
     ):
@@ -695,7 +687,7 @@ class TestPipelineAuth(unittest.TestCase):
     Failover and both-failed are visible (§IV); credentials are an optional
     backup, not a hard requirement."""
 
-    _URLS = {"URLS": "top|https://kinozal.tv/top.php?d=14"}
+    _URLS = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php?d=14"}
 
     def _run_with_env(
         self, env: dict[str, str], urls: str | None = None
@@ -704,7 +696,7 @@ class TestPipelineAuth(unittest.TestCase):
         # `env` sets exactly the credentials each test wants to exercise.
         full = dict(self._URLS)
         if urls is not None:
-            full["URLS"] = urls
+            full["KINOZAL_URLS"] = urls
         full.update(env)
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -1019,7 +1011,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
     _CREDS = {"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}
 
     def _run(self, urls: str) -> InMemoryNotifier:
-        full = {"URLS": urls, **self._CREDS}
+        full = {"KINOZAL_URLS": urls, **self._CREDS}
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch.dict(os.environ, full, clear=False):
@@ -1096,11 +1088,11 @@ def _details_html(genre: str) -> str:
 
 # Listing with two distinct items → two details pages keyed by id.
 _GENRE_LISTING = (
-    '<html><body>'
+    "<html><body>"
     '<a href="/details.php?id=1" title="Game A / RU / Hidden objects / 2024 / PC">'
     '<img src="/p1.jpg"></a>'
     '<a href="/details.php?id=2" title="Movie B / 2025 / BDRip"><img src="/p2.jpg"></a>'
-    '</body></html>'
+    "</body></html>"
 )
 _GENRE_BY_ID = {"1": "Hidden objects", "2": "драма"}
 
@@ -1179,7 +1171,6 @@ def _run_genre_filter(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
         unittest.mock.patch.dict(os.environ, env, clear=False),
     ):
-        os.environ.pop("URLS", None)
         os.environ.pop("KINOZAL_TOP_URL", None)
         if excluded is None:
             os.environ.pop("KINOZAL_EXCLUDED_GENRES", None)

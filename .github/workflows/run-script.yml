@@ -87,7 +87,8 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
           API_KEY: ${{ secrets.API_KEY }}
-          URLS: ${{ vars.URLS }}
+          KINOZAL_URLS: ${{ vars.KINOZAL_URLS }}
+          KINOZAL_EXCLUDED_GENRES: ${{ vars.KINOZAL_EXCLUDED_GENRES }}
           KINOZAL_USERNAME: ${{ secrets.KINOZAL_USERNAME }}
           KINOZAL_PASSWORD: ${{ secrets.KINOZAL_PASSWORD }}
 
