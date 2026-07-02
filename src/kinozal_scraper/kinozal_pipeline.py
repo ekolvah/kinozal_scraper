@@ -142,29 +142,26 @@ class Kinozal:
             )
         return cls(username, password)
 
-    def _fetch_with_failover(self, url: str) -> tuple[str, str]:
-        """(html, effective_origin): anonymous primary, authenticated mirror on
-        any primary failure. Shared by listing and details fetches so both make
-        one origin-vs-mirror decision (#247/#263)."""
+    def fetch_listing(self, url: str) -> tuple[str, str]:
+        """Return (html, effective_base_url): the HTML plus the origin that
+        actually served it (#247) — anonymous primary, authenticated mirror on
+        any primary failure. Primary success → the requested origin
+        (kinozal.tv); mirror fallback → kinozal.guru. The pipeline resolves the
+        listing's relative links/posters against this base, so a mirror-served
+        page yields .guru links (live for the logged-in user) instead of dead
+        .tv ones — reversing #227/#241's fixed canonical-origin choice.
+
+        `fetch_details` reuses this origin→mirror decision (#263)."""
         try:
             return fetch_html(url), _origin(url)
         except Exception as primary_exc:  # noqa: BLE001 — any primary-fetch failure falls back to the mirror
             return self._from_mirror(url, primary_exc), _origin(_mirror_url(url))
 
-    def fetch_listing(self, url: str) -> tuple[str, str]:
-        """Return (html, effective_base_url): the HTML plus the origin that
-        actually served it (#247). Primary success → the requested origin
-        (kinozal.tv); mirror fallback → kinozal.guru. The pipeline resolves the
-        listing's relative links/posters against this base, so a mirror-served
-        page yields .guru links (live for the logged-in user) instead of dead
-        .tv ones — reversing #227/#241's fixed canonical-origin choice."""
-        return self._fetch_with_failover(url)
-
     def fetch_details(self, url: str) -> str:
         """Fetch a details.php page for genre filtering (#263), sharing the
         listing's origin→mirror failover. Returns just the HTML — the `Жанр:`
         field is read from it, no base_url resolution needed."""
-        return self._fetch_with_failover(url)[0]
+        return self.fetch_listing(url)[0]
 
     def fetch_poster(self, url: str) -> bytes:
         """Download a poster, sharing the listing's origin→mirror failover (#241).
