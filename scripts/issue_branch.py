@@ -16,6 +16,7 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 MAX_SLUG_WORDS = 4
 FALLBACK_SLUG = "task"
@@ -29,12 +30,19 @@ def slugify(title: str) -> str:
     return "-".join(words[:MAX_SLUG_WORDS])
 
 
-def _branch_prefix() -> str:
-    """Single source of truth for the prefix: `new_branch.BRANCH_PREFIX`.
+def _new_branch_module() -> ModuleType:
+    """Load the sibling `new_branch.py` by absolute path and return the module.
 
-    Loaded by path (scripts/ is not a package) so this value cannot drift from
-    the guard in `new_branch.py` that validates the produced branch name — a
-    drift would silently break the `issue_branch.py → new_branch.py` pipeline.
+    Loaded by absolute file path — NOT `from scripts.new_branch import ...` —
+    because the documented CLI `python scripts/issue_branch.py <N>` sets
+    `sys.path[0]` to the script's dir (`scripts/`), and the repo root is never
+    on `sys.path` (the editable install only adds `src/`). A package import
+    would therefore raise `ModuleNotFoundError` at runtime even though
+    `scripts/` IS a package (packageness is necessary but not sufficient; tests
+    pass only because `python -m pytest` prepends the repo root). The path load
+    is immune to `sys.path`, gives a single source of truth for
+    `BRANCH_PREFIX`, and lets `main()` call `create_branch` in-process instead
+    of re-spawning a second interpreter.
     """
     spec = importlib.util.spec_from_file_location(
         "scripts.new_branch", Path(__file__).with_name("new_branch.py")
@@ -42,11 +50,11 @@ def _branch_prefix() -> str:
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return str(module.BRANCH_PREFIX)
+    return module
 
 
 def build_branch_name(issue_number: int, title: str) -> str:
-    return f"{_branch_prefix()}{issue_number}-{slugify(title)}"
+    return f"{_new_branch_module().BRANCH_PREFIX}{issue_number}-{slugify(title)}"
 
 
 def _fetch_title(issue_number: int) -> str:
@@ -78,8 +86,7 @@ def main() -> None:
         sys.exit(2)
     title = _fetch_title(n)
     branch = build_branch_name(n, title)
-    new_branch = Path(__file__).with_name("new_branch.py")
-    subprocess.run([sys.executable, str(new_branch), branch], check=True)
+    _new_branch_module().create_branch(branch)
 
 
 if __name__ == "__main__":

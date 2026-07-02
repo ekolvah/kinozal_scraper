@@ -1,7 +1,9 @@
 """Tests for `scripts/new_branch.py`.
 
-Loaded via `importlib.util` so we don't have to turn `scripts/` into a
-package or modify `pyproject.toml` testpaths.
+Loaded by absolute path via `importlib.util` (rather than
+`import scripts.new_branch`) so the test targets the module by file location
+regardless of `sys.path` — the same way the production `issue_branch.py` loads
+it under the `python scripts/issue_branch.py <N>` CLI.
 """
 
 from __future__ import annotations
@@ -147,9 +149,11 @@ class TestCreateBranchVisibility(unittest.TestCase):
                 return subprocess.CompletedProcess(cmd, 0, stdout=" M dirty.py\n", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        with unittest.mock.patch.object(new_branch, "_run", side_effect=fake_run):
-            with self.assertRaises(SystemExit) as ctx:
-                new_branch.create_branch("issue-254-x")
+        with (
+            unittest.mock.patch.object(new_branch, "_run", side_effect=fake_run),
+            self.assertRaises(SystemExit) as ctx,
+        ):
+            new_branch.create_branch("issue-254-x")
         self.assertNotEqual(ctx.exception.code, 0)
 
 

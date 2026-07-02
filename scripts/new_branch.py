@@ -71,11 +71,16 @@ def _prune_gone_branches() -> None:
     print(f"pruned: {pruned} merged branches (skipped {skipped} unmerged)")
 
 
-def main() -> None:
-    if len(sys.argv) != 2:
-        print("Usage: python scripts/new_branch.py <branch-name>", file=sys.stderr)
-        sys.exit(2)
-    name = sys.argv[1]
+def create_branch(name: str) -> None:
+    """Create branch `name` from a fresh origin/main HEAD.
+
+    Validates the prefix, refuses a dirty tree or an already-existing branch,
+    syncs main (checkout + ff-only pull), prunes merged `[gone]` branches, then
+    branches. Every failure path raises (SystemExit via `sys.exit`, or
+    CalledProcessError from `_run(check=True)`), so a caller driving this
+    in-process — `issue_branch.py` — surfaces the failure as a non-zero exit
+    instead of silently continuing (§IV visibility).
+    """
     if not is_valid_branch_name(name):
         print(
             f"error: branch name must start with {BRANCH_PREFIX!r} (got {name!r})", file=sys.stderr
@@ -98,6 +103,13 @@ def main() -> None:
     _prune_gone_branches()
     _run(["git", "checkout", "-b", name])
     print(f"ready: on {name}, branched from origin/main HEAD")
+
+
+def main() -> None:
+    if len(sys.argv) != 2:
+        print("Usage: python scripts/new_branch.py <branch-name>", file=sys.stderr)
+        sys.exit(2)
+    create_branch(sys.argv[1])
 
 
 if __name__ == "__main__":
