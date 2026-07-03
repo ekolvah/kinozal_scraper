@@ -221,6 +221,44 @@ caught **strictly harder** by `test_package_importable.py` (17 hard-coded
 import-linter. Keeping a bespoke no-op mini-gate would be the very velcro this
 change removes.
 
+### Unused-arg / private-access ratchet (lint, #236)
+
+The `lint` check also enforces three ruff rules with a *mixed* signal, triaged
+per-hit before enabling (110 existing hits, zero real dead params in `src/`):
+
+- `ARG001` — unused **function** argument;
+- `ARG002` — unused **method** argument;
+- `SLF001` — private-member access (`obj._x` where `obj` is not `self`/`cls`).
+
+Like the complexity/dead-code ratchets, ruff has no native baseline, so the
+value is **forward**: new `src/` code with a dead param or cross-class private
+access fails CI. Two silencing mechanisms, deliberately different, and this is
+the distinction the guard test pins:
+
+- **`tests/**` is a *categorical* exemption** (`per-file-ignores`
+  `"tests/**" = […, ARG001, ARG002, SLF001]`): white-box tests legitimately
+  reach into private members (§II mandates calling internal helpers directly)
+  and carry mock signatures whose params are dictated by the mocked callable,
+  not by usage. This is **unlike `ERA001`**, where tests are *not* exempt
+  (commented-out code is dead regardless of file role) — so the surface pattern
+  "tests always get a per-file-ignore" must **not** be cargo-culted from here.
+- **Individual false positives in `src/` get a per-site `# noqa`.** The two
+  hits are Protocol-conformance stubs (`NullEnricher.enrich`'s `item`,
+  `InMemoryStorage.append_rows`'s `headers`) whose param is required by the
+  interface but unused by that one implementation. A per-site noqa is the escape
+  hatch for a *genuine* FP — never for a real detector hit (that would train the
+  hatch on a non-exception, §IV).
+
+The two `SLF001` src hits were **not** noqa'd: `RotatingGeminiEnricher` reached
+into a sibling `GeminiEnricher._model_name` across the class boundary — a real
+§II leak, not noise. It was root-caused (§V) with a public `model_name`
+property, so `SLF001` has **zero** surviving src hits. `ARG003`/`004`/`005`
+(classmethod/staticmethod/lambda unused args) stay unselected — a conscious
+defer (#236 Out of scope), not a silent gap. `tests/test_ruff_arg_slf_rules.py`
+is an anti-drift guard (mirrors the docstring/complexity/dead-code guards): it
+pins the three codes in the effective select, out of global `ignore`, and not
+neutralised for any `src`/`scripts` path via `per-file-ignores`.
+
 ## Claude review workflow (`claude-review.yml`)
 
 Triggers: every `pull_request: opened/synchronize`.

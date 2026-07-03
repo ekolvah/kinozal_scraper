@@ -114,7 +114,8 @@ class Enricher(Protocol):
 class NullEnricher:
     """No-op — for tests and when GOOGLE_API_KEY is absent."""
 
-    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
+    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:  # noqa: ARG002
+        # `item` is unused here but required by the Enricher Protocol signature.
         result: str = enrich_config.get("on_error", "")
         return result
 
@@ -124,6 +125,15 @@ class GeminiEnricher:
 
     def __init__(self, model_name: str) -> None:
         self._model_name = model_name
+
+    @property
+    def model_name(self) -> str:
+        """Public read-only view of the backing model name.
+
+        Lets a coordinator (RotatingGeminiEnricher) name the model in logs
+        without reaching into `_model_name` across the class boundary (§II).
+        """
+        return self._model_name
 
     def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
         prompt_template = enrich_config["prompt"]
@@ -303,7 +313,7 @@ class RotatingGeminiEnricher:
                     return self._enrichers[self._current].enrich(item, enrich_config)
                 except (QuotaExhausted, ModelUnavailable, TryNextModel) as exc:
                     prev_idx = self._current
-                    prev = self._enrichers[prev_idx]._model_name
+                    prev = self._enrichers[prev_idx].model_name
                     if isinstance(exc, ModelUnavailable):
                         self._dead.add(prev_idx)
                         saw_recoverable_failure = True
@@ -328,7 +338,7 @@ class RotatingGeminiEnricher:
                             "model %s %s, trying %s",
                             prev,
                             kind,
-                            self._enrichers[preview]._model_name,
+                            self._enrichers[preview].model_name,
                         )
                     last_exc = exc
 
