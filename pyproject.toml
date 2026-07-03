@@ -48,6 +48,13 @@ select = [
     "D100",     # missing docstring in public module
     "D104",     # missing docstring in public package (__init__.py)
     "D419",     # empty/whitespace-only docstring
+    # Unused-arg / private-access ratchet (#236). Forward guard on src: new dead
+    # params / cross-class private access fails CI. tests/** is categorically
+    # exempt below (white-box §II access + mock signatures); src false positives
+    # get a per-site noqa. See docs/architecture/ci.md.
+    "ARG001",   # unused-function-argument
+    "ARG002",   # unused-method-argument
+    "SLF001",   # private-member-access
 ]
 ignore = [
     "E501",
@@ -55,8 +62,11 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 # Tests were never docstring-checked (check_headers scanned src/ only); keep
-# them out of the D100/D104/D419 gate (#253).
-"tests/**" = ["D100", "D104", "D419"]
+# them out of the D100/D104/D419 gate (#253). ARG001/ARG002/SLF001 (#236) are a
+# categorical exemption too: white-box tests legitimately access private members
+# (§II) and carry mock signatures whose params are dictated by the interface,
+# not by usage — unlike ERA001, tests are NOT exempt there.
+"tests/**" = ["D100", "D104", "D419", "ARG001", "ARG002", "SLF001"]
 
 [tool.ruff.lint.mccabe]
 # Align C901 with PLR0912's default branch threshold (12) rather than tuning to

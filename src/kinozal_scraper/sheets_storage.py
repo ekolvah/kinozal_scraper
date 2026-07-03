@@ -83,7 +83,9 @@ class InMemoryStorage:
     def get_existing_keys(self, tab_name: str) -> set[str]:
         return set(self._keys[tab_name])
 
-    def append_rows(self, tab_name: str, headers: list[str], rows: list[list[Any]]) -> None:
+    def append_rows(self, tab_name: str, headers: list[str], rows: list[list[Any]]) -> None:  # noqa: ARG002
+        # `headers` is unused by the in-memory double but required by the Storage
+        # Protocol signature (the real SheetsStorage.append_rows does use it).
         for row in rows:
             self._rows[tab_name].append(row)
             if row:
