@@ -345,6 +345,54 @@ class TestPipelineMechanics(unittest.TestCase):
         self.assertFalse(results[0].ok)
         self.assertTrue(any("notification(s) failed" in err for err in results[0].errors))
 
+    def test_fetch_failure_recorded_in_result_errors(self) -> None:
+        # fetch-fail branch: fetch raises → the source's result stays in
+        # `results` with a "fetch failed" error and not-ok (#271 guard: the
+        # refactor rewrites this branch's exit from `append+continue` to
+        # `return result`, and it had zero coverage before).
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            side_effect=Exception("boom"),
+        ):
+            results = run_github_trending_pipeline(
+                storage, notifier, sources_config=_SOURCES_CONFIG
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("fetch failed" in err for err in results[0].errors))
+        self.assertEqual(storage.stored_rows("github_projects"), [])
+        self.assertEqual(notifier.sent, [])
+
+    def test_no_url_source_skipped_and_absent_from_results(self) -> None:
+        # no-url branch: an enabled source with empty url is silently skipped —
+        # a WARNING is logged and the source produces NO result entry (#271
+        # guard: the refactor rewrites this branch's `continue` to `return None`
+        # with `if r is not None` in the parent; it had zero coverage before).
+        config: dict[str, Any] = {
+            "version": 1,
+            "sources": [{**_TRENDING_SOURCE, "url": ""}],
+        }
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.github_trending_pipeline.fetch_html",
+                return_value=_fixture_html(),
+            ),
+            self.assertLogs(
+                "kinozal_scraper.github_trending_pipeline", level="WARNING"
+            ) as captured,
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+
+        self.assertEqual(results, [])
+        self.assertTrue(any("no URL configured" in line for line in captured.output))
+        self.assertEqual(storage.stored_rows("github_projects"), [])
+        self.assertEqual(notifier.sent, [])
+
 
 # ── #88: Russian who/pain enrichment for trending ────────────────────────────
 

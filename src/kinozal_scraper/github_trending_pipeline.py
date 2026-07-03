@@ -89,7 +89,125 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
         item.raw["stars_today"] = by_href.get(key, "")
 
 
-def run_github_trending_pipeline(  # noqa: C901, PLR0912, PLR0915
+def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
+    """Surface empty metric/description as WARNINGs so page-layout drift reaches
+    the operator instead of silently shipping blank fields (§IV)."""
+    for item in items:
+        if not item.metric:
+            logger.warning(
+                "[%s] item '%s' has empty metric — page layout may have drifted",
+                source_id,
+                item.dedupe_key,
+            )
+        if not item.description:
+            logger.warning(
+                "[%s] item '%s' has empty description",
+                source_id,
+                item.dedupe_key,
+            )
+
+
+def _enrich_new_items(
+    enricher: Enricher,
+    new_items: list[NormalizedItem],
+    enrich_config: dict[str, Any],
+    source_id: str,
+) -> None:
+    """Enrich each new item in place; on QuotaExhausted stamp the fallback on
+    the current item and every remaining one, then stop (mutates the shared
+    NormalizedItem objects, so the caller sees the results)."""
+    field: str = enrich_config["field"]
+    # Empty `on_error` would blank the summary line in Telegram
+    # instead of surfacing the failure — use the visible marker
+    # so the operator sees a tripwire (#128, Principle IV).
+    fallback: str = enrich_config.get("on_error") or FALLBACK_MARKER
+    enriched, skipped = 0, 0
+    for item in new_items:
+        try:
+            item.raw[field] = enricher.enrich(item, enrich_config)
+            enriched += 1
+        except QuotaExhausted:
+            item.raw[field] = fallback
+            skipped += 1
+            for remaining in new_items[new_items.index(item) + 1 :]:
+                remaining.raw[field] = fallback
+                skipped += 1
+            break
+    if skipped:
+        logger.warning(
+            "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
+            source_id,
+            enriched,
+            enriched + skipped,
+            skipped,
+        )
+    elif enriched:
+        logger.info("[%s] enriched %d items", source_id, enriched)
+
+
+def _process_trending_source(
+    source: dict[str, Any],
+    storage: Storage,
+    notifier: Notifier,
+    enricher: Enricher | None,
+) -> PipelineResult | None:
+    """Run one source end-to-end. Returns its PipelineResult, or None for the
+    no-url silent-skip (the source produces no result entry — behaviour
+    preserved byte-for-byte from the pre-split inline `continue`)."""
+    url: str = source.get("url", "")
+    if not url:
+        logger.warning("[%s] no URL configured", source["id"])
+        return None  # None = no-url silent-skip, preserved from pre-refactor
+
+    result = PipelineResult(source_id=source["id"])
+    try:
+        html_text = fetch_html(url)
+    except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+        logger.exception("[%s] fetch failed: %s", source["id"], exc)
+        result.errors.append(f"fetch failed: {exc}")
+        return result
+
+    extracted = extract_from_html(html_text, source)
+    if not extracted.items and extracted.errors:
+        logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
+        result.errors.extend(extracted.errors)
+        return result
+
+    items = _normalize_items(extracted.items)
+    _enrich_with_stars_today(html_text, items)
+    _warn_on_drift(source["id"], items)
+
+    result.items = items
+
+    sheet_tab: str = source["sheet_tab"]
+    existing = storage.get_existing_keys(sheet_tab)
+    new_items = [i for i in items if i.dedupe_key not in existing]
+    if not new_items:
+        logger.info("[%s] no new items", source["id"])
+        return result
+
+    enrich_config = source.get("enrich")
+    if enrich_config and enricher is not None:
+        _enrich_new_items(enricher, new_items, enrich_config, source["id"])
+
+    template: str = source["message_template"]
+    notifications = [build_notification(item, template) for item in new_items]
+    sent, failed = notifier.send_items(notifications)
+
+    if sent:
+        sent_ids = {n.id for n in sent}
+        items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
+        storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+
+    if failed:
+        message = f"{len(failed)} notification(s) failed, will retry next run"
+        logger.error("[%s] %s", source["id"], message)
+        result.errors.append(message)
+    logger.info("[%s] sent %d notification(s)", source["id"], len(sent))
+    return result
+
+
+def run_github_trending_pipeline(
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None = None,
@@ -103,98 +221,9 @@ def run_github_trending_pipeline(  # noqa: C901, PLR0912, PLR0915
         return results
 
     for source in trending_sources:
-        url: str = source.get("url", "")
-        if not url:
-            logger.warning("[%s] no URL configured", source["id"])
-            continue
-
-        result = PipelineResult(source_id=source["id"])
-        try:
-            html_text = fetch_html(url)
-        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
-            logger.exception("[%s] fetch failed: %s", source["id"], exc)
-            result.errors.append(f"fetch failed: {exc}")
+        result = _process_trending_source(source, storage, notifier, enricher)
+        if result is not None:  # None = no-url silent-skip, preserved from pre-refactor
             results.append(result)
-            continue
-
-        extracted = extract_from_html(html_text, source)
-        if not extracted.items and extracted.errors:
-            logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
-            result.errors.extend(extracted.errors)
-            results.append(result)
-            continue
-
-        items = _normalize_items(extracted.items)
-        _enrich_with_stars_today(html_text, items)
-        for item in items:
-            if not item.metric:
-                logger.warning(
-                    "[%s] item '%s' has empty metric — page layout may have drifted",
-                    source["id"],
-                    item.dedupe_key,
-                )
-            if not item.description:
-                logger.warning(
-                    "[%s] item '%s' has empty description",
-                    source["id"],
-                    item.dedupe_key,
-                )
-
-        result.items = items
-
-        sheet_tab: str = source["sheet_tab"]
-        existing = storage.get_existing_keys(sheet_tab)
-        new_items = [i for i in items if i.dedupe_key not in existing]
-        if not new_items:
-            logger.info("[%s] no new items", source["id"])
-            results.append(result)
-            continue
-
-        enrich_config = source.get("enrich")
-        if enrich_config and enricher is not None:
-            field: str = enrich_config["field"]
-            # Empty `on_error` would blank the summary line in Telegram
-            # instead of surfacing the failure — use the visible marker
-            # so the operator sees a tripwire (#128, Principle IV).
-            fallback: str = enrich_config.get("on_error") or FALLBACK_MARKER
-            enriched, skipped = 0, 0
-            for item in new_items:
-                try:
-                    item.raw[field] = enricher.enrich(item, enrich_config)
-                    enriched += 1
-                except QuotaExhausted:
-                    item.raw[field] = fallback
-                    skipped += 1
-                    for remaining in new_items[new_items.index(item) + 1 :]:
-                        remaining.raw[field] = fallback
-                        skipped += 1
-                    break
-            if skipped:
-                logger.warning(
-                    "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
-                    source["id"],
-                    enriched,
-                    enriched + skipped,
-                    skipped,
-                )
-            elif enriched:
-                logger.info("[%s] enriched %d items", source["id"], enriched)
-
-        template: str = source["message_template"]
-        notifications = [build_notification(item, template) for item in new_items]
-        sent, failed = notifier.send_items(notifications)
-
-        if sent:
-            sent_ids = {n.id for n in sent}
-            items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
-            storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
-
-        if failed:
-            message = f"{len(failed)} notification(s) failed, will retry next run"
-            logger.error("[%s] %s", source["id"], message)
-            result.errors.append(message)
-        logger.info("[%s] sent %d notification(s)", source["id"], len(sent))
-        results.append(result)
 
     return results
 
