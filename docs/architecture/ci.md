@@ -22,6 +22,54 @@ a check in the registry without updating `ci.yml` fails
 Pre-push hook: `.githooks/pre-push` runs `ci_check.py` automatically.
 Activate: `git config core.hooksPath .githooks`
 
+> **Disambiguation:** this section's title "Local pre-commit" names the
+> pre-commit *moment* (the git-hook that runs before a push), **not** the
+> [`pre-commit`](https://pre-commit.com) framework — which this repo
+> deliberately does **not** use (next block).
+
+### `pre-commit`/`tox` consciously not adopted (#255)
+
+The `CHECKS` registry looks like a hand-rolled task-runner, so «why not the
+off-the-shelf [`pre-commit`](https://pre-commit.com) framework, or `tox`?» is a
+fair recurring question. Evaluated go/no-go in #255 → **no-go**, for a single
+root reason plus supporting ones (genre mirrors the vulture drop below):
+
+- **Root reason — `pre-commit` re-introduces the #153 drift class.** Every hook
+  under `pre-commit` pins its tool version via `rev:` in
+  `.pre-commit-config.yaml` and runs it in an **isolated venv**. That is a
+  *parallel* source of each tool's version, separate from `requirements-dev.txt`
+  (today `python -m ruff`/`mypy` run the single lockfile-pinned version). So
+  `pre-commit` systemically forks the very version-drift class that the registry
+  eliminated (#153). `mypy` is the sharp illustration: its isolated venv can't
+  see project deps, forcing an `additional_dependencies:` list — a hand-copied
+  duplicate of the dependency set outside `requirements.txt`.
+- **Half the checks aren't file-linters.** `requirements` (pin/`.in` drift) and
+  `imports` (import-linter via its Python API — the console script is
+  unreliable-on-PATH on Windows + the #109 `subprocess stdout=None` pitfall,
+  #234) are custom logic. Under `pre-commit` they'd stay scripts wrapped in
+  `local` hooks — zero gain, same Windows-PATH exposure for `imports`.
+- **The drift problem is already solved, cheaper.** The registry is the single
+  source of truth and `tests/test_ci_check.py::TestStepParity` guards
+  registry ↔ `ci.yml` parity — no new dependency, ~185 lines, and it houses the
+  non-file-linter gates uniformly.
+- **A *partial* migration is strictly worse.** file-linters → `pre-commit`,
+  gates stay scripts ⇒ two overlapping systems and a **three-way** parity
+  (`pre-commit` config ↔ registry ↔ `ci.yml`) whose third edge is **unguarded**
+  until someone writes a new parity test — a net increase in surface, the
+  opposite of the win.
+- **No clean partial-win survives the drift cost.** (a) staged-only speed is
+  marginal — `pytest`/`mypy`/`imports`/`pip-audit` are whole-project by nature;
+  (b) contributor onboarding — `pre-commit install` merely replaces the one
+  `git config core.hooksPath .githooks` line with its own install step (net
+  wash).
+- **`tox`/`nox` solve a problem we don't have.** They run a Python-**version
+  matrix**; this project is pinned to a single 3.12. Clear no.
+
+**Revisit trigger (wait-for-pain, not permanent dismissal):** flip to a partial
+`pre-commit` (file-linters only) *iff* real contributor pain from manual
+hook-version management appears; adopt `tox`/`nox` *iff* a genuine multi-version
+Python matrix becomes a requirement.
+
 ## CI workflow (`ci.yml`)
 
 Triggers: `pull_request` (covers every PR branch) + `push` to `main` only
