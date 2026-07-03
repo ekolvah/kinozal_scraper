@@ -19,7 +19,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_html,
 )
-from kinozal_scraper.http_fetch import fetch_bytes, fetch_html
+from kinozal_scraper.http_fetch import NotAnImageError, fetch_bytes, fetch_html
 from kinozal_scraper.kinozal_auth import fetch_authenticated, login
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
@@ -89,6 +89,35 @@ def _genre_excluded(genre_raw: str, excluded: set[str]) -> bool:
 _ORIGIN_HOST = "kinozal.tv"
 _MIRROR_HOST = "kinozal.guru"
 _KINOZAL_HOSTS = frozenset({_ORIGIN_HOST, _MIRROR_HOST})
+_FASTPIC_HOST = "fastpic.org"
+
+
+def _is_fastpic(host: str) -> bool:
+    """True for the fastpic anti-hotlink host and its numbered CDN subdomains
+    (e.g. `i126.fastpic.org`) — the hosts that serve a viewer page for a bare
+    image URL (#265)."""
+    return host == _FASTPIC_HOST or host.endswith("." + _FASTPIC_HOST)
+
+
+def _extract_direct_image_url(viewer_html: str, requested_url: str) -> str:
+    """From a fastpic anti-hotlink viewer page, return the signed full-size
+    `<img src>` — the one whose base path (URL sans query) equals `requested_url`
+    (#265). The real image sits behind a signed query (`?md5=&expires=`) on the
+    SAME path we requested; `og:image` on the page points at a *thumbnail* on a
+    different path, so we match on the base path, never just "the first <img>".
+    Returns '' when no `<img>` matches (unresolvable → caller degrades visibly)."""
+    requested_base = urlunsplit(urlsplit(requested_url)._replace(query="", fragment=""))
+    soup = BeautifulSoup(viewer_html, "html.parser")
+    for img in soup.find_all("img"):
+        src = img.get("src")
+        # bs4 types `.get` as str | AttributeValueList | None; a real src="" attr
+        # is a single string. Skip the missing/multi-valued cases outright.
+        if not isinstance(src, str) or not src:
+            continue
+        base = urlunsplit(urlsplit(src)._replace(query="", fragment=""))
+        if base == requested_base:
+            return src
+    return ""
 
 
 def _mirror_url(url: str) -> str:
@@ -172,9 +201,26 @@ class Kinozal:
         propagates and the notifier degrades to text + WARNING (§IV). A
         primary-on-.guru failure isn't re-swapped to the same host. The mirror
         poster fetch is anonymous — no _ensure_login, so one dead-origin poster
-        on an otherwise-healthy run pays no login cost."""
+        on an otherwise-healthy run pays no login cost.
+
+        For a fastpic anti-hotlink viewer page (`NotAnImageError`, #265) the
+        signed full-size link is resolved from the exception body (the already-
+        downloaded viewer HTML — no second GET) and fetched. **Invariant:** this
+        returns the BYTES downloaded within this call, never the signed URL — a
+        future refactor must not hoist resolve out and revive `expires` staleness
+        (the window is milliseconds today: the notifier downloads the poster once,
+        before its retry loop)."""
         try:
             return fetch_bytes(url)
+        except NotAnImageError as viewer_exc:
+            host = urlsplit(url).netloc
+            if not _is_fastpic(host):
+                raise  # only fastpic serves the viewer-page trap we can resolve
+            direct = _extract_direct_image_url(viewer_exc.body.decode("utf-8", "replace"), url)
+            if not direct:
+                raise  # unresolvable → propagate so the notifier degrades visibly (§IV)
+            logger.info("[kinozal] fastpic viewer resolved to signed image for %s", url)
+            return fetch_bytes(direct)
         except Exception as primary_exc:  # noqa: BLE001 — mirror-retry for kinozal hosts, else propagate to §IV degrade
             host = urlsplit(url).netloc
             if host not in _KINOZAL_HOSTS or host == _MIRROR_HOST:

@@ -77,11 +77,11 @@ class TestFetchBytes(unittest.TestCase):
         mock_resp = unittest.mock.Mock()
         mock_resp.content = body
         mock_resp.headers = {"content-type": "text/html"}
-        with unittest.mock.patch(
-            "kinozal_scraper.http_fetch.requests.get", return_value=mock_resp
+        with (
+            unittest.mock.patch("kinozal_scraper.http_fetch.requests.get", return_value=mock_resp),
+            self.assertRaises(NotAnImageError) as ctx,
         ):
-            with self.assertRaises(NotAnImageError) as ctx:
-                fetch_bytes(url)
+            fetch_bytes(url)
         err = ctx.exception
         self.assertEqual(err.url, url)
         self.assertEqual(err.content_type, "text/html")
@@ -91,9 +91,7 @@ class TestFetchBytes(unittest.TestCase):
         mock_resp = unittest.mock.Mock()
         mock_resp.content = b"\xff\xd8\xff\xe0JPEG"
         mock_resp.headers = {"content-type": "image/jpeg"}
-        with unittest.mock.patch(
-            "kinozal_scraper.http_fetch.requests.get", return_value=mock_resp
-        ):
+        with unittest.mock.patch("kinozal_scraper.http_fetch.requests.get", return_value=mock_resp):
             result = fetch_bytes("https://example.com/poster.jpg")
         self.assertEqual(result, b"\xff\xd8\xff\xe0JPEG")
 
@@ -103,11 +101,11 @@ class TestFetchBytes(unittest.TestCase):
         mock_resp = unittest.mock.Mock()
         mock_resp.content = b"<html></html>"
         mock_resp.headers = {"content-type": "text/html; charset=UTF-8"}
-        with unittest.mock.patch(
-            "kinozal_scraper.http_fetch.requests.get", return_value=mock_resp
+        with (
+            unittest.mock.patch("kinozal_scraper.http_fetch.requests.get", return_value=mock_resp),
+            self.assertRaises(NotAnImageError),
         ):
-            with self.assertRaises(NotAnImageError):
-                fetch_bytes("https://i126.fastpic.org/big/x.jpg")
+            fetch_bytes("https://i126.fastpic.org/big/x.jpg")
 
 
 if __name__ == "__main__":

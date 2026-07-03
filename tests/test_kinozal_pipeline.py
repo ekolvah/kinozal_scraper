@@ -1345,9 +1345,7 @@ class TestFetchPosterFastpic(unittest.TestCase):
             raise NotAnImageError(url, "text/html", viewer)
 
         with (
-            unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
-            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch),
             self.assertRaises(NotAnImageError),
         ):
             self._kinozal().fetch_poster(_FASTPIC_URL)
