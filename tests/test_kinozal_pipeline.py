@@ -1268,6 +1268,89 @@ class TestGenreFilter(unittest.TestCase):
         self.assertIn("Game A", joined)
 
 
+# ── fastpic viewer resolve (issue #265) ───────────────────────────────────────
+
+_FASTPIC_URL = "https://i126.fastpic.org/big/2026/0205/00/67b3a8e599df986493824b9ed4fbbf00.jpg"
+_FASTPIC_SIGNED = _FASTPIC_URL + "?md5=Kv8Hlp-9IPlUe1YuQpFH-g&expires=1782979200"
+# Real fastpic anti-hotlink page: og:image points at a thumbnail (different path),
+# the full-size image is a signed <img> at the same base path as the requested URL.
+_FASTPIC_VIEWER_HTML = (
+    "<html><head>"
+    '<meta property="og:image" content="https://i126.fastpic.org/thumb/2026/0205/00/x.jpeg">'
+    "</head><body>"
+    f'<img src="{_FASTPIC_SIGNED}" class="image">'
+    "</body></html>"
+)
+
+
+class TestExtractDirectImageUrl(unittest.TestCase):
+    """`_extract_direct_image_url` pulls the signed full-size <img> out of a fastpic
+    viewer page — the one whose base path (URL sans query) equals the requested URL,
+    NOT the og:image thumbnail (different path). Pure helper, tested directly (§I)."""
+
+    def test_extracts_signed_fastpic_link(self) -> None:
+        result = kp._extract_direct_image_url(_FASTPIC_VIEWER_HTML, _FASTPIC_URL)
+        self.assertEqual(result, _FASTPIC_SIGNED)
+
+    def test_returns_empty_when_no_matching_img(self) -> None:
+        # Viewer page whose only <img> is a thumbnail on a different path → no
+        # signed full-size link resolvable → "".
+        html = (
+            "<html><body>"
+            '<img src="https://i126.fastpic.org/thumb/2026/0205/00/x.jpeg">'
+            "</body></html>"
+        )
+        self.assertEqual(kp._extract_direct_image_url(html, _FASTPIC_URL), "")
+
+
+class TestFetchPosterFastpic(unittest.TestCase):
+    """`Kinozal.fetch_poster` resolves a fastpic viewer page to its signed image
+    without a second GET of the 300 KB page — it reuses the body carried on
+    NotAnImageError. Injection stays on the HTTP boundary; the stub raises a REAL
+    NotAnImageError (not a re-invented content-type check) per §II."""
+
+    def _kinozal(self) -> Any:
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        return Kinozal("u", "p")
+
+    def test_fetch_poster_resolves_fastpic_viewer_to_signed_image(self) -> None:
+        from kinozal_scraper.http_fetch import NotAnImageError
+
+        calls: list[str] = []
+
+        def _fetch(url: str) -> bytes:
+            calls.append(url)
+            if url == _FASTPIC_URL:
+                raise NotAnImageError(url, "text/html", _FASTPIC_VIEWER_HTML.encode("utf-8"))
+            return b"\xff\xd8\xff\xe0JPEG"
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
+        ):
+            data = self._kinozal().fetch_poster(_FASTPIC_URL)
+        self.assertEqual(data, b"\xff\xd8\xff\xe0JPEG")
+        # second fetch hit the SIGNED link, resolved from the exception body (no
+        # re-GET of the viewer page).
+        self.assertEqual(calls, [_FASTPIC_URL, _FASTPIC_SIGNED])
+
+    def test_fetch_poster_fastpic_unresolvable_propagates(self) -> None:
+        from kinozal_scraper.http_fetch import NotAnImageError
+
+        # Viewer body with no matching full-size <img> → resolve returns "" →
+        # NotAnImageError propagates so the notifier degrades visibly (§IV).
+        viewer = b"<html><body><img src='https://i126.fastpic.org/thumb/x.jpeg'></body></html>"
+
+        def _fetch(url: str) -> bytes:
+            raise NotAnImageError(url, "text/html", viewer)
+
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch),
+            self.assertRaises(NotAnImageError),
+        ):
+            self._kinozal().fetch_poster(_FASTPIC_URL)
+
+
 class TestKinozalFacade(unittest.TestCase):
     """`Kinozal.fetch_details` shares the listing origin→mirror failover (#263),
     injected at the HTTP boundary like the #247 fetch_listing tests (§II)."""
