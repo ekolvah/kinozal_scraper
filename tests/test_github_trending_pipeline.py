@@ -377,16 +377,16 @@ class TestPipelineMechanics(unittest.TestCase):
         }
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
-        with unittest.mock.patch(
-            "kinozal_scraper.github_trending_pipeline.fetch_html",
-            return_value=_fixture_html(),
-        ):
-            with self.assertLogs(
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.github_trending_pipeline.fetch_html",
+                return_value=_fixture_html(),
+            ),
+            self.assertLogs(
                 "kinozal_scraper.github_trending_pipeline", level="WARNING"
-            ) as captured:
-                results = run_github_trending_pipeline(
-                    storage, notifier, sources_config=config
-                )
+            ) as captured,
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
 
         self.assertEqual(results, [])
         self.assertTrue(any("no URL configured" in line for line in captured.output))
