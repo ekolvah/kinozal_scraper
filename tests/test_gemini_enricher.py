@@ -504,11 +504,18 @@ class TestRotatingGeminiEnricherModelUnavailable(unittest.TestCase):
         rotator._enrichers[0].enrich = fail_a  # type: ignore[assignment]
         rotator._enrichers[1].enrich = ok_b  # type: ignore[assignment]
 
-        for i in range(5):
-            self.assertEqual(rotator.enrich(_item(str(i)), _ENRICH_CFG), "from-b")
+        with self.assertLogs("kinozal_scraper.gemini_enricher", level="WARNING") as captured:
+            for i in range(5):
+                self.assertEqual(rotator.enrich(_item(str(i)), _ENRICH_CFG), "from-b")
 
         self.assertEqual(a_calls, 1, "dead model must not be retried for every item")
         self.assertEqual(b_calls, 5)
+        # The rotation warning names both the failed and the next model by their
+        # public `model_name` — pins the cross-class read that replaced the
+        # `._model_name` private access (#236).
+        rotation_log = "\n".join(captured.output)
+        self.assertIn("model-a", rotation_log)
+        self.assertIn("model-b", rotation_log)
 
     @unittest.mock.patch("kinozal_scraper.gemini_enricher.time.sleep")
     def test_all_models_unavailable_raises_quota_exhausted(self, mock_sleep: Any) -> None:
