@@ -92,7 +92,82 @@ def _check_no_residual_macros(value: Any, known_macros: list[str], path: str = "
             _check_no_residual_macros(item, known_macros, f"{path}[{i}]")
 
 
-def validate_sources_config(config: Any) -> None:  # noqa: C901, PLR0912
+def _validate_selector_candidate(source_id: str, where: str, selector: Any) -> None:
+    if where == "dedupe_key":
+        # Required dedup identity — a null / empty / non-string here
+        # silently collapses dedup (all rows share one key) instead
+        # of failing at load. Fail fast (§IV/§VI).
+        if not isinstance(selector, str) or not selector.strip():
+            raise ConfigError(
+                f"Source '{source_id}': dedupe_key must be a non-empty string "
+                f"CSS selector, got {selector!r}"
+            )
+    else:
+        # Optional field selector. `null` is the documented
+        # "no selector for this field" sentinel (see `_html_field`),
+        # so skip it. A non-string, non-null value (int/list/dict)
+        # is a misconfiguration that the old `continue` swallowed →
+        # it reached runtime extraction silently; fail fast (§VI).
+        if selector is None:
+            return
+        if not isinstance(selector, str):
+            raise ConfigError(
+                f"Source '{source_id}': {where} must be a string CSS selector, got {selector!r}"
+            )
+    css = _selector_css_part(selector)
+    if css:
+        _check_css_selector(source_id, where, css)
+
+
+def _validate_html_source(source_id: str, source: dict[str, Any]) -> None:
+    if not source.get("row_selector"):
+        raise ConfigError(f"Source '{source_id}' has type='html' but no 'row_selector' field")
+    # row_selector is fed verbatim to soup.select(); field selectors carry
+    # an optional @attr suffix, so validate only their CSS part — the exact
+    # string runtime hands to select_one (shared `_selector_css_part`).
+    _check_css_selector(source_id, "row_selector", source["row_selector"])
+    fields = source.get("fields") or {}
+    if not isinstance(fields, dict):
+        raise ConfigError(f"Source '{source_id}': 'fields' must be a JSON object, got {fields!r}")
+    candidates = {
+        "dedupe_key": source.get("dedupe_key"),
+        **{f"fields.{k}": v for k, v in fields.items()},
+    }
+    for where, selector in candidates.items():
+        _validate_selector_candidate(source_id, where, selector)
+
+
+def _validate_limit(source_id: str, source: dict[str, Any]) -> None:
+    try:
+        limit = int(source["limit"])
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(
+            f"Source '{source_id}': 'limit' must be an integer, got {source['limit']!r}"
+        ) from exc
+    if limit <= 0:
+        raise ConfigError(f"Source '{source_id}': 'limit' must be a positive integer, got {limit}")
+
+
+def _validate_source(source: Any) -> None:
+    if not isinstance(source, dict):
+        raise ConfigError("Each source must be a JSON object")
+
+    source_id = source.get("id", "<unknown>")
+
+    missing = _REQUIRED_SOURCE_FIELDS - source.keys()
+    if missing:
+        raise ConfigError(f"Source '{source_id}' is missing required fields: {sorted(missing)}")
+
+    if source["type"] not in _SUPPORTED_TYPES:
+        raise ConfigError(f"Source '{source_id}' has unsupported type: {source['type']!r}")
+
+    if source["type"] == "html":
+        _validate_html_source(source_id, source)
+
+    _validate_limit(source_id, source)
+
+
+def validate_sources_config(config: Any) -> None:
     if not isinstance(config, dict):
         raise ConfigError("Config must be a JSON object")
 
@@ -107,73 +182,7 @@ def validate_sources_config(config: Any) -> None:  # noqa: C901, PLR0912
         raise ConfigError("'sources' must be a list")
 
     for source in sources:
-        if not isinstance(source, dict):
-            raise ConfigError("Each source must be a JSON object")
-
-        source_id = source.get("id", "<unknown>")
-
-        missing = _REQUIRED_SOURCE_FIELDS - source.keys()
-        if missing:
-            raise ConfigError(f"Source '{source_id}' is missing required fields: {sorted(missing)}")
-
-        if source["type"] not in _SUPPORTED_TYPES:
-            raise ConfigError(f"Source '{source_id}' has unsupported type: {source['type']!r}")
-
-        if source["type"] == "html":
-            if not source.get("row_selector"):
-                raise ConfigError(
-                    f"Source '{source_id}' has type='html' but no 'row_selector' field"
-                )
-            # row_selector is fed verbatim to soup.select(); field selectors carry
-            # an optional @attr suffix, so validate only their CSS part — the exact
-            # string runtime hands to select_one (shared `_selector_css_part`).
-            _check_css_selector(source_id, "row_selector", source["row_selector"])
-            fields = source.get("fields") or {}
-            if not isinstance(fields, dict):
-                raise ConfigError(
-                    f"Source '{source_id}': 'fields' must be a JSON object, got {fields!r}"
-                )
-            candidates = {
-                "dedupe_key": source.get("dedupe_key"),
-                **{f"fields.{k}": v for k, v in fields.items()},
-            }
-            for where, selector in candidates.items():
-                if where == "dedupe_key":
-                    # Required dedup identity — a null / empty / non-string here
-                    # silently collapses dedup (all rows share one key) instead
-                    # of failing at load. Fail fast (§IV/§VI).
-                    if not isinstance(selector, str) or not selector.strip():
-                        raise ConfigError(
-                            f"Source '{source_id}': dedupe_key must be a non-empty string "
-                            f"CSS selector, got {selector!r}"
-                        )
-                else:
-                    # Optional field selector. `null` is the documented
-                    # "no selector for this field" sentinel (see `_html_field`),
-                    # so skip it. A non-string, non-null value (int/list/dict)
-                    # is a misconfiguration that the old `continue` swallowed →
-                    # it reached runtime extraction silently; fail fast (§VI).
-                    if selector is None:
-                        continue
-                    if not isinstance(selector, str):
-                        raise ConfigError(
-                            f"Source '{source_id}': {where} must be a string CSS selector, "
-                            f"got {selector!r}"
-                        )
-                css = _selector_css_part(selector)
-                if css:
-                    _check_css_selector(source_id, where, css)
-
-        try:
-            limit = int(source["limit"])
-        except (TypeError, ValueError) as exc:
-            raise ConfigError(
-                f"Source '{source_id}': 'limit' must be an integer, got {source['limit']!r}"
-            ) from exc
-        if limit <= 0:
-            raise ConfigError(
-                f"Source '{source_id}': 'limit' must be a positive integer, got {limit}"
-            )
+        _validate_source(source)
 
 
 def load_sources_config(path: str | Path = "sources.json") -> dict[str, Any]:
