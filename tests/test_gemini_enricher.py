@@ -656,7 +656,7 @@ class TestRotatingGeminiEnricherTryNext(unittest.TestCase):
 class TestBuildDefaultEnricher(unittest.TestCase):
     """Pin-test for issue #93: silent degradation when GOOGLE_API_KEY is absent.
 
-    Previously, `__main__` in json_pipeline / github_trending_pipeline silently
+    Previously, `__main__` in github_popular_pipeline / github_trending_pipeline silently
     constructed a `NullEnricher` when the env-var was missing, hiding the fact
     that enrichment was disabled. The trending workflow shipped without
     GOOGLE_API_KEY for ~3 cron runs after PR #89; the visibility gap kept this

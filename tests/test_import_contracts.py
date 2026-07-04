@@ -32,7 +32,7 @@ _IMPORTLINTER = _REPO / ".importlinter"
 _PKG = "kinozal_scraper"
 _ORCHESTRATORS = {
     f"{_PKG}.kinozal_pipeline",
-    f"{_PKG}.json_pipeline",
+    f"{_PKG}.github_popular_pipeline",
     f"{_PKG}.steam_pipeline",
     f"{_PKG}.github_trending_pipeline",
     f"{_PKG}.events_pipeline",

@@ -127,7 +127,7 @@ migration required.
 
 ## Enrichment plumbing across pipelines
 
-`json_pipeline.run_json_pipeline`, `github_trending_pipeline.run_github_trending_pipeline`
+`github_popular_pipeline.run_github_popular_pipeline`, `github_trending_pipeline.run_github_trending_pipeline`
 and `steam_pipeline.run_steam_pipeline` accept an optional `enricher: Enricher | None`
 parameter and apply the same loop semantics:
 

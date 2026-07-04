@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import json
 import unittest
 import unittest.mock
+from pathlib import Path
 from typing import Any
 
 from kinozal_scraper.generic_pipeline import PipelineResult
-from kinozal_scraper.json_pipeline import _unwrap_records, run_json_pipeline
+from kinozal_scraper.github_popular_pipeline import _unwrap_records, run_github_popular_pipeline
 from kinozal_scraper.sheets_storage import InMemoryStorage
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
+
+_SOURCES_JSON = Path(__file__).resolve().parent.parent / "sources.json"
 
 _GITHUB_RESPONSE: dict[str, Any] = {
     "total_count": 3,
@@ -39,7 +43,7 @@ _GITHUB_RESPONSE: dict[str, Any] = {
 _GITHUB_SOURCE: dict[str, Any] = {
     "id": "github_new_popular",
     "enabled": True,
-    "type": "json",
+    "type": "github_popular",
     "url": "https://api.github.com/search/repositories",
     "json_path": "items",
     "headers": {
@@ -64,7 +68,19 @@ _CONFIG: dict[str, Any] = {"version": 1, "sources": [_GITHUB_SOURCE]}
 
 
 def _patch_fetch(response: Any) -> unittest.mock._patch[unittest.mock.MagicMock]:
-    return unittest.mock.patch("kinozal_scraper.json_pipeline._fetch_json", return_value=response)
+    return unittest.mock.patch(
+        "kinozal_scraper.github_popular_pipeline._fetch_json", return_value=response
+    )
+
+
+class TestConfigSourceType(unittest.TestCase):
+    def test_enabled_github_source_uses_dedicated_type(self) -> None:
+        # #275: the github source must carry a dedicated `github_popular` type,
+        # not the generic format-keyed `json` bucket, so no other JSON source can
+        # silently join it (grain of steam's `steam_charts`).
+        config = json.loads(_SOURCES_JSON.read_text(encoding="utf-8"))
+        github = next(s for s in config["sources"] if s["id"] == "github_new_popular")
+        self.assertEqual(github["type"], "github_popular")
 
 
 class TestUnwrapRecords(unittest.TestCase):
@@ -99,13 +115,13 @@ class TestUnwrapRecords(unittest.TestCase):
         self.assertEqual(_unwrap_records(data, "items"), [])
 
 
-class TestJsonPipelineHappyPath(unittest.TestCase):
+class TestGithubPopularHappyPath(unittest.TestCase):
     def test_items_extracted_notified_stored(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(notifier.sent), 3)
         self.assertEqual(len(storage.stored_rows("github_projects")), 3)
@@ -116,27 +132,27 @@ class TestJsonPipelineHappyPath(unittest.TestCase):
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         text = notifier.sent[0].text
         self.assertIn("Python", text)
         self.assertIn("⭐ 500", text)
 
 
-class TestJsonPipelineDeduplication(unittest.TestCase):
+class TestGithubPopularDeduplication(unittest.TestCase):
     def test_existing_keys_not_re_notified(self) -> None:
         storage = InMemoryStorage()
         storage.seed_existing("github_projects", ["user/repo-alpha", "org/repo-beta"])
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(notifier.sent), 1)
         self.assertEqual(notifier.sent[0].id, "dev/repo-gamma")
 
 
-class TestJsonPipelineNullFields(unittest.TestCase):
+class TestGithubPopularNullFields(unittest.TestCase):
     def test_null_description_and_language(self) -> None:
         response = {
             "items": [
@@ -153,31 +169,31 @@ class TestJsonPipelineNullFields(unittest.TestCase):
         notifier = InMemoryNotifier()
 
         with _patch_fetch(response):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(notifier.sent), 1)
         self.assertNotIn("None", notifier.sent[0].text)
 
 
-class TestJsonPipelineEmptyResponse(unittest.TestCase):
+class TestGithubPopularEmptyResponse(unittest.TestCase):
     def test_empty_items_no_crash(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
 
         with _patch_fetch({"items": []}):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(notifier.sent), 0)
         self.assertEqual(len(storage.stored_rows("github_projects")), 0)
 
 
-class TestJsonPipelineFailedNotifications(unittest.TestCase):
+class TestGithubPopularFailedNotifications(unittest.TestCase):
     def test_failed_items_not_stored(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier(fail_ids={"user/repo-alpha", "org/repo-beta"})
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(storage.stored_rows("github_projects")), 1)
         self.assertEqual(storage.stored_rows("github_projects")[0][0], "dev/repo-gamma")
@@ -185,8 +201,11 @@ class TestJsonPipelineFailedNotifications(unittest.TestCase):
         self.assertTrue(any("notification(s) failed" in err for err in results[0].errors))
 
 
-class TestJsonPipelineSourceIsolation(unittest.TestCase):
+class TestGithubPopularSourceIsolation(unittest.TestCase):
     def test_one_source_error_does_not_block_others(self) -> None:
+        # Guards the retained per-source loop-isolation mechanism (§IV): a failed
+        # source must not block siblings. Only one live github_popular source
+        # exists today; the fake multi-source config exercises the real loop code.
         broken_source: dict[str, Any] = {
             **_GITHUB_SOURCE,
             "id": "broken_source",
@@ -203,9 +222,9 @@ class TestJsonPipelineSourceIsolation(unittest.TestCase):
             return _GITHUB_RESPONSE
 
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", side_effect=side_effect
+            "kinozal_scraper.github_popular_pipeline._fetch_json", side_effect=side_effect
         ):
-            run_json_pipeline(storage, notifier, sources_config=config)
+            run_github_popular_pipeline(storage, notifier, sources_config=config)
 
         self.assertEqual(len(notifier.sent), 3)
 
@@ -213,17 +232,18 @@ class TestJsonPipelineSourceIsolation(unittest.TestCase):
 # ── exit-code surface (issue #97) ─────────────────────────────────────────────
 
 
-class TestJsonPipelineExitCodeSurface(unittest.TestCase):
-    """run_json_pipeline must return list[PipelineResult] so __main__ can
-    sys.exit(1) on failed source. Previously errors were silent — see #97."""
+class TestGithubPopularExitCodeSurface(unittest.TestCase):
+    """run_github_popular_pipeline must return list[PipelineResult] so __main__
+    can sys.exit(1) on failed source. Previously errors were silent — see #97."""
 
     def test_fetch_failure_returns_not_ok_result(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", side_effect=ConnectionError("network down")
+            "kinozal_scraper.github_popular_pipeline._fetch_json",
+            side_effect=ConnectionError("network down"),
         ):
-            results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
         self.assertIsInstance(results, list)
         self.assertEqual(len(results), 1)
         self.assertIsInstance(results[0], PipelineResult)
@@ -237,7 +257,7 @@ class TestJsonPipelineExitCodeSurface(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with _patch_fetch(_GITHUB_RESPONSE):
-            results = run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
         self.assertTrue(all(r.ok for r in results))
         self.assertEqual([r.source_id for r in results], ["github_new_popular"])
 
@@ -258,9 +278,9 @@ class TestJsonPipelineExitCodeSurface(unittest.TestCase):
             return _GITHUB_RESPONSE
 
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", side_effect=side_effect
+            "kinozal_scraper.github_popular_pipeline._fetch_json", side_effect=side_effect
         ):
-            results = run_json_pipeline(storage, notifier, sources_config=config)
+            results = run_github_popular_pipeline(storage, notifier, sources_config=config)
 
         self.assertEqual(len(results), 2)
         ok_by_id = {r.source_id: r.ok for r in results}
@@ -275,11 +295,13 @@ class TestEmptyAuthHeaderStripped(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
 
-        with unittest.mock.patch("kinozal_scraper.json_pipeline.requests.get") as mock_get:
+        with unittest.mock.patch(
+            "kinozal_scraper.github_popular_pipeline.requests.get"
+        ) as mock_get:
             mock_get.return_value.status_code = 200
             mock_get.return_value.json.return_value = _GITHUB_RESPONSE
             mock_get.return_value.raise_for_status = lambda: None
-            run_json_pipeline(storage, notifier, sources_config=config)
+            run_github_popular_pipeline(storage, notifier, sources_config=config)
 
             _, kwargs = mock_get.call_args
             self.assertNotIn("Authorization", kwargs.get("headers", {}))
@@ -293,7 +315,7 @@ class TestSorting(unittest.TestCase):
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(storage, notifier, sources_config=config)
+            run_github_popular_pipeline(storage, notifier, sources_config=config)
 
         stored_keys = [row[0] for row in storage.stored_rows("github_projects")]
         self.assertEqual(stored_keys, ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"])
@@ -303,7 +325,7 @@ class TestSorting(unittest.TestCase):
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(storage, notifier, sources_config=_CONFIG)
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
 
         self.assertEqual(len(notifier.sent), 3)
 
@@ -337,7 +359,7 @@ class TestEnricherIntegration(unittest.TestCase):
         notifier = InMemoryNotifier()
 
         with _patch_fetch(_GITHUB_RESPONSE):
-            run_json_pipeline(
+            run_github_popular_pipeline(
                 storage, notifier, enricher=NullEnricher(), sources_config=_ENRICH_CONFIG
             )
 
@@ -352,9 +374,9 @@ class TestEnricherIntegration(unittest.TestCase):
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+            "kinozal_scraper.github_popular_pipeline._fetch_json", return_value=fresh_response
         ):
-            run_json_pipeline(
+            run_github_popular_pipeline(
                 storage, notifier, enricher=_FakeEnricher(), sources_config=_ENRICH_CONFIG
             )
 
@@ -368,9 +390,11 @@ class TestEnricherIntegration(unittest.TestCase):
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+            "kinozal_scraper.github_popular_pipeline._fetch_json", return_value=fresh_response
         ):
-            run_json_pipeline(storage, notifier, enricher=None, sources_config=_ENRICH_CONFIG)
+            run_github_popular_pipeline(
+                storage, notifier, enricher=None, sources_config=_ENRICH_CONFIG
+            )
 
         self.assertEqual(len(notifier.sent), 3)
         self.assertNotIn("Описание", notifier.sent[0].text)
@@ -397,9 +421,9 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+            "kinozal_scraper.github_popular_pipeline._fetch_json", return_value=fresh_response
         ):
-            run_json_pipeline(
+            run_github_popular_pipeline(
                 storage, notifier, enricher=_QuotaEnricher(), sources_config=_ENRICH_CONFIG
             )
 
@@ -412,8 +436,9 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
     def test_all_models_exhausted_from_start_uses_on_error_fallback(self) -> None:
         """When every Gemini model is exhausted, the very first enrich() raises.
 
-        Caller (run_json_pipeline) must substitute `on_error` from sources.json
-        into every item so notifications still go out — bug taxonomy category C (testing.md).
+        Caller (run_github_popular_pipeline) must substitute `on_error` from
+        sources.json into every item so notifications still go out — bug taxonomy
+        category C (testing.md).
         """
         import copy
 
@@ -432,9 +457,9 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         fresh_response = copy.deepcopy(_GITHUB_RESPONSE)
 
         with unittest.mock.patch(
-            "kinozal_scraper.json_pipeline._fetch_json", return_value=fresh_response
+            "kinozal_scraper.github_popular_pipeline._fetch_json", return_value=fresh_response
         ):
-            run_json_pipeline(
+            run_github_popular_pipeline(
                 storage, notifier, enricher=_AlwaysExhaustedEnricher(), sources_config=config
             )
 

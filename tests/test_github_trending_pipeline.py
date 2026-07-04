@@ -131,7 +131,7 @@ class TestUS2CrossSourceDedupe(unittest.TestCase):
 
     def test_intra_run_overlap_uses_storage_state(self) -> None:
         """Pre-seed storage with the trending fixture's first item's key (as
-        json_pipeline would after a prior workflow step). Trending pipeline must
+        github_popular_pipeline would after a prior workflow step). Trending pipeline must
         then filter that key out."""
         result = extract_from_html(_fixture_html(), _TRENDING_SOURCE)
         items = _normalize_items(result.items)

@@ -1,4 +1,4 @@
-"""Generic JSON-источники (run_json_pipeline)."""
+"""GitHub new-popular источник (run_github_popular_pipeline)."""
 
 from __future__ import annotations
 
@@ -19,6 +19,11 @@ from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier
 
 logger = logging.getLogger(__name__)
+
+# Dedicated source type (grain of steam_pipeline's `steam_charts`), not the
+# former format-keyed generic `json` bucket. A generic multi-source runner is
+# deferred until ≥2 sources with a uniform single-GET fetch actually exist (#275).
+_SOURCE_TYPE = "github_popular"
 
 
 def _fetch_json(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
@@ -42,7 +47,7 @@ def _unwrap_records(data: Any, json_path: str | None) -> list[dict[str, Any]]:
     return obj if isinstance(obj, list) else []
 
 
-def run_json_pipeline(
+def run_github_popular_pipeline(
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None = None,
@@ -50,12 +55,14 @@ def run_json_pipeline(
 ) -> list[PipelineResult]:
     results: list[PipelineResult] = []
     config = sources_config or load_sources_config()
-    json_sources = [s for s in config["sources"] if s.get("enabled") and s["type"] == "json"]
-    if not json_sources:
-        logger.info("no enabled json sources found")
+    github_sources = [
+        s for s in config["sources"] if s.get("enabled") and s["type"] == _SOURCE_TYPE
+    ]
+    if not github_sources:
+        logger.info("no enabled '%s' source found", _SOURCE_TYPE)
         return results
 
-    for source in json_sources:
+    for source in github_sources:
         try:
             result = _run_single_source(source, storage, notifier, enricher)
         except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
@@ -177,7 +184,7 @@ if __name__ == "__main__":
 
     prod_enricher = build_default_enricher(os.environ.get("GOOGLE_API_KEY", ""), logger)
 
-    prod_results = run_json_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
+    prod_results = run_github_popular_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
 
     if any(not r.ok for r in prod_results):
         sys.exit(1)

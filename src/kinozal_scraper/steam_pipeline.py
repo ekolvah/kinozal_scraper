@@ -185,7 +185,7 @@ def run_steam_pipeline(
 
     # Thin loop: each source is isolated so an *unhandled* error in one (e.g. a
     # malformed rank, a Sheets API hiccup mid-pipeline) becomes a not-ok result
-    # instead of aborting the whole run. Mirrors `run_json_pipeline`.
+    # instead of aborting the whole run. Mirrors `run_github_popular_pipeline`.
     for source in steam_sources:
         try:
             result = _run_single_source(source, storage, notifier, enricher)

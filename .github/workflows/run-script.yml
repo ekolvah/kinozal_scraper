@@ -24,13 +24,13 @@ jobs:
         id: tests
         run: python -m pytest tests/ -x
 
-      - name: Run JSON sources pipeline
+      - name: Run GitHub popular pipeline
         # Isolated from siblings (#245): !cancelled() lets this run even if an
         # earlier pipeline step failed (the implicit if: success() would skip it),
         # while gating on the test step keeps red tests a hard block. No
         # continue-on-error: a failed source must red the job so the §IV alert fires.
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
-        run: python -m kinozal_scraper.json_pipeline
+        run: python -m kinozal_scraper.github_popular_pipeline
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOP_LIMIT: ${{ vars.GH_TOP_LIMIT }}

@@ -14,7 +14,7 @@ from kinozal_scraper.pipeline_config import (
 
 _MINIMAL_SOURCE = {
     "id": "test_src",
-    "type": "json",
+    "type": "github_popular",
     "url": "https://example.com/api",
     "limit": 5,
     "sheet_tab": "test_tab",
@@ -110,6 +110,19 @@ class TestValidateSourcesConfig(unittest.TestCase):
 
     def test_unsupported_type(self) -> None:
         source = {**_MINIMAL_SOURCE, "type": "csv"}
+        with self.assertRaises(ConfigError):
+            validate_sources_config(_make_config([source]))
+
+    def test_github_popular_type_supported(self) -> None:
+        # After #275 the github source carries a dedicated `github_popular`
+        # type (grain of steam's `steam_charts`) instead of the generic `json`.
+        source = {**_MINIMAL_SOURCE, "type": "github_popular"}
+        validate_sources_config(_make_config([source]))
+
+    def test_json_type_no_longer_supported(self) -> None:
+        # `json` was the format-keyed generic bucket removed in #275; no source
+        # carries it anymore, so it is a dead supported-type and must be rejected.
+        source = {**_MINIMAL_SOURCE, "type": "json"}
         with self.assertRaises(ConfigError):
             validate_sources_config(_make_config([source]))
 

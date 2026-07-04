@@ -18,7 +18,7 @@ root_package = kinozal_scraper
 name = Pipeline dependency direction (§II)
 type = layers
 layers =
-    kinozal_scraper.kinozal_pipeline | kinozal_scraper.json_pipeline | kinozal_scraper.steam_pipeline | kinozal_scraper.github_trending_pipeline | kinozal_scraper.events_pipeline
+    kinozal_scraper.kinozal_pipeline | kinozal_scraper.github_popular_pipeline | kinozal_scraper.steam_pipeline | kinozal_scraper.github_trending_pipeline | kinozal_scraper.events_pipeline
     kinozal_scraper.sheets_storage | kinozal_scraper.telegram_notifier | kinozal_scraper.gemini_enricher
     kinozal_scraper.generic_pipeline
 
