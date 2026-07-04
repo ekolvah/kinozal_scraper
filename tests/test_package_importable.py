@@ -21,7 +21,6 @@ import pytest
 # are libraries imported by them. Names mirror the file stems under src/.
 _MODULES = [
     "crypto",
-    "events_pipeline",
     "gemini_enricher",
     "generic_pipeline",
     "github_popular_pipeline",
@@ -31,6 +30,7 @@ _MODULES = [
     "kinozal_pipeline",
     "pipeline_config",
     "sheets_storage",
+    "soldout_pipeline",
     "steam_pipeline",
     "telegram_notifier",
     "telegram_summarizer",
