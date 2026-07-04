@@ -35,7 +35,7 @@ _ORCHESTRATORS = {
     f"{_PKG}.github_popular_pipeline",
     f"{_PKG}.steam_pipeline",
     f"{_PKG}.github_trending_pipeline",
-    f"{_PKG}.events_pipeline",
+    f"{_PKG}.soldout_pipeline",
 }
 _ADAPTERS = {
     f"{_PKG}.sheets_storage",

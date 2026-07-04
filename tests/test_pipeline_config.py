@@ -126,6 +126,21 @@ class TestValidateSourcesConfig(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_sources_config(_make_config([source]))
 
+    def test_soldout_type_supported(self) -> None:
+        # #276: soldout gets a dedicated `soldout` type (grain of github_popular)
+        # instead of sharing the format-keyed `html` bucket with kinozal/trending.
+        source = {**_MINIMAL_SOURCE, "type": "soldout", "row_selector": "div.homeBoxEvent"}
+        validate_sources_config(_make_config([source]))
+
+    def test_soldout_source_invalid_selector_raises(self) -> None:
+        # #276 §IV regression guard: leaving the shared `html` type must NOT lose
+        # the load-time CSS-selector compilation. A broken row_selector on a
+        # soldout source must still raise at load, not surface silently at cron.
+        source = {**_MINIMAL_SOURCE, "type": "soldout", "row_selector": "div[unclosed-bracket"}
+        with self.assertRaises(ConfigError) as ctx:
+            validate_sources_config(_make_config([source]))
+        self.assertIn("row_selector", str(ctx.exception))
+
     def test_non_integer_limit(self) -> None:
         source = {**_MINIMAL_SOURCE, "limit": "not_a_number"}
         with self.assertRaises(ConfigError):
