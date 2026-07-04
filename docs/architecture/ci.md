@@ -27,6 +27,32 @@ Activate: `git config core.hooksPath .githooks`
 > [`pre-commit`](https://pre-commit.com) framework — which this repo
 > deliberately does **not** use (next block).
 
+### Session hooks (`scripts/hooks.py`, #281)
+
+A separate, *earlier* feedback layer that runs **during** an agent session, not
+at push. `.claude/settings.json` declares a single `PostToolUse` hook (matcher
+`Edit|Write`) invoking `python "$CLAUDE_PROJECT_DIR/scripts/hooks.py" on-edit`,
+which dispatches two cheap checks in one process right after each file edit:
+
+- `*.py` → ruff **check-only** (`ruff format --check` + `ruff check`, **no
+  `--fix`/format mutation** — the harness tracks file contents, so rewriting
+  behind its back breaks the next Edit's `old_string` match). Remaining lint →
+  stderr + exit 2 (PostToolUse exit 2 feeds stderr back to the agent).
+- `requirements*.in` → a `pip-compile` reminder (workflow #7 is otherwise only
+  prose — this makes forgetting it a *visible* marker, not a CI-time surprise).
+
+§IV split: a malformed/empty payload is a silent no-op, but a ruff *exec*
+failure (not installed / bad config) is a **visible, distinct** marker — a
+silently-broken hook must not masquerade as "lint clean". Decision logic is pure
+functions (`plan_checks`/`classify_ruff_result`) with unit tests
+(`tests/test_hooks.py`); wiring is anti-drift-guarded by
+`tests/test_settings_hooks.py` (mirrors `test_settings_deny.py`).
+
+This is instant feedback that **complements, never replaces** `ci_check.py` (the
+canonical pre-push gate), and is unrelated to the `pre-commit`/`tox` *framework*
+consciously declined below (#255/#267) — that no-go is about a PR-time
+tool-registry framework, this is a session-time editor hook.
+
 ### `pre-commit`/`tox` consciously not adopted (#255)
 
 The `CHECKS` registry looks like a hand-rolled task-runner, so «why not the

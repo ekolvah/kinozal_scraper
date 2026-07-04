@@ -13,5 +13,18 @@
       "Bash(gh pr merge*)",
       "Bash(gh repo delete*)"
     ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/hooks.py\" on-edit"
+          }
+        ]
+      }
+    ]
   }
 }
