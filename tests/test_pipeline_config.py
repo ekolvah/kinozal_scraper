@@ -113,6 +113,19 @@ class TestValidateSourcesConfig(unittest.TestCase):
         with self.assertRaises(ConfigError):
             validate_sources_config(_make_config([source]))
 
+    def test_github_popular_type_supported(self) -> None:
+        # After #275 the github source carries a dedicated `github_popular`
+        # type (grain of steam's `steam_charts`) instead of the generic `json`.
+        source = {**_MINIMAL_SOURCE, "type": "github_popular"}
+        validate_sources_config(_make_config([source]))
+
+    def test_json_type_no_longer_supported(self) -> None:
+        # `json` was the format-keyed generic bucket removed in #275; no source
+        # carries it anymore, so it is a dead supported-type and must be rejected.
+        source = {**_MINIMAL_SOURCE, "type": "json"}
+        with self.assertRaises(ConfigError):
+            validate_sources_config(_make_config([source]))
+
     def test_non_integer_limit(self) -> None:
         source = {**_MINIMAL_SOURCE, "limit": "not_a_number"}
         with self.assertRaises(ConfigError):
