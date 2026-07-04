@@ -6,6 +6,11 @@ on:
 jobs:
   run-script:
     runs-on: ubuntu-latest
+    # Job-level so every pipeline step inherits it (#278). Absent secret → init_sentry
+    # is a visible no-op (degrade-safe), the run stays green.
+    env:
+      SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+      SENTRY_ENVIRONMENT: production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

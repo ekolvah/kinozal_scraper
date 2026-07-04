@@ -169,6 +169,7 @@ orientation, которого в per-file docstring нет.
 | Слой пайплайна (ядро + контракты) | `src/kinozal_scraper/generic_pipeline.py`, `src/kinozal_scraper/pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
 | Extraction/нормализация по источникам | `src/kinozal_scraper/kinozal_pipeline.py`, `src/kinozal_scraper/steam_pipeline.py`, `src/kinozal_scraper/soldout_pipeline.py`, `src/kinozal_scraper/github_popular_pipeline.py`, `src/kinozal_scraper/github_trending_pipeline.py` | `pipeline.md` |
 | Boundaries (Protocol-границы наружу) | `src/kinozal_scraper/sheets_storage.py` (storage), `src/kinozal_scraper/telegram_notifier.py` / `src/kinozal_scraper/telegram_summarizer.py` (notify), `src/kinozal_scraper/gemini_enricher.py` / `src/kinozal_scraper/TelegramChannelSummarizer.py` (Gemini), `src/kinozal_scraper/http_fetch.py` (единый HTML-fetch: curl_cffi + impersonate, обходит Cloudflare TLS-фингерпринт — #217) | `storage.md` · `runtime.md` · `gemini.md` |
+| Observability (захват ошибок в рантайме) | `src/kinozal_scraper/observability.py` (`init_sentry` — Sentry-bootstrap на 6 точках входа, degrade-safe без DSN) | `observability.md` (#278) |
 | Утилиты | `src/kinozal_scraper/youtube.py`, `src/kinozal_scraper/text_utils.py`, `src/kinozal_scraper/crypto.py` | — |
 
 ---

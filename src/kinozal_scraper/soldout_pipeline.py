@@ -114,6 +114,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
+    from kinozal_scraper.observability import init_sentry
+
+    init_sentry()
+
     from kinozal_scraper.sheets_storage import SheetsStorage
     from kinozal_scraper.telegram_notifier import TelegramNotifier
 

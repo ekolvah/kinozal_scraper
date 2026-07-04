@@ -175,6 +175,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 
+    from kinozal_scraper.observability import init_sentry
+
+    init_sentry()
+
     gc = gspread.service_account_from_dict(json.loads(os.environ["CREDENTIALS"]))
     prod_storage = SheetsStorage(gc, os.environ["SPREADSHEET_URL"])
     prod_notifier = TelegramNotifier(

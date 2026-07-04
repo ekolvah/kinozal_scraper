@@ -115,6 +115,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+    from kinozal_scraper.observability import init_sentry
+
+    init_sentry()
+
     # Decrypt the Telethon session file from `anon.session.encrypted` →
     # `anon.session` so Telethon picks it up locally. Required before any
     # `TelegramClient(...)` construction.

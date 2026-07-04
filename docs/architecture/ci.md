@@ -357,6 +357,11 @@ steps.
   *not* masked into a green job. This is why a `continue-on-error` + aggregate-gate design
   was rejected: it masks `conclusion` and adds a moving part.
 
+The fallback-curl is the coarse *pre-init* net; the actionable per-error detail (traceback,
+class, transient-vs-structural) rides on **Sentry** — see
+[`observability.md`](observability.md) (#278). The curl stays because Sentry can't report a
+failure that happens before the process exists.
+
 `telegram_summarizer` (step 7) is deliberately **not** isolated — it keeps `if: always()`
 and no `continue-on-error`, so its own failure hard-fails the job (§IV). The invariant is
 guarded statically by `tests/test_workflow_isolation.py::TestPipelineStepIsolation`, which
@@ -374,6 +379,8 @@ next source slip back into the cascade.
 | `SPREADSHEET_URL` | secret | github_popular_pipeline, soldout_pipeline, kinozal_pipeline |
 | `TELEGRAM_BOT_TOKEN` | secret | all 4 steps |
 | `TELEGRAM_CHAT_ID` | secret | all 4 steps |
+| `SENTRY_DSN` | secret | **опционально** — job-level, все шаги; пуст → `init_sentry` no-op (degrade-safe). См. [`observability.md`](observability.md) (#278) |
+| `SENTRY_ENVIRONMENT` | var (workflow) | job-level, `production`; тег среды в Sentry-событиях |
 
 ### github_popular_pipeline / github_trending_pipeline
 

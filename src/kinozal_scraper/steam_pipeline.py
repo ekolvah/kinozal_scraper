@@ -281,6 +281,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
+    from kinozal_scraper.observability import init_sentry
+
+    init_sentry()
+
     dry_run = os.environ.get("STEAM_DRY_RUN") == "1"
     sources_path = os.environ.get("STEAM_SOURCES_PATH")
 

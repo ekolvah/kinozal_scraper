@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Iterator
 
 import pytest
+
 from kinozal_scraper.observability import init_sentry
 
 
-def _record_initializer(calls: list[dict]):
+def _record_initializer(calls: list[dict]) -> Callable[..., None]:
     def _init(**kwargs: object) -> None:
         calls.append(kwargs)
 
@@ -67,7 +69,7 @@ class TestInitSentry:
 
 
 @pytest.fixture
-def _sentry_teardown():
+def _sentry_teardown() -> Iterator[None]:
     yield
     import sentry_sdk
 
@@ -84,10 +86,11 @@ class TestCaptureMechanism:
 
     def test_logger_exception_becomes_event_with_stacktrace(self, _sentry_teardown: None) -> None:
         import sentry_sdk
+        from sentry_sdk.types import Event, Hint
 
-        captured: list[dict] = []
+        captured: list[Event] = []
 
-        def _before_send(event: dict, _hint: object) -> None:
+        def _before_send(event: Event, _hint: Hint) -> Event | None:
             captured.append(event)
             return None  # drop -> no network I/O
 

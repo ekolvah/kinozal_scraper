@@ -563,6 +563,10 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
+    from kinozal_scraper.observability import init_sentry
+
+    init_sentry()
+
     credentials = json.loads(os.environ["CREDENTIALS"])
     gc = gspread.service_account_from_dict(credentials)
 
