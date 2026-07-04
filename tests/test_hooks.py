@@ -46,6 +46,25 @@ class TestOnEditDispatch:
         assert code == 0
         assert stderr == ""
 
+    def test_run_on_edit_python_wires_dispatch_classify_exit(self) -> None:
+        # End-to-end seam: a .py edit + a stubbed ruff run flows
+        # plan_checks → ruff_runner → classify_ruff_result → exit_code as a whole.
+        calls: list[str] = []
+
+        def _stub(file_path: str) -> tuple[int, str]:
+            calls.append(file_path)
+            return 1, f"{file_path}:1:1: F401 unused import"
+
+        code, stderr = run_on_edit(_payload("src/x.py"), ruff_runner=_stub)
+        assert calls == ["src/x.py"]  # dispatch reached the runner with the edited path
+        assert code == 2  # lint finding surfaces
+        assert "F401" in stderr
+
+    def test_run_on_edit_python_clean_is_silent(self) -> None:
+        code, stderr = run_on_edit(_payload("src/x.py"), ruff_runner=lambda _f: (0, ""))
+        assert code == 0
+        assert stderr == ""
+
 
 class TestRuffSignal:
     def test_lint_findings_surface_exit_2(self) -> None:
