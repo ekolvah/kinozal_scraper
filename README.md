@@ -26,7 +26,7 @@ python scripts/ci_check.py   # local CI: format + lint + tests + mypy
 ```
 
 The runnable pipelines live under `src/kinozal_scraper/` and are launched as
-`python -m kinozal_scraper.<module>` (e.g. `python -m kinozal_scraper.json_pipeline`);
+`python -m kinozal_scraper.<module>` (e.g. `python -m kinozal_scraper.github_popular_pipeline`);
 the production schedule wires them in `.github/workflows/run-script.yml`.
 
 Configuration (env vars, secrets, CI workflows) is documented in [docs/architecture/ci.md](docs/architecture/ci.md).

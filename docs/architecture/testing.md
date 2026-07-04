@@ -17,7 +17,7 @@ In this repo the external boundaries are Sheets, Telegram, YouTube and HTTP — 
 Fake (`InMemoryStorage`, `InMemoryNotifier`) or a saved HTML/JSON fixture. Everything else
 (`_extract_kinozal_items`, `run_kinozal_pipeline`, …) is internal and is never mocked (§II).
 
-**Correct pattern (as in `test_json_pipeline.py`):**
+**Correct pattern (as in `test_github_popular_pipeline.py`):**
 Call `run_*_pipeline()` directly. Pass `InMemoryStorage` and `InMemoryNotifier`.
 Assert on doubles' state after the call.
 

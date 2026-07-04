@@ -4,7 +4,7 @@
 
 | Entry point | Sources | Type | Schedule |
 |---|---|---|---|
-| `json_pipeline.py` | GitHub `new_popular` | JSON API | daily |
+| `github_popular_pipeline.py` | GitHub `new_popular` | JSON API | daily |
 | `github_trending_pipeline.py` | GitHub trending | HTML scraping + Gemini | daily |
 | `steam_pipeline.py` | Steam Most Played | JSON (Steam Charts + appdetails) | daily |
 | `events_pipeline.py` | Soldout events | HTML scraping | daily |

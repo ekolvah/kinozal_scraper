@@ -97,7 +97,7 @@ Imports between modules (`from kinozal_scraper.generic_pipeline import …`) are
 absolute package imports: the sources live in the installable package
 `src/kinozal_scraper/`, so mypy resolves them natively by package name — no
 `mypy_path`, no whole-file-list trick, and a single-file invocation
-(`mypy src/kinozal_scraper/json_pipeline.py`) resolves the same way. The package
+(`mypy src/kinozal_scraper/github_popular_pipeline.py`) resolves the same way. The package
 layout also makes mypy a **load-bearing** guard for the entry points: a
 `python -m` module's `if __name__ == "__main__"` block is type-checked here even
 though `import`-based tests never execute it (#237). The package must be
@@ -303,7 +303,7 @@ Schedule: daily cron (UTC) defined in `run-script.yml` + manual `workflow_dispat
 
 Steps, in order:
 1. **pytest** — smoke gate (`id: tests`), fails fast; a red gate blocks every prod pipeline below
-2. **json_pipeline.py** — GitHub `new_popular`
+2. **github_popular_pipeline.py** — GitHub `new_popular`
 3. **github_trending_pipeline.py** — GitHub trending (HTML + enrichment)
 4. **steam_pipeline.py** — Steam Most Played (Steam Charts API + appdetails)
 5. **events_pipeline.py** — Soldout events
@@ -344,17 +344,17 @@ next source slip back into the cascade.
 
 | Variable | Type | Used by |
 |---|---|---|
-| `CREDENTIALS` | secret | json_pipeline, events_pipeline, kinozal_pipeline (Google Sheets service account JSON) |
-| `SPREADSHEET_URL` | secret | json_pipeline, events_pipeline, kinozal_pipeline |
+| `CREDENTIALS` | secret | github_popular_pipeline, events_pipeline, kinozal_pipeline (Google Sheets service account JSON) |
+| `SPREADSHEET_URL` | secret | github_popular_pipeline, events_pipeline, kinozal_pipeline |
 | `TELEGRAM_BOT_TOKEN` | secret | all 4 steps |
 | `TELEGRAM_CHAT_ID` | secret | all 4 steps |
 
-### json_pipeline / github_trending_pipeline
+### github_popular_pipeline / github_trending_pipeline
 
 | Variable | Type | Purpose |
 |---|---|---|
-| `GITHUB_TOKEN` | secret | GitHub API auth (json_pipeline only) |
-| `GH_TOP_LIMIT` | var | max GitHub repos to fetch (json_pipeline only) |
+| `GITHUB_TOKEN` | secret | GitHub API auth (github_popular_pipeline only) |
+| `GH_TOP_LIMIT` | var | max GitHub repos to fetch (github_popular_pipeline only) |
 | `GH_TRENDING_LIMIT` | var | max GitHub trending repos to fetch (github_trending_pipeline; default 10) |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |

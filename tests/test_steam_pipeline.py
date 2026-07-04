@@ -445,7 +445,7 @@ class TestDeliveryTruthfulness(unittest.TestCase):
 class TestSourceIsolation(unittest.TestCase):
     """An *unhandled* error in one source must not abort the whole run — it
     yields a not-ok PipelineResult and the next source still ships. Mirrors
-    json_pipeline's top-level isolation (test_one_source_error_does_not_block_others).
+    github_popular_pipeline's top-level isolation (test_one_source_error_does_not_block_others).
     The error is raised in a stage with no per-stage guard (dedup), so only the
     top-level wrapper can contain it."""
 

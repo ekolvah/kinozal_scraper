@@ -4,7 +4,7 @@
     {
       "id": "github_new_popular",
       "enabled": true,
-      "type": "json",
+      "type": "github_popular",
       "url": "https://api.github.com/search/repositories",
       "json_path": "items",
       "headers": {

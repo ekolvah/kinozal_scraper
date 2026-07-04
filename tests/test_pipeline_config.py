@@ -14,7 +14,7 @@ from kinozal_scraper.pipeline_config import (
 
 _MINIMAL_SOURCE = {
     "id": "test_src",
-    "type": "json",
+    "type": "github_popular",
     "url": "https://example.com/api",
     "limit": 5,
     "sheet_tab": "test_tab",
