@@ -306,7 +306,7 @@ Steps, in order:
 2. **github_popular_pipeline.py** — GitHub `new_popular`
 3. **github_trending_pipeline.py** — GitHub trending (HTML + enrichment)
 4. **steam_pipeline.py** — Steam Most Played (Steam Charts API + appdetails)
-5. **events_pipeline.py** — Soldout events
+5. **soldout_pipeline.py** — Soldout events
 6. **kinozal_pipeline.py** — Kinozal movies
 7. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
 
@@ -314,7 +314,7 @@ Steps, in order:
 
 **Root cause it fixes:** GitHub Actions steps carry an *implicit* `if: success()`. So a
 single step's `exit 1` used to cascade into **skipping every later step** — a transient
-third-party 403 in `events_pipeline` skipped `kinozal_pipeline` and suppressed movie
+third-party 403 in `soldout_pipeline` skipped `kinozal_pipeline` and suppressed movie
 delivery for that run ([run 28493805028](https://github.com/ekolvah/kinozal_scraper/actions/runs/28493805028)).
 Per-source isolation existed *inside* each `run_*_pipeline`, but not *between* the workflow
 steps.
@@ -344,8 +344,8 @@ next source slip back into the cascade.
 
 | Variable | Type | Used by |
 |---|---|---|
-| `CREDENTIALS` | secret | github_popular_pipeline, events_pipeline, kinozal_pipeline (Google Sheets service account JSON) |
-| `SPREADSHEET_URL` | secret | github_popular_pipeline, events_pipeline, kinozal_pipeline |
+| `CREDENTIALS` | secret | github_popular_pipeline, soldout_pipeline, kinozal_pipeline (Google Sheets service account JSON) |
+| `SPREADSHEET_URL` | secret | github_popular_pipeline, soldout_pipeline, kinozal_pipeline |
 | `TELEGRAM_BOT_TOKEN` | secret | all 4 steps |
 | `TELEGRAM_CHAT_ID` | secret | all 4 steps |
 
@@ -366,7 +366,7 @@ next source slip back into the cascade.
 |---|---|---|
 | `STEAM_TOP_LIMIT` | var | max Steam Most Played entries to fetch |
 
-### events_pipeline
+### soldout_pipeline
 
 | Variable | Type | Purpose |
 |---|---|---|

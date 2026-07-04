@@ -68,9 +68,9 @@ jobs:
           LLM_MODEL: ${{ vars.LLM_MODEL }}
           GEMINI_EXCLUDED_MODELS: ${{ vars.GEMINI_EXCLUDED_MODELS }}
 
-      - name: Run events pipeline
+      - name: Run soldout pipeline
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
-        run: python -m kinozal_scraper.events_pipeline
+        run: python -m kinozal_scraper.soldout_pipeline
         env:
           SOLDOUT_URL: ${{ vars.SOLDOUT_URL }}
           SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}

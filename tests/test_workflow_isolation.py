@@ -55,7 +55,7 @@ class TestPipelineStepIsolation:
         pipelines = _pipeline_steps()
         assert len(pipelines) >= 5, (
             f"derived {len(pipelines)} pipeline steps, expected >=5 "
-            "(json/github_trending/steam/events/kinozal)"
+            "(github_popular/github_trending/steam/soldout/kinozal)"
         )
         gate_id = _gate_step().get("id")
         assert gate_id, "pytest gate step needs an `id` so pipeline steps can gate on its outcome"

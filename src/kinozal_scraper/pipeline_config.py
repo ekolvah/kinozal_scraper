@@ -28,7 +28,7 @@ _REQUIRED_SOURCE_FIELDS = {
     "fields",
     "message_template",
 }
-_SUPPORTED_TYPES = {"github_popular", "html", "steam_charts"}
+_SUPPORTED_TYPES = {"github_popular", "html", "soldout", "steam_charts"}
 
 
 class ConfigError(ValueError):
@@ -121,7 +121,7 @@ def _validate_selector_candidate(source_id: str, where: str, selector: Any) -> N
 
 def _validate_html_source(source_id: str, source: dict[str, Any]) -> None:
     if not source.get("row_selector"):
-        raise ConfigError(f"Source '{source_id}' has type='html' but no 'row_selector' field")
+        raise ConfigError(f"Source '{source_id}' is HTML-scraped but has no 'row_selector' field")
     # row_selector is fed verbatim to soup.select(); field selectors carry
     # an optional @attr suffix, so validate only their CSS part — the exact
     # string runtime hands to select_one (shared `_selector_css_part`).
@@ -161,7 +161,7 @@ def _validate_source(source: Any) -> None:
     if source["type"] not in _SUPPORTED_TYPES:
         raise ConfigError(f"Source '{source_id}' has unsupported type: {source['type']!r}")
 
-    if source["type"] == "html":
+    if source["type"] in {"html", "soldout"}:
         _validate_html_source(source_id, source)
 
     _validate_limit(source_id, source)
