@@ -409,52 +409,26 @@ def _split_by_excluded_genre(
     return kept, filtered
 
 
-def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
-    storage: Storage,
-    notifier: Notifier,
-    youtube: Any,
-    sources_config: dict[str, Any] | None = None,
-    # Covers listing fetches only. Poster mirror-routing lives in the notifier's
-    # `image_fetcher`, so a caller passing `kinozal=` MUST also build the notifier
-    # via `_build_notifier(bot_token, chat_id, kinozal)` — otherwise posters keep
-    # hitting the dead origin (the #241 bug). `__main__` does both.
-    kinozal: Kinozal | None = None,
-) -> list[PipelineResult]:
-    results: list[PipelineResult] = []
-    config = sources_config or load_sources_config()
-    kinozal_sources = [
-        s for s in config["sources"] if s.get("enabled") and s["id"].startswith("kinozal_")
-    ]
-    if not kinozal_sources:
-        logger.info("no enabled kinozal sources found")
-        return results
+def _fetch_and_extract(
+    kinozal_sources: list[dict[str, Any]],
+    urls: list[str],
+    fetcher: Kinozal,
+) -> tuple[list[NormalizedItem], list[PipelineResult]]:
+    """Fetch HTML for every (source × url) pair and extract items.
 
-    source_map = {s["id"]: s for s in kinozal_sources}
+    Returns the accumulated items plus one `PipelineResult` per source (fetch and
+    extraction errors recorded per-URL). Items keep their source_id from
+    `extract_from_html` so the per-source dedup below picks them up correctly.
 
-    # URLs come from the KINOZAL_URLS env variable (label|url;... format).
-    # sources.json url field is only a schema placeholder / local fallback.
-    urls = _kinozal_urls()
-    if not urls:
-        logger.error("kinozal pipeline: no URLs configured (set KINOZAL_URLS or KINOZAL_TOP_URL)")
-        for source in kinozal_sources:
-            result = PipelineResult(source_id=source["id"])
-            result.errors.append("no URLs configured (set KINOZAL_URLS or KINOZAL_TOP_URL)")
-            results.append(result)
-        return results
-
-    # Primary transport is anonymous kinozal.tv; the authenticated kinozal.guru
-    # mirror is a lazy fallback used only when a primary fetch fails (e.g. 522).
-    # A healthy .tv run needs no credentials and pays no login cost. Partial
-    # credentials disable the fallback with a visible WARNING rather than redden
-    # an otherwise-healthy run (§IV/§VI) — see `Kinozal.from_env`. `__main__`
-    # injects the same object it wires into the notifier, so the listing and its
-    # posters share one origin-vs-mirror decision (#241).
-    fetcher = kinozal or Kinozal.from_env()
-
-    # Fetch HTML for every (source × url) pair, recording per-source fetch and
-    # extraction errors. Items keep their source_id from extract_from_html so
-    # the per-source result below picks them up correctly.
+    The double `for source: for url:` loop is kept atomic on purpose: both
+    `continue` branches (fetch-fail, extraction-fail) stay `continue`, so when one
+    URL of a source fails its sibling URL's items still accumulate AND the error
+    still surfaces in `result.errors`. Splitting the url-loop into a returning
+    sub-helper would flip `continue`→`return` and silently regress that partial-
+    fail-plus-success branch, which has no direct characterization test (#286).
+    """
     all_items: list[NormalizedItem] = []
+    results: list[PipelineResult] = []
     for source in kinozal_sources:
         result = PipelineResult(source_id=source["id"])
         for url in urls:
@@ -472,11 +446,19 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
                 continue
             all_items.extend(extracted.items)
         results.append(result)
+    return all_items, results
 
-    if not all_items:
-        logger.info("kinozal pipeline: no items extracted")
-        return results
 
+def _dedup_and_log_coverage(
+    all_items: list[NormalizedItem],
+    results: list[PipelineResult],
+    storage: Storage,
+) -> list[NormalizedItem]:
+    """Collapse repacks, re-attach items per source, log coverage, return new items.
+
+    Mutates `results` in-place: each result gets its `.items` set so callers can
+    inspect coverage. Returns the not-yet-seen items (dedup against the sheet).
+    """
     raw_count = len(all_items)
     all_items = _normalize_items(all_items)
     # Re-attach items to their per-source result so callers can inspect coverage.
@@ -489,8 +471,8 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
     # Visibility (§IV): log coverage on every run — including the common "0 new"
-    # path below — so a vanished film reads in the Actions log instead of looking
-    # like "no new films". raw_count is pre-normalize, exposing dedup-collapse.
+    # path — so a vanished film reads in the Actions log instead of looking like
+    # "no new films". raw_count is pre-normalize, exposing dedup-collapse.
     logger.info(
         "kinozal pipeline: %d extracted (%d after dedup-collapse), %d new, %d already-seen",
         raw_count,
@@ -498,16 +480,20 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
         len(new_items),
         len(all_items) - len(new_items),
     )
-    if not new_items:
-        logger.info("kinozal pipeline: no new items")
-        return results
+    return new_items
 
-    # Genre denylist (#263): drop items whose details-page genre ∈ excluded. The
-    # details fetch (+1 HTTP/item) only runs when the denylist is non-empty, so a
-    # healthy default (unset var) pays zero overhead. `filtered` items are NOT
-    # notified but ARE stored below (dedup) so they aren't re-fetched every run —
-    # a conscious terminal non-delivery, ≠ a failed delivery (Principle III retries
-    # only failures).
+
+def _apply_genre_denylist(
+    new_items: list[NormalizedItem], fetcher: Kinozal
+) -> tuple[list[NormalizedItem], list[NormalizedItem]]:
+    """Partition new items into (kept, filtered) by the genre denylist (#263).
+
+    The details fetch (+1 HTTP/item) only runs when the denylist is non-empty, so
+    a healthy default (unset var) pays zero overhead. `filtered` items are NOT
+    notified but ARE stored by the caller (dedup) so they aren't re-fetched every
+    run — a conscious terminal non-delivery, ≠ a failed delivery (Principle III
+    retries only failures).
+    """
     excluded = _excluded_genres()
     if excluded:
         kept, filtered = _split_by_excluded_genre(new_items, fetcher, excluded)
@@ -519,18 +505,34 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
             )
     else:
         kept, filtered = new_items, []
+    return kept, filtered
 
+
+def _notify_and_persist(
+    kept: list[NormalizedItem],
+    filtered: list[NormalizedItem],
+    source_map: dict[str, dict[str, Any]],
+    youtube: Any,
+    notifier: Notifier,
+    storage: Storage,
+    results: list[PipelineResult],
+) -> None:
+    """Enrich, notify, persist delivered+filtered, and surface failed deliveries.
+
+    Mutates `results` in-place: failed deliveries are appended to the matching
+    per-source result's `.errors`. Persist confirmed-delivered items PLUS
+    genre-filtered ones (Principle III); failed deliveries stay unstored so the
+    next run retries them, and surface as a visible anomaly via result.errors +
+    non-zero exit (Principle IV). The store-guard keys on `items_to_store` (not
+    `sent`) so filtered items are persisted even when every new item was filtered
+    and nothing was sent.
+    """
     notifications: list[Notification] = []
     for item in kept:
         item.trailer_url = enrich_with_trailer(item, youtube)
         template = source_map[item.source_id]["message_template"]
         notifications.append(build_notification(item, template))
 
-    # Persist confirmed-delivered items PLUS genre-filtered ones (Principle III).
-    # Failed deliveries stay unstored so the next run retries them, and surface as
-    # a visible anomaly via result.errors + non-zero exit (Principle IV). The
-    # store-guard keys on `items_to_store` (not `sent`) so filtered items are
-    # persisted even when every new item was filtered and nothing was sent.
     sent, failed = notifier.send_items(notifications)
 
     sent_ids = {n.id for n in sent}
@@ -549,6 +551,61 @@ def run_kinozal_pipeline(  # noqa: C901, PLR0912, PLR0915
             logger.error("[%s] %s", source_id, message)
             result_by_source[source_id].errors.append(message)
 
+
+def run_kinozal_pipeline(
+    storage: Storage,
+    notifier: Notifier,
+    youtube: Any,
+    sources_config: dict[str, Any] | None = None,
+    # Covers listing fetches only. Poster mirror-routing lives in the notifier's
+    # `image_fetcher`, so a caller passing `kinozal=` MUST also build the notifier
+    # via `_build_notifier(bot_token, chat_id, kinozal)` — otherwise posters keep
+    # hitting the dead origin (the #241 bug). `__main__` does both.
+    kinozal: Kinozal | None = None,
+) -> list[PipelineResult]:
+    config = sources_config or load_sources_config()
+    kinozal_sources = [
+        s for s in config["sources"] if s.get("enabled") and s["id"].startswith("kinozal_")
+    ]
+    if not kinozal_sources:
+        logger.info("no enabled kinozal sources found")
+        return []
+
+    source_map = {s["id"]: s for s in kinozal_sources}
+
+    # URLs come from the KINOZAL_URLS env variable (label|url;... format).
+    # sources.json url field is only a schema placeholder / local fallback.
+    urls = _kinozal_urls()
+    if not urls:
+        logger.error("kinozal pipeline: no URLs configured (set KINOZAL_URLS or KINOZAL_TOP_URL)")
+        results = []
+        for source in kinozal_sources:
+            result = PipelineResult(source_id=source["id"])
+            result.errors.append("no URLs configured (set KINOZAL_URLS or KINOZAL_TOP_URL)")
+            results.append(result)
+        return results
+
+    # Primary transport is anonymous kinozal.tv; the authenticated kinozal.guru
+    # mirror is a lazy fallback used only when a primary fetch fails (e.g. 522).
+    # A healthy .tv run needs no credentials and pays no login cost. Partial
+    # credentials disable the fallback with a visible WARNING rather than redden
+    # an otherwise-healthy run (§IV/§VI) — see `Kinozal.from_env`. `__main__`
+    # injects the same object it wires into the notifier, so the listing and its
+    # posters share one origin-vs-mirror decision (#241).
+    fetcher = kinozal or Kinozal.from_env()
+
+    all_items, results = _fetch_and_extract(kinozal_sources, urls, fetcher)
+    if not all_items:
+        logger.info("kinozal pipeline: no items extracted")
+        return results
+
+    new_items = _dedup_and_log_coverage(all_items, results, storage)
+    if not new_items:
+        logger.info("kinozal pipeline: no new items")
+        return results
+
+    kept, filtered = _apply_genre_denylist(new_items, fetcher)
+    _notify_and_persist(kept, filtered, source_map, youtube, notifier, storage, results)
     return results
 
 
