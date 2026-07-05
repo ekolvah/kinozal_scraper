@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 import unittest.mock
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import google.api_core.exceptions
@@ -280,6 +282,113 @@ class TestTelethonReaderErrorSwallow(unittest.TestCase):
 
         self.assertEqual(result, (None, "", False))
         mock_client.disconnect.assert_awaited_once()
+
+
+# ── C2. Happy-path rendering — TelethonReader._fetch_channel_async ───────────
+#
+# Characterization guard for the render path (broadcast / sender-name fallbacks /
+# day-cutoff / empty-text) written BEFORE the `_format_messages` split (#294), so
+# the extraction is caught if it drifts. Telethon `TelegramClient` is an external
+# boundary (§II) — mocked. Fakes are duck-typed data holders.
+
+
+def _msg(text: str, sender_id: int | None = None, *, recent: bool = True) -> SimpleNamespace:
+    when = datetime.now(UTC) - (timedelta(hours=1) if recent else timedelta(days=2))
+    return SimpleNamespace(message=text, sender_id=sender_id, date=when)
+
+
+def _user(uid: int, first: str = "", last: str = "", username: str = "") -> SimpleNamespace:
+    return SimpleNamespace(id=uid, first_name=first, last_name=last, username=username)
+
+
+def _entity(title: str = "Chan", *, broadcast: bool = False) -> SimpleNamespace:
+    return SimpleNamespace(title=title, broadcast=broadcast)
+
+
+def _posts(messages: list[SimpleNamespace], users: list[SimpleNamespace]) -> SimpleNamespace:
+    return SimpleNamespace(messages=messages, users=users)
+
+
+def _mock_client(entity: SimpleNamespace, posts: SimpleNamespace) -> unittest.mock.MagicMock:
+    client = unittest.mock.MagicMock()
+    client.start = unittest.mock.AsyncMock()
+    client.is_user_authorized = unittest.mock.AsyncMock(return_value=True)
+    client.get_entity = unittest.mock.AsyncMock(return_value=entity)
+    client.disconnect = unittest.mock.AsyncMock()
+
+    async def _call(_request: Any) -> SimpleNamespace:  # await client(GetHistoryRequest(...))
+        return posts
+
+    client.side_effect = _call
+    return client
+
+
+class TestTelethonReaderFetchRender(unittest.TestCase):
+    def _fetch(
+        self, url: str, entity: SimpleNamespace, posts: SimpleNamespace
+    ) -> tuple[ChannelMessages, unittest.mock.MagicMock]:
+        reader = TelethonReader(api_id="x", api_hash="y", session=None, phone="p")
+        client = _mock_client(entity, posts)
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.TelegramChannelSummarizer.TelegramClient", return_value=client
+            ),
+            unittest.mock.patch("kinozal_scraper.TelegramChannelSummarizer.GetHistoryRequest"),
+        ):
+            result = reader.fetch_channel(url)
+        return result, client
+
+    def test_broadcast_channel_returns_raw_messages(self) -> None:
+        # broadcast → raw text, no `sender:` prefix; reverse order; empty `.message`
+        # dropped BEFORE the broadcast-append (order of the two early branches, B1).
+        posts = _posts([_msg("first"), _msg(""), _msg("second")], users=[])
+        result, _ = self._fetch("https://t.me/c", _entity(broadcast=True), posts)
+        self.assertEqual(result, ("Chan", "second\nfirst", True))
+
+    def test_non_broadcast_resolves_sender_full_name(self) -> None:
+        posts = _posts([_msg("hi", sender_id=5)], [_user(5, first="John", last="Doe")])
+        result, client = self._fetch("https://t.me/c", _entity(), posts)
+        self.assertEqual(result, ("Chan", "John Doe: hi", False))
+        client.disconnect.assert_awaited_once()  # `finally: disconnect()` parity
+
+    def test_non_broadcast_sender_falls_back_to_username(self) -> None:
+        posts = _posts([_msg("hi", sender_id=6)], [_user(6, username="jdoe")])
+        result, _ = self._fetch("https://t.me/c", _entity(), posts)
+        self.assertEqual(result, ("Chan", "jdoe: hi", False))
+
+    def test_non_broadcast_sender_falls_back_to_id(self) -> None:
+        posts = _posts([_msg("hi", sender_id=7)], [_user(7)])
+        result, _ = self._fetch("https://t.me/c", _entity(), posts)
+        self.assertEqual(result, ("Chan", "7: hi", False))
+
+    def test_non_broadcast_unknown_sender_no_sender_id(self) -> None:
+        # `if message.sender_id:` false (S1 branch A)
+        posts = _posts([_msg("hi", sender_id=None)], [])
+        result, _ = self._fetch("https://t.me/c", _entity(), posts)
+        self.assertEqual(result, ("Chan", "Unknown: hi", False))
+
+    def test_non_broadcast_sender_not_in_users(self) -> None:
+        # `sender_id` truthy but `users.get()` → None → `if sender:` false (S1 branch B)
+        posts = _posts([_msg("hi", sender_id=99)], [_user(1, first="Other")])
+        result, _ = self._fetch("https://t.me/c", _entity(), posts)
+        self.assertEqual(result, ("Chan", "Unknown: hi", False))
+
+    def test_day_cutoff_filters_old_messages(self) -> None:
+        posts = _posts([_msg("old", recent=False), _msg("new")], users=[])
+        result, _ = self._fetch("https://t.me/c", _entity(broadcast=True), posts)
+        self.assertEqual(result, ("Chan", "new", True))
+
+    def test_empty_text_messages_returns_empty_tuple(self) -> None:
+        # all messages have empty `.message` (NOT an empty list) → the
+        # `if not message.message: continue` branch drops every one (B1).
+        posts = _posts([_msg(""), _msg("")], users=[])
+        result, _ = self._fetch("https://t.me/c", _entity(broadcast=True), posts)
+        self.assertEqual(result, ("Chan", "", True))
+
+    def test_numeric_channel_url_coerced_to_int(self) -> None:
+        posts = _posts([_msg("x")], users=[])
+        _, client = self._fetch("-100123", _entity(broadcast=True), posts)
+        client.get_entity.assert_awaited_once_with(-100123)
 
 
 # ── F. Message rendering — format_summary_message ───────────────────────────
