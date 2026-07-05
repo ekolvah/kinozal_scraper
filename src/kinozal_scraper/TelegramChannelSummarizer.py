@@ -6,7 +6,7 @@ import asyncio
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 import google.api_core.exceptions
 import google.generativeai as genai
@@ -168,7 +168,38 @@ class TelethonReader:
     def fetch_channel(self, channel_url: str) -> ChannelMessages:
         return asyncio.run(self._fetch_channel_async(channel_url))
 
-    async def _fetch_channel_async(self, channel_url: str) -> ChannelMessages:  # noqa: C901, PLR0912
+    @staticmethod
+    def _format_messages(
+        recent_messages: list[Any], users: dict[Any, Any], is_broadcast: bool
+    ) -> list[str]:
+        """Render recent messages to display lines: raw text for broadcast
+        channels, ``"<sender>: <text>"`` otherwise (sender-name resolved
+        full-name → username → id → "Unknown"). Empty-text messages are dropped.
+        Pure transform (no I/O, no ``self``) — extracted verbatim from
+        ``_fetch_channel_async`` to keep both under the complexity threshold (#294)."""
+        formatted_messages: list[str] = []
+        for message in recent_messages:
+            if not message.message:
+                continue
+            if is_broadcast:
+                formatted_messages.append(message.message)
+                continue
+
+            sender_name = "Unknown"
+            if message.sender_id:
+                sender = users.get(message.sender_id)
+                if sender:
+                    first = sender.first_name or ""
+                    last = sender.last_name or ""
+                    sender_name = f"{first} {last}".strip()
+                    if not sender_name and sender.username:
+                        sender_name = sender.username
+                    if not sender_name:
+                        sender_name = str(sender.id)
+            formatted_messages.append(f"{sender_name}: {message.message}")
+        return formatted_messages
+
+    async def _fetch_channel_async(self, channel_url: str) -> ChannelMessages:
         target: str | int = channel_url
         if isinstance(channel_url, str) and channel_url.lstrip("-").isdigit():
             target = int(channel_url)
@@ -205,28 +236,9 @@ class TelethonReader:
 
             users = {user.id: user for user in posts.users}
 
-            formatted_messages: list[str] = []
             is_broadcast: bool = getattr(entity, "broadcast", False)
             logger.info("Channel '%s' is_broadcast: %s", channel_title, is_broadcast)
-            for message in recent_messages:
-                if not message.message:
-                    continue
-                if is_broadcast:
-                    formatted_messages.append(message.message)
-                    continue
-
-                sender_name = "Unknown"
-                if message.sender_id:
-                    sender = users.get(message.sender_id)
-                    if sender:
-                        first = sender.first_name or ""
-                        last = sender.last_name or ""
-                        sender_name = f"{first} {last}".strip()
-                        if not sender_name and sender.username:
-                            sender_name = sender.username
-                        if not sender_name:
-                            sender_name = str(sender.id)
-                formatted_messages.append(f"{sender_name}: {message.message}")
+            formatted_messages = self._format_messages(recent_messages, users, is_broadcast)
 
             if not formatted_messages:
                 logger.info("No text messages found in channel: %s", channel_url)
