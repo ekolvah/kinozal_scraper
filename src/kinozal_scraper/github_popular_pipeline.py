@@ -10,6 +10,7 @@ import requests
 from kinozal_scraper.gemini_enricher import FALLBACK_MARKER, Enricher, QuotaExhausted
 from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
+    NormalizedItem,
     PipelineResult,
     build_notification,
     extract_from_json,
@@ -74,7 +75,46 @@ def run_github_popular_pipeline(
     return results
 
 
-def _run_single_source(  # noqa: C901
+def _enrich_new_items(
+    new_items: list[NormalizedItem],
+    enrich_config: dict[str, Any],
+    enricher: Enricher,
+    source_id: str,
+) -> None:
+    """Enrich each new item in-place, stopping on quota exhaustion.
+
+    On `QuotaExhausted` the current and all remaining items get the fallback
+    marker (visible tripwire, #128) so a mid-batch quota outage surfaces in the
+    notification rather than silently blanking the field (§IV)."""
+    field = enrich_config["field"]
+    # Empty `on_error` would silently blank the enriched field — use
+    # the visible marker so the operator sees a tripwire (#128).
+    fallback: str = enrich_config.get("on_error") or FALLBACK_MARKER
+    enriched, skipped = 0, 0
+    for item in new_items:
+        try:
+            item.raw[field] = enricher.enrich(item, enrich_config)
+            enriched += 1
+        except QuotaExhausted:
+            item.raw[field] = fallback
+            skipped += 1
+            for remaining in new_items[new_items.index(item) + 1 :]:
+                remaining.raw[field] = fallback
+                skipped += 1
+            break
+    if skipped:
+        logger.warning(
+            "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
+            source_id,
+            enriched,
+            enriched + skipped,
+            skipped,
+        )
+    elif enriched:
+        logger.info("[%s] enriched %d items", source_id, enriched)
+
+
+def _run_single_source(
     source: dict[str, Any],
     storage: Storage,
     notifier: Notifier,
@@ -118,32 +158,7 @@ def _run_single_source(  # noqa: C901
 
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
-        field = enrich_config["field"]
-        # Empty `on_error` would silently blank the enriched field — use
-        # the visible marker so the operator sees a tripwire (#128).
-        fallback: str = enrich_config.get("on_error") or FALLBACK_MARKER
-        enriched, skipped = 0, 0
-        for item in new_items:
-            try:
-                item.raw[field] = enricher.enrich(item, enrich_config)
-                enriched += 1
-            except QuotaExhausted:
-                item.raw[field] = fallback
-                skipped += 1
-                for remaining in new_items[new_items.index(item) + 1 :]:
-                    remaining.raw[field] = fallback
-                    skipped += 1
-                break
-        if skipped:
-            logger.warning(
-                "[%s] enrichment quota exhausted: %d/%d enriched, %d skipped",
-                source_id,
-                enriched,
-                enriched + skipped,
-                skipped,
-            )
-        elif enriched:
-            logger.info("[%s] enriched %d items", source_id, enriched)
+        _enrich_new_items(new_items, enrich_config, enricher, source_id)
 
     template = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
