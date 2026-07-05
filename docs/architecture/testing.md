@@ -179,6 +179,16 @@ work-for-work (goal-function priority (2)).
   frequent: `test_e2e_kinozal_titles.py`, `test_e2e_github_trending.py`.
 - **C. Auth & quota — GitHub 401 not tested.** The token rarely 401s and a downstream
   zero-row → red CI catches the outage; a dedicated 401 guard is negative-ROI.
+- **K. Sheets 5xx retry — dup-write / already-exists races not tested (#288).** Broadening
+  `SheetsStorage` retry from 429-only to transient 5xx (500/502/503/504) raised the odds of a
+  `append_rows` **duplicate row** on retry: a 5xx that lands *after* the batch partially wrote
+  re-appends on the next attempt (429 usually rejects *before* writing, so this is genuinely
+  newer/likelier than the prior behaviour). **Accepted** — next-run read-dedup (`get_existing_keys`)
+  drops the dup; a test would need live/ambiguous-timing conditions to reproduce (§V documented
+  mitigation, not silent). Same class on `add_worksheet` (5xx after server-side create → retry
+  hits a non-transient "already exists" 4xx → aborts, *doesn't* self-heal) — rarer still (once
+  per tab, ever) and left untested for the same reason. Behaviour is correct; only the timing
+  race is uncovered, recorded here so it isn't re-litigated as work-for-work.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
