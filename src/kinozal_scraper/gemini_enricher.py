@@ -282,7 +282,43 @@ class RotatingGeminiEnricher:
             self._current = (self._current + 1) % len(self._enrichers)
         return False
 
-    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:  # noqa: C901, PLR0912
+    def _handle_rotation_failure(self, exc: Exception) -> bool:
+        """Classify a rotation failure, mark the model dead / advance the pointer,
+        and log the next attempt. Returns whether the failure is *recoverable*
+        (quota or model-unavailable) — i.e. whether a cooldown-retry is worth it;
+        a pure TryNextModel truncation repeats identically after the wait."""
+        prev_idx = self._current
+        prev = self._enrichers[prev_idx].model_name
+        if isinstance(exc, ModelUnavailable):
+            self._dead.add(prev_idx)
+            recoverable = True
+            kind = "unavailable"
+        elif isinstance(exc, QuotaExhausted):
+            recoverable = True
+            kind = "quota exhausted"
+        else:
+            recoverable = False
+            kind = "try-next"
+        self._current = (self._current + 1) % len(self._enrichers)
+        # Skip over already-dead models when naming the next attempt,
+        # so the log matches what the inner loop will actually try.
+        preview = self._current
+        for _ in range(len(self._enrichers)):
+            if preview not in self._dead:
+                break
+            preview = (preview + 1) % len(self._enrichers)
+        if preview in self._dead:
+            logger.warning("model %s %s, no live models left", prev, kind)
+        else:
+            logger.warning(
+                "model %s %s, trying %s",
+                prev,
+                kind,
+                self._enrichers[preview].model_name,
+            )
+        return recoverable
+
+    def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str:
         last_exc: Exception | None = None
         # Cooldown only helps if some failure was Quota or Unavailable —
         # those can roll over / recover during the 60s wait. A pure
@@ -312,34 +348,8 @@ class RotatingGeminiEnricher:
                 try:
                     return self._enrichers[self._current].enrich(item, enrich_config)
                 except (QuotaExhausted, ModelUnavailable, TryNextModel) as exc:
-                    prev_idx = self._current
-                    prev = self._enrichers[prev_idx].model_name
-                    if isinstance(exc, ModelUnavailable):
-                        self._dead.add(prev_idx)
+                    if self._handle_rotation_failure(exc):
                         saw_recoverable_failure = True
-                        kind = "unavailable"
-                    elif isinstance(exc, QuotaExhausted):
-                        saw_recoverable_failure = True
-                        kind = "quota exhausted"
-                    else:
-                        kind = "try-next"
-                    self._current = (self._current + 1) % len(self._enrichers)
-                    # Skip over already-dead models when naming the next attempt,
-                    # so the log matches what the inner loop will actually try.
-                    preview = self._current
-                    for _ in range(len(self._enrichers)):
-                        if preview not in self._dead:
-                            break
-                        preview = (preview + 1) % len(self._enrichers)
-                    if preview in self._dead:
-                        logger.warning("model %s %s, no live models left", prev, kind)
-                    else:
-                        logger.warning(
-                            "model %s %s, trying %s",
-                            prev,
-                            kind,
-                            self._enrichers[preview].model_name,
-                        )
                     last_exc = exc
 
         raise QuotaExhausted from last_exc
