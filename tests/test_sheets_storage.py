@@ -113,15 +113,29 @@ class TestInMemoryStorage(unittest.TestCase):
         self.assertEqual(self.storage.stored_rows("movies"), [])
 
 
-class TestSheetsStorageRetryOn429(unittest.TestCase):
-    """append_rows retries on Sheets 429 (quota) with exponential backoff."""
+class TestSheetsStorageRetryTransient(unittest.TestCase):
+    """Every SheetsStorage network call retries on transient Sheets errors
+    (429 quota + 5xx 500/502/503/504) with exponential backoff, via a single
+    per-call retry layer. Non-transient 4xx (permission/not-found) fail fast.
+    """
 
     def _build(self, side_effect: list[Any]) -> tuple[SheetsStorage, MagicMock]:
+        """Storage whose worksheet().append_rows raises the given side_effect."""
         client = MagicMock(spec=gspread.Client)
         worksheet = MagicMock()
         worksheet.append_rows.side_effect = side_effect
         client.open_by_url.return_value.worksheet.return_value = worksheet
         return SheetsStorage(client, "https://sheets.example/url"), worksheet
+
+    def _storage_with_spreadsheet(self) -> tuple[SheetsStorage, MagicMock]:
+        """Storage constructed cleanly; returns (storage, spreadsheet mock) so a
+        test can drive worksheet()/row_values() seams directly."""
+        spreadsheet = MagicMock()
+        client = MagicMock(spec=gspread.Client)
+        client.open_by_url.return_value = spreadsheet
+        return SheetsStorage(client, "https://sheets.example/url"), spreadsheet
+
+    # --- 429 kept green: broadening must not break the original quota retry ---
 
     @patch("tenacity.nap.time.sleep")
     def test_429_then_success_retries_and_succeeds(self, _sleep: MagicMock) -> None:
@@ -137,7 +151,83 @@ class TestSheetsStorageRetryOn429(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 429)
         self.assertEqual(worksheet.append_rows.call_count, 5)
 
-    def test_non_429_api_error_not_retried(self) -> None:
+    # --- 5xx on write ---
+
+    @patch("tenacity.nap.time.sleep")
+    def test_503_then_success_retries_on_append(self, _sleep: MagicMock) -> None:
+        storage, worksheet = self._build([_api_error(503, "unavailable"), None])
+        storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
+        self.assertEqual(worksheet.append_rows.call_count, 2)
+
+    @patch("tenacity.nap.time.sleep")
+    def test_500_then_success_retries_on_append(self, _sleep: MagicMock) -> None:
+        storage, worksheet = self._build([_api_error(500, "internal"), None])
+        storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
+        self.assertEqual(worksheet.append_rows.call_count, 2)
+
+    @patch("tenacity.nap.time.sleep")
+    def test_append_5xx_retries_exactly_5_attempts(self, _sleep: MagicMock) -> None:
+        # Single retry layer: 5 attempts, NOT 5x5=25 from nested @retry.
+        storage, worksheet = self._build([_api_error(503, "unavailable")] * 5)
+        with self.assertRaises(gspread.exceptions.APIError) as ctx:
+            storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
+        self.assertEqual(ctx.exception.code, 503)
+        self.assertEqual(worksheet.append_rows.call_count, 5)
+
+    # --- 5xx on construction (the actual crash site) ---
+
+    @patch("tenacity.nap.time.sleep")
+    def test_open_by_url_503_then_success_retries(self, _sleep: MagicMock) -> None:
+        client = MagicMock(spec=gspread.Client)
+        client.open_by_url.side_effect = [_api_error(503, "unavailable"), MagicMock()]
+        SheetsStorage(client, "https://sheets.example/url")  # must not raise
+        self.assertEqual(client.open_by_url.call_count, 2)
+
+    # --- 5xx on worksheet lookup (shared seam — covers read AND append paths) ---
+
+    @patch("tenacity.nap.time.sleep")
+    def test_worksheet_lookup_503_then_success_retries(self, _sleep: MagicMock) -> None:
+        storage, spreadsheet = self._storage_with_spreadsheet()
+        ws = MagicMock()
+        ws.row_values.return_value = list(ROW_HEADERS)
+        ws.col_values.return_value = ["dedupe_key", "k1"]
+        spreadsheet.worksheet.side_effect = [_api_error(503, "unavailable"), ws]
+        keys = storage.get_existing_keys("movies")
+        self.assertEqual(spreadsheet.worksheet.call_count, 2)
+        self.assertIn("k1", keys)
+
+    # --- 5xx on read ---
+
+    @patch("tenacity.nap.time.sleep")
+    def test_get_existing_keys_502_then_success_retries(self, _sleep: MagicMock) -> None:
+        storage, spreadsheet = self._storage_with_spreadsheet()
+        ws = MagicMock()
+        ws.row_values.side_effect = [_api_error(502, "bad gateway"), list(ROW_HEADERS)]
+        ws.col_values.return_value = ["dedupe_key", "k1"]
+        spreadsheet.worksheet.return_value = ws
+        keys = storage.get_existing_keys("movies")
+        self.assertEqual(ws.row_values.call_count, 2)
+        self.assertIn("k1", keys)
+
+    # --- fail-fast on non-transient 4xx (guard against over-retry) ---
+
+    def test_non_transient_403_not_retried_on_open(self) -> None:
+        client = MagicMock(spec=gspread.Client)
+        client.open_by_url.side_effect = [_api_error(403, "Forbidden")]
+        with self.assertRaises(gspread.exceptions.APIError) as ctx:
+            SheetsStorage(client, "https://sheets.example/url")
+        self.assertEqual(ctx.exception.code, 403)
+        self.assertEqual(client.open_by_url.call_count, 1)
+
+    def test_non_transient_404_not_retried_on_read(self) -> None:
+        storage, spreadsheet = self._storage_with_spreadsheet()
+        spreadsheet.worksheet.side_effect = [_api_error(404, "Not Found")]
+        with self.assertRaises(gspread.exceptions.APIError) as ctx:
+            storage.get_existing_keys("movies")
+        self.assertEqual(ctx.exception.code, 404)
+        self.assertEqual(spreadsheet.worksheet.call_count, 1)
+
+    def test_non_transient_401_not_retried_on_append(self) -> None:
         storage, worksheet = self._build([_api_error(401, "Unauthorized")])
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
