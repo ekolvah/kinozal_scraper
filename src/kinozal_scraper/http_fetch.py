@@ -43,13 +43,26 @@ def fetch_bytes(url: str) -> bytes:
     our side and upload them to Telegram as multipart, because `sendPhoto`-by-URL
     is fetched by Telegram's own servers, which Cloudflare blocks.
 
+    Requests the asset AS an image — an `<img>`-style `Accept: image/*` (#296).
+    curl_cffi's chrome-impersonate default sends a *navigation* Accept
+    (`text/html,...`), and content-negotiating hosts (imageban.ru, fastpic) answer
+    that with a 200 `text/html` landing page instead of the JPEG → the poster is
+    lost. The header is passed to `requests.get` as an override: curl_cffi merges
+    it by key over the impersonate profile, so UA / Sec-Ch-Ua / TLS fingerprint
+    (the #217/#225 403-avoidance) stay intact — only `Accept` changes.
+
     Guards against the #265 anti-hotlink trap: a 200 `text/html` response is NOT
-    image bytes → `NotAnImageError`. This is a **blocklist** (`text/html`), not an
-    `image/*` allowlist — posters live on a long tail of uploader hosts that may
-    serve exotic content-types, and blocking the one observed garbage class
-    (viewer page) avoids false-positives on a valid image with an odd type.
+    image bytes → `NotAnImageError`. With the image `Accept` above this is now
+    **defense-in-depth** for the rare host that still returns HTML — a blocklist
+    (`text/html`), not an `image/*` allowlist, since posters live on a long tail
+    of uploader hosts that may serve valid images with exotic content-types.
     """
-    resp = requests.get(url, impersonate="chrome", timeout=30)
+    resp = requests.get(
+        url,
+        impersonate="chrome",
+        timeout=30,
+        headers={"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"},
+    )
     resp.raise_for_status()
     content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type == "text/html":
