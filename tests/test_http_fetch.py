@@ -67,6 +67,24 @@ class TestFetchBytes(unittest.TestCase):
         ):
             fetch_bytes("https://example.com/poster.jpg")
 
+    def test_sends_image_accept_header(self) -> None:
+        # #296: fetch_bytes downloads an IMAGE, so it must request one — an
+        # `<img>`-style `Accept: image/*`. curl_cffi's chrome-impersonate default
+        # sends a *navigation* Accept (text/html,...), and content-negotiating
+        # hosts (imageban.ru, fastpic) answer that with a 200 text/html landing
+        # page instead of the JPEG (→ poster dropped). Load-bearing invariant:
+        # Accept prefers image/*, no text/html priority — assert the prefix, not
+        # a byte-exact q-value string.
+        mock_resp = unittest.mock.Mock()
+        mock_resp.content = b"\xff\xd8\xff\xe0JPEG"
+        mock_resp.headers = {"content-type": "image/jpeg"}
+        with unittest.mock.patch(
+            "kinozal_scraper.http_fetch.requests.get", return_value=mock_resp
+        ) as mget:
+            fetch_bytes("https://i4.imageban.ru/out/2026/07/04/x.jpg")
+        _, kwargs = mget.call_args
+        self.assertTrue(kwargs["headers"]["Accept"].startswith("image/"))
+
     def test_raises_not_an_image_on_text_html(self) -> None:
         # #265: a fastpic anti-hotlink viewer page returns 200 text/html (~300 KB).
         # fetch_bytes must NOT hand that HTML back as "poster bytes" — it raises a
