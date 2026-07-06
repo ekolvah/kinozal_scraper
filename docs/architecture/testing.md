@@ -189,6 +189,16 @@ work-for-work (goal-function priority (2)).
   hits a non-transient "already exists" 4xx → aborts, *doesn't* self-heal) — rarer still (once
   per tab, ever) and left untested for the same reason. Behaviour is correct; only the timing
   race is uncovered, recorded here so it isn't re-litigated as work-for-work.
+- **L. `fetch_bytes` image-`Accept` header / impersonate-profile merge — verified live only (#296).**
+  The fix makes `fetch_bytes` send an `<img>`-style `Accept: image/*` so content-negotiating hosts
+  (imageban.ru, fastpic) serve the JPEG instead of an HTML landing page. The unit test
+  (`test_sends_image_accept_header`) asserts the header is *passed* to `requests.get`, but **cannot**
+  observe curl_cffi's real behaviour: that `headers=` merges by key over the impersonate profile
+  (so UA / Sec-Ch-Ua / TLS fingerprint — the #217/#225 403-avoidance — survive) and that the target
+  host actually returns image bytes. Both were verified live against imageban/fastpic + a
+  header-echo endpoint; the standing gate is the daily cron E2E (a fingerprint regression → 403 on
+  posters → §IV-visible next run), same «cron = E2E smoke» doctrine as **A**. Recorded so the
+  live-only verification isn't re-opened as a mock-the-network work-for-work test.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
