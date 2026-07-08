@@ -22,7 +22,13 @@ import gspread.exceptions
 import requests
 
 
-def _response(status_code: int, *, body: bytes, content_type: str) -> requests.Response:
+def make_response(status_code: int, *, body: bytes, content_type: str) -> requests.Response:
+    """Build a real ``requests.Response`` with the given status/body — no MagicMock.
+
+    Public so integration tests that drive a real gspread request path (feeding
+    the Response through the library itself) reuse the same construction as the
+    error factories below, instead of duplicating it.
+    """
     resp = requests.models.Response()
     resp.status_code = status_code
     resp._content = body
@@ -39,7 +45,7 @@ def api_error_json(status_code: int, message: str = "") -> gspread.exceptions.AP
     """
     body = _json.dumps({"error": {"code": status_code, "message": message}}).encode("utf-8")
     return gspread.exceptions.APIError(
-        _response(status_code, body=body, content_type="application/json")
+        make_response(status_code, body=body, content_type="application/json")
     )
 
 
@@ -51,5 +57,7 @@ def api_error_html(status_code: int, html: str = "") -> gspread.exceptions.APIEr
     slipped past #289's code-based retry filter).
     """
     return gspread.exceptions.APIError(
-        _response(status_code, body=html.encode("utf-8"), content_type="text/html; charset=UTF-8")
+        make_response(
+            status_code, body=html.encode("utf-8"), content_type="text/html; charset=UTF-8"
+        )
     )

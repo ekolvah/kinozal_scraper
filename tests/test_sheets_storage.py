@@ -11,7 +11,7 @@ import requests
 # Error doubles are built from real requests.Response objects, never hand-stubbed
 # fields — see tests/_gspread_doubles.py for why (#289 → #298 → #302). Imported
 # top-level (not `tests.`): tests/ has no __init__.py and pytest puts it on sys.path.
-from _gspread_doubles import api_error_html, api_error_json
+from _gspread_doubles import api_error_html, api_error_json, make_response
 
 from kinozal_scraper.generic_pipeline import ROW_HEADERS, NormalizedItem
 from kinozal_scraper.sheets_storage import InMemoryStorage, SchemaError, SheetsStorage, Storage
@@ -282,22 +282,12 @@ class TestGspreadRetryIntegrationAnchor(unittest.TestCase):
     could not catch (green in tests, crashed in prod #298). #302.
     """
 
-    @staticmethod
-    def _real_response(status_code: int, *, body: bytes, content_type: str) -> requests.Response:
-        resp = requests.models.Response()
-        resp.status_code = status_code
-        resp._content = body
-        resp.headers["Content-Type"] = content_type
-        return resp
-
     @patch("tenacity.nap.time.sleep")
     def test_real_gspread_edge_502_flows_through_net_retry(self, _sleep: MagicMock) -> None:
-        edge_502 = self._real_response(
+        edge_502 = make_response(
             502, body=b"<title>Error 502 (Server Error)!!1</title>", content_type="text/html"
         )
-        ok_json = self._real_response(
-            200, body=b'{"values": [["ok"]]}', content_type="application/json"
-        )
+        ok_json = make_response(200, body=b'{"values": [["ok"]]}', content_type="application/json")
         # Fake only the outermost seam (the HTTP transport); real gspread handles
         # the response → raises a real APIError on each 502, returns on the 200.
         session = MagicMock(spec=requests.Session)
