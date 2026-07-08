@@ -26,13 +26,16 @@ def _api_error(code: int, message: str) -> gspread.exceptions.APIError:
 def _api_error_html(status_code: int, html_text: str) -> gspread.exceptions.APIError:
     """Build a gspread APIError whose body is HTML, not JSON — the edge-5xx case.
 
-    ``resp.json()`` raises → gspread sets ``exc.code = -1``, but the real HTTP
-    ``status_code`` is preserved (Google edge/load-balancer 5xx with an HTML body).
+    Uses a *real* ``requests.Response`` (not a MagicMock) so ``exc.code == -1`` is
+    produced by gspread's own JSON-parse failure, not by a hand-stubbed side_effect
+    — the double can't diverge from real gspread behaviour the way the JSON-body
+    double did (that divergence is exactly why #289's retry fix passed tests yet
+    crashed in prod on a Google edge/load-balancer 5xx with an HTML body).
     """
-    resp = MagicMock(spec=requests.Response)
-    resp.json.side_effect = ValueError("no JSON object could be decoded")
-    resp.text = html_text
+    resp = requests.models.Response()
     resp.status_code = status_code
+    resp._content = html_text.encode("utf-8")
+    resp.headers["Content-Type"] = "text/html; charset=UTF-8"
     return gspread.exceptions.APIError(resp)
 
 
