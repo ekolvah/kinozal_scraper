@@ -4,6 +4,9 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
+# HTTP-response doubles are real requests.Response objects — see tests/_http_doubles.py.
+from _http_doubles import make_json_response
+
 from kinozal_scraper.generic_pipeline import (
     NormalizedItem,
     Notification,
@@ -31,16 +34,17 @@ def _item(
 
 
 def _make_session(*responses: tuple) -> MagicMock:
-    """responses: (status_code, json_body, headers_dict) per request."""
+    """responses: (status_code, json_body, headers_dict) per request.
+
+    Each response is a *real* requests.Response (see tests/_http_doubles.py), so
+    resp.json() actually parses the body and resp.headers is the real
+    case-insensitive dict the production code reads Retry-After from.
+    """
     session = MagicMock()
-    mocks = []
-    for status_code, body, headers in responses:
-        r = MagicMock()
-        r.status_code = status_code
-        r.json.return_value = body
-        r.headers = headers
-        mocks.append(r)
-    session.post.side_effect = mocks
+    session.post.side_effect = [
+        make_json_response(status_code, body, headers=headers)
+        for status_code, body, headers in responses
+    ]
     return session
 
 
@@ -152,8 +156,12 @@ class TestTelegramNotifierRetry(unittest.TestCase):
 
     @patch("kinozal_scraper.telegram_notifier.time.sleep")
     def test_429_with_retry_after_header_retries_and_succeeds(self, mock_sleep: MagicMock) -> None:
+        # Lowercase header on purpose: HTTP header names are case-insensitive and a
+        # real Response.headers resolves .get("Retry-After") against "retry-after".
+        # A MagicMock's plain-dict .headers would miss it — this asserts the double
+        # is a real Response, not a hand-stubbed dict (#304).
         session = _make_session(
-            (429, {}, {"Retry-After": "10"}),
+            (429, {}, {"retry-after": "10"}),
             (200, {"ok": True}, {}),
         )
         notifier = _notifier(session)
