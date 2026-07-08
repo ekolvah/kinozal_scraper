@@ -5,38 +5,16 @@ from unittest.mock import MagicMock, patch
 
 import gspread
 import gspread.exceptions
+import gspread.http_client
 import requests
+
+# Error doubles are built from real requests.Response objects, never hand-stubbed
+# fields — see tests/_gspread_doubles.py for why (#289 → #298 → #302). Imported
+# top-level (not `tests.`): tests/ has no __init__.py and pytest puts it on sys.path.
+from _gspread_doubles import api_error_html, api_error_json, make_response
 
 from kinozal_scraper.generic_pipeline import ROW_HEADERS, NormalizedItem
 from kinozal_scraper.sheets_storage import InMemoryStorage, SchemaError, SheetsStorage, Storage
-
-
-def _api_error(code: int, message: str) -> gspread.exceptions.APIError:
-    """Build a gspread APIError without hitting the network.
-
-    Sets ``status_code`` too — a real APIError always carries the transport
-    status, and the retry filter keys off it (not the JSON-body ``code``).
-    """
-    resp = MagicMock(spec=requests.Response)
-    resp.json.return_value = {"error": {"code": code, "message": message}}
-    resp.status_code = code
-    return gspread.exceptions.APIError(resp)
-
-
-def _api_error_html(status_code: int, html_text: str) -> gspread.exceptions.APIError:
-    """Build a gspread APIError whose body is HTML, not JSON — the edge-5xx case.
-
-    Uses a *real* ``requests.Response`` (not a MagicMock) so ``exc.code == -1`` is
-    produced by gspread's own JSON-parse failure, not by a hand-stubbed side_effect
-    — the double can't diverge from real gspread behaviour the way the JSON-body
-    double did (that divergence is exactly why #289's retry fix passed tests yet
-    crashed in prod on a Google edge/load-balancer 5xx with an HTML body).
-    """
-    resp = requests.models.Response()
-    resp.status_code = status_code
-    resp._content = html_text.encode("utf-8")
-    resp.headers["Content-Type"] = "text/html; charset=UTF-8"
-    return gspread.exceptions.APIError(resp)
 
 
 def _validate_schema(headers: list[str], tab_name: str = "tab") -> None:
@@ -160,13 +138,13 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
 
     @patch("tenacity.nap.time.sleep")
     def test_429_then_success_retries_and_succeeds(self, _sleep: MagicMock) -> None:
-        storage, worksheet = self._build([_api_error(429, "Quota exceeded"), None])
+        storage, worksheet = self._build([api_error_json(429, "Quota exceeded"), None])
         storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(worksheet.append_rows.call_count, 2)
 
     @patch("tenacity.nap.time.sleep")
     def test_429_repeated_eventually_raises_after_5_attempts(self, _sleep: MagicMock) -> None:
-        storage, worksheet = self._build([_api_error(429, "Quota exceeded")] * 5)
+        storage, worksheet = self._build([api_error_json(429, "Quota exceeded")] * 5)
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(ctx.exception.code, 429)
@@ -176,20 +154,20 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
 
     @patch("tenacity.nap.time.sleep")
     def test_503_then_success_retries_on_append(self, _sleep: MagicMock) -> None:
-        storage, worksheet = self._build([_api_error(503, "unavailable"), None])
+        storage, worksheet = self._build([api_error_json(503, "unavailable"), None])
         storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(worksheet.append_rows.call_count, 2)
 
     @patch("tenacity.nap.time.sleep")
     def test_500_then_success_retries_on_append(self, _sleep: MagicMock) -> None:
-        storage, worksheet = self._build([_api_error(500, "internal"), None])
+        storage, worksheet = self._build([api_error_json(500, "internal"), None])
         storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(worksheet.append_rows.call_count, 2)
 
     @patch("tenacity.nap.time.sleep")
     def test_append_5xx_retries_exactly_5_attempts(self, _sleep: MagicMock) -> None:
         # Single retry layer: 5 attempts, NOT 5x5=25 from nested @retry.
-        storage, worksheet = self._build([_api_error(503, "unavailable")] * 5)
+        storage, worksheet = self._build([api_error_json(503, "unavailable")] * 5)
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(ctx.exception.code, 503)
@@ -200,7 +178,7 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
     @patch("tenacity.nap.time.sleep")
     def test_open_by_url_503_then_success_retries(self, _sleep: MagicMock) -> None:
         client = MagicMock(spec=gspread.Client)
-        client.open_by_url.side_effect = [_api_error(503, "unavailable"), MagicMock()]
+        client.open_by_url.side_effect = [api_error_json(503, "unavailable"), MagicMock()]
         SheetsStorage(client, "https://sheets.example/url")  # must not raise
         self.assertEqual(client.open_by_url.call_count, 2)
 
@@ -212,7 +190,7 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
         ws = MagicMock()
         ws.row_values.return_value = list(ROW_HEADERS)
         ws.col_values.return_value = ["dedupe_key", "k1"]
-        spreadsheet.worksheet.side_effect = [_api_error(503, "unavailable"), ws]
+        spreadsheet.worksheet.side_effect = [api_error_json(503, "unavailable"), ws]
         keys = storage.get_existing_keys("movies")
         self.assertEqual(spreadsheet.worksheet.call_count, 2)
         self.assertIn("k1", keys)
@@ -223,7 +201,7 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
     def test_get_existing_keys_502_then_success_retries(self, _sleep: MagicMock) -> None:
         storage, spreadsheet = self._storage_with_spreadsheet()
         ws = MagicMock()
-        ws.row_values.side_effect = [_api_error(502, "bad gateway"), list(ROW_HEADERS)]
+        ws.row_values.side_effect = [api_error_json(502, "bad gateway"), list(ROW_HEADERS)]
         ws.col_values.return_value = ["dedupe_key", "k1"]
         spreadsheet.worksheet.return_value = ws
         keys = storage.get_existing_keys("movies")
@@ -234,7 +212,7 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
 
     def test_non_transient_403_not_retried_on_open(self) -> None:
         client = MagicMock(spec=gspread.Client)
-        client.open_by_url.side_effect = [_api_error(403, "Forbidden")]
+        client.open_by_url.side_effect = [api_error_json(403, "Forbidden")]
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             SheetsStorage(client, "https://sheets.example/url")
         self.assertEqual(ctx.exception.code, 403)
@@ -242,14 +220,14 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
 
     def test_non_transient_404_not_retried_on_read(self) -> None:
         storage, spreadsheet = self._storage_with_spreadsheet()
-        spreadsheet.worksheet.side_effect = [_api_error(404, "Not Found")]
+        spreadsheet.worksheet.side_effect = [api_error_json(404, "Not Found")]
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             storage.get_existing_keys("movies")
         self.assertEqual(ctx.exception.code, 404)
         self.assertEqual(spreadsheet.worksheet.call_count, 1)
 
     def test_non_transient_401_not_retried_on_append(self) -> None:
-        storage, worksheet = self._build([_api_error(401, "Unauthorized")])
+        storage, worksheet = self._build([api_error_json(401, "Unauthorized")])
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(ctx.exception.code, 401)
@@ -263,7 +241,7 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
         storage, spreadsheet = self._storage_with_spreadsheet()
         ws = MagicMock()
         ws.row_values.side_effect = [
-            _api_error_html(502, "<title>Error 502 (Server Error)!!1</title>"),
+            api_error_html(502, "<title>Error 502 (Server Error)!!1</title>"),
             list(ROW_HEADERS),
         ]
         ws.col_values.return_value = ["dedupe_key", "k1"]
@@ -276,7 +254,7 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
     def test_edge_504_html_body_retries_on_open(self, _sleep: MagicMock) -> None:
         client = MagicMock(spec=gspread.Client)
         client.open_by_url.side_effect = [
-            _api_error_html(504, "<title>Error 504 (Gateway Timeout)!!1</title>"),
+            api_error_html(504, "<title>Error 504 (Gateway Timeout)!!1</title>"),
             MagicMock(),
         ]
         SheetsStorage(client, "https://sheets.example/url")  # must not raise
@@ -285,11 +263,46 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
     def test_code_minus1_non_5xx_status_not_retried(self) -> None:
         # code == -1 (unparseable body) but real status is a client 4xx → fail fast.
         client = MagicMock(spec=gspread.Client)
-        client.open_by_url.side_effect = [_api_error_html(400, "<html>Bad Request</html>")]
+        client.open_by_url.side_effect = [api_error_html(400, "<html>Bad Request</html>")]
         with self.assertRaises(gspread.exceptions.APIError) as ctx:
             SheetsStorage(client, "https://sheets.example/url")
         self.assertEqual(ctx.exception.code, -1)
         self.assertEqual(client.open_by_url.call_count, 1)
+
+
+class TestGspreadRetryIntegrationAnchor(unittest.TestCase):
+    """Reality anchor: a *real* ``gspread.HTTPClient`` over a fake transport raises
+    a *real* ``APIError`` from a real 502/HTML ``Response``, and ``SheetsStorage._net``
+    retries it end-to-end.
+
+    Unlike the unit tests above (which hand SheetsStorage a pre-built error double),
+    here gspread itself derives ``exc.code = -1`` from the HTML body — nothing is
+    hand-stubbed. If gspread ever changes how it builds the error from a response,
+    this reddens. That is exactly the divergence #289's idealised JSON-body double
+    could not catch (green in tests, crashed in prod #298). #302.
+    """
+
+    @patch("tenacity.nap.time.sleep")
+    def test_real_gspread_edge_502_flows_through_net_retry(self, _sleep: MagicMock) -> None:
+        edge_502 = make_response(
+            502, body=b"<title>Error 502 (Server Error)!!1</title>", content_type="text/html"
+        )
+        ok_json = make_response(200, body=b'{"values": [["ok"]]}', content_type="application/json")
+        # Fake only the outermost seam (the HTTP transport); real gspread handles
+        # the response → raises a real APIError on each 502, returns on the 200.
+        session = MagicMock(spec=requests.Session)
+        session.request.side_effect = [edge_502, edge_502, ok_json]
+        # auth is ignored when a session is supplied (gspread HTTPClient.__init__).
+        http_client = gspread.http_client.HTTPClient(auth=None, session=session)  # type: ignore[arg-type]
+
+        result = SheetsStorage._net(
+            http_client.request,
+            "get",
+            "https://sheets.googleapis.com/v4/spreadsheets/x/values/A1",
+        )
+
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(session.request.call_count, 3)  # 2 real 502s retried, then success
 
 
 class TestSchemaValidation(unittest.TestCase):
