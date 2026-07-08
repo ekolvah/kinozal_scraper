@@ -26,7 +26,16 @@ class SchemaError(ValueError):
 
 
 def _is_transient_sheets_error(exc: BaseException) -> bool:
-    return isinstance(exc, gspread.exceptions.APIError) and exc.code in _TRANSIENT_CODES
+    # Key off the authoritative HTTP status (exc.response.status_code), NOT the
+    # JSON-body-derived exc.code: a Google edge/load-balancer 5xx (502/504) ships
+    # an HTML body, so gspread can't parse JSON and sets exc.code = -1 — which
+    # would slip past a code-based filter and crash instead of retrying (#298).
+    # gspread raises APIError only on non-ok responses, so exc.response is always
+    # present and status_code is authoritative.
+    return (
+        isinstance(exc, gspread.exceptions.APIError)
+        and exc.response.status_code in _TRANSIENT_CODES
+    )
 
 
 @runtime_checkable

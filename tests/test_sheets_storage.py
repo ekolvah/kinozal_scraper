@@ -12,9 +12,30 @@ from kinozal_scraper.sheets_storage import InMemoryStorage, SchemaError, SheetsS
 
 
 def _api_error(code: int, message: str) -> gspread.exceptions.APIError:
-    """Build a gspread APIError without hitting the network."""
+    """Build a gspread APIError without hitting the network.
+
+    Sets ``status_code`` too — a real APIError always carries the transport
+    status, and the retry filter keys off it (not the JSON-body ``code``).
+    """
     resp = MagicMock(spec=requests.Response)
     resp.json.return_value = {"error": {"code": code, "message": message}}
+    resp.status_code = code
+    return gspread.exceptions.APIError(resp)
+
+
+def _api_error_html(status_code: int, html_text: str) -> gspread.exceptions.APIError:
+    """Build a gspread APIError whose body is HTML, not JSON — the edge-5xx case.
+
+    Uses a *real* ``requests.Response`` (not a MagicMock) so ``exc.code == -1`` is
+    produced by gspread's own JSON-parse failure, not by a hand-stubbed side_effect
+    — the double can't diverge from real gspread behaviour the way the JSON-body
+    double did (that divergence is exactly why #289's retry fix passed tests yet
+    crashed in prod on a Google edge/load-balancer 5xx with an HTML body).
+    """
+    resp = requests.models.Response()
+    resp.status_code = status_code
+    resp._content = html_text.encode("utf-8")
+    resp.headers["Content-Type"] = "text/html; charset=UTF-8"
     return gspread.exceptions.APIError(resp)
 
 
@@ -233,6 +254,42 @@ class TestSheetsStorageRetryTransient(unittest.TestCase):
             storage.append_rows("movies", ROW_HEADERS, [_item("k1").to_row()])
         self.assertEqual(ctx.exception.code, 401)
         self.assertEqual(worksheet.append_rows.call_count, 1)
+
+    # --- edge-5xx with HTML body: exc.code == -1, real status is 5xx (#298) ---
+
+    @patch("tenacity.nap.time.sleep")
+    def test_edge_502_html_body_retries_on_read(self, _sleep: MagicMock) -> None:
+        # Google edge 502 → HTML body → exc.code == -1, but status_code == 502.
+        storage, spreadsheet = self._storage_with_spreadsheet()
+        ws = MagicMock()
+        ws.row_values.side_effect = [
+            _api_error_html(502, "<title>Error 502 (Server Error)!!1</title>"),
+            list(ROW_HEADERS),
+        ]
+        ws.col_values.return_value = ["dedupe_key", "k1"]
+        spreadsheet.worksheet.return_value = ws
+        keys = storage.get_existing_keys("movies")
+        self.assertEqual(ws.row_values.call_count, 2)
+        self.assertIn("k1", keys)
+
+    @patch("tenacity.nap.time.sleep")
+    def test_edge_504_html_body_retries_on_open(self, _sleep: MagicMock) -> None:
+        client = MagicMock(spec=gspread.Client)
+        client.open_by_url.side_effect = [
+            _api_error_html(504, "<title>Error 504 (Gateway Timeout)!!1</title>"),
+            MagicMock(),
+        ]
+        SheetsStorage(client, "https://sheets.example/url")  # must not raise
+        self.assertEqual(client.open_by_url.call_count, 2)
+
+    def test_code_minus1_non_5xx_status_not_retried(self) -> None:
+        # code == -1 (unparseable body) but real status is a client 4xx → fail fast.
+        client = MagicMock(spec=gspread.Client)
+        client.open_by_url.side_effect = [_api_error_html(400, "<html>Bad Request</html>")]
+        with self.assertRaises(gspread.exceptions.APIError) as ctx:
+            SheetsStorage(client, "https://sheets.example/url")
+        self.assertEqual(ctx.exception.code, -1)
+        self.assertEqual(client.open_by_url.call_count, 1)
 
 
 class TestSchemaValidation(unittest.TestCase):
