@@ -19,21 +19,13 @@ from __future__ import annotations
 import json as _json
 
 import gspread.exceptions
-import requests
 
+# make_response lives in the generic _http_doubles module (it builds a plain
+# requests.Response, nothing gspread-specific); re-exported here so callers that
+# already import it from _gspread_doubles keep working.
+from _http_doubles import make_response
 
-def make_response(status_code: int, *, body: bytes, content_type: str) -> requests.Response:
-    """Build a real ``requests.Response`` with the given status/body — no MagicMock.
-
-    Public so integration tests that drive a real gspread request path (feeding
-    the Response through the library itself) reuse the same construction as the
-    error factories below, instead of duplicating it.
-    """
-    resp = requests.models.Response()
-    resp.status_code = status_code
-    resp._content = body
-    resp.headers["Content-Type"] = content_type
-    return resp
+__all__ = ["api_error_html", "api_error_json", "make_response"]
 
 
 def api_error_json(status_code: int, message: str = "") -> gspread.exceptions.APIError:
