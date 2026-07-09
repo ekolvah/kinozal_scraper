@@ -87,6 +87,11 @@ Choose the cheapest reliable test for each category.
   (Its **retry on transient errors (429 + 5xx)** and **schema validation** *are* tested — see
   `test_sheets_storage.py::TestSheetsStorageRetryTransient` / `TestSchemaValidation` — because
   those are correctness logic mocked at the `gspread.Client` boundary, not internal call order.)
+- `http_fetch` live curl_cffi transport — real network / TLS handshake.
+  (Its **retry on transient HTTP responses (403 anti-bot + 429 + 5xx)** *is* tested — see
+  `test_http_fetch.py::TestFetchRetry`, incl. a reality-anchor over a real curl_cffi
+  `HTTPError` — because that is correctness logic mocked at the `requests.get` boundary,
+  the HTTP-transport sibling of the `SheetsStorage` retry above (#306).)
 - `TelegramChannelSummarizer` / Telethon calls.
 - Any code path that requires live credentials.
 
@@ -199,6 +204,17 @@ work-for-work (goal-function priority (2)).
   header-echo endpoint; the standing gate is the daily cron E2E (a fingerprint regression → 403 on
   posters → §IV-visible next run), same «cron = E2E smoke» doctrine as **A**. Recorded so the
   live-only verification isn't re-opened as a mock-the-network work-for-work test.
+- **M. `http_fetch` retry deliberately scoped to HTTP-status errors only (#306).** The retry layer
+  (`_retry_transient_http`) fires on transient HTTP *responses* (403/429/5xx) but **not** on network
+  errors (`Timeout` / `ConnectionError` — curl_cffi `RequestException` subclasses that never reach
+  `raise_for_status`, so the `isinstance(HTTPError)` predicate skips them by construction). **Accepted**
+  — no reproduced incident (§V: don't retry what wasn't observed), symmetric with the `SheetsStorage`
+  sibling which covers `APIError` status only. The asymmetry «503 retries, a DNS blip crashes the source»
+  is real and conscious; a broadening waits for an actual network-error incident. Separately, the raw
+  `requests.get` calls in `github_popular_pipeline.py` (GitHub API) and `steam_pipeline.py` still have
+  **no** retry — a different transport (stdlib `requests`, not curl_cffi via `http_fetch`) — deferred to
+  a follow-up issue so `_retry_transient_http` can be reused there. Recorded so neither is re-opened as
+  work-for-work.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 

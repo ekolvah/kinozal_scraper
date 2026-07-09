@@ -6,7 +6,50 @@ Cloudflare-fronted источники не отдавали 403 на JA3/JA4-han
 
 from __future__ import annotations
 
+from typing import Any
+
 from curl_cffi import requests
+from curl_cffi.requests.exceptions import HTTPError
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
+# Transient HTTP responses worth retrying rather than crashing the source on the
+# first blip. NOTE the deliberate divergence from sheets_storage._TRANSIENT_CODES
+# (sheets_storage.py:18-21), which EXCLUDES 403 as a fail-fast permission fault:
+# here 403 is an anti-bot / WAF challenge (soldoutticketbox.com, #306) — proven
+# transient (a 200 three minutes later on the same commit), NOT a permission
+# fault — so it IS retried. The two sibling layers treat 403 oppositely on
+# purpose; don't "unify" them.
+_TRANSIENT_HTTP_CODES = frozenset({403, 429, 500, 502, 503, 504})
+
+
+def _is_transient_http_error(exc: BaseException) -> bool:
+    # Key off the authoritative HTTP status carried by the raised HTTPError.
+    # curl_cffi raise_for_status raises HTTPError(msg, 0, response), so exc.response
+    # is the Response and exc.response.status_code is a real int (reality-anchored
+    # in test_http_fetch.py::test_predicate_matches_real_curl_cffi_httperror).
+    return (
+        isinstance(exc, HTTPError)
+        and getattr(exc.response, "status_code", None) in _TRANSIENT_HTTP_CODES
+    )
+
+
+# 4 attempts / max=30 (vs sheets' 5 / max=60): every curl_cffi source runs in the
+# same CI job, so cap total worst-case stall — ~2+4+8≈14 s per source on a full
+# outage, still surfaced red after give-up (reraise=True → §IV visible anomaly).
+_retry_transient_http = retry(
+    retry=retry_if_exception(_is_transient_http_error),
+    stop=stop_after_attempt(4),
+    wait=wait_exponential(multiplier=1, max=30),
+    reraise=True,
+)
+
+
+@_retry_transient_http
+def _get(url: str, **kwargs: Any) -> requests.Response:
+    """Single curl_cffi GET + raise_for_status, retrying transient 403/429/5xx."""
+    resp = requests.get(url, **kwargs)
+    resp.raise_for_status()
+    return resp
 
 
 class NotAnImageError(Exception):
@@ -30,9 +73,7 @@ class NotAnImageError(Exception):
 
 
 def fetch_html(url: str) -> str:
-    resp = requests.get(url, impersonate="chrome", timeout=30)
-    resp.raise_for_status()
-    return resp.text
+    return _get(url, impersonate="chrome", timeout=30).text
 
 
 def fetch_bytes(url: str) -> bytes:
@@ -57,13 +98,15 @@ def fetch_bytes(url: str) -> bytes:
     (`text/html`), not an `image/*` allowlist, since posters live on a long tail
     of uploader hosts that may serve valid images with exotic content-types.
     """
-    resp = requests.get(
+    # NotAnImageError is raised BELOW, after _get returns — outside the retry
+    # wrapper: a 200 text/html anti-hotlink page is a content problem, not a
+    # transient, so it must not be retried.
+    resp = _get(
         url,
         impersonate="chrome",
         timeout=30,
         headers={"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"},
     )
-    resp.raise_for_status()
     content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type == "text/html":
         raise NotAnImageError(url, content_type, resp.content)
