@@ -78,8 +78,8 @@ Telegram HTML message. Available template variables:
 | `{title}` | plain escaped title |
 | `{title_link}` | `<a href="{url}">{title}</a>` — clickable title linking to the source page |
 | `{url}` | raw URL of the item page |
-| `{trailer_url}` | raw YouTube trailer URL |
-| `{trailer_link}` | `<a href="{trailer_url}">Trailer</a>` — clickable "Trailer" word; empty if no trailer |
+| `{trailer_url}` | raw YouTube trailer URL, or a §IV miss/failure marker (see below) |
+| `{trailer_link}` | `<a href="{trailer_url}">Trailer</a>` — clickable "Trailer" word for an http(s) URL; a non-http value (a §IV marker `🎬 трейлер не найден` on a clean miss / `⚠️ трейлер: ошибка поиска` on a lookup failure, #138) renders as visible escaped text; empty only when `trailer_url` is unset (non-kinozal sources) |
 | `{description}` | plain escaped description |
 | `{metric}` | numeric metric (stars, players, etc.) |
 | `{image_url}` | raw image URL |

@@ -464,13 +464,14 @@ class TestPipelineCoverage(unittest.TestCase):
         self.assertRegex(joined, r"2 extracted.*0 new.*2 already-seen")
 
     def test_trailer_failure_still_notifies(self) -> None:
-        # Burst 10→50 raises YouTube-quota exhaustion risk. A trailer lookup
-        # failure must degrade visibly (§IV): the film still ships, sans
-        # trailer, with an ERROR logged — never a silent drop.
-        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="ERROR") as cm:
+        # A trailer lookup failure must degrade visibly (§IV): the film still
+        # ships, now carrying the error marker (#138) — with a WARNING logged,
+        # never a silent drop.
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
             storage, notifier = _run(youtube=_RaisingYoutube())
         self.assertEqual(len(notifier.sent), 2)
         self.assertTrue(any("trailer lookup failed" in line for line in cm.output))
+        self.assertTrue(all(_TRAILER_ERROR_MARKER in n.text for n in notifier.sent))
 
 
 class TestPipelineNotificationContent(unittest.TestCase):
@@ -488,7 +489,9 @@ class TestPipelineNotificationContent(unittest.TestCase):
         text = notifier.sent[0].text
         self.assertIn("youtube.com", text)
 
-    def test_no_trailing_newlines_when_trailer_empty(self) -> None:
+    def test_no_trailing_newlines_with_trailer_marker(self) -> None:
+        # _RaisingYoutube now yields the error marker (#138), not an empty
+        # trailer; the rendered message must still have no trailing newline.
         storage, notifier = _run(youtube=_RaisingYoutube())
         for notif in notifier.sent:
             self.assertFalse(notif.text.endswith("\n"), repr(notif.text))
