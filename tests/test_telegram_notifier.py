@@ -356,6 +356,15 @@ class TestInMemoryNotifier(unittest.TestCase):
         self.assertEqual(sent, [n1])
         self.assertEqual(failed, [n2])
 
+    def test_send_text_records_and_returns_true(self) -> None:
+        notifier = InMemoryNotifier()
+        self.assertTrue(notifier.send_text("hello"))
+        self.assertEqual(notifier.texts, ["hello"])
+
+    def test_send_text_fail_mode_returns_false(self) -> None:
+        notifier = InMemoryNotifier(fail_text=True)
+        self.assertFalse(notifier.send_text("hello"))
+
 
 if __name__ == "__main__":
     unittest.main()

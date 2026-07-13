@@ -201,5 +201,7 @@ if __name__ == "__main__":
 
     prod_results = run_github_popular_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
 
-    if any(not r.ok for r in prod_results):
+    from kinozal_scraper.alerting import report_failures
+
+    if report_failures(prod_notifier, prod_results):
         sys.exit(1)

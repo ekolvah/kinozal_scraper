@@ -635,5 +635,7 @@ if __name__ == "__main__":
     youtube = Youtube()
     prod_results = run_kinozal_pipeline(storage, notifier, youtube, kinozal=kinozal)
 
-    if any(not r.ok for r in prod_results):
+    from kinozal_scraper.alerting import report_failures
+
+    if report_failures(notifier, prod_results):
         sys.exit(1)
