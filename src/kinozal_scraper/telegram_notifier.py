@@ -32,6 +32,8 @@ class Notifier(Protocol):
         self, notifications: list[Notification]
     ) -> tuple[list[Notification], list[Notification]]: ...
 
+    def send_text(self, text: str) -> bool: ...
+
 
 class TelegramNotifier:
     def __init__(
@@ -162,12 +164,14 @@ class TelegramNotifier:
 
 
 class InMemoryNotifier:
-    """Test double. Контролируемые сбои через fail_ids."""
+    """Test double. Контролируемые сбои через fail_ids (send_items) / fail_text (send_text)."""
 
-    def __init__(self, fail_ids: set[str] | None = None) -> None:
+    def __init__(self, fail_ids: set[str] | None = None, fail_text: bool = False) -> None:
         self.sent: list[Notification] = []
         self.failed: list[Notification] = []
+        self.texts: list[str] = []
         self._fail_ids: set[str] = fail_ids or set()
+        self._fail_text = fail_text
 
     def send_items(
         self, notifications: list[Notification]
@@ -178,3 +182,9 @@ class InMemoryNotifier:
             else:
                 self.sent.append(notif)
         return list(self.sent), list(self.failed)
+
+    def send_text(self, text: str) -> bool:
+        if self._fail_text:
+            return False
+        self.texts.append(text)
+        return True

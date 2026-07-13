@@ -129,5 +129,7 @@ if __name__ == "__main__":
     prod_notifier = TelegramNotifier(bot_token=bot_token, chat_id=chat_id)
     prod_results = run_soldout_pipeline(prod_storage, prod_notifier)
 
-    if any(not r.ok for r in prod_results):
+    from kinozal_scraper.alerting import report_failures
+
+    if report_failures(prod_notifier, prod_results):
         sys.exit(1)

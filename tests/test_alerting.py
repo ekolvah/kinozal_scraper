@@ -10,9 +10,11 @@ is the red run + logs (§III), NOT the curl step (architect-review B1, issue #31
 from __future__ import annotations
 
 import logging
+from pathlib import Path
+
+import pytest
 
 from kinozal_scraper.alerting import format_pipeline_failures, report_failures
-
 from kinozal_scraper.generic_pipeline import PipelineResult
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
@@ -50,7 +52,9 @@ class TestFormatPipelineFailures:
 
 
 class TestReportFailures:
-    def test_all_ok_no_send_no_mark_returns_false(self, tmp_path, monkeypatch) -> None:
+    def test_all_ok_no_send_no_mark_returns_false(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         marker = tmp_path / "technical_alert_sent"
         monkeypatch.setenv("TECH_ALERT_MARKER", str(marker))
         notifier = InMemoryNotifier()
@@ -59,7 +63,9 @@ class TestReportFailures:
         assert notifier.texts == []
         assert not marker.exists()
 
-    def test_failure_sends_alert_marks_returns_true(self, tmp_path, monkeypatch) -> None:
+    def test_failure_sends_alert_marks_returns_true(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         marker = tmp_path / "technical_alert_sent"
         monkeypatch.setenv("TECH_ALERT_MARKER", str(marker))
         notifier = InMemoryNotifier()
@@ -69,7 +75,12 @@ class TestReportFailures:
         assert "soldout" in notifier.texts[0]
         assert marker.exists()
 
-    def test_send_failure_does_not_mark_returns_true(self, tmp_path, monkeypatch, caplog) -> None:
+    def test_send_failure_does_not_mark_returns_true(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
         marker = tmp_path / "technical_alert_sent"
         monkeypatch.setenv("TECH_ALERT_MARKER", str(marker))
         notifier = InMemoryNotifier(fail_text=True)
@@ -82,7 +93,9 @@ class TestReportFailures:
         assert not marker.exists()
         assert any(record.levelno >= logging.ERROR for record in caplog.records)
 
-    def test_marker_write_failure_does_not_crash(self, tmp_path, monkeypatch) -> None:
+    def test_marker_write_failure_does_not_crash(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         # Parent of the marker path is a regular file → mkdir/write raises; the
         # alert path must swallow it (logged), never propagate.
         blocker = tmp_path / "blocker"

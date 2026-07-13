@@ -5,14 +5,12 @@ from __future__ import annotations
 import html as _html
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
+from kinozal_scraper.alerting import mark_technical_alert_sent, send_required_text
 from kinozal_scraper.TelegramChannelSummarizer import ChannelProcessResult, ChannelSummary
 
 logger = logging.getLogger(__name__)
-
-_TECH_ALERT_MARKER = ".run/technical_alert_sent"
 
 
 def format_summary_message(summary: ChannelSummary) -> str:
@@ -45,20 +43,6 @@ def format_technical_alert(results: list[ChannelProcessResult]) -> str:
     if len(failed) > 10:
         lines.append(f"... и ещё {len(failed) - 10} failure(s)")
     return "\n".join(lines)
-
-
-def mark_technical_alert_sent(path: str | None = None) -> None:
-    marker_value = path if path is not None else os.getenv("TECH_ALERT_MARKER")
-    marker = Path(marker_value or _TECH_ALERT_MARKER)
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("1", encoding="utf-8")
-
-
-def send_required_text(notifier: Any, text: str) -> bool:
-    ok = bool(notifier.send_text(text))
-    if not ok:
-        logger.error("Telegram delivery failed")
-    return ok
 
 
 def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:

@@ -277,5 +277,7 @@ if __name__ == "__main__":
         sources_config=sources_config,
     )
 
-    if any(not r.ok for r in prod_results):
+    from kinozal_scraper.alerting import report_failures
+
+    if report_failures(prod_notifier, prod_results):
         sys.exit(1)

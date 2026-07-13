@@ -364,6 +364,24 @@ guarded statically by `tests/test_workflow_isolation.py::TestPipelineStepIsolati
 so a newly-added source is automatically held to it — a hand-maintained list would let the
 next source slip back into the cascade.
 
+**Readable per-source alert (#310).** A failed scraper step used to reach the operator only as
+the generic `Send fallback failure alert` (`⚠️ … run failed: <url>`) — visible but not
+*actionable*: which source, which error class lived only in the CI log (precedent: run
+29224080924, soldout 403 required a log dig). Each scraper `__main__` now calls
+`alerting.report_failures(notifier, results)` before `sys.exit(1)`: it sends a readable
+`source_id: <error>` breakdown to Telegram (reusing `PipelineResult.errors`) and, **on
+successful delivery only**, writes the job-global marker `.run/technical_alert_sent`. That
+marker gates the `Send fallback failure alert` step (`hashFiles(...) == ''`), so a delivered
+rich alert suppresses the generic curl one.
+
+The marker is **job-global**: it means *"≥1 rich alert delivered this run"*, not "this step
+delivered". So the curl fallback stays the net only for the **first** undelivered alert (or a
+crash *before* `report_failures` — import error, etc.). If a **second** step's alert delivery
+fails after an earlier one already set the marker, the backstop is the **red run + logs**
+(§III), not curl — a consciously accepted gap (no per-step marker infra; see #310 Out of
+scope). `telegram_summarizer` keeps its own richer `deliver_results` alert path; `report_failures`
+and the marker helpers share one canonical home in `alerting.py`.
+
 ## Environment variables
 
 ### Shared across pipelines
