@@ -253,11 +253,17 @@ def build_notification(item: NormalizedItem, template: str) -> Notification:
         if item.url and item.url.startswith(("http://", "https://"))
         else _html.escape(item.title)
     )
-    trailer_link = (
-        _html_link(item.trailer_url, "Trailer")
-        if item.trailer_url and item.trailer_url.startswith(("http://", "https://"))
-        else ""
-    )
+    # An http(s) trailer_url renders a clickable "Trailer" word; a non-http,
+    # non-empty value is a §IV miss/failure marker (#138) and reaches the user as
+    # visible escaped text, not a collapsed empty line. Empty → empty (sources
+    # that never enrich a trailer are unaffected). The renderer stays source-
+    # agnostic: it knows "http vs marker vs none", not "kinozal markers".
+    if item.trailer_url and item.trailer_url.startswith(("http://", "https://")):
+        trailer_link = _html_link(item.trailer_url, "Trailer")
+    elif item.trailer_url:
+        trailer_link = _html.escape(item.trailer_url)
+    else:
+        trailer_link = ""
     values: dict[str, Any] = {
         "title": item.title,
         "title_link": title_link,

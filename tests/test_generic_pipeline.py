@@ -282,6 +282,15 @@ class TestBuildNotificationLinks(unittest.TestCase):
         note = build_notification(item, "{trailer_link}")
         self.assertEqual(note.text, "")
 
+    def test_trailer_marker_renders_as_text(self) -> None:
+        # §IV: a non-http trailer_url (a miss/failure marker) must reach the user
+        # as visible text, not collapse to an empty line (#138). The generic
+        # renderer stays source-agnostic — it just escapes a non-http value.
+        item = self._item("Film", trailer_url="🎬 трейлер не найден")
+        note = build_notification(item, "{trailer_link}")
+        self.assertIn("🎬 трейлер не найден", note.text)
+        self.assertNotIn("<a", note.text)
+
     def test_kinozal_template(self) -> None:
         item = self._item(
             "Фильм / 2026 / WEB",

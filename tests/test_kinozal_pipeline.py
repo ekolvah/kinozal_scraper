@@ -1,3 +1,4 @@
+import logging
 import os
 import re
 import unittest
@@ -8,6 +9,8 @@ import kinozal_scraper.kinozal_pipeline as kp
 from kinozal_scraper.generic_pipeline import NormalizedItem, PipelineResult, extract_from_html
 from kinozal_scraper.kinozal_auth import KinozalLoginError
 from kinozal_scraper.kinozal_pipeline import (
+    _TRAILER_ERROR_MARKER,
+    _TRAILER_MISS_MARKER,
     _kinozal_title,
     _kinozal_urls,
     enrich_with_trailer,
@@ -16,6 +19,7 @@ from kinozal_scraper.kinozal_pipeline import (
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import InMemoryStorage
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
+from kinozal_scraper.text_utils import original_title
 from kinozal_scraper.text_utils import title_year_matches as _title_year_matches
 
 # ── minimal synthetic HTML matching kinozal_movies row_selector ──────────────
@@ -136,10 +140,51 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertIn("Film", trailer)
         self.assertNotIn("(2024)", trailer)
 
-    def test_exception_returns_empty_string(self) -> None:
+    def test_failure_returns_error_marker(self) -> None:
+        # §IV (#138): a lookup exception must surface a visible marker + WARNING,
+        # not a silent "". WARNING (not ERROR) is pinned via levelno.
         item = self._item("Some Film")
-        trailer = enrich_with_trailer(item, _RaisingYoutube())
-        self.assertEqual(trailer, "")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
+            trailer = enrich_with_trailer(item, _RaisingYoutube())
+        self.assertEqual(trailer, _TRAILER_ERROR_MARKER)
+        self.assertEqual(cm.records[-1].levelno, logging.WARNING)
+
+    def test_miss_returns_miss_marker(self) -> None:
+        # §IV (#138): a clean miss (API OK, 0 results) surfaces a visible marker
+        # + INFO log (expected, not an anomaly), distinct from the error marker.
+        item = self._item("Some Film")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            trailer = enrich_with_trailer(item, _FilteringFakeYoutube([]))
+        self.assertEqual(trailer, _TRAILER_MISS_MARKER)
+        self.assertTrue(any(r.levelno == logging.INFO for r in cm.records))
+
+    def test_original_title_used_for_lookup(self) -> None:
+        youtube = _FakeYoutube()
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_film, "Man on Fire")
+
+    def test_falls_back_to_clean_title_when_no_original(self) -> None:
+        youtube = _FakeYoutube()
+        item = self._item("Film One / 2024 / BDRip")  # 2nd segment is a year
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_film, "Film One")
+
+    def test_year_still_passed_with_original_title(self) -> None:
+        # SHOULD-FIX guard: switching the query to the original title must not
+        # drop the year= that feeds title_year_matches.
+        youtube = _FakeYoutube()
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_year, 2026)
+
+    def test_original_segment_used_verbatim(self) -> None:
+        # Documents the non-strip decision: the original segment goes to YouTube
+        # as-is (parentheticals not stripped), unlike the clean-title fallback.
+        youtube = _FakeYoutube()
+        item = self._item("Русское / Man on Fire (uncut) / 2026 / WEB")
+        enrich_with_trailer(item, youtube)
+        self.assertEqual(youtube.last_film, "Man on Fire (uncut)")
 
     def test_year_extracted_from_dedupe_key_and_passed(self) -> None:
         youtube = _FakeYoutube()
@@ -191,6 +236,26 @@ class TestKinozalTitle(unittest.TestCase):
 
     def test_slash_without_spaces_not_split(self) -> None:
         self.assertEqual(_kinozal_title("ДБ (Videofilm/Int.)"), "ДБ (Videofilm/Int.)")
+
+
+# ── original_title ────────────────────────────────────────────────────────────
+
+
+class TestOriginalTitle(unittest.TestCase):
+    def test_extracts_second_segment(self) -> None:
+        raw = "Гнев (1 сезон: 1-7 серии из 7) / Man on Fire / 2026 / WEB-DLRip"
+        self.assertEqual(original_title(raw), "Man on Fire")
+
+    def test_year_second_segment_returns_empty(self) -> None:
+        # 'Title / Year / Format' — no distinct original title → '' (caller falls
+        # back to the clean RU title).
+        self.assertEqual(original_title("Film One / 2024 / BDRip"), "")
+
+    def test_no_separator_returns_empty(self) -> None:
+        self.assertEqual(original_title("Дюна"), "")
+
+    def test_slash_without_spaces_not_split(self) -> None:
+        self.assertEqual(original_title("ДБ (Videofilm/Int.)"), "")
 
 
 # ── _title_year_matches ───────────────────────────────────────────────────────
@@ -399,13 +464,14 @@ class TestPipelineCoverage(unittest.TestCase):
         self.assertRegex(joined, r"2 extracted.*0 new.*2 already-seen")
 
     def test_trailer_failure_still_notifies(self) -> None:
-        # Burst 10→50 raises YouTube-quota exhaustion risk. A trailer lookup
-        # failure must degrade visibly (§IV): the film still ships, sans
-        # trailer, with an ERROR logged — never a silent drop.
-        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="ERROR") as cm:
+        # A trailer lookup failure must degrade visibly (§IV): the film still
+        # ships, now carrying the error marker (#138) — with a WARNING logged,
+        # never a silent drop.
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
             storage, notifier = _run(youtube=_RaisingYoutube())
         self.assertEqual(len(notifier.sent), 2)
         self.assertTrue(any("trailer lookup failed" in line for line in cm.output))
+        self.assertTrue(all(_TRAILER_ERROR_MARKER in n.text for n in notifier.sent))
 
 
 class TestPipelineNotificationContent(unittest.TestCase):
@@ -423,7 +489,9 @@ class TestPipelineNotificationContent(unittest.TestCase):
         text = notifier.sent[0].text
         self.assertIn("youtube.com", text)
 
-    def test_no_trailing_newlines_when_trailer_empty(self) -> None:
+    def test_no_trailing_newlines_with_trailer_marker(self) -> None:
+        # _RaisingYoutube now yields the error marker (#138), not an empty
+        # trailer; the rendered message must still have no trailing newline.
         storage, notifier = _run(youtube=_RaisingYoutube())
         for notif in notifier.sent:
             self.assertFalse(notif.text.endswith("\n"), repr(notif.text))

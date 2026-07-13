@@ -24,6 +24,7 @@ from kinozal_scraper.kinozal_auth import fetch_authenticated, login
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier, TelegramNotifier
+from kinozal_scraper.text_utils import original_title
 
 logger = logging.getLogger(__name__)
 
@@ -347,22 +348,41 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
     return result
 
 
-def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
-    """Look up a YouTube trailer URL. Returns '' on any failure.
+# §IV visible markers (#138): a trailer miss/failure must reach the user as a
+# legible line, never a silent empty `{trailer_link}`. Distinct text + log level
+# let the user tell "no trailer exists" from "lookup broke", and keep the WARNING
+# dev-tripwire firing only on real anomalies (a clean miss is expected).
+_TRAILER_MISS_MARKER = "🎬 трейлер не найден"
+_TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
 
-    Expects item.title to already be cleaned (no ' / ' separators).
-    Year is read from item.raw['kinozal_raw_title'] (the original @title
-    attribute) because the clean title may have had the year stripped.
+
+def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
+    """Look up a YouTube trailer URL, or return a visible §IV marker (#138).
+
+    Queries YouTube with the *original* foreign title (2nd ` / `-segment of the
+    raw @title) when present — a far better match than the localised RU title —
+    falling back to the clean RU title otherwise. Year is read from
+    item.raw['kinozal_raw_title'] (the original @title) because the clean title
+    may have had the year stripped, and feeds `title_year_matches`.
+
+    On a clean miss (API OK, 0 results) returns `_TRAILER_MISS_MARKER` + INFO log;
+    on a lookup exception returns `_TRAILER_ERROR_MARKER` + WARNING log (with
+    traceback). Either way the item is still notified — no silent empty string.
     """
+    clean = item.title.split("(")[0].strip()
+    raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
+    year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
+    year = int(year_match.group(1)) if year_match else None
+    query = original_title(raw_for_year) or clean
     try:
-        clean = item.title.split("(")[0].strip()
-        raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
-        year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
-        year = int(year_match.group(1)) if year_match else None
-        return youtube.get_trailer_url(clean, year=year) or ""
-    except Exception as exc:  # noqa: BLE001 — trailer lookup degrades to no-trailer, item still notified
-        logger.exception("trailer lookup failed for %r: %s", item.title, exc)
-        return ""
+        url: str = youtube.get_trailer_url(query, year=year)
+    except Exception as exc:  # noqa: BLE001 — lookup failure degrades to a visible marker, item still notified
+        logger.warning("trailer lookup failed for %r: %s", item.title, exc, exc_info=True)
+        return _TRAILER_ERROR_MARKER
+    if url:
+        return url
+    logger.info("no trailer found for %r", item.title)
+    return _TRAILER_MISS_MARKER
 
 
 def _split_by_excluded_genre(
