@@ -66,16 +66,14 @@ class _FakeYoutube:
         return f"https://youtube.com/watch?v={film.replace(' ', '_')}"
 
 
-class _FilteringFakeYoutube:
-    """Fake YouTube that applies year filtering like the real API."""
-
-    def __init__(self, videos: list[tuple[str, str]]) -> None:
-        self._videos = videos
+class _EmptyYoutube:
+    """Fake YouTube с пустой выдачей (clean miss) — проверяет §IV miss-маркер в
+    enrich_with_trailer. Год-фильтрация selection'а переехала в
+    FirstResultStrategy (tests/test_trailer_strategy.py, #139); прежний
+    _FilteringFakeYoutube переизобретал title_year_matches (§II-мок внутренней
+    логики) и удалён — тут остаётся только прод-маркерный контракт."""
 
     def get_trailer_url(self, film: str, year: int | None = None) -> str:
-        for title, vid in self._videos:
-            if year is None or _title_year_matches(title, year):
-                return f"https://youtube.com/watch?v={vid}"
         return ""
 
 
@@ -154,7 +152,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         # + INFO log (expected, not an anomaly), distinct from the error marker.
         item = self._item("Some Film")
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
-            trailer = enrich_with_trailer(item, _FilteringFakeYoutube([]))
+            trailer = enrich_with_trailer(item, _EmptyYoutube())
         self.assertEqual(trailer, _TRAILER_MISS_MARKER)
         self.assertTrue(any(r.levelno == logging.INFO for r in cm.records))
 
@@ -209,18 +207,6 @@ class TestEnrichWithTrailer(unittest.TestCase):
         item = self._item("Great Film / 2025 / WEB-DL")
         enrich_with_trailer(item, youtube)
         self.assertEqual(youtube.last_film, "Great Film")
-
-    def test_2026_film_skips_2015_kingsman_trailer(self) -> None:
-        youtube = _FilteringFakeYoutube(
-            [
-                ("Kingsman: Секретная служба (2015) Трейлер на русском", "JoKiK7Nx8Y8"),
-                ("Секретная служба 2026 Официальный трейлер", "correct_id"),
-            ]
-        )
-        item = self._item("Секретная служба / 2026 / WEB-DLRip")
-        trailer = enrich_with_trailer(item, youtube)
-        self.assertNotIn("JoKiK7Nx8Y8", trailer)
-        self.assertIn("correct_id", trailer)
 
 
 # ── _kinozal_title ────────────────────────────────────────────────────────────

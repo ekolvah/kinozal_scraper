@@ -81,6 +81,27 @@ Choose the cheapest reliable test for each category.
   row construction, deduplication key lookups, schema validation.
 - Protocol contract: `InMemoryStorage` tests verify the `Storage` interface.
 
+## Eval harness — trailer selection (#139)
+
+`scripts/eval_trailers.py` measures trailer-pick quality against a **frozen golden-set**
+(`tests/fixtures/trailer_golden.json`): each film carries a hand-annotated `correct` video_id
+(or `null` = no trailer exists) plus a recorded `candidates` snapshot. The harness replays
+candidates through a `TrailerStrategy` (`trailer_strategy.py`) offline — no network/quota —
+classifies each film Hit/Wrong/Miss **relative to `correct`**, and scores it (Hit +1 / Miss 0 /
+Wrong −2: a wrong film's trailer is worse than an honest §IV "not found" marker).
+
+- **`correct` vs `candidates` are separate on purpose.** `correct` is durable ground truth
+  (retrieval-independent); `candidates` is a regenerable snapshot. This lets the harness
+  *attribute* a miss to retrieval (correct id not even in the pool → #140) vs selection (in
+  the pool but not picked → #141) — the measurement, not a declaration.
+- **Fixtures are frozen.** `--record` (dev-only, live, needs `API_KEY`; fail-fast without it)
+  reseeds the `candidates` snapshot — for initial seeding / a *conscious* refresh, not a
+  routine run: re-recording can silently drift a hand-annotated `correct` out of a new YouTube
+  result set (Hit → retrieval-miss). The loader is fail-loud (§IV/§VI): a broken entry (empty
+  set, missing field, duplicate `video_id`, `correct` not str|null) raises `GoldenSetError`,
+  never degrades to a silent Miss. The harness is deliberately **not** in `ci_check` — no green
+  strategy exists yet to gate; the known-gap guard below carries the RED signal instead.
+
 ## What does NOT get tested in this repo
 
 - `SheetsStorage` gspread wiring — call order, worksheet creation.
@@ -215,6 +236,14 @@ work-for-work (goal-function priority (2)).
   **no** retry — a different transport (stdlib `requests`, not curl_cffi via `http_fetch`) — deferred to
   a follow-up issue so `_retry_transient_http` can be reused there. Recorded so neither is re-opened as
   work-for-work.
+
+- **N. RU-language trailer preference not yet implemented (#315 epic).** The trailer golden-set
+  (`tests/fixtures/trailer_golden.json`) seeds the #138 English-trailer regression as a RED
+  baseline; `test_eval_trailers.py::test_138_ru_misses_are_red` pins it with
+  `@pytest.mark.xfail(strict=True)`. This is a *known-gap guard*, not a missing test: when #141
+  lands RU-aware selection and `default_strategy()` starts picking the RU trailer, the xfail flips
+  to XPASS → strict → red → the fix is **audible** at merge. Until then the baseline is
+  consciously red (the harness score reflects it); not re-litigated as an open bug.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 

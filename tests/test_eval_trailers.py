@@ -16,6 +16,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+
 from scripts.eval_trailers import (
     GoldenSetError,
     classify,
