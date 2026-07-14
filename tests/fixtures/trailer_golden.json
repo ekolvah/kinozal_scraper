@@ -1,0 +1,127 @@
+[
+  {
+    "film": {"ru_title": "Гнев", "original_title": "Man on Fire", "year": 2026},
+    "correct": "ru_mof_01",
+    "candidates": [
+      {"video_id": "eng_mof_01", "title": "Man on Fire 2026 Official Trailer", "channel": "MovieClips", "published_at": "2026-01-10T00:00:00Z"},
+      {"video_id": "eng_mof_02", "title": "Man on Fire 2026 Trailer Breakdown", "channel": "ReactChannel", "published_at": "2026-01-12T00:00:00Z"}
+    ],
+    "note": "seed: #138 (RU-эталон не в пуле — англ-запрос не выдал русский трейлер; чинит retrieval #140; иллюстративно до --record)"
+  },
+  {
+    "film": {"ru_title": "Волк", "original_title": "The Wolf", "year": 2025},
+    "correct": "ru_wolf_01",
+    "candidates": [
+      {"video_id": "eng_wolf_01", "title": "The Wolf 2025 Official Trailer", "channel": "Universal"},
+      {"video_id": "ru_wolf_01", "title": "Волк 2025 трейлер на русском", "channel": "КиноПоиск"}
+    ],
+    "note": "seed: #138 (RU в пуле, но англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)"
+  },
+  {
+    "film": {"ru_title": "Тень", "original_title": "The Shadow", "year": 2026},
+    "correct": "ru_shadow_01",
+    "candidates": [
+      {"video_id": "eng_shadow_01", "title": "The Shadow 2026 Teaser Trailer", "channel": "Warner"}
+    ],
+    "note": "seed: #138 (только англ в пуле, RU-эталон отсутствует; чинит retrieval #140; иллюстративно до --record)"
+  },
+  {
+    "film": {"ru_title": "Хищник", "original_title": "Predator", "year": 2025},
+    "correct": "ru_pred_01",
+    "candidates": [
+      {"video_id": "eng_pred_01", "title": "Predator 2025 Official Trailer", "channel": "20thCentury"},
+      {"video_id": "eng_pred_02", "title": "Predator 2025 Final Trailer", "channel": "Fandango"},
+      {"video_id": "ru_pred_01", "title": "Хищник 2025 официальный трейлер", "channel": "Кинопрокат"}
+    ],
+    "note": "seed: #138 (RU третий в пуле, англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)"
+  },
+  {
+    "film": {"ru_title": "Дюна: Часть вторая", "original_title": "Dune: Part Two", "year": 2024},
+    "correct": "dune2_official",
+    "candidates": [
+      {"video_id": "dune2_official", "title": "Dune: Part Two | Official Trailer 2024", "channel": "Warner Bros."},
+      {"video_id": "dune2_react", "title": "Dune Part Two 2024 Trailer Reaction", "channel": "ReactChannel"}
+    ],
+    "note": "нормальный: первый кандидат корректен → baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Оппенгеймер", "original_title": "Oppenheimer", "year": 2023},
+    "correct": "oppen_trailer",
+    "candidates": [
+      {"video_id": "oppen_trailer", "title": "Oppenheimer 2023 Official Trailer", "channel": "Universal Pictures"}
+    ],
+    "note": "нормальный: baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Барби", "original_title": "Barbie", "year": 2023},
+    "correct": "barbie_main",
+    "candidates": [
+      {"video_id": "barbie_main", "title": "Barbie 2023 Main Trailer", "channel": "Warner Bros."},
+      {"video_id": "barbie_teaser", "title": "Barbie 2023 Teaser", "channel": "Warner Bros."}
+    ],
+    "note": "нормальный: baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Бедные-несчастные", "original_title": "Poor Things", "year": 2023},
+    "correct": "poorthings_ot",
+    "candidates": [
+      {"video_id": "poorthings_ot", "title": "Poor Things 2023 Official Trailer", "channel": "Searchlight"}
+    ],
+    "note": "нормальный: baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Фуриоса", "original_title": "Furiosa", "year": 2024},
+    "correct": "furiosa_ot",
+    "candidates": [
+      {"video_id": "furiosa_ot", "title": "Furiosa: A Mad Max Saga | Official Trailer 2024", "channel": "Warner Bros."}
+    ],
+    "note": "нормальный: baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Гладиатор 2", "original_title": "Gladiator II", "year": 2024},
+    "correct": "gladiator2_ot",
+    "candidates": [
+      {"video_id": "gladiator2_ot", "title": "Gladiator II 2024 Official Trailer", "channel": "Paramount"}
+    ],
+    "note": "нормальный: baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Злая", "original_title": "Wicked", "year": 2024},
+    "correct": "wicked_ot",
+    "candidates": [
+      {"video_id": "wicked_ot", "title": "Wicked 2024 Official Trailer", "channel": "Universal"}
+    ],
+    "note": "нормальный: baseline Hit"
+  },
+  {
+    "film": {"ru_title": "Забвение", "original_title": "Oblivion Rise", "year": 2026},
+    "correct": "oblivion_real26",
+    "candidates": [
+      {"video_id": "wrongyear_01", "title": "Oblivion 2019 Trailer", "channel": "OldUploads"},
+      {"video_id": "wrongyear_02", "title": "Oblivion Classic 2015 Trailer", "channel": "Archive"}
+    ],
+    "note": "miss-ветка: эталон существует, но в пуле только чужой год → baseline None → Miss"
+  },
+  {
+    "film": {"ru_title": "Рассвет", "original_title": "Daybreak", "year": 2025},
+    "correct": "daybreak_real25",
+    "candidates": [
+      {"video_id": "daybreak_wrong", "title": "Daybreak 2010 Trailer", "channel": "RetroTrailers"}
+    ],
+    "note": "miss-ветка: baseline None → Miss"
+  },
+  {
+    "film": {"ru_title": "Малоизвестный артхаус", "original_title": "Obscure Arthouse", "year": 2026},
+    "correct": null,
+    "candidates": [],
+    "note": "NONE-ветка: трейлера не существует, пул пуст → baseline None → Hit"
+  },
+  {
+    "film": {"ru_title": "Тихий фильм", "original_title": "Quiet Film", "year": 2026},
+    "correct": null,
+    "candidates": [
+      {"video_id": "junk_wrongyear", "title": "Quiet Film 2012 Fan Edit", "channel": "FanUploads"}
+    ],
+    "note": "NONE-ветка: только чужой год в пуле → baseline None → Hit"
+  }
+]

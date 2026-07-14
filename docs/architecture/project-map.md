@@ -154,6 +154,7 @@ orientation, которого в per-file docstring нет.
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
 | `scripts/ci_check.py` | Локальный pre-commit/pre-push гейт качества (зеркало CI job) |
+| `scripts/eval_trailers.py` | Eval-harness подбора трейлера: прогон `TrailerStrategy` по frozen golden-set (Hit/Wrong/Miss относительно `correct`, офлайн) + `--record`; deep-dive `testing.md#eval-harness--trailer-selection-139` (#139) |
 | `scripts/hooks.py` | Session-level `PostToolUse`-хук (`on-edit`): ruff check-only на `*.py` + pip-compile-reminder на `requirements*.in` — мгновенный feedback во время агентной сессии, дополняет `ci_check.py`; deep-dive `ci.md#session-hooks` (#281) |
 | `.github/workflows/ci.yml` | Quality job на PR/push (должен зеркалить `ci_check.py`) |
 | `.importlinter` | §II protocol-boundaries как машинный контракт (гейт `imports` в `ci_check`): направление зависимостей + adapter-no-auth; deep-dive `ci.md` (#234) |
@@ -169,7 +170,8 @@ orientation, которого в per-file docstring нет.
 | Слой пайплайна (ядро + контракты) | `src/kinozal_scraper/generic_pipeline.py`, `src/kinozal_scraper/pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
 | Extraction/нормализация по источникам | `src/kinozal_scraper/kinozal_pipeline.py`, `src/kinozal_scraper/steam_pipeline.py`, `src/kinozal_scraper/soldout_pipeline.py`, `src/kinozal_scraper/github_popular_pipeline.py`, `src/kinozal_scraper/github_trending_pipeline.py` | `pipeline.md` |
 | Boundaries (Protocol-границы наружу) | `src/kinozal_scraper/sheets_storage.py` (storage), `src/kinozal_scraper/telegram_notifier.py` / `src/kinozal_scraper/telegram_summarizer.py` (notify) / `src/kinozal_scraper/alerting.py` (канонический дом operator-alerting: маркер `.run/technical_alert_sent` + `report_failures` per-source failure-алерт, #310), `src/kinozal_scraper/gemini_enricher.py` / `src/kinozal_scraper/TelegramChannelSummarizer.py` (Gemini), `src/kinozal_scraper/http_fetch.py` (единый HTML-fetch: curl_cffi + impersonate, обходит Cloudflare TLS-фингерпринт — #217) | `storage.md` · `runtime.md` · `gemini.md` |
-| Утилиты | `src/kinozal_scraper/youtube.py`, `src/kinozal_scraper/text_utils.py`, `src/kinozal_scraper/crypto.py` | — |
+| Подбор трейлера (retrieval → selection) | `src/kinozal_scraper/youtube.py` (retrieval), `src/kinozal_scraper/trailer_strategy.py` (selection: `FilmProfile`/`Candidate`/`TrailerPick` + `TrailerStrategy` Protocol + baseline `FirstResultStrategy`, #139) | `testing.md#eval-harness--trailer-selection-139` |
+| Утилиты | `src/kinozal_scraper/text_utils.py`, `src/kinozal_scraper/crypto.py` | — |
 
 ---
 
