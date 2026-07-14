@@ -65,6 +65,16 @@ class TestFirstResultStrategy(unittest.TestCase):
         pick = strat.pick(film, candidates)
         self.assertEqual(pick.video_id, "first")
 
+    def test_falsy_year_zero_mirrors_prod(self) -> None:
+        # Пришпиливает точное зеркало прода (`if film_year:`): falsy year (0) —
+        # как None — год-фильтр не применяет → первый кандидат, даже с чужим
+        # годом в заголовке. Guard против будущего дрейфа `not year` → `is None`.
+        strat = FirstResultStrategy()
+        film = FilmProfile(ru_title="Ноль", original_title="Zero", year=0)
+        candidates = [Candidate(video_id="first", title="Zero 1999 Trailer")]
+        pick = strat.pick(film, candidates)
+        self.assertEqual(pick.video_id, "first")
+
 
 if __name__ == "__main__":
     unittest.main()

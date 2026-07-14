@@ -59,13 +59,14 @@ class TrailerStrategy(Protocol):
 class FirstResultStrategy:
     """Baseline = текущая прод-логика `_search_youtube`: первый кандидат, чей
     title проходит год-фильтр. Год-правило шарится с продом через общий
-    `title_year_matches` (§II — не переизобретается). При year=None прод год-
-    фильтр не применяет → берётся первый кандидат.
+    `title_year_matches` (§II — не переизобретается). При falsy year (None/0) —
+    как прод (`if film_year:`, youtube.py) — год-фильтр не применяется, берётся
+    первый кандидат (`not year`, а не `year is None`, — точное зеркало прода).
     """
 
     def pick(self, film_profile: FilmProfile, candidates: list[Candidate]) -> TrailerPick:
         year = film_profile.year
         for candidate in candidates:
-            if year is None or title_year_matches(candidate.title, year):
+            if not year or title_year_matches(candidate.title, year):
                 return TrailerPick(candidate.video_id, 1.0, "first year-matching candidate")
         return TrailerPick(None, 0.0, "no year-matching candidate")
