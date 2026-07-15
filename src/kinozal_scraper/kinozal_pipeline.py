@@ -188,9 +188,27 @@ class Kinozal:
             return self._from_mirror(url, primary_exc), _origin(_mirror_url(url))
 
     def fetch_details(self, url: str) -> str:
-        """Fetch a details.php page for genre filtering (#263), sharing the
-        listing's origin→mirror failover. Returns just the HTML — the `Жанр:`
-        field is read from it, no base_url resolution needed."""
+        """Fetch a details.php page for genre filtering (#263), returning just the
+        HTML — the `Жанр:` field is read from it, no base_url resolution needed.
+
+        A healthy run serves the listing from the anonymous kinozal.tv primary, so
+        `url` is a .tv link whose details page shows `Жанр:` anonymously — reuse
+        `fetch_listing`'s anonymous-primary / authenticated-mirror-on-error path.
+
+        But when kinozal.tv is down the listing falls back to the authenticated
+        kinozal.guru mirror (#247), so `url` is a *mirror* link. kinozal.guru gates
+        all HTML behind login (302 → login.php, `docs/architecture/ci.md`), so an
+        anonymous GET of a mirror details page returns HTTP 200 — a login page with
+        no `Жанр:` block. That is a *false success*: it raises no exception, so
+        `fetch_listing`'s except-triggered mirror failover never fires, and the
+        genre filter silently goes blind (every item parses to "" → fail-open →
+        notified, #317). So any mirror-host URL is fetched AUTHENTICATED here.
+        (`_ensure_login` bypasses `_from_mirror`'s `_mirror_enabled` guard, but a
+        mirror-host URL can only exist once the listing was mirror-served — i.e.
+        the mirror is already enabled and logged in — so the guarded case is
+        unreachable in prod; a login failure still degrades visibly via §IV.)"""
+        if urlsplit(url).netloc == _MIRROR_HOST:
+            return fetch_authenticated(self._ensure_login(), url)
         return self.fetch_listing(url)[0]
 
     def fetch_poster(self, url: str) -> bytes:

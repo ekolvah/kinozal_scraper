@@ -454,6 +454,14 @@ and the marker helpers share one canonical home in `alerting.py`.
 > корректный хост у каждого item; dedupe стабилен (ключ — чистый title, host в него не входит →
 > миграция старых `.tv`-строк в Sheet не нужна).
 >
+> **Details-fetch genre-фильтра на mirror-прогонах (#317):** т.к. #247 даёт `.guru`-ссылки, на
+> mirror-днях `item.url` = `kinozal.guru/details.php?...`. `Kinozal.fetch_details` для mirror-host
+> URL идёт через **авторизованную** сессию (как listing), а не анонимным primary: `.guru` гейтит и
+> `details.php` за логином (см. ⚠️ выше), поэтому анонимный GET вернул бы `200` login-страницу без
+> блока `Жанр:` — ложный успех, который except-triggered failover `fetch_listing` не ловит, и
+> genre-фильтр тихо слепнет (`_parse_genre`=="" для всех → fail-open → всё уведомляется). Постеры
+> `/i/poster/` зеркало отдаёт анонимно (verified), поэтому `fetch_poster` этот путь не затрагивает.
+>
 > Сейчас потребитель — production-cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
 > `tests/test_e2e_kinozal_titles.py` станет вторым потребителем после #136 (тест безусловно
 > skip'нут, пока `kinozal.tv` отдаёт 522).
