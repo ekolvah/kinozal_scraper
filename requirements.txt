@@ -76,7 +76,7 @@ gspread==6.2.1
     # via -r requirements.in
 h11==0.16.0
     # via wsproto
-httplib2==0.31.2
+httplib2==0.32.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
