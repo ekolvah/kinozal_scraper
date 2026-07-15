@@ -1427,6 +1427,55 @@ class TestKinozalFacade(unittest.TestCase):
             html = Kinozal("u", "p").fetch_details("https://kinozal.tv/details.php?id=1")
         self.assertEqual(html, mirror_html)
 
+    def test_fetch_details_mirror_url_authenticates(self) -> None:
+        # #317: a mirror-host (kinozal.guru) details URL fetched anonymously returns
+        # HTTP 200 with the `Жанр:` block stripped (kinozal.guru gates HTML behind
+        # login → 302 login.php, ci.md:435) — a false success that fetch_listing's
+        # exception-triggered failover never corrects, silently blinding the genre
+        # filter. fetch_details MUST authenticate for mirror-host URLs.
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        url = "https://kinozal.guru/details.php?id=1"
+        stripped = "<html><body>login required</body></html>"  # no <b>Жанр:</b>
+        genre_html = _details_html("Hidden objects")
+        session = unittest.mock.Mock()
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=stripped
+            ) as fetch_html_mock,
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=session),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=genre_html
+            ) as auth_mock,
+        ):
+            html = Kinozal("u", "p").fetch_details(url)
+        self.assertEqual(html, genre_html)
+        auth_mock.assert_called_once_with(session, url)
+        fetch_html_mock.assert_not_called()  # authenticated path skips the anon GET
+
+    def test_fetch_details_origin_url_stays_anonymous(self) -> None:
+        # Guard: a healthy kinozal.tv details URL is fetched anonymously (the .tv
+        # page shows `Жанр:` to anonymous users) — no login, no fetch_authenticated,
+        # so the healthy path never pays for a mirror login.
+        from kinozal_scraper.kinozal_pipeline import Kinozal
+
+        url = "https://kinozal.tv/details.php?id=1"
+        page = _details_html("драма")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=page
+            ) as fetch_html_mock,
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as login_mock,
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_authenticated"
+            ) as auth_mock,
+        ):
+            html = Kinozal("u", "p").fetch_details(url)
+        self.assertEqual(html, page)
+        fetch_html_mock.assert_called_once()
+        login_mock.assert_not_called()
+        auth_mock.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
