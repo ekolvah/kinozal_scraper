@@ -28,8 +28,15 @@ import json
 import re
 import subprocess
 import sys
+import time
 
 ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
+# GitHub computes closingIssuesReferences asynchronously after `gh pr create`, so
+# the first read races and can report empty even for a correct `Closes #N` body
+# (observed dogfooding this script on PR #321). Poll a few times before declaring
+# the link broken — otherwise the §IV guard fires false-positive on every PR.
+LINKAGE_ATTEMPTS = 5
+LINKAGE_DELAY_S = 2.0
 # Placeholder line from pull_request_template.md: `Closes #`, `Closes #999`,
 # `Closes #320 and …`. Anchored to line start (MULTILINE) so it never rewrites a
 # `#N` mid-sentence; scoped to `Closes …` so a legitimate second `Refs #other`
@@ -104,6 +111,18 @@ def _closing_refs_json(url: str) -> str:
     return result.stdout or "{}"
 
 
+def _linkage_confirmed(url: str) -> bool:
+    """Poll `closingIssuesReferences` until it reports a link (or attempts run out).
+
+    Tolerates GitHub's async computation of the link after PR creation."""
+    for attempt in range(LINKAGE_ATTEMPTS):
+        if has_closing_reference(_closing_refs_json(url)):
+            return True
+        if attempt < LINKAGE_ATTEMPTS - 1:
+            time.sleep(LINKAGE_DELAY_S)
+    return False
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Open a PR that auto-closes its issue (#320).")
     parser.add_argument("--title", required=True)
@@ -135,7 +154,7 @@ def main(argv: list[str] | None = None) -> None:
                 body = handle.read()
         url = _create_pr(ns.title, ensure_closes_line(body, n))
 
-    if not has_closing_reference(_closing_refs_json(url)):
+    if not _linkage_confirmed(url):
         print(
             f"error: PR {url} created but issue #{n} is NOT linked "
             f"(closingIssuesReferences empty) — merge will not close it. "

@@ -83,11 +83,19 @@ class _GhDispatcher:
     каким body вызваны), не трогая сеть."""
 
     def __init__(
-        self, *, branch: str, existing_pr: dict[str, Any] | None, refs_empty: bool
+        self,
+        *,
+        branch: str,
+        existing_pr: dict[str, Any] | None,
+        refs_empty_reads: int = 0,
     ) -> None:
+        # `refs_empty_reads` — сколько ПЕРВЫХ чтений closingIssuesReferences вернут
+        # пусто до непустого (моделирует eventual-consistency GitHub после create,
+        # пойманную dogfood'ом PR #321). Большое число = линковка так и не появилась.
         self.branch = branch
         self.existing_pr = existing_pr
-        self.refs_empty = refs_empty
+        self.refs_empty_reads = refs_empty_reads
+        self._refs_reads = 0
         self.calls: list[list[str]] = []
 
     def __call__(
@@ -103,7 +111,9 @@ class _GhDispatcher:
         if cmd[:3] == ["gh", "pr", "view"] and "--json" in cmd:
             fields = cmd[cmd.index("--json") + 1]
             if "closingIssuesReferences" in fields:
-                refs = [] if self.refs_empty else [{"number": 320, "url": "https://x/320"}]
+                self._refs_reads += 1
+                empty = self._refs_reads <= self.refs_empty_reads
+                refs = [] if empty else [{"number": 320, "url": "https://x/320"}]
                 return done(0, json.dumps({"closingIssuesReferences": refs}))
             # existing-PR probe (`--json url,body`)
             if self.existing_pr is None:
@@ -123,9 +133,10 @@ class TestMainVerification:
     def test_exits_1_when_linkage_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # PR создан, но closingIssuesReferences пусто → видимый сбой (§IV) с PR URL.
-        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty=True)
+        # Линковка так и не появилась (все чтения пусты) → видимый сбой (§IV) с PR URL.
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=99)
         monkeypatch.setattr(subprocess, "run", disp)
+        monkeypatch.setattr("time.sleep", lambda *_: None)  # не ждём реальный backoff
         with pytest.raises(SystemExit) as exc:
             main(["--title", "T"])
         assert exc.value.code == 1
@@ -133,12 +144,27 @@ class TestMainVerification:
         assert "999" in err  # PR URL в сообщении
         assert "#320" in err  # remediation указывает issue
 
+    def test_retries_linkage_until_populated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Регресс на dogfood PR #321: GitHub считает closingIssuesReferences
+        # асинхронно после create — первое чтение пусто, но линковка КОРРЕКТНА.
+        # main() должен опросить повторно, не падать exit 1 на первой гонке.
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=1)
+        monkeypatch.setattr(subprocess, "run", disp)
+        monkeypatch.setattr("time.sleep", lambda *_: None)
+        main(["--title", "T"])  # не должно бросить SystemExit
+        refs_reads = sum(
+            1
+            for c in disp.calls
+            if c[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in c
+        )
+        assert refs_reads >= 2, "линковка должна перечитываться после пустого первого чтения"
+
     def test_reuses_existing_pr_and_fixes_linkage(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Повторный запуск: PR для ветки уже есть, body без линкера → edit, НЕ create.
         disp = _GhDispatcher(
             branch="issue-320-x",
             existing_pr={"url": "https://x/pull/999", "body": "## Summary\n\nDid it.\n"},
-            refs_empty=False,
+            refs_empty_reads=0,
         )
         monkeypatch.setattr(subprocess, "run", disp)
         main(["--title", "T"])
@@ -149,7 +175,7 @@ class TestMainVerification:
         assert any("Closes #320" in part for part in edit_cmd)
 
     def test_exits_2_for_non_issue_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        disp = _GhDispatcher(branch="feature/x", existing_pr=None, refs_empty=False)
+        disp = _GhDispatcher(branch="feature/x", existing_pr=None)
         monkeypatch.setattr(subprocess, "run", disp)
         with pytest.raises(SystemExit) as exc:
             main(["--title", "T"])
