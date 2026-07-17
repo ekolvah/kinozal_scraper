@@ -25,6 +25,7 @@ from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier, TelegramNotifier
 from kinozal_scraper.text_utils import original_title
+from kinozal_scraper.trailer_strategy import FilmProfile
 
 logger = logging.getLogger(__name__)
 
@@ -53,22 +54,24 @@ def _excluded_genres() -> set[str]:
     return {g.strip().lower() for g in raw.split(";") if g.strip()}
 
 
-def _parse_genre(details_html: str) -> str:
-    """Read the `Жанр:` value off a kinozal details page (#263).
+def _parse_labeled_field(details_html: str, label: str) -> str:
+    """Read a `<b>{label}:</b> … <br>` field's visible text off a kinozal details
+    page (#263 for `Жанр:`, generalised in #140 for каст/режиссёр/описание).
 
-    Real markup (verified against the live page): the value follows the
-    `<b>Жанр:</b>` label as tag-wrapped links/spans
-    (`<span class="lnks_tobrs">Hidden objects</span>`), terminated by a `<br>`,
-    and may be multi-valued (comma-separated). We collect the *visible text* of
-    the siblings up to the `<br>` — `str(sibling)` would serialize raw HTML for a
-    tag-wrapped value, and `next_sibling` alone is just the whitespace text node.
-    Returns '' if the field is absent (caller treats '' as unknown → keep)."""
+    Real markup (verified against the live page): the value follows the `<b>`
+    label as tag-wrapped links/spans (`<span class="lnks_tobrs">…</span>`) or a
+    bare text node, sits after a whitespace node, and is terminated by the next
+    `<br>` or `<b>`. We collect the *visible text* of the siblings up to that
+    terminator — `str(sibling)` would serialize raw HTML for a tag-wrapped value,
+    and `next_sibling` alone is just the whitespace text node. `label` is matched
+    by prefix (`startswith`), so pass it without the trailing colon (`"Жанр"`).
+    Returns '' if the field is absent (caller decides what '' means)."""
     soup = BeautifulSoup(details_html, "html.parser")
-    for label in soup.find_all("b"):
-        if not label.get_text(strip=True).startswith("Жанр"):
+    for b in soup.find_all("b"):
+        if not b.get_text(strip=True).startswith(label):
             continue
         parts: list[str] = []
-        for sib in label.next_siblings:
+        for sib in b.next_siblings:
             if getattr(sib, "name", None) in ("br", "b"):
                 break
             text = sib.get_text(" ", strip=True) if isinstance(sib, Tag) else str(sib).strip()
@@ -76,6 +79,73 @@ def _parse_genre(details_html: str) -> str:
                 parts.append(text)
         return " ".join(parts).strip()
     return ""
+
+
+def _parse_genre(details_html: str) -> str:
+    """`Жанр:` value off a details page — thin wrapper over the shared
+    `_parse_labeled_field` (§II — one sibling-walk, not four copies). Caller
+    treats '' as unknown → keep (#263)."""
+    return _parse_labeled_field(details_html, "Жанр")
+
+
+def _parse_details_metadata(details_html: str) -> dict[str, Any]:
+    """Assemble the trailer-selection metadata off a kinozal details page (#140):
+    каст (`В ролях:`) / режиссёр (`Режиссер:`) / жанр (`Жанр:`) / описание
+    (`О фильме:`), all via the shared `_parse_labeled_field`. `cast` is split on
+    commas like a multi-valued genre; a missing field yields ''/[] (not an error)."""
+    cast_raw = _parse_labeled_field(details_html, "В ролях")
+    return {
+        "cast": [c.strip() for c in cast_raw.split(",") if c.strip()],
+        "director": _parse_labeled_field(details_html, "Режиссер"),
+        "genre": _parse_genre(details_html),
+        "description": _parse_labeled_field(details_html, "О фильме"),
+    }
+
+
+def build_film_profile(item: NormalizedItem, fetcher: Any) -> FilmProfile:
+    """Best-effort сбор `FilmProfile` из details.php для подбора трейлера (#140).
+
+    ru_title = clean title, original_title = 2-й ` / `-сегмент (или clean, когда
+    отдельного оригинала нет — тогда retrieval схлопнёт union в один запрос), year
+    как в `enrich_with_trailer`. Метаданные (каст/режиссёр/жанр/описание) тянутся
+    через `fetcher.fetch_details` (наследует origin→mirror failover).
+
+    §IV-деградация: сбой фетча/парса → профиль на title+year с пустыми метаданными
+    + WARNING, пайплайн НЕ падает. Успешный фетч, из которого не распарсилось НИ
+    одного поля (каст+режиссёр+описание) → отдельный WARNING-tripwire: это дрейф
+    селектора, а не пустой фильм — не тихий no-op, который молча ослабит пред-фильтр
+    #141. НЕ вызывается из прод-пути (`enrich_with_trailer` заморожен до #144) —
+    публичная функция под harness/#144."""
+    clean = item.title.split("(")[0].strip()
+    raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
+    year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
+    year = int(year_match.group(1)) if year_match else None
+    orig = original_title(raw_for_year) or clean
+    try:
+        meta = _parse_details_metadata(fetcher.fetch_details(item.url))
+    except Exception as exc:  # noqa: BLE001 — best-effort: details-fetch/parse degrades to title+year + WARNING (§IV), never crashes the pipeline
+        logger.warning(
+            "film-profile details fetch failed for %r: %s — degrading to title+year",
+            item.title,
+            exc,
+            exc_info=True,
+        )
+        return FilmProfile(ru_title=clean, original_title=orig, year=year)
+    if not (meta["cast"] or meta["director"] or meta["description"]):
+        logger.warning(
+            "film-profile details for %r fetched OK but parsed 0 metadata fields "
+            "(selector drift?) — profile on title+year only",
+            item.title,
+        )
+    return FilmProfile(
+        ru_title=clean,
+        original_title=orig,
+        year=year,
+        cast=meta["cast"],
+        director=meta["director"],
+        genre=meta["genre"],
+        description=meta["description"],
+    )
 
 
 def _genre_excluded(genre_raw: str, excluded: set[str]) -> bool:

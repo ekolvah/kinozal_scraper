@@ -91,6 +91,24 @@ Telegram HTML message. Available template variables:
 ```
 Renders as: clickable film title → kinozal page, then "Trailer" → YouTube.
 
+## Trailer retrieval & film profile (#140, эпик трейлеров)
+
+Эпик разводит **retrieval** (`film → list[Candidate]`) и **selection**
+(`(profile, candidates) → pick`, `trailer_strategy.py`, #139/#141/#144). Слой data-prep:
+
+- `youtube.search_candidates(profile)` (`youtube.py`) — пул кандидатов = **union**
+  запроса по RU + оригинальному названию, дедуп по `video_id`, **без** year/title-фильтра
+  (год отсеивает selection, не retrieval). RU-трейлер обязан быть в пуле, когда он есть
+  (#315 — retrieval breadth). Сбой одной ветки union не роняет пул (§IV best-effort).
+  Общий retrieval переиспользует harness `scripts/eval_trailers.py --record` (§II).
+- `build_film_profile(item, fetcher)` (`kinozal_pipeline.py`) — best-effort сбор
+  `FilmProfile` (каст/режиссёр/жанр/описание) с `details.php` через общий
+  `_parse_labeled_field` (тот же sibling-walk, что `_parse_genre`). Сбой фетча/парса →
+  деградация до title+year + WARNING; фетч ОК с нулём полей → WARNING-tripwire (§IV).
+
+**Прод-путь ещё не подключён:** `enrich_with_trailer` (текущий `get_trailer_url` →
+первый url) заморожен; композиция strategy + fallback-цепочка документируется в #144.
+
 ## extract_from_* contracts
 
 - Take in-memory payload (list of dicts for JSON, HTML string for HTML)
