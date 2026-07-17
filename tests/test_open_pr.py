@@ -88,6 +88,7 @@ class _GhDispatcher:
         branch: str,
         existing_pr: dict[str, Any] | None,
         refs_empty_reads: int = 0,
+        create_fails: bool = False,
     ) -> None:
         # `refs_empty_reads` — сколько ПЕРВЫХ чтений closingIssuesReferences вернут
         # пусто до непустого (моделирует eventual-consistency GitHub после create,
@@ -95,6 +96,7 @@ class _GhDispatcher:
         self.branch = branch
         self.existing_pr = existing_pr
         self.refs_empty_reads = refs_empty_reads
+        self.create_fails = create_fails
         self._refs_reads = 0
         self.calls: list[list[str]] = []
 
@@ -120,6 +122,8 @@ class _GhDispatcher:
                 return done(1, "")  # no PR for branch
             return done(0, json.dumps(self.existing_pr))
         if cmd[:3] == ["gh", "pr", "create"]:
+            if self.create_fails:
+                return done(1, "")  # gh pr create ненулевой exit
             return done(0, "https://github.com/ekolvah/kinozal_scraper/pull/999\n")
         if cmd[:3] == ["gh", "pr", "edit"]:
             return done(0, "")
@@ -173,6 +177,18 @@ class TestMainVerification:
         assert any(c.startswith("gh pr edit") for c in joined), "линковка чинится через edit"
         edit_cmd = next(c for c in disp.calls if c[:3] == ["gh", "pr", "edit"])
         assert any("Closes #320" in part for part in edit_cmd)
+
+    def test_exits_1_when_create_fails(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # `gh pr create` упал (нет upstream / уже есть PR / сеть) → видимый exit 1,
+        # не тихое продолжение к чтению линковки по пустому url.
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, create_fails=True)
+        monkeypatch.setattr(subprocess, "run", disp)
+        with pytest.raises(SystemExit) as exc:
+            main(["--title", "T"])
+        assert exc.value.code == 1
+        assert "create" in capsys.readouterr().err.lower()
 
     def test_exits_2_for_non_issue_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         disp = _GhDispatcher(branch="feature/x", existing_pr=None)
