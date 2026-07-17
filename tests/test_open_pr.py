@@ -17,6 +17,7 @@ import subprocess
 from typing import Any
 
 import pytest
+
 from scripts.open_pr import (
     ensure_closes_line,
     has_closing_reference,
