@@ -95,7 +95,18 @@ def _parse_film(raw: Any, where: str) -> FilmProfile:
     year = raw["year"]
     if year is not None and not isinstance(year, int):
         raise GoldenSetError(f"{where}.film: 'year' must be int or null, got {type(year).__name__}")
-    return FilmProfile(ru_title=raw["ru_title"], original_title=raw["original_title"], year=year)
+    cast = raw.get("cast", [])
+    if not isinstance(cast, list):
+        raise GoldenSetError(f"{where}.film: 'cast' must be a list, got {type(cast).__name__}")
+    return FilmProfile(
+        ru_title=raw["ru_title"],
+        original_title=raw["original_title"],
+        year=year,
+        cast=cast,
+        director=raw.get("director", ""),
+        genre=raw.get("genre", ""),
+        description=raw.get("description", ""),
+    )
 
 
 def _parse_candidates(raw: Any, where: str) -> list[Candidate]:
@@ -186,40 +197,21 @@ def _require_api_key() -> str:
     return key
 
 
-def _search_candidates(youtube: Any, film: FilmProfile) -> list[dict[str, str]]:
-    title = film.original_title or film.ru_title
-    query = f"{title} {film.year} trailer" if film.year else f"{title} trailer"
-    response = (
-        youtube.search()
-        .list(q=query, part="id,snippet", maxResults=5, type="video", videoDuration="short")
-        .execute()
-    )
-    out: list[dict[str, str]] = []
-    for item in response.get("items", []):
-        if item.get("id", {}).get("kind") != "youtube#video":
-            continue
-        snippet = item.get("snippet", {})
-        out.append(
-            {
-                "video_id": item["id"]["videoId"],
-                "title": snippet.get("title", ""),
-                "channel": snippet.get("channelTitle", ""),
-                "description": snippet.get("description", ""),
-                "published_at": snippet.get("publishedAt", ""),
-            }
-        )
-    return out
-
-
 def _record(golden_path: str | Path) -> int:
     key = _require_api_key()
     cases = load_golden_set(golden_path)  # валидируем перед перезаписью
+    from dataclasses import asdict
+
     from googleapiclient.discovery import build
+
+    # §II: тот же union-retrieval, что и прод/будущая композиция — не вторая копия
+    # query-build+snippet-map (был `_search_candidates`). RU попадает в записанный пул.
+    from kinozal_scraper.youtube import search_candidates
 
     youtube = build("youtube", "v3", developerKey=key)
     raw = json.loads(Path(golden_path).read_text(encoding="utf-8"))
     for entry, case in zip(raw, cases, strict=True):
-        entry["candidates"] = _search_candidates(youtube, case.film)
+        entry["candidates"] = [asdict(c) for c in search_candidates(youtube, case.film)]
     Path(golden_path).write_text(
         json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

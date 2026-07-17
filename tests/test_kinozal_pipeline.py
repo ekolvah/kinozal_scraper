@@ -21,6 +21,7 @@ from kinozal_scraper.sheets_storage import InMemoryStorage
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
 from kinozal_scraper.text_utils import original_title
 from kinozal_scraper.text_utils import title_year_matches as _title_year_matches
+from kinozal_scraper.trailer_strategy import FilmProfile
 
 # ── minimal synthetic HTML matching kinozal_movies row_selector ──────────────
 
@@ -1134,18 +1135,26 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
 # ── genre exclusion filter (issue #263) ───────────────────────────────────────
 
 
-def _details_html(genre: str) -> str:
+def _details_html(genre: str, *, cast: str = "", director: str = "", description: str = "") -> str:
     """Synthetic kinozal details page mirroring the REAL markup (verified against
     the live page): the `Жанр:` value is tag-wrapped (`<span class="lnks_tobrs">`),
     NOT a bare text node, sits after a whitespace node, and is terminated by <br>.
-    A parser reading `next_sibling`/`str()` naively would get '' or raw HTML here."""
-    return (
-        "<html><body><h2>"
-        "<b>Год выпуска:</b> 2024<br>"
-        f'<b>Жанр:</b> <span class="lnks_tobrs">{genre}</span><br>'
-        "<b>Разработчик:</b> X"
-        "</h2></body></html>"
-    )
+    A parser reading `next_sibling`/`str()` naively would get '' or raw HTML here.
+
+    #140 extends the same tag-wrapped `<b>Label:</b> … <br>` shape to
+    cast (`В ролях:`) / director (`Режиссер:`) / plot (`О фильме:`) so the shared
+    `_parse_labeled_field` is exercised against markup of the same family as
+    `Жанр:` — no parallel saved-HTML fixture."""
+    rows = ["<b>Год выпуска:</b> 2024<br>"]
+    if director:
+        rows.append(f'<b>Режиссер:</b> <span class="person">{director}</span><br>')
+    rows.append(f'<b>Жанр:</b> <span class="lnks_tobrs">{genre}</span><br>')
+    if cast:
+        rows.append(f'<b>В ролях:</b> <span class="person">{cast}</span><br>')
+    if description:
+        rows.append(f"<b>О фильме:</b> {description}<br>")
+    rows.append("<b>Разработчик:</b> X")
+    return "<html><body><h2>" + "".join(rows) + "</h2></body></html>"
 
 
 # Listing with two distinct items → two details pages keyed by id.
@@ -1199,6 +1208,114 @@ class TestGenreMatching(unittest.TestCase):
 
     def test_not_excluded(self) -> None:
         self.assertFalse(kp._genre_excluded("драма", {"hidden objects"}))
+
+
+# ── film-profile data prep (#140) ─────────────────────────────────────────────
+
+
+class TestParseLabeledField(unittest.TestCase):
+    """`_parse_labeled_field` — общий sibling-walk для `<b>Label:</b> … <br>`,
+    из которого `_parse_genre` вынесен (§II — не 4 копии br/b-терминации)."""
+
+    def test_reads_tag_wrapped_value(self) -> None:
+        html = _details_html("боевик", cast="Дензел Вашингтон")
+        self.assertEqual(kp._parse_labeled_field(html, "В ролях"), "Дензел Вашингтон")
+
+    def test_missing_label_returns_empty(self) -> None:
+        self.assertEqual(kp._parse_labeled_field(_details_html("боевик"), "В ролях"), "")
+
+
+class TestParseDetailsMetadata(unittest.TestCase):
+    """`_parse_details_metadata` собирает каст/режиссёра/жанр/описание с details.php
+    через общий `_parse_labeled_field`."""
+
+    def test_parses_cast_director_description(self) -> None:
+        html = _details_html(
+            "боевик",
+            cast="Дензел Вашингтон, Дакота Фаннинг",
+            director="Тони Скотт",
+            description="Бывший агент защищает девочку.",
+        )
+        meta = kp._parse_details_metadata(html)
+        self.assertEqual(meta["director"], "Тони Скотт")
+        self.assertEqual(meta["genre"], "боевик")
+        self.assertEqual(meta["description"], "Бывший агент защищает девочку.")
+        self.assertIn("Дензел Вашингтон", meta["cast"])
+        self.assertIn("Дакота Фаннинг", meta["cast"])
+
+    def test_missing_field_yields_empty(self) -> None:
+        # Отсутствие ОДНОГО поля при наличии других — норма (пусто, без исключения).
+        meta = kp._parse_details_metadata(_details_html("боевик", director="Тони Скотт"))
+        self.assertEqual(meta["cast"], [])
+        self.assertEqual(meta["director"], "Тони Скотт")
+
+
+class _StubFetcher:
+    def __init__(self, html: str = "", exc: Exception | None = None) -> None:
+        self._html = html
+        self._exc = exc
+
+    def fetch_details(self, url: str) -> str:
+        if self._exc is not None:
+            raise self._exc
+        return self._html
+
+
+class TestBuildFilmProfile(unittest.TestCase):
+    """`build_film_profile(item, fetcher)` — best-effort сбор `FilmProfile` из
+    details.php; деградация до title+year при сбое (§IV видимый), без падения."""
+
+    def _item(self, raw: str) -> NormalizedItem:
+        return NormalizedItem(
+            dedupe_key=raw,
+            title=_kinozal_title(raw),
+            source_id="kinozal_movies",
+            url="https://kinozal.tv/details.php?id=1",
+            raw={"kinozal_raw_title": raw},
+        )
+
+    def test_full_profile_on_success(self) -> None:
+        html = _details_html(
+            "боевик",
+            cast="Дензел Вашингтон",
+            director="Тони Скотт",
+            description="Сюжет.",
+        )
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        profile = kp.build_film_profile(item, _StubFetcher(html=html))
+        self.assertIsInstance(profile, FilmProfile)
+        self.assertEqual(profile.ru_title, "Гнев")
+        self.assertEqual(profile.original_title, "Man on Fire")
+        self.assertEqual(profile.year, 2026)
+        self.assertEqual(profile.director, "Тони Скотт")
+        self.assertEqual(profile.genre, "боевик")
+        self.assertEqual(profile.description, "Сюжет.")
+        self.assertIn("Дензел Вашингтон", profile.cast)
+
+    def test_degrades_to_title_year_on_fetch_failure(self) -> None:
+        # §IV: фетч упал → профиль на title+year, пустые метаданные, WARNING, без raise.
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
+            profile = kp.build_film_profile(item, _StubFetcher(exc=RuntimeError("520")))
+        self.assertEqual(profile.ru_title, "Гнев")
+        self.assertEqual(profile.original_title, "Man on Fire")
+        self.assertEqual(profile.year, 2026)
+        self.assertEqual(profile.cast, [])
+        self.assertEqual(profile.director, "")
+        self.assertEqual(profile.genre, "")
+        self.assertEqual(profile.description, "")
+        self.assertEqual(cm.records[-1].levelno, logging.WARNING)
+
+    def test_warns_when_fetch_ok_but_all_metadata_empty(self) -> None:
+        # §IV-tripwire (AC #3a): фетч ОК, но 0 полей (дрейф селектора) → видимый
+        # WARNING, профиль всё равно строится на title+year.
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        blank = "<html><body><h2>no labels here</h2></body></html>"
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
+            profile = kp.build_film_profile(item, _StubFetcher(html=blank))
+        self.assertEqual(profile.original_title, "Man on Fire")
+        self.assertEqual(profile.cast, [])
+        self.assertEqual(cm.records[-1].levelno, logging.WARNING)
 
 
 class TestExcludedGenresEnv(unittest.TestCase):
