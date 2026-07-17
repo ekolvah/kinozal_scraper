@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import time
+from typing import Any
 
 ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 # GitHub computes closingIssuesReferences asynchronously after `gh pr create`, so
@@ -81,7 +82,7 @@ def _current_branch() -> str:
     return (result.stdout or "").strip()
 
 
-def _existing_pr(branch: str) -> dict | None:
+def _existing_pr(branch: str) -> dict[str, Any] | None:
     """The open PR for `branch` (url+body), or None if there is none yet.
 
     Makes the whole script idempotent: a re-run after a network blip or a
@@ -89,7 +90,7 @@ def _existing_pr(branch: str) -> dict | None:
     result = _run(["gh", "pr", "view", branch, "--json", "url,body"])
     if result.returncode != 0:
         return None
-    loaded: dict = json.loads(result.stdout or "{}")
+    loaded: dict[str, Any] = json.loads(result.stdout or "{}")
     return loaded
 
 
