@@ -42,12 +42,25 @@ def link_required_but_missing(branch: str, refs_json: str) -> bool:
 
 
 def _refs_json(pr: str) -> str:
+    """Fetch `closingIssuesReferences` JSON for the PR, or exit 2 on a `gh` failure.
+
+    Distinct exit 2 (infra/tool failure), NOT the empty `"{}"` fallback: as a
+    required merge-blocking check, a transient `gh` error (auth/rate-limit/network)
+    must not be misattributed as a real missing-linkage (exit 1) — that would fail
+    the PR with a false diagnosis (§IV)."""
     result = subprocess.run(
         ["gh", "pr", "view", pr, "--json", "closingIssuesReferences"],
         text=True,
         capture_output=True,
         encoding="utf-8",
     )
+    if result.returncode != 0:
+        print(
+            f"error: `gh pr view {pr}` failed (rc={result.returncode}): "
+            f"{(result.stderr or '').strip()} — cannot verify PR→issue link.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return result.stdout or "{}"
 
 

@@ -57,3 +57,18 @@ class TestMain:
     def test_passes_for_non_issue_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._stub_refs(monkeypatch, '{"closingIssuesReferences":[]}')
         main(["--branch", "dependabot/pip/x", "--pr", "500"])  # гейт неприменим → ok
+
+    def test_gh_failure_distinct_from_missing_link(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Транзиентный сбой `gh` (auth/rate-limit) НЕ должен маскироваться под
+        # «linkage empty» — иначе required-check валит PR с ложным диагнозом (§IV).
+        # Отдельный exit 2 (инфра-сбой) ≠ exit 1 (реальное нарушение инварианта).
+        def fake_run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 1, "", "gh: could not resolve host")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        with pytest.raises(SystemExit) as exc:
+            main(["--branch", "issue-320-x", "--pr", "321"])
+        assert exc.value.code == 2
+        assert "gh" in capsys.readouterr().err.lower()
