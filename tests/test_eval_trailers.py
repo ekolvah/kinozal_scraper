@@ -118,6 +118,47 @@ class TestLoadGoldenSet(unittest.TestCase):
             load_golden_set(self._write([case]))
 
 
+# ── #140: golden-loader несёт метаданные FilmProfile ──────────────────────────
+
+
+class TestParseFilmMetadata(unittest.TestCase):
+    def _write(self, data: Any) -> str:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def test_carries_metadata_fields_with_defaults(self) -> None:
+        case = {
+            "film": {
+                "ru_title": "Гнев",
+                "original_title": "Man on Fire",
+                "year": 2026,
+                "cast": ["Дензел Вашингтон"],
+                "director": "Тони Скотт",
+                "genre": "боевик",
+                "description": "Сюжет.",
+            },
+            "correct": "abc",
+            "candidates": [{"video_id": "abc", "title": "Гнев 2026 трейлер"}],
+            "note": "",
+        }
+        film = load_golden_set(self._write([case]))[0].film
+        self.assertEqual(film.cast, ["Дензел Вашингтон"])
+        self.assertEqual(film.director, "Тони Скотт")
+        self.assertEqual(film.genre, "боевик")
+        self.assertEqual(film.description, "Сюжет.")
+
+    def test_existing_golden_loads_unchanged(self) -> None:
+        # Записи без новых полей грузятся (backward-compat) с пустыми дефолтами.
+        cases = load_golden_set(GOLDEN_PATH)
+        self.assertTrue(cases)
+        self.assertEqual(cases[0].film.cast, [])
+        self.assertEqual(cases[0].film.director, "")
+
+
 # ── --record: fail-fast без API_KEY ───────────────────────────────────────────
 
 
