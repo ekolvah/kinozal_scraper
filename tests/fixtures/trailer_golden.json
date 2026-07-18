@@ -4,9 +4,10 @@
     "correct": "ru_mof_01",
     "candidates": [
       {"video_id": "eng_mof_01", "title": "Man on Fire 2026 Official Trailer", "channel": "MovieClips", "published_at": "2026-01-10T00:00:00Z"},
-      {"video_id": "eng_mof_02", "title": "Man on Fire 2026 Trailer Breakdown", "channel": "ReactChannel", "published_at": "2026-01-12T00:00:00Z"}
+      {"video_id": "eng_mof_02", "title": "Man on Fire 2026 Trailer Breakdown", "channel": "ReactChannel", "published_at": "2026-01-12T00:00:00Z"},
+      {"video_id": "ru_mof_01", "title": "Гнев 2026 трейлер на русском", "channel": "КиноПоиск", "published_at": "2026-01-11T00:00:00Z"}
     ],
-    "note": "seed: #138 (RU-эталон не в пуле — англ-запрос не выдал русский трейлер; чинит retrieval #140; иллюстративно до --record)"
+    "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)"
   },
   {
     "film": {"ru_title": "Волк", "original_title": "The Wolf", "year": 2025},
@@ -21,9 +22,10 @@
     "film": {"ru_title": "Тень", "original_title": "The Shadow", "year": 2026},
     "correct": "ru_shadow_01",
     "candidates": [
-      {"video_id": "eng_shadow_01", "title": "The Shadow 2026 Teaser Trailer", "channel": "Warner"}
+      {"video_id": "eng_shadow_01", "title": "The Shadow 2026 Teaser Trailer", "channel": "Warner"},
+      {"video_id": "ru_shadow_01", "title": "Тень 2026 трейлер", "channel": "Кинопрокат"}
     ],
-    "note": "seed: #138 (только англ в пуле, RU-эталон отсутствует; чинит retrieval #140; иллюстративно до --record)"
+    "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)"
   },
   {
     "film": {"ru_title": "Хищник", "original_title": "Predator", "year": 2025},
@@ -123,5 +125,14 @@
       {"video_id": "junk_wrongyear", "title": "Quiet Film 2012 Fan Edit", "channel": "FanUploads"}
     ],
     "note": "NONE-ветка: только чужой год в пуле → baseline None → Hit"
+  },
+  {
+    "film": {"ru_title": "Ярость", "original_title": "Ярость", "year": 2026, "cast": ["Иван Петров"]},
+    "correct": "ru_fury_cast",
+    "candidates": [
+      {"video_id": "ru_fury_react", "title": "Ярость 2026 трейлер разбор", "channel": "КиноБлог", "description": "мнение о трейлере"},
+      {"video_id": "ru_fury_cast", "title": "Ярость 2026 официальный трейлер", "channel": "Кинопрокат", "description": "В главной роли Иван Петров"}
+    ],
+    "note": "cast tie-break (#141): два RU-кандидата равного языка+года, каст в description различает → эвристика выбирает cast-несущий; измеряет cast-ось harness'ом"
   }
 ]

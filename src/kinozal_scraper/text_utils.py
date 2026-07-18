@@ -11,6 +11,22 @@ def title_year_matches(title: str, film_year: int) -> bool:
     return not title_years or film_year in title_years
 
 
+def normalize_title(s: str) -> str:
+    """Lowercase + collapse non-alphanumeric runs to single spaces for substring
+    title-matching (#141). Keeps Latin, Cyrillic and digits; `Dune: Part Two!` →
+    `dune part two`, `Волк, 2025` → `волк 2025`. Punctuation/case differences
+    between a YouTube title and the film title stop being spurious mismatches."""
+    return re.sub(r"[^0-9a-zа-яё]+", " ", s.lower()).strip()
+
+
+def has_cyrillic(s: str) -> bool:
+    """True if the string contains any Cyrillic letter — the language signal the
+    heuristic pre-filter uses to prefer a Russian trailer over an English one
+    (#141/#315). A cheap proxy for `defaultAudioLanguage`, which is out of the
+    Candidate snapshot (#139)."""
+    return bool(re.search(r"[а-яё]", s, re.IGNORECASE))
+
+
 def original_title(raw: str) -> str:
     """Extract the original (foreign) title from a raw kinozal `@title` (#138).
 

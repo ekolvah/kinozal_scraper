@@ -33,7 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from kinozal_scraper.trailer_strategy import (  # noqa: E402
     Candidate,
     FilmProfile,
-    FirstResultStrategy,
+    HeuristicStrategy,
     TrailerStrategy,
 )
 
@@ -59,9 +59,10 @@ class GoldenCase:
 
 
 def default_strategy() -> TrailerStrategy:
-    """Стратегия «под оценкой». #139 — baseline; #141 сменит на язык-aware, и
-    привязанный к ней known-gap guard (#138-кейсы) станет audible."""
-    return FirstResultStrategy()
+    """Стратегия «под оценкой». #141 — язык-aware `HeuristicStrategy` (был #139
+    baseline `FirstResultStrategy`): язык первичен (RU>EN), каст — вторичный
+    тай-брейк. Привязанный known-gap guard (#138-кейсы) стал audible → инвертирован."""
+    return HeuristicStrategy()
 
 
 def classify(correct: str | None, pick_id: str | None) -> Outcome:

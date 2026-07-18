@@ -13,7 +13,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from kinozal_scraper.text_utils import title_year_matches
+from kinozal_scraper.text_utils import has_cyrillic, normalize_title, title_year_matches
 
 
 @dataclass
@@ -79,3 +79,53 @@ class FirstResultStrategy:
             if not year or title_year_matches(candidate.title, year):
                 return TrailerPick(candidate.video_id, 1.0, "first year-matching candidate")
         return TrailerPick(None, 0.0, "no year-matching candidate")
+
+
+class HeuristicStrategy:
+    """#141: детерминированный language-aware пред-фильтр (без LLM), baseline под
+    будущий AI-picker (#142/#144).
+
+    Отбор в два шага:
+
+    1. **relevance** — кандидат релевантен, если нормализованное `ru_title` ИЛИ
+       `original_title` входит подстрокой в нормализованный title И год совпадает
+       (общий `title_year_matches`, только при truthy year — зеркало прода/baseline).
+    2. **ранжирование** по ключу `(is_ru, cast_hits)`, desc, stable-порядок среди
+       равных: язык **первичен** (#315 — при матче фильма RU>EN), каст в
+       `description` — **вторичный** тай-брейк ВНУТРИ одного языка (EN-реакция с
+       именем актёра в описании не побьёт RU-трейлер). `cast_hits` = сколько первых
+       ≤2 имён каста нашлись строкой в описании.
+
+    Исход: уникальный топ-ранг → уверенный pick (0.9); ≥2 равных топ-ранга → первый
+    по порядку + 0.3 + `ambiguous`-маркер в `reason` (сигнал #144-fallback на LLM,
+    §IV — видимая неоднозначность, не тихий уверенный выбор); ничего не прошло
+    relevance → `TrailerPick(None, 0.0)`."""
+
+    _MAX_CAST = 2
+
+    def pick(self, film_profile: FilmProfile, candidates: list[Candidate]) -> TrailerPick:
+        relevant = [c for c in candidates if self._relevant(film_profile, c)]
+        if not relevant:
+            return TrailerPick(None, 0.0, "no title+year match")
+        cast = [n for n in (normalize_title(x) for x in film_profile.cast[: self._MAX_CAST]) if n]
+        ranked = sorted(relevant, key=lambda c: self._rank(c, cast), reverse=True)
+        best = ranked[0]
+        best_key = self._rank(best, cast)
+        tied = sum(1 for c in relevant if self._rank(c, cast) == best_key)
+        if tied > 1:
+            return TrailerPick(best.video_id, 0.3, f"ambiguous: {tied} candidates share top rank")
+        is_ru, cast_hits = best_key
+        reason = "cast tie-break" if cast_hits else ("ru language" if is_ru else "sole match")
+        return TrailerPick(best.video_id, 0.9, reason)
+
+    def _relevant(self, profile: FilmProfile, candidate: Candidate) -> bool:
+        title = normalize_title(candidate.title)
+        film_titles = {normalize_title(profile.ru_title), normalize_title(profile.original_title)}
+        if not any(t and t in title for t in film_titles):
+            return False
+        return not profile.year or title_year_matches(candidate.title, profile.year)
+
+    def _rank(self, candidate: Candidate, cast: list[str]) -> tuple[int, int]:
+        description = normalize_title(candidate.description)
+        cast_hits = sum(1 for name in cast if name in description)
+        return (int(has_cyrillic(candidate.title)), cast_hits)
