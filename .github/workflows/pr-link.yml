@@ -1,0 +1,43 @@
+name: PR link
+
+# Agent-independent backstop for the #319 defect: a PR from an issue-N branch that
+# closes no issue (empty closingIssuesReferences) stays open after merge. open_pr.py
+# makes the right path cheap at creation; this required check makes it mandatory,
+# regardless of how the PR was created.
+#
+# Own workflow (not a job in ci.yml) so `edited` re-checks a body change — removing
+# `Closes #N` after the check went green would otherwise merge stale-green and
+# re-open the #319 hole — WITHOUT re-running the heavy `quality` suite on every
+# description edit.
+#
+# `edited` is DELIBERATE despite GitHub's guidance to avoid it (it fires on every
+# title/description edit = extra runs). The noise is the accepted price of closing
+# the stale-green hole above — do NOT "optimise" it away, that reopens the gap.
+# The job is cheap (checkout + one `gh pr view`), so the trade-off is net-positive.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  pr-link:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # HEAD_REF/PR_NUMBER via env, NOT inline ${{ }}, so a fork branch name can't
+      # inject into the shell (github.head_ref is attacker-controllable).
+      - name: Verify PR closes its issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python -m scripts.verify_pr_link --branch "$HEAD_REF" --pr "$PR_NUMBER"
