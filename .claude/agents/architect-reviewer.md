@@ -24,13 +24,14 @@ model: opus
 
 ## Что проверять
 
-Ревьюишь план против 6 принципов проекта — **источник истины
+Ревьюишь план против 7 принципов проекта — **источник истины
 `docs/architecture/principles.md`** (прочитай его, не полагайся на память):
 §I Test-First, §II Protocol Boundaries + DI (никаких моков внутренней логики),
 §III Delivery Truthfulness, §IV Visibility Over Silence, §V Root Cause Before Fix,
-§VI Fail-Fast Configuration.
+§VI Fail-Fast Configuration, §VII Simplicity First (минимальный дифф, ничего
+спекулятивного, surgical changes — plan-стадия это **главный гейт** §VII).
 
-Дополнительно ищи:
+Дополнительно ищи (операционализация §VII — переусложнение ловится здесь, до кода):
 - **Scope-creep** — смешение docs/refactor/feature в одном PR; задачи, которые надо вынести.
 - **Work-for-work** — новые скрипты/агенты/абстракции под несуществующую потребность;
   дублирование того, что уже делают `ci_check`, cloud `claude-review`, существующие тесты.

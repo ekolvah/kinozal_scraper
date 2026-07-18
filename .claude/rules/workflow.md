@@ -5,10 +5,10 @@
 Это **канонический дом** операционных процедурных правил проекта (делегирован из
 [`docs/architecture/principles.md §Governance`](../../docs/architecture/principles.md); IA-policy —
 [`docs/architecture/project-map.md`](../../docs/architecture/project-map.md)). **Не добавляй сюда
-контент, не отвечающий на этот вопрос** (формулировки принципов §I–VI — в `principles.md`;
+контент, не отвечающий на этот вопрос** (формулировки принципов §I–VII — в `principles.md`;
 git-запреты — в `.claude/settings.json` `permissions.deny`).
 
-Эти процедурные правила дополняют принципы §I–VI и связывают **наравне** с ними:
+Эти процедурные правила дополняют принципы §I–VII и связывают **наравне** с ними:
 
 1. **Branch creation** — new work happens on `issue-N-<slug>` branches
    created **only** via `python scripts/new_branch.py <name>`. Direct
