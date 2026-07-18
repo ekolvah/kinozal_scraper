@@ -164,6 +164,13 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertLessEqual(pick.confidence, 0.5)
         self.assertIn("ambiguous", pick.reason)
 
+    def test_short_title_not_matched_inside_word(self) -> None:
+        # review #324: word-boundary матч — короткое «Дом» НЕ входит в «Домашний»,
+        # иначе был бы уверенный wrong-pick несвязанного кандидата.
+        film = FilmProfile(ru_title="Дом", original_title="Home", year=2026)
+        cands = [Candidate(video_id="x", title="Домашний питомец 2026 трейлер")]
+        self.assertIsNone(self._pick(film, cands).video_id)
+
     def test_no_year_matches_by_title(self) -> None:
         film = FilmProfile(ru_title="Дюна", original_title="Dune", year=None)
         cands = [Candidate(video_id="d", title="Dune Official Trailer")]
