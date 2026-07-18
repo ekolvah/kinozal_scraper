@@ -142,6 +142,36 @@ it in the same PR.
 run, days after the typo was introduced. Catching it on `python
 pipeline_config.py` (or in ci_check) keeps the feedback loop human-scale.
 
+### VII. Simplicity First
+
+Every change is the **minimum diff that solves the stated task — nothing speculative.**
+No unrequested features, premature abstractions, or error-handling beyond what the task
+needs (auth / payments / security excepted). Heuristic: if the solution could be half its
+length, rewrite it; an abstraction with a single caller is inlined, not introduced.
+
+**Surgical changes:** touch only what the task requires and match the surrounding style;
+do NOT "improve" or refactor adjacent unbroken code inside an unrelated diff. Removing
+dead code is a separate, deliberate unit (one-PR-one-unit,
+[`workflow.md`](../../.claude/rules/workflow.md) #4), not silently widened scope. New
+dependencies / packages / build steps are not added without asking first — prefer stdlib
+and existing repo packages.
+
+Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
+deliberately declines to script (see [`project-map.md`](project-map.md)). It is enforced at
+**plan stage** by the architect-review gate ([`workflow.md`](../../.claude/rules/workflow.md)
+#9), whose reviewer persona reads the goal function from
+[`.claude/rules/mindset.md`](../../.claude/rules/mindset.md); the cloud `Claude code review`
+workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
+
+**Rationale:** over-engineering is a systematic LLM-agent failure mode, cheapest to prevent
+as a standing default in the always-loaded operating context rather than as an after-the-fact
+"simplify" request. More code is more bug/support surface (goal-function priority 1) and more
+dev + runtime tokens (priority 2). The formulation follows official
+[Claude Code best practices](https://code.claude.com/docs/en/best-practices) and Karpathy's
+CLAUDE.md (de-facto industry canon); it is **not** adopted as a third-party plugin/skill
+because that package's own review agent and pre-commit hook would duplicate the existing
+`architect-reviewer` and `ci_check` — duplication instead of reuse (a §VII violation in itself).
+
 ## Development Workflow
 
 The procedural workflow rules (branch creation, PR discipline, labels,
@@ -180,7 +210,7 @@ implementation-detail references — kept short, kept linked, never the source
 of truth on principles.
 
 **Delegation of operational procedures.** This constitution retains the
-**principles §I–VI**, the **Quality Gates**, and this **Governance** section as
+**principles §I–VII**, the **Quality Gates**, and this **Governance** section as
 its canon. The *operational procedural rules* (the former §Development Workflow)
 are delegated to [`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) —
 the always-loaded operational tier in Claude Code's knowledge-carrier hierarchy
@@ -205,4 +235,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 2.2.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-06-13
+**Version**: 2.3.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-07-18

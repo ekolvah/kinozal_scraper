@@ -54,7 +54,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 
 - **Операционные процедурные правила** (workflow) → в `.claude/rules/` **целиком — правило и
   rationale вместе**, не расщепляются (расщепление само воссоздаёт дубль). Старое место → указатель.
-- **Формулировки принципов §I–VI** → канон в [`principles.md`](principles.md), ссылка по номеру
+- **Формулировки принципов §I–VII** → канон в [`principles.md`](principles.md), ссылка по номеру
   (`architect-reviewer.md`, `implement.md`); **нумерацию не трогать**.
 - **Энфорс-факты** (git-запреты) → канон = `.claude/settings.json` `permissions.deny` (+ синхрон-тест
   `tests/test_settings_deny.py`). **Mirror-файлов не создавать** — дубль по определению.
@@ -137,7 +137,7 @@ orientation, которого в per-file docstring нет.
 
 | Файл | На какой вопрос отвечает | Single-responsibility? |
 |---|---|---|
-| `principles.md` | Микс: §I–VI принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `.claude/rules/workflow.md`) | ❌ runtime-принципы + dev-process вместе |
+| `principles.md` | Микс: §I–VII принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `.claude/rules/workflow.md`) | ❌ runtime-принципы + dev-process вместе |
 | `project-map.md` (этот файл) | Какой файл на какой вопрос отвечает + где живёт какое знание (IA-policy) | ✅ |
 | `runtime.md` | Какие пайплайны / Protocols / data-flow | ✅ |
 | `pipeline.md` | Слои, контракты `extract_from_*`, `NormalizedItem` | ✅ |
