@@ -16,10 +16,12 @@ merge — whenever an `issue-N` branch's PR closes no issue, regardless of HOW t
 PR was created. It reuses `open_pr`'s pure `issue_number_from_branch` +
 `has_closing_reference` (no duplicated parsing).
 
-No async-linkage poll (unlike `open_pr._linkage_confirmed`): by the time this job
-checks out, installs Python and runs, GitHub's async `closingIssuesReferences`
-computation (~seconds after PR creation) has long settled — CI startup latency
-covers the race window, so a single read suffices.
+Polls `closingIssuesReferences` (reusing `open_pr`'s attempt/delay budget) rather
+than reading once: GitHub computes the linkage asynchronously after PR creation,
+and on the `opened` event this required check can race ahead of that computation
+on a warm runner — a single read would then false-red a correctly-linked PR and
+block its merge. Betting "CI startup latency covers the window" is a hope, not a
+guarantee; the same poll `open_pr` needs at creation time, the gate needs too.
 """
 
 from __future__ import annotations
@@ -27,8 +29,14 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+import time
 
-from scripts.open_pr import has_closing_reference, issue_number_from_branch
+from scripts.open_pr import (
+    LINKAGE_ATTEMPTS,
+    LINKAGE_DELAY_S,
+    has_closing_reference,
+    issue_number_from_branch,
+)
 
 
 def link_required_but_missing(branch: str, refs_json: str) -> bool:
@@ -64,13 +72,28 @@ def _refs_json(pr: str) -> str:
     return result.stdout or "{}"
 
 
+def _link_missing_after_poll(branch: str, pr: str) -> bool:
+    """True iff `branch` is an issue-N branch whose PR still shows no link after
+    polling. A non-issue branch is N/A → no `gh` call, no poll. Wraps the pure
+    `link_required_but_missing` with re-fetch/backoff to tolerate GitHub's async
+    linkage computation; a `gh` failure inside `_refs_json` still exits 2."""
+    if issue_number_from_branch(branch) is None:
+        return False
+    for attempt in range(LINKAGE_ATTEMPTS):
+        if not link_required_but_missing(branch, _refs_json(pr)):
+            return False
+        if attempt < LINKAGE_ATTEMPTS - 1:
+            time.sleep(LINKAGE_DELAY_S)
+    return True
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="CI gate: PR from issue-N branch must close it.")
     parser.add_argument("--branch", required=True, help="PR head branch (github.head_ref)")
     parser.add_argument("--pr", required=True, help="PR number")
     ns = parser.parse_args(argv)
 
-    if link_required_but_missing(ns.branch, _refs_json(ns.pr)):
+    if _link_missing_after_poll(ns.branch, ns.pr):
         n = issue_number_from_branch(ns.branch)
         print(
             f"error: PR #{ns.pr} from branch {ns.branch!r} does NOT close issue #{n} "

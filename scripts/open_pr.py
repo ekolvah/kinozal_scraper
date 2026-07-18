@@ -29,7 +29,7 @@ import re
 import subprocess
 import sys
 import time
-from typing import Any
+from typing import Any, cast
 
 ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 # GitHub computes closingIssuesReferences asynchronously after `gh pr create`, so
@@ -38,11 +38,6 @@ ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 # the link broken — otherwise the §IV guard fires false-positive on every PR.
 LINKAGE_ATTEMPTS = 5
 LINKAGE_DELAY_S = 2.0
-# Placeholder line from pull_request_template.md: `Closes #`, `Closes #999`,
-# `Closes #320 and …`. Anchored to line start (MULTILINE) so it never rewrites a
-# `#N` mid-sentence; scoped to `Closes …` so a legitimate second `Refs #other`
-# cross-ref is left intact.
-CLOSES_LINE_RE = re.compile(r"^Closes #\d*.*$", re.MULTILINE)
 
 
 def issue_number_from_branch(branch: str) -> int | None:
@@ -52,25 +47,32 @@ def issue_number_from_branch(branch: str) -> int | None:
 
 
 def ensure_closes_line(body: str, n: int) -> str:
-    """Return `body` guaranteed to carry exactly `Closes #n` (idempotent).
+    """Return `body` guaranteed to carry a `Closes #n` line (idempotent).
 
-    Rewrites the template's `Closes …` placeholder line (bare or wrong number);
-    if there is none, prepends `Closes #n`."""
+    The script authors the body, so it only ever ADDS its own canonical line — it
+    never rewrites existing text. That deliberately drops the old regex placeholder
+    surgery: no chance of clobbering a legitimate `Closes #other` (multi-issue PR)
+    or swallowing a line tail. A bare `Closes #` template placeholder is left as-is
+    — GitHub ignores a keyword with no number, so it is inert, not a false link."""
     target = f"Closes #{n}"
-    if CLOSES_LINE_RE.search(body):
-        return CLOSES_LINE_RE.sub(target, body, count=1)
-    if target in body:
+    if any(line.strip() == target for line in body.splitlines()):
         return body
     return f"{target}\n\n{body}" if body else f"{target}\n"
 
 
 def has_closing_reference(view_json: str) -> bool:
-    """True iff `gh pr view --json closingIssuesReferences` reports ≥1 link.
+    """True iff `closingIssuesReferences` reports ≥1 link.
 
-    CLI shape (verified live) is a FLAT array — `{"closingIssuesReferences":
-    [{number,url,…}]}` — with no `.nodes` wrapper (that is `gh api graphql`)."""
-    data = json.loads(view_json)
-    return bool(data.get("closingIssuesReferences"))
+    Tolerates BOTH shapes: the flat CLI array `{"closingIssuesReferences": [...]}`
+    (current `gh pr view --json`) and the `{"nodes": [...]}` wrapper (GraphQL, and
+    what a future `gh` could switch to). The flat form is undocumented CLI-specific
+    behaviour, so pinning to it alone would let a `gh` upgrade silently break BOTH
+    this check and the CI gate at once."""
+    data: dict[str, Any] = json.loads(view_json)
+    refs: Any = data.get("closingIssuesReferences")
+    if isinstance(refs, dict):  # GraphQL-style `.nodes` wrapper
+        return bool(cast("dict[str, Any]", refs).get("nodes"))
+    return bool(refs)
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -83,15 +85,19 @@ def _current_branch() -> str:
 
 
 def _existing_pr(branch: str) -> dict[str, Any] | None:
-    """The open PR for `branch` (url+body), or None if there is none yet.
+    """The OPEN PR for `branch` (url+body), or None if there is none yet.
 
     Makes the whole script idempotent: a re-run after a network blip or a
-    verification-fail must not hard-fail on `gh pr create` (PR already exists)."""
-    result = _run(["gh", "pr", "view", branch, "--json", "url,body"])
+    verification-fail must not hard-fail on `gh pr create` (PR already exists).
+
+    Uses `gh pr list --state open`, NOT `gh pr view <branch>`: the latter also
+    returns a CLOSED (not merged) PR of the same branch, and the script would then
+    edit that dead PR and poll its linkage forever instead of opening a fresh one."""
+    result = _run(["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url,body"])
     if result.returncode != 0:
         return None
-    loaded: dict[str, Any] = json.loads(result.stdout or "{}")
-    return loaded
+    loaded: list[dict[str, Any]] = json.loads(result.stdout or "[]")
+    return loaded[0] if loaded else None
 
 
 def _create_pr(title: str, body: str) -> str:

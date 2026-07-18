@@ -9,6 +9,11 @@ name: PR link
 # `Closes #N` after the check went green would otherwise merge stale-green and
 # re-open the #319 hole — WITHOUT re-running the heavy `quality` suite on every
 # description edit.
+#
+# `edited` is DELIBERATE despite GitHub's guidance to avoid it (it fires on every
+# title/description edit = extra runs). The noise is the accepted price of closing
+# the stale-green hole above — do NOT "optimise" it away, that reopens the gap.
+# The job is cheap (checkout + one `gh pr view`), so the trade-off is net-positive.
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited]

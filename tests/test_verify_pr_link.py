@@ -54,6 +54,21 @@ class TestMain:
         self._stub_refs(monkeypatch, json.dumps({"closingIssuesReferences": [{"number": 320}]}))
         main(["--branch", "issue-320-x", "--pr", "321"])  # не должно бросить SystemExit
 
+    def test_polls_past_async_race(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Фикс #1: на `opened` гейт может обогнать async-вычисление линковки GitHub.
+        # Первое чтение пусто, второе — с линковкой. Single-read упал бы exit 1 на
+        # корректном PR (ложно-красный merge-gate); поллинг проходит.
+        empty = '{"closingIssuesReferences":[]}'
+        linked = json.dumps({"closingIssuesReferences": [{"number": 320}]})
+        reads = iter([empty, linked])
+
+        def fake_run(cmd: list[str], *a: Any, **k: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(cmd, 0, next(reads), "")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr("time.sleep", lambda *_: None)
+        main(["--branch", "issue-320-x", "--pr", "321"])  # не должно бросить SystemExit
+
     def test_passes_for_non_issue_branch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._stub_refs(monkeypatch, '{"closingIssuesReferences":[]}')
         main(["--branch", "dependabot/pip/x", "--pr", "500"])  # гейт неприменим → ok

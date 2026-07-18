@@ -6,8 +6,8 @@
 и падать видимым сбоем (§IV), если линковка пуста.
 
 `gh`/`git` — внешняя граница, мокаются через `subprocess.run` seam (§II — не мок
-внутренней логики). Форма `closingIssuesReferences` сверена вживую: `gh pr view <N>
---json closingIssuesReferences` отдаёт ПЛОСКИЙ массив без `.nodes`.
+внутренней логики). `closingIssuesReferences` парсится толерантно к обеим формам —
+плоский CLI-массив и `.nodes`-обёртка (см. `TestHasClosingReference`).
 """
 
 from __future__ import annotations
@@ -41,40 +41,49 @@ class TestIssueNumberFromBranch:
 
 
 class TestEnsureClosesLine:
-    def test_replaces_bare_placeholder(self) -> None:
-        # pull_request_template.md несёт голое `Closes #` — должно стать `Closes #320`.
-        body = "## Summary\n\nDid a thing.\n\nCloses #\n\n## Test plan\n"
-        result = ensure_closes_line(body, 320)
-        assert "Closes #320" in result
-        assert "Closes #\n" not in result
-
-    def test_injects_when_no_placeholder(self) -> None:
+    def test_injects_when_absent(self) -> None:
         body = "## Summary\n\nDid a thing.\n"
         result = ensure_closes_line(body, 320)
         assert "Closes #320" in result
 
-    def test_idempotent_when_already_correct(self) -> None:
+    def test_idempotent_when_already_present(self) -> None:
         body = "Closes #320\n\n## Summary\n"
         result = ensure_closes_line(body, 320)
         assert result.count("Closes #320") == 1
 
-    def test_fixes_wrong_number(self) -> None:
-        # Скоуп замены — строка-плейсхолдер `Closes …`, чужой номер приводится к N.
+    def test_leaves_other_closes_untouched(self) -> None:
+        # Скрипт только ДОБАВЛЯЕТ свою строку, не переписывает чужой текст: legit
+        # `Closes #999` (мульти-issue PR) сохраняется, наш `Closes #320` добавлен.
         body = "## Summary\n\nCloses #999\n"
         result = ensure_closes_line(body, 320)
         assert "Closes #320" in result
-        assert "#999" not in result
+        assert "#999" in result
+
+    def test_bare_placeholder_left_inert(self) -> None:
+        # Голый `Closes #` из шаблона GitHub игнорит (нет номера) — не трогаем его
+        # regex-хирургией, просто добавляем свою строку с номером.
+        body = "## Summary\n\nCloses #\n"
+        result = ensure_closes_line(body, 320)
+        assert "Closes #320" in result
 
 
 class TestHasClosingReference:
-    def test_true_when_refs_present(self) -> None:
-        # Реальная форма (сверено `gh pr view 312`): плоский массив, без `.nodes`.
+    def test_true_when_flat_array(self) -> None:
+        # Текущая CLI-форма: плоский массив без `.nodes`.
         payload = json.dumps({"closingIssuesReferences": [{"number": 320, "url": "https://x/320"}]})
         assert has_closing_reference(payload) is True
 
-    def test_false_when_empty(self) -> None:
+    def test_true_when_nodes_wrapper(self) -> None:
+        # GraphQL-форма (и куда мог бы переехать будущий `gh`): `.nodes`-обёртка.
+        payload = json.dumps({"closingIssuesReferences": {"nodes": [{"number": 320}]}})
+        assert has_closing_reference(payload) is True
+
+    def test_false_when_flat_empty(self) -> None:
         # Реальный вывод `gh pr view 319` (наш провальный кейс).
         assert has_closing_reference('{"closingIssuesReferences":[]}') is False
+
+    def test_false_when_nodes_empty(self) -> None:
+        assert has_closing_reference('{"closingIssuesReferences":{"nodes":[]}}') is False
 
 
 class _GhDispatcher:
@@ -110,6 +119,10 @@ class _GhDispatcher:
 
         if cmd[:3] == ["git", "rev-parse", "--abbrev-ref"]:
             return done(0, self.branch + "\n")
+        if cmd[:3] == ["gh", "pr", "list"]:
+            # existing OPEN-PR probe (`--head <branch> --state open --json url,body`).
+            # A closed PR is filtered by `--state open` → empty array, forcing create.
+            return done(0, json.dumps([self.existing_pr] if self.existing_pr else []))
         if cmd[:3] == ["gh", "pr", "view"] and "--json" in cmd:
             fields = cmd[cmd.index("--json") + 1]
             if "closingIssuesReferences" in fields:
@@ -117,10 +130,7 @@ class _GhDispatcher:
                 empty = self._refs_reads <= self.refs_empty_reads
                 refs = [] if empty else [{"number": 320, "url": "https://x/320"}]
                 return done(0, json.dumps({"closingIssuesReferences": refs}))
-            # existing-PR probe (`--json url,body`)
-            if self.existing_pr is None:
-                return done(1, "")  # no PR for branch
-            return done(0, json.dumps(self.existing_pr))
+            raise AssertionError(f"unexpected gh pr view: {cmd}")
         if cmd[:3] == ["gh", "pr", "create"]:
             if self.create_fails:
                 return done(1, "")  # gh pr create ненулевой exit
@@ -177,6 +187,18 @@ class TestMainVerification:
         assert any(c.startswith("gh pr edit") for c in joined), "линковка чинится через edit"
         edit_cmd = next(c for c in disp.calls if c[:3] == ["gh", "pr", "edit"])
         assert any("Closes #320" in part for part in edit_cmd)
+
+    def test_creates_new_pr_when_no_open_pr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Фикс #4: `gh pr list --state open` не видит ЗАКРЫТЫЙ PR той же ветки →
+        # пустой список → скрипт создаёт новый, а не цепляется к мёртвому PR.
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=0)
+        monkeypatch.setattr(subprocess, "run", disp)
+        main(["--title", "T"])
+        joined = disp.cmds()
+        assert any(c.startswith("gh pr create") for c in joined), "должен создать новый PR"
+        assert not any(c.startswith("gh pr edit") for c in joined), (
+            "edit мёртвого PR не должен быть"
+        )
 
     def test_exits_1_when_create_fails(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
