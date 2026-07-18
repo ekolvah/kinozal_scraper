@@ -14,15 +14,15 @@ from typing import Any
 from unittest import mock
 
 import google.api_core.exceptions
-from kinozal_scraper.trailer_picker_llm import (
-    GeminiJsonGenerator,
-    LLMTrailerStrategy,
-)
 
 from kinozal_scraper.gemini_enricher import (
     ModelUnavailable,
     QuotaExhausted,
     TryNextModel,
+)
+from kinozal_scraper.trailer_picker_llm import (
+    GeminiJsonGenerator,
+    LLMTrailerStrategy,
 )
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
 
