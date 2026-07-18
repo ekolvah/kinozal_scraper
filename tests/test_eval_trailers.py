@@ -15,8 +15,6 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
-import pytest
-
 from scripts.eval_trailers import (
     GoldenSetError,
     classify,
@@ -180,11 +178,11 @@ def test_138_seed_cases_present() -> None:
     )
 
 
-@pytest.mark.xfail(strict=True, reason="RU-selection ещё не реализована — чинит #141/#315")
-def test_138_ru_misses_are_red() -> None:
-    # default_strategy() сейчас FirstResultStrategy → на #138-кейсах не выбирает
-    # RU-эталон → красный. Когда #141 сменит default на язык-aware стратегию и
-    # почини́т отбор → все hit → strict xfail станет XPASS → red → фикс audible.
+def test_138_ru_selection_is_fixed() -> None:
+    # Инверсия бывшего xfail-guard (§I): #141 сменил default_strategy() на
+    # язык-aware HeuristicStrategy, а union-retrieval #140 внёс RU в пул всех
+    # #138-seed кейсов → отбор берёт RU-эталон → все hit. Guard теперь зелёный
+    # и пришпиливает фикс: регресс RU-selection снова покраснеет.
     cases = load_golden_set(GOLDEN_PATH)
     seed = [c for c in cases if c.note.startswith("seed: #138")]
     strat = default_strategy()

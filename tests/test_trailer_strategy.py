@@ -14,6 +14,7 @@ from kinozal_scraper.trailer_strategy import (
     Candidate,
     FilmProfile,
     FirstResultStrategy,
+    HeuristicStrategy,
     TrailerPick,
 )
 
@@ -74,6 +75,106 @@ class TestFirstResultStrategy(unittest.TestCase):
         candidates = [Candidate(video_id="first", title="Zero 1999 Trailer")]
         pick = strat.pick(film, candidates)
         self.assertEqual(pick.video_id, "first")
+
+
+class TestHeuristicStrategy(unittest.TestCase):
+    """RED tests for #141: language-aware детерминированный пред-фильтр.
+
+    Ранжирование: язык первичен (#315 RU>EN), каст в `description` — вторичный
+    тай-брейк внутри одного языка. Неоднозначность (равный топ-ранг) → первый по
+    порядку + низкий confidence + `ambiguous`-маркер (сигнал для #144, не тихий).
+    """
+
+    def _pick(self, film: FilmProfile, cands: list[Candidate]) -> TrailerPick:
+        return HeuristicStrategy().pick(film, cands)
+
+    def test_prefers_ru_when_tied_with_eng(self) -> None:
+        film = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        cands = [
+            Candidate(video_id="eng", title="The Wolf 2025 Official Trailer"),
+            Candidate(video_id="ru", title="Волк 2025 трейлер на русском"),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "ru")
+
+    def test_prefers_ru_among_multiple_eng(self) -> None:
+        film = FilmProfile(ru_title="Хищник", original_title="Predator", year=2025)
+        cands = [
+            Candidate(video_id="eng1", title="Predator 2025 Official Trailer"),
+            Candidate(video_id="eng2", title="Predator 2025 Final Trailer"),
+            Candidate(video_id="ru", title="Хищник 2025 официальный трейлер"),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "ru")
+
+    def test_ru_beats_eng_even_when_eng_has_cast(self) -> None:
+        # #315: язык первичен. EN-реакция с именем каста в description НЕ
+        # побеждает RU без каста — reaction-video false-positive не проходит.
+        film = FilmProfile(
+            ru_title="Волк", original_title="The Wolf", year=2025, cast=["John Smith"]
+        )
+        cands = [
+            Candidate(
+                video_id="eng",
+                title="The Wolf 2025 Reaction",
+                description="John Smith reacts to the trailer",
+            ),
+            Candidate(video_id="ru", title="Волк 2025 трейлер", description=""),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "ru")
+
+    def test_cast_breaks_tie_within_same_language(self) -> None:
+        # Два RU-кандидата равного языка+года: каст в description различает.
+        film = FilmProfile(
+            ru_title="Ярость", original_title="Ярость", year=2026, cast=["Иван Петров"]
+        )
+        cands = [
+            Candidate(video_id="react", title="Ярость 2026 трейлер разбор", description="обзор"),
+            Candidate(
+                video_id="cast",
+                title="Ярость 2026 официальный трейлер",
+                description="В главной роли Иван Петров",
+            ),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "cast")
+
+    def test_excludes_wrong_year(self) -> None:
+        film = FilmProfile(ru_title="Забвение", original_title="Oblivion", year=2026)
+        cands = [Candidate(video_id="old", title="Oblivion 2019 Trailer")]
+        self.assertIsNone(self._pick(film, cands).video_id)
+
+    def test_no_title_match_returns_none(self) -> None:
+        film = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        cands = [Candidate(video_id="x", title="Completely Different Movie 2025")]
+        self.assertIsNone(self._pick(film, cands).video_id)
+
+    def test_single_match_is_confident(self) -> None:
+        film = FilmProfile(ru_title="Оппенгеймер", original_title="Oppenheimer", year=2023)
+        cands = [Candidate(video_id="o", title="Oppenheimer 2023 Official Trailer")]
+        pick = self._pick(film, cands)
+        self.assertEqual(pick.video_id, "o")
+        self.assertGreaterEqual(pick.confidence, 0.7)
+
+    def test_ambiguous_two_eng_picks_first_low_confidence(self) -> None:
+        film = FilmProfile(ru_title="Барби", original_title="Barbie", year=2023)
+        cands = [
+            Candidate(video_id="main", title="Barbie 2023 Main Trailer"),
+            Candidate(video_id="teaser", title="Barbie 2023 Teaser"),
+        ]
+        pick = self._pick(film, cands)
+        self.assertEqual(pick.video_id, "main")
+        self.assertLessEqual(pick.confidence, 0.5)
+        self.assertIn("ambiguous", pick.reason)
+
+    def test_short_title_not_matched_inside_word(self) -> None:
+        # review #324: word-boundary матч — короткое «Дом» НЕ входит в «Домашний»,
+        # иначе был бы уверенный wrong-pick несвязанного кандидата.
+        film = FilmProfile(ru_title="Дом", original_title="Home", year=2026)
+        cands = [Candidate(video_id="x", title="Домашний питомец 2026 трейлер")]
+        self.assertIsNone(self._pick(film, cands).video_id)
+
+    def test_no_year_matches_by_title(self) -> None:
+        film = FilmProfile(ru_title="Дюна", original_title="Dune", year=None)
+        cands = [Candidate(video_id="d", title="Dune Official Trailer")]
+        self.assertEqual(self._pick(film, cands).video_id, "d")
 
 
 if __name__ == "__main__":
