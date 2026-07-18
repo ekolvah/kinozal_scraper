@@ -89,6 +89,15 @@ class TestLLMTrailerStrategy(unittest.TestCase):
         self.assertIsNone(pick.video_id)
         self.assertIn("missing video_id", pick.reason)
 
+    def test_non_object_json_becomes_visible_none(self) -> None:
+        # Синтаксически валидный JSON, но не object (список/число) → data["video_id"]
+        # падает TypeError, а не KeyError/JSONDecodeError — отдельная §IV-ветка.
+        gen = FakeJsonGenerator("[1, 2]")
+        pick = LLMTrailerStrategy(gen).pick(_film(), _candidates())
+        self.assertIsNone(pick.video_id)
+        self.assertEqual(pick.confidence, 0.0)
+        self.assertIn("not an object", pick.reason)
+
     def test_out_of_range_confidence_is_clamped(self) -> None:
         high = FakeJsonGenerator('{"video_id": "ru_01", "confidence": 1.5, "reason": "x"}')
         self.assertEqual(LLMTrailerStrategy(high).pick(_film(), _candidates()).confidence, 1.0)
