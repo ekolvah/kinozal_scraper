@@ -154,15 +154,66 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertGreaterEqual(pick.confidence, 0.7)
 
     def test_ambiguous_two_eng_picks_first_low_confidence(self) -> None:
+        # #327: teaser-vs-main больше НЕ ambiguous (trailer-signal их различает),
+        # поэтому ничью держат две равноценные версии трейлера — ambiguity-
+        # семантика (первый по порядку + низкий confidence + маркер) сохраняется.
         film = FilmProfile(ru_title="Барби", original_title="Barbie", year=2023)
         cands = [
-            Candidate(video_id="main", title="Barbie 2023 Main Trailer"),
-            Candidate(video_id="teaser", title="Barbie 2023 Teaser"),
+            Candidate(video_id="main", title="Barbie 2023 Official Trailer"),
+            Candidate(video_id="second", title="Barbie 2023 Final Trailer"),
         ]
         pick = self._pick(film, cands)
         self.assertEqual(pick.video_id, "main")
         self.assertLessEqual(pick.confidence, 0.5)
         self.assertIn("ambiguous", pick.reason)
+
+    def test_numbered_sequel_relevance_match(self) -> None:
+        # Реальный дефект #141: канал добавляет номер сиквела («Джокер 2»),
+        # которого нет в ru_title → нормализованная фраза разорвана цифрой, и
+        # word-boundary phrase-match отвергает настоящий RU-трейлер. Он обязан
+        # пройти relevance (RED до numeric-sequel-token фикса).
+        film = FilmProfile(
+            ru_title="Джокер: Безумие на двоих",
+            original_title="Joker: Folie à Deux",
+            year=2024,
+        )
+        cands = [
+            Candidate(
+                video_id="ru_trailer",
+                title="Джокер 2: Безумие на двоих — Русский трейлер (2024)",
+            )
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "ru_trailer")
+
+    def test_base_title_does_not_crossmatch_sequel(self) -> None:
+        # Обратное направление B3: numeric-token фикс НЕ должен дать базовому
+        # фильму «Дюна» (2021) матчить сиквел-кандидат другого года — год-фильтр
+        # остаётся дискриминатором (инвариант зелёный до и после фикса; краснеет,
+        # если фикс случайно ослабит год-фильтр).
+        film = FilmProfile(ru_title="Дюна", original_title="Dune", year=2021)
+        cands = [Candidate(video_id="sequel", title="Дюна: Часть вторая — Русский трейлер (2024)")]
+        self.assertIsNone(self._pick(film, cands).video_id)
+
+    def test_tiebreak_prefers_trailer_over_news_clip(self) -> None:
+        # Реальный дефект #141: при RU-ничьей (равный язык, нет каста) выбор шёл
+        # по порядку в пуле → новостной клип/тизер вместо настоящего трейлера.
+        # trailer-signal (трейлер/дубляж − тизер) разрывает ничью (RED до фикса).
+        film = FilmProfile(
+            ru_title="Джокер: Безумие на двоих",
+            original_title="Joker: Folie à Deux",
+            year=2024,
+        )
+        cands = [
+            Candidate(
+                video_id="news",
+                title="🃏 Вышел тизер-трейлер фильма «Джокер: Безумие на двоих»",
+            ),
+            Candidate(
+                video_id="trailer",
+                title="Джокер: Безумие на двоих — Русский трейлер (Дубляж, 2024)",
+            ),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "trailer")
 
     def test_short_title_not_matched_inside_word(self) -> None:
         # review #324: word-boundary матч — короткое «Дом» НЕ входит в «Домашний»,

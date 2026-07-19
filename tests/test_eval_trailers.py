@@ -48,6 +48,19 @@ class TestClassify(unittest.TestCase):
         # correct=NONE, но что-то выбрали — навязали лишний трейлер.
         self.assertEqual(classify(None, "abc"), "wrong")
 
+    def test_classify_accepts_pick_in_accept_set(self) -> None:
+        # accept-set: у реального фильма часто несколько равноценных RU-дубляжей,
+        # любой из них — Hit (RED до membership-classify).
+        self.assertEqual(classify(["a", "b"], "b"), "hit")
+        self.assertEqual(classify(["a", "b"], "c"), "wrong")
+        self.assertEqual(classify(["a", "b"], None), "miss")
+
+    def test_classify_str_correct_backward_compat(self) -> None:
+        # legacy single-str форма (miss-branch идиома) остаётся рабочей.
+        self.assertEqual(classify("abc", "abc"), "hit")
+        self.assertEqual(classify("abc", "xyz"), "wrong")
+        self.assertEqual(classify("abc", None), "miss")
+
 
 # ── score: Hit +1 / Miss 0 / Wrong −2 ─────────────────────────────────────────
 
@@ -112,6 +125,40 @@ class TestLoadGoldenSet(unittest.TestCase):
     def test_correct_wrong_type_errors(self) -> None:
         case = self._valid_case()
         case["correct"] = 123
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([case]))
+
+    def test_load_golden_set_accepts_list_correct(self) -> None:
+        # accept-set: несколько равноценных эталонов в пуле (RED до list-loader).
+        case = self._valid_case()
+        case["correct"] = ["abc", "def"]
+        case["candidates"] = [
+            {"video_id": "abc", "title": "t1"},
+            {"video_id": "def", "title": "t2"},
+        ]
+        cases = load_golden_set(self._write([case]))
+        self.assertEqual(cases[0].correct, ["abc", "def"])
+
+    def test_rejects_empty_accept_set(self) -> None:
+        # B2: пустой accept-set — тихий коллапс в null-семантику, маскирует Miss.
+        case = self._valid_case()
+        case["correct"] = []
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([case]))
+
+    def test_rejects_non_str_accept_element(self) -> None:
+        # B2: не-str элемент accept-set → fail-loud, не тихий мусор.
+        case = self._valid_case()
+        case["correct"] = ["abc", 123]
+        case["candidates"] = [{"video_id": "abc", "title": "t"}]
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([case]))
+
+    def test_rejects_accept_id_not_in_candidates(self) -> None:
+        # S2: typo-id в accept-set иначе тихо превращает верный pick в wrong.
+        case = self._valid_case()
+        case["correct"] = ["not_in_pool"]
+        case["candidates"] = [{"video_id": "abc", "title": "t"}]
         with self.assertRaises(GoldenSetError):
             load_golden_set(self._write([case]))
 
