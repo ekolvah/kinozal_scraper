@@ -18,7 +18,7 @@ from unittest import mock
 
 import google.api_core.exceptions
 
-from kinozal_scraper.gemini_enricher import ModelUnavailable, QuotaExhausted
+from kinozal_scraper.gemini_enricher import ModelUnavailable, QuotaExhausted, TryNextModel
 from kinozal_scraper.trailer_picker_embeddings import (
     EmbeddingTrailerStrategy,
     GeminiEmbedder,
@@ -149,6 +149,12 @@ class TestGeminiEmbedder(unittest.TestCase):
     def test_not_found_maps_to_model_unavailable(self) -> None:
         exc = google.api_core.exceptions.NotFound("gone")
         with self._patch(side_effect=exc), self.assertRaises(ModelUnavailable):
+            GeminiEmbedder("m").embed(["a"])
+
+    def test_missing_embedding_key_maps_to_try_next_model(self) -> None:
+        # Malformed-ответ без ключа "embedding" → KeyError внутри try → таксономия
+        # (не NotFound/ResourceExhausted → TryNextModel), а не сырой краш мимо неё.
+        with self._patch(return_value={}), self.assertRaises(TryNextModel):
             GeminiEmbedder("m").embed(["a"])
 
 

@@ -124,8 +124,11 @@ class GeminiEmbedder:
                 content=texts,
                 task_type="semantic_similarity",
             )
+            # Индексация внутри try: malformed-ответ без ключа "embedding" (KeyError)
+            # идёт через ту же таксономию (→ TryNextModel), а не сырым краком мимо неё.
+            vectors = response["embedding"]
         except Exception as exc:
             raise classify_generate_error(exc)() from exc
         # SDK-стаб типизирует batch-ответ как list[float]; на списке текстов это
         # list[list[float]] (по вектору на текст) — cast выправляет тип, не поведение.
-        return cast("list[list[float]]", response["embedding"])
+        return cast("list[list[float]]", vectors)
