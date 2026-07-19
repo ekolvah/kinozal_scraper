@@ -15,10 +15,13 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from kinozal_scraper.tmdb_trailer import TmdbVideo
+
 from scripts.eval_trailers import (
     GoldenSetError,
     classify,
     default_strategy,
+    evaluate_tmdb,
     load_golden_set,
     main,
     score,
@@ -213,6 +216,157 @@ class TestRecordMode(unittest.TestCase):
             os.environ.pop("API_KEY", None)
             with self.assertRaises(SystemExit):
                 main(["--record", "--golden", str(GOLDEN_PATH)])
+
+
+# ── #329: TMDB videos-снимок + evaluate_tmdb ──────────────────────────────────
+
+
+class TestTmdbSnapshot(unittest.TestCase):
+    def _write(self, data: Any) -> str:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def _valid_case(self) -> dict[str, Any]:
+        return {
+            "film": {"ru_title": "Гнев", "original_title": "Man on Fire", "year": 2026},
+            "correct": "abc",
+            "candidates": [{"video_id": "abc", "title": "Гнев 2026 трейлер"}],
+            "note": "",
+        }
+
+    def test_loads_tmdb_videos_snapshot(self) -> None:
+        # Снимок tmdb_videos парсится в list[TmdbVideo] (RED до поля/парса).
+        case = self._valid_case()
+        case["tmdb_videos"] = [
+            {
+                "key": "abc",
+                "iso_639_1": "ru",
+                "type": "Trailer",
+                "official": True,
+                "site": "YouTube",
+                "name": "официальный трейлер",
+            }
+        ]
+        cases = load_golden_set(self._write([case]))
+        vids = cases[0].tmdb_videos
+        self.assertEqual(len(vids), 1)
+        self.assertIsInstance(vids[0], TmdbVideo)
+        self.assertEqual(vids[0].key, "abc")
+        self.assertEqual(vids[0].iso_639_1, "ru")
+        self.assertEqual(vids[0].type, "Trailer")
+        self.assertTrue(vids[0].official)
+        self.assertEqual(vids[0].site, "YouTube")
+
+    def test_existing_case_without_snapshot_defaults_empty(self) -> None:
+        # Записи без tmdb_videos грузятся (backward-compat) с пустым списком.
+        cases = load_golden_set(self._write([self._valid_case()]))
+        self.assertEqual(cases[0].tmdb_videos, [])
+
+    def test_rejects_malformed_tmdb_video(self) -> None:
+        # fail-loud (§IV): битый video (нет key/iso_639_1/type) → GoldenSetError,
+        # не тихий дроп (иначе смещённый пул запекается в снимок).
+        case = self._valid_case()
+        case["tmdb_videos"] = [{"iso_639_1": "ru", "type": "Trailer", "site": "YouTube"}]
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([case]))
+
+    def test_accept_set_may_reference_tmdb_key_not_in_candidates(self) -> None:
+        # Dual-source ground truth: валидный TMDB-key, которого нет в YouTube-пуле,
+        # допустим в accept-set — cross-check по (candidates ∪ tmdb keys), не только
+        # по candidates (RED до обобщения _parse_correct).
+        case = self._valid_case()
+        case["correct"] = ["tmdbOnly"]
+        case["tmdb_videos"] = [
+            {
+                "key": "tmdbOnly",
+                "iso_639_1": "ru",
+                "type": "Trailer",
+                "official": True,
+                "site": "YouTube",
+                "name": "",
+            }
+        ]
+        cases = load_golden_set(self._write([case]))
+        self.assertEqual(cases[0].correct, ["tmdbOnly"])
+
+    def test_rejects_accept_id_in_neither_pool(self) -> None:
+        # Typo-id, которого нет ни в candidates, ни в tmdb_videos → fail-loud.
+        case = self._valid_case()
+        case["correct"] = ["ghost"]
+        case["tmdb_videos"] = [
+            {
+                "key": "real",
+                "iso_639_1": "ru",
+                "type": "Trailer",
+                "official": True,
+                "site": "YouTube",
+                "name": "",
+            }
+        ]
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([case]))
+
+
+class TestEvaluateTmdb(unittest.TestCase):
+    def _write(self, data: Any) -> str:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def test_evaluate_tmdb_classifies_against_correct(self) -> None:
+        # evaluate_tmdb гоняет pick_trailer по замороженному tmdb_videos и
+        # классифицирует против accept-set: Hit / Wrong / Miss (RED до evaluate_tmdb).
+        hit_case = {
+            "film": {"ru_title": "A", "original_title": "A", "year": 2026},
+            "correct": ["ruKey"],
+            "candidates": [{"video_id": "yt1", "title": "A 2026 трейлер"}],
+            "tmdb_videos": [
+                {
+                    "key": "ruKey",
+                    "iso_639_1": "ru",
+                    "type": "Trailer",
+                    "official": False,
+                    "site": "YouTube",
+                    "name": "",
+                }
+            ],
+            "note": "",
+        }
+        wrong_case = {
+            "film": {"ru_title": "B", "original_title": "B", "year": 2026},
+            "correct": ["ruWant"],
+            "candidates": [{"video_id": "ruWant", "title": "B 2026 трейлер"}],
+            "tmdb_videos": [
+                {
+                    "key": "enOnly",
+                    "iso_639_1": "en",
+                    "type": "Trailer",
+                    "official": True,
+                    "site": "YouTube",
+                    "name": "",
+                }
+            ],
+            "note": "",
+        }
+        miss_case = {
+            "film": {"ru_title": "C", "original_title": "C", "year": 2026},
+            "correct": ["ruC"],
+            "candidates": [{"video_id": "ruC", "title": "C 2026 трейлер"}],
+            "tmdb_videos": [],
+            "note": "",
+        }
+        cases = load_golden_set(self._write([hit_case, wrong_case, miss_case]))
+        rows, total = evaluate_tmdb(cases)
+        outcomes = [o for _, _, o in rows]
+        self.assertEqual(outcomes, ["hit", "wrong", "miss"])
+        self.assertEqual(total, 1 - 2 + 0)
 
 
 # ── #138 red baseline: known-gap guard ────────────────────────────────────────
