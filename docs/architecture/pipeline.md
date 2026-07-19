@@ -91,7 +91,7 @@ Telegram HTML message. Available template variables:
 ```
 Renders as: clickable film title → kinozal page, then "Trailer" → YouTube.
 
-## Trailer retrieval & film profile (#140, эпик трейлеров)
+## Trailer retrieval and selection (#140, #141, #144)
 
 Эпик разводит **retrieval** (`film → list[Candidate]`) и **selection**
 (`(profile, candidates) → pick`, `trailer_strategy.py`, #139/#141/#144). Слой data-prep:
@@ -101,13 +101,22 @@ Renders as: clickable film title → kinozal page, then "Trailer" → YouTube.
   (год отсеивает selection, не retrieval). RU-трейлер обязан быть в пуле, когда он есть
   (#315 — retrieval breadth). Сбой одной ветки union не роняет пул (§IV best-effort).
   Общий retrieval переиспользует harness `scripts/eval_trailers.py --record` (§II).
-- `build_film_profile(item, fetcher)` (`kinozal_pipeline.py`) — best-effort сбор
+- `build_film_profile(item, fetcher)` (`kinozal_pipeline.py`) — richer-builder
   `FilmProfile` (каст/режиссёр/жанр/описание) с `details.php` через общий
   `_parse_labeled_field` (тот же sibling-walk, что `_parse_genre`). Сбой фетча/парса →
   деградация до title+year + WARNING; фетч ОК с нулём полей → WARNING-tripwire (§IV).
+  Для harness/#140-eval и потенциальной каст-эскалации; прод пока его не зовёт (ниже).
 
-**Прод-путь ещё не подключён:** `enrich_with_trailer` (текущий `get_trailer_url` →
-первый url) заморожен; композиция strategy + fallback-цепочка документируется в #144.
+**Прод-композиция (#144):** `enrich_with_trailer(item, youtube)` строит облегчённый
+title+year `FilmProfile` (ru_title=clean, original_title=2-й сегмент или "", year) →
+`youtube.search_candidates` (union #140) → `HeuristicStrategy().pick` (#141, = eval
+`default_strategy()`) → `video_id` в youtube-URL. RU-трейлер в приоритете, EN — fallback
+(закрывает RU-регрессию #138→#315; прежний одиночный `get_trailer_url` удалён). Пустой
+pick → §IV miss-маркер + INFO; retrieval-исключение → §IV error-маркер + WARNING; успех →
+INFO-breadcrumb `reason`/`confidence`. **Gemini НЕ в hot path** — LLM(#142)/embeddings(#143)/
+TMDB(#329) остаются eval-стратегиями (осознанно вне прода: равный Hit при нулевой рантайм-
+стоимости vs Gemini-квота 04:00; см. `testing.md` gap-ledger). Каст в прод-профиль не тянем
+(RU-приоритет на языке заголовка; per-item details-фетч ради каст-тай-брейка отложен).
 
 ## extract_from_* contracts
 

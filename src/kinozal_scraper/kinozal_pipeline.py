@@ -25,7 +25,7 @@ from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier, TelegramNotifier
 from kinozal_scraper.text_utils import original_title
-from kinozal_scraper.trailer_strategy import FilmProfile
+from kinozal_scraper.trailer_strategy import FilmProfile, HeuristicStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -114,8 +114,10 @@ def build_film_profile(item: NormalizedItem, fetcher: Any) -> FilmProfile:
     + WARNING, пайплайн НЕ падает. Успешный фетч, из которого не распарсилось НИ
     одного поля (каст+режиссёр+описание) → отдельный WARNING-tripwire: это дрейф
     селектора, а не пустой фильм — не тихий no-op, который молча ослабит пред-фильтр
-    #141. НЕ вызывается из прод-пути (`enrich_with_trailer` заморожен до #144) —
-    публичная функция под harness/#144."""
+    #141. Richer-builder с метаданными для harness/#140-eval; прод-`enrich_with_trailer`
+    (#144) строит облегчённый title+year профиль без каста — RU-приоритет (#315) держится
+    на языке заголовка, per-item details-фетч ради каст-тай-брейка отложен (#144 Out of
+    scope). Эта функция — точка входа под ту эскалацию, когда она окупится."""
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
     year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
@@ -445,32 +447,43 @@ _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
-    """Look up a YouTube trailer URL, or return a visible §IV marker (#138).
+    """Pick a YouTube trailer URL, or return a visible §IV marker (#144/#315).
 
-    Queries YouTube with the *original* foreign title (2nd ` / `-segment of the
-    raw @title) when present — a far better match than the localised RU title —
-    falling back to the clean RU title otherwise. Year is read from
-    item.raw['kinozal_raw_title'] (the original @title) because the clean title
-    may have had the year stripped, and feeds `title_year_matches`.
+    Retrieval → selection split (эпик трейлеров): собирает пул кандидатов через
+    `youtube.search_candidates` (union запроса по RU + оригинальному названию, #140)
+    и выбирает один язык-aware `HeuristicStrategy` (#141) — RU-трейлер в приоритете,
+    EN как fallback (закрывает RU-регрессию #138→#315, которую давал одиночный
+    `get_trailer_url` по оригинальному названию). `FilmProfile` строится из title+year
+    (ru_title = clean, original_title = 2-й ` / `-сегмент или "", year из
+    kinozal_raw_title); cast/метаданные не тянем — RU-приоритет держится на языке
+    заголовка, а per-item details-фетч ради внутриязыкового тай-брейка — отдельный
+    юнит (см. #144 Out of scope), не #315.
 
-    On a clean miss (API OK, 0 results) returns `_TRAILER_MISS_MARKER` + INFO log;
-    on a lookup exception returns `_TRAILER_ERROR_MARKER` + WARNING log (with
-    traceback). Either way the item is still notified — no silent empty string.
+    `HeuristicStrategy` инстанцируется напрямую (pure internal logic, не внешняя
+    граница — §II) и совпадает с eval `default_strategy()` (`scripts/eval_trailers.py`)
+    — прод и замер меряют одну стратегию; при эскалации eval-стратегии обнови и здесь.
+
+    Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO; исключение retrieval
+    → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick пишет INFO-breadcrumb
+    с `reason`/`confidence` — «ru language» отличим от «ambiguous» при разборе прод-лога
+    (§IV, не тихий уверенный выбор). Либо путь — item всё равно уведомляется, не тихий "".
     """
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
     year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
     year = int(year_match.group(1)) if year_match else None
-    query = original_title(raw_for_year) or clean
+    profile = FilmProfile(ru_title=clean, original_title=original_title(raw_for_year), year=year)
     try:
-        url: str = youtube.get_trailer_url(query, year=year)
-    except Exception as exc:  # noqa: BLE001 — lookup failure degrades to a visible marker, item still notified
+        candidates = youtube.search_candidates(profile)
+    except Exception as exc:  # noqa: BLE001 — retrieval failure degrades to a visible marker, item still notified
         logger.warning("trailer lookup failed for %r: %s", item.title, exc, exc_info=True)
         return _TRAILER_ERROR_MARKER
-    if url:
-        return url
-    logger.info("no trailer found for %r", item.title)
-    return _TRAILER_MISS_MARKER
+    pick = HeuristicStrategy().pick(profile, candidates)
+    if pick.video_id is None:
+        logger.info("no trailer found for %r", item.title)
+        return _TRAILER_MISS_MARKER
+    logger.info("trailer pick for %r: %s (conf=%.1f)", item.title, pick.reason, pick.confidence)
+    return f"https://www.youtube.com/watch?v={pick.video_id}"
 
 
 def _split_by_excluded_genre(

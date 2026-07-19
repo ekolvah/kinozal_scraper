@@ -57,29 +57,27 @@ _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
 
 
 class _FakeYoutube:
+    """#144 retrieval-фейк для пайплайн-прогонов: синтезирует один релевантный
+    кандидат из профиля (title+year), чтобы `HeuristicStrategy` его выбрал и прод
+    отдал youtube.com-URL (прежний `get_trailer_url`-фейк — прод ходит через
+    `search_candidates`)."""
+
     def __init__(self) -> None:
-        self.last_film: str = ""
-        self.last_year: int | None = None
+        self.last_profile: FilmProfile | None = None
 
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
-        self.last_film = film
-        self.last_year = year
-        return f"https://youtube.com/watch?v={film.replace(' ', '_')}"
-
-
-class _EmptyYoutube:
-    """Fake YouTube с пустой выдачей (clean miss) — проверяет §IV miss-маркер в
-    enrich_with_trailer. Год-фильтрация selection'а переехала в
-    FirstResultStrategy (tests/test_trailer_strategy.py, #139); прежний
-    _FilteringFakeYoutube переизобретал title_year_matches (§II-мок внутренней
-    логики) и удалён — тут остаётся только прод-маркерный контракт."""
-
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
-        return ""
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
+        self.last_profile = profile
+        year = f" {profile.year}" if profile.year else ""
+        return [
+            Candidate(
+                video_id=profile.ru_title.replace(" ", "_"),
+                title=f"{profile.ru_title}{year} trailer",
+            )
+        ]
 
 
 class _RaisingYoutube:
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
         raise RuntimeError("YouTube API down")
 
 
@@ -707,15 +705,14 @@ class TestDeliveryTruthfulness(unittest.TestCase):
 class TestKinozalKnownBugs(unittest.TestCase):
     """Documents current behaviour for scenarios that should ideally be louder."""
 
-    def test_youtube_quota_exhausted_pipeline_continues_with_empty_trailer(self) -> None:
-        """YouTube quota → enrich_with_trailer swallows the exception → trailer=''.
-
-        Pipeline still publishes items, but their notification text carries no
-        trailer link. Documented as a quiet degradation (G in the taxonomy).
+    def test_youtube_quota_exhausted_still_notifies_with_visible_marker(self) -> None:
+        """YouTube quota → `search_candidates` бросает → enrich отдаёт видимый §IV
+        error-маркер (#138), НЕ тихий пустой трейлер. Пайплайн всё равно публикует
+        items — деградация громкая (маркер + WARNING), не quiet-G из таксономии.
         """
 
         class _QuotaExhaustedYoutube:
-            def get_trailer_url(self, film: str, year: int | None = None) -> str:
+            def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
                 raise RuntimeError("quotaExceeded")
 
         storage, notifier = _run(youtube=_QuotaExhaustedYoutube())
@@ -723,6 +720,7 @@ class TestKinozalKnownBugs(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 2)
         for notif in notifier.sent:
             self.assertNotIn("youtube.com", notif.text)
+            self.assertIn(_TRAILER_ERROR_MARKER, notif.text)
 
 
 class TestMirrorUrl(unittest.TestCase):

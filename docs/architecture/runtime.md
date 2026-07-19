@@ -16,6 +16,14 @@ pattern. `telegram_summarizer` uses `TelegramChannelSummarizer` (Telethon
 reader + Gemini summarizer behind Protocols) and the shared `TelegramNotifier`
 — see [Telethon-direct modules](#telethon-direct-modules) below.
 
+`kinozal_pipeline` additionally enriches each movie with a YouTube trailer
+(`enrich_with_trailer`, #144): union-retrieval `search_candidates` → детерминированный
+language-aware `HeuristicStrategy` (#141, RU-приоритет закрывает регрессию #315) →
+`video_id`-URL либо §IV-маркер. **Gemini НЕ в этом hot path** — LLM/embedding-пикеры
+(#142/#143) и TMDB-источник (#329) остаются eval-only, сознательно вне cron 04:00, так
+что отбор трейлера стоит ноль Gemini-квоты (обоснование + open-world caveat:
+[`testing.md` gap-ledger N](testing.md#consciously-accepted-coverage-gaps)).
+
 ## Protocols
 
 Three boundaries isolate external services from business logic:
