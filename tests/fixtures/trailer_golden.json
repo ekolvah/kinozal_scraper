@@ -1,138 +1,1247 @@
 [
   {
-    "film": {"ru_title": "Гнев", "original_title": "Man on Fire", "year": 2026},
+    "film": {
+      "ru_title": "Гнев",
+      "original_title": "Man on Fire",
+      "year": 2026
+    },
     "correct": "ru_mof_01",
     "candidates": [
-      {"video_id": "eng_mof_01", "title": "Man on Fire 2026 Official Trailer", "channel": "MovieClips", "published_at": "2026-01-10T00:00:00Z"},
-      {"video_id": "eng_mof_02", "title": "Man on Fire 2026 Trailer Breakdown", "channel": "ReactChannel", "published_at": "2026-01-12T00:00:00Z"},
-      {"video_id": "ru_mof_01", "title": "Гнев 2026 трейлер на русском", "channel": "КиноПоиск", "published_at": "2026-01-11T00:00:00Z"}
+      {
+        "video_id": "eng_mof_01",
+        "title": "Man on Fire 2026 Official Trailer",
+        "channel": "MovieClips",
+        "published_at": "2026-01-10T00:00:00Z"
+      },
+      {
+        "video_id": "eng_mof_02",
+        "title": "Man on Fire 2026 Trailer Breakdown",
+        "channel": "ReactChannel",
+        "published_at": "2026-01-12T00:00:00Z"
+      },
+      {
+        "video_id": "ru_mof_01",
+        "title": "Гнев 2026 трейлер на русском",
+        "channel": "КиноПоиск",
+        "published_at": "2026-01-11T00:00:00Z"
+      }
     ],
     "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)"
   },
   {
-    "film": {"ru_title": "Волк", "original_title": "The Wolf", "year": 2025},
+    "film": {
+      "ru_title": "Волк",
+      "original_title": "The Wolf",
+      "year": 2025
+    },
     "correct": "ru_wolf_01",
     "candidates": [
-      {"video_id": "eng_wolf_01", "title": "The Wolf 2025 Official Trailer", "channel": "Universal"},
-      {"video_id": "ru_wolf_01", "title": "Волк 2025 трейлер на русском", "channel": "КиноПоиск"}
+      {
+        "video_id": "eng_wolf_01",
+        "title": "The Wolf 2025 Official Trailer",
+        "channel": "Universal"
+      },
+      {
+        "video_id": "ru_wolf_01",
+        "title": "Волк 2025 трейлер на русском",
+        "channel": "КиноПоиск"
+      }
     ],
     "note": "seed: #138 (RU в пуле, но англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)"
   },
   {
-    "film": {"ru_title": "Тень", "original_title": "The Shadow", "year": 2026},
+    "film": {
+      "ru_title": "Тень",
+      "original_title": "The Shadow",
+      "year": 2026
+    },
     "correct": "ru_shadow_01",
     "candidates": [
-      {"video_id": "eng_shadow_01", "title": "The Shadow 2026 Teaser Trailer", "channel": "Warner"},
-      {"video_id": "ru_shadow_01", "title": "Тень 2026 трейлер", "channel": "Кинопрокат"}
+      {
+        "video_id": "eng_shadow_01",
+        "title": "The Shadow 2026 Teaser Trailer",
+        "channel": "Warner"
+      },
+      {
+        "video_id": "ru_shadow_01",
+        "title": "Тень 2026 трейлер",
+        "channel": "Кинопрокат"
+      }
     ],
     "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)"
   },
   {
-    "film": {"ru_title": "Хищник", "original_title": "Predator", "year": 2025},
+    "film": {
+      "ru_title": "Хищник",
+      "original_title": "Predator",
+      "year": 2025
+    },
     "correct": "ru_pred_01",
     "candidates": [
-      {"video_id": "eng_pred_01", "title": "Predator 2025 Official Trailer", "channel": "20thCentury"},
-      {"video_id": "eng_pred_02", "title": "Predator 2025 Final Trailer", "channel": "Fandango"},
-      {"video_id": "ru_pred_01", "title": "Хищник 2025 официальный трейлер", "channel": "Кинопрокат"}
+      {
+        "video_id": "eng_pred_01",
+        "title": "Predator 2025 Official Trailer",
+        "channel": "20thCentury"
+      },
+      {
+        "video_id": "eng_pred_02",
+        "title": "Predator 2025 Final Trailer",
+        "channel": "Fandango"
+      },
+      {
+        "video_id": "ru_pred_01",
+        "title": "Хищник 2025 официальный трейлер",
+        "channel": "Кинопрокат"
+      }
     ],
     "note": "seed: #138 (RU третий в пуле, англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)"
   },
   {
-    "film": {"ru_title": "Дюна: Часть вторая", "original_title": "Dune: Part Two", "year": 2024},
+    "film": {
+      "ru_title": "Дюна: Часть вторая",
+      "original_title": "Dune: Part Two",
+      "year": 2024
+    },
     "correct": "dune2_official",
     "candidates": [
-      {"video_id": "dune2_official", "title": "Dune: Part Two | Official Trailer 2024", "channel": "Warner Bros."},
-      {"video_id": "dune2_react", "title": "Dune Part Two 2024 Trailer Reaction", "channel": "ReactChannel"}
+      {
+        "video_id": "dune2_official",
+        "title": "Dune: Part Two | Official Trailer 2024",
+        "channel": "Warner Bros."
+      },
+      {
+        "video_id": "dune2_react",
+        "title": "Dune Part Two 2024 Trailer Reaction",
+        "channel": "ReactChannel"
+      }
     ],
     "note": "нормальный: первый кандидат корректен → baseline Hit"
   },
   {
-    "film": {"ru_title": "Оппенгеймер", "original_title": "Oppenheimer", "year": 2023},
+    "film": {
+      "ru_title": "Оппенгеймер",
+      "original_title": "Oppenheimer",
+      "year": 2023
+    },
     "correct": "oppen_trailer",
     "candidates": [
-      {"video_id": "oppen_trailer", "title": "Oppenheimer 2023 Official Trailer", "channel": "Universal Pictures"}
+      {
+        "video_id": "oppen_trailer",
+        "title": "Oppenheimer 2023 Official Trailer",
+        "channel": "Universal Pictures"
+      }
     ],
     "note": "нормальный: baseline Hit"
   },
   {
-    "film": {"ru_title": "Барби", "original_title": "Barbie", "year": 2023},
+    "film": {
+      "ru_title": "Барби",
+      "original_title": "Barbie",
+      "year": 2023
+    },
     "correct": "barbie_main",
     "candidates": [
-      {"video_id": "barbie_main", "title": "Barbie 2023 Main Trailer", "channel": "Warner Bros."},
-      {"video_id": "barbie_teaser", "title": "Barbie 2023 Teaser", "channel": "Warner Bros."}
+      {
+        "video_id": "barbie_main",
+        "title": "Barbie 2023 Main Trailer",
+        "channel": "Warner Bros."
+      },
+      {
+        "video_id": "barbie_teaser",
+        "title": "Barbie 2023 Teaser",
+        "channel": "Warner Bros."
+      }
     ],
     "note": "нормальный: baseline Hit"
   },
   {
-    "film": {"ru_title": "Бедные-несчастные", "original_title": "Poor Things", "year": 2023},
+    "film": {
+      "ru_title": "Бедные-несчастные",
+      "original_title": "Poor Things",
+      "year": 2023
+    },
     "correct": "poorthings_ot",
     "candidates": [
-      {"video_id": "poorthings_ot", "title": "Poor Things 2023 Official Trailer", "channel": "Searchlight"}
+      {
+        "video_id": "poorthings_ot",
+        "title": "Poor Things 2023 Official Trailer",
+        "channel": "Searchlight"
+      }
     ],
     "note": "нормальный: baseline Hit"
   },
   {
-    "film": {"ru_title": "Фуриоса", "original_title": "Furiosa", "year": 2024},
+    "film": {
+      "ru_title": "Фуриоса",
+      "original_title": "Furiosa",
+      "year": 2024
+    },
     "correct": "furiosa_ot",
     "candidates": [
-      {"video_id": "furiosa_ot", "title": "Furiosa: A Mad Max Saga | Official Trailer 2024", "channel": "Warner Bros."}
+      {
+        "video_id": "furiosa_ot",
+        "title": "Furiosa: A Mad Max Saga | Official Trailer 2024",
+        "channel": "Warner Bros."
+      }
     ],
     "note": "нормальный: baseline Hit"
   },
   {
-    "film": {"ru_title": "Гладиатор 2", "original_title": "Gladiator II", "year": 2024},
+    "film": {
+      "ru_title": "Гладиатор 2",
+      "original_title": "Gladiator II",
+      "year": 2024
+    },
     "correct": "gladiator2_ot",
     "candidates": [
-      {"video_id": "gladiator2_ot", "title": "Gladiator II 2024 Official Trailer", "channel": "Paramount"}
+      {
+        "video_id": "gladiator2_ot",
+        "title": "Gladiator II 2024 Official Trailer",
+        "channel": "Paramount"
+      }
     ],
     "note": "нормальный: baseline Hit"
   },
   {
-    "film": {"ru_title": "Злая", "original_title": "Wicked", "year": 2024},
+    "film": {
+      "ru_title": "Злая",
+      "original_title": "Wicked",
+      "year": 2024
+    },
     "correct": "wicked_ot",
     "candidates": [
-      {"video_id": "wicked_ot", "title": "Wicked 2024 Official Trailer", "channel": "Universal"}
+      {
+        "video_id": "wicked_ot",
+        "title": "Wicked 2024 Official Trailer",
+        "channel": "Universal"
+      }
     ],
     "note": "нормальный: baseline Hit"
   },
   {
-    "film": {"ru_title": "Забвение", "original_title": "Oblivion Rise", "year": 2026},
+    "film": {
+      "ru_title": "Забвение",
+      "original_title": "Oblivion Rise",
+      "year": 2026
+    },
     "correct": "oblivion_real26",
     "candidates": [
-      {"video_id": "wrongyear_01", "title": "Oblivion 2019 Trailer", "channel": "OldUploads"},
-      {"video_id": "wrongyear_02", "title": "Oblivion Classic 2015 Trailer", "channel": "Archive"}
+      {
+        "video_id": "wrongyear_01",
+        "title": "Oblivion 2019 Trailer",
+        "channel": "OldUploads"
+      },
+      {
+        "video_id": "wrongyear_02",
+        "title": "Oblivion Classic 2015 Trailer",
+        "channel": "Archive"
+      }
     ],
     "note": "miss-ветка: эталон существует, но в пуле только чужой год → baseline None → Miss"
   },
   {
-    "film": {"ru_title": "Рассвет", "original_title": "Daybreak", "year": 2025},
+    "film": {
+      "ru_title": "Рассвет",
+      "original_title": "Daybreak",
+      "year": 2025
+    },
     "correct": "daybreak_real25",
     "candidates": [
-      {"video_id": "daybreak_wrong", "title": "Daybreak 2010 Trailer", "channel": "RetroTrailers"}
+      {
+        "video_id": "daybreak_wrong",
+        "title": "Daybreak 2010 Trailer",
+        "channel": "RetroTrailers"
+      }
     ],
     "note": "miss-ветка: baseline None → Miss"
   },
   {
-    "film": {"ru_title": "Малоизвестный артхаус", "original_title": "Obscure Arthouse", "year": 2026},
+    "film": {
+      "ru_title": "Малоизвестный артхаус",
+      "original_title": "Obscure Arthouse",
+      "year": 2026
+    },
     "correct": null,
     "candidates": [],
     "note": "NONE-ветка: трейлера не существует, пул пуст → baseline None → Hit"
   },
   {
-    "film": {"ru_title": "Тихий фильм", "original_title": "Quiet Film", "year": 2026},
+    "film": {
+      "ru_title": "Тихий фильм",
+      "original_title": "Quiet Film",
+      "year": 2026
+    },
     "correct": null,
     "candidates": [
-      {"video_id": "junk_wrongyear", "title": "Quiet Film 2012 Fan Edit", "channel": "FanUploads"}
+      {
+        "video_id": "junk_wrongyear",
+        "title": "Quiet Film 2012 Fan Edit",
+        "channel": "FanUploads"
+      }
     ],
     "note": "NONE-ветка: только чужой год в пуле → baseline None → Hit"
   },
   {
-    "film": {"ru_title": "Ярость", "original_title": "Ярость", "year": 2026, "cast": ["Иван Петров"]},
+    "film": {
+      "ru_title": "Ярость",
+      "original_title": "Ярость",
+      "year": 2026,
+      "cast": [
+        "Иван Петров"
+      ]
+    },
     "correct": "ru_fury_cast",
     "candidates": [
-      {"video_id": "ru_fury_react", "title": "Ярость 2026 трейлер разбор", "channel": "КиноБлог", "description": "мнение о трейлере"},
-      {"video_id": "ru_fury_cast", "title": "Ярость 2026 официальный трейлер", "channel": "Кинопрокат", "description": "В главной роли Иван Петров"}
+      {
+        "video_id": "ru_fury_react",
+        "title": "Ярость 2026 трейлер разбор",
+        "channel": "КиноБлог",
+        "description": "мнение о трейлере"
+      },
+      {
+        "video_id": "ru_fury_cast",
+        "title": "Ярость 2026 официальный трейлер",
+        "channel": "Кинопрокат",
+        "description": "В главной роли Иван Петров"
+      }
     ],
     "note": "cast tie-break (#141): два RU-кандидата равного языка+года, каст в description различает → эвристика выбирает cast-несущий; измеряет cast-ось harness'ом"
+  },
+  {
+    "film": {
+      "ru_title": "Носферату",
+      "original_title": "Nosferatu",
+      "year": 2024,
+      "cast": [
+        "Билл Скарсгард",
+        "Лили-Роуз Депп"
+      ]
+    },
+    "correct": [
+      "2TN9DnF2Yhw",
+      "esfYGlJd0k8"
+    ],
+    "candidates": [
+      {
+        "video_id": "nulvWqYUM8k",
+        "title": "NOSFERATU - Official Trailer [HD] - Only In Theaters December 25",
+        "channel": "Focus Features",
+        "description": "Succumb to the darkness. NOSFERATU. Only in theaters this Christmas. Robert Eggers' NOSFERATU is a gothic tale of ...",
+        "published_at": "2024-09-30T15:00:11Z"
+      },
+      {
+        "video_id": "2TN9DnF2Yhw",
+        "title": "Носферату — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Носферату» 2024 года Официальные русские трейлеры к фильмам, трейлеры к сериалам, ...",
+        "published_at": "2024-07-11T09:47:17Z"
+      },
+      {
+        "video_id": "b59rxDB_JRg",
+        "title": "NOSFERATU - Official Teaser Trailer [HD] - Only In Theaters December 25",
+        "channel": "Focus Features",
+        "description": "He is coming. NOSFERATU. A Robert Eggers picture. Only in theaters this Christmas. Robert Eggers' NOSFERATU is a gothic ...",
+        "published_at": "2024-06-24T15:00:04Z"
+      },
+      {
+        "video_id": "Px6S0RxfAHg",
+        "title": "NOSFERATU | Official Trailer (Universal Pictures) - HD",
+        "channel": "Universal Pictures UK",
+        "description": "In cinemas soon Follow us on Facebook at https://www.facebook.com/universalpicturesuk/ Find us on Instagram at ...",
+        "published_at": "2024-06-24T15:00:32Z"
+      },
+      {
+        "video_id": "esfYGlJd0k8",
+        "title": "Носферату — Русский трейлер Дубляж, 2024",
+        "channel": "Movie Boxes",
+        "description": "Приветствуем тебя на нашем канале @MovieBoxes ▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭▭ Предлагаем к Вашему ...",
+        "published_at": "2025-05-20T10:40:11Z"
+      },
+      {
+        "video_id": "cmjpadVj-Vk",
+        "title": "WERWULF - Official Trailer [HD] - Only In Theaters Christmas",
+        "channel": "Focus Features",
+        "description": "Do not dread the darkness. Embrace it. Robert Eggers' WERWULF is only in theaters this Christmas. Witness Robert Eggers' most ...",
+        "published_at": "2026-06-29T12:00:12Z"
+      },
+      {
+        "video_id": "T9XpmjWTS2Q",
+        "title": "NOSFERATU | Official Trailer | Only In Theatres December 25",
+        "channel": "Universal Pictures Canada",
+        "description": "Succumb to the darkness. NOSFERATU. Only in theatres this Christmas. Robert Eggers' NOSFERATU is a gothic tale of ...",
+        "published_at": "2024-10-01T14:02:47Z"
+      }
+    ],
+    "note": "реал: мульти-валидный RU-дубляж (Kinoman 2TN9DnF2Yhw, Movie Boxes esfYGlJd0k8 — оба «Русский трейлер, Дубляж 2024»); шум WERWULF (cmjpadVj-Vk, др. фильм Эггерса 2026) в пуле не должен матчиться"
+  },
+  {
+    "film": {
+      "ru_title": "Битлджус Битлджус",
+      "original_title": "Beetlejuice Beetlejuice",
+      "year": 2024,
+      "cast": [
+        "Майкл Китон",
+        "Вайнона Райдер"
+      ]
+    },
+    "correct": [
+      "CoZqL9N6Rx4",
+      "As-vKW4ZboU"
+    ],
+    "candidates": [
+      {
+        "video_id": "CoZqL9N6Rx4",
+        "title": "BEETLEJUICE BEETLEJUICE | Official Trailer",
+        "channel": "Warner Bros.",
+        "description": "It's Showtime! #Beetlejuice#Beetlejuice Only in theaters September 6. Beetlejuice is back! Oscar-nominated, singular creative ...",
+        "published_at": "2024-05-23T16:00:17Z"
+      },
+      {
+        "video_id": "As-vKW4ZboU",
+        "title": "Beetlejuice Beetlejuice | Official Trailer 2",
+        "channel": "Warner Bros.",
+        "description": "The ghost with the most is back. #Beetlejuice #Beetlejuice - Only in theaters September 6. Beetlejuice is back! Oscar-nominated ...",
+        "published_at": "2024-07-18T13:00:14Z"
+      },
+      {
+        "video_id": "e6yDanmWI1E",
+        "title": "BEETLEJUICE BEETLEJUICE | Official Teaser Trailer",
+        "channel": "Warner Bros.",
+        "description": "The juice is loose! #Beetlejuice #Beetlejuice - Only in theaters September 6. Beetlejuice is back! Oscar-nominated, singular ...",
+        "published_at": "2024-03-21T21:00:23Z"
+      },
+      {
+        "video_id": "Vbswe_anQx0",
+        "title": "Beetlejuice Beetlejuice | 🪦👻 Lydia’s Past Awakens... and He’s Back for More Haunting Chaos 💀✨",
+        "channel": "Signal Arc",
+        "description": "After decades of silence, the mischievous and malevolent bio-exorcist Beetlejuice is back from the Netherworld — and this time, ...",
+        "published_at": "2025-07-02T08:16:29Z"
+      },
+      {
+        "video_id": "ickbVzajrk0",
+        "title": "Beetlejuice (1988) Trailer #1 | Movieclips Classic Trailers",
+        "channel": "Rotten Tomatoes Classic Trailers",
+        "description": "Check out the official Beetlejuice (1988) Trailer starring Michael Keaton! Let us know what you think in the comments below.",
+        "published_at": "2018-09-21T20:24:48Z"
+      }
+    ],
+    "note": "реал: EN-only official — RU-дубляжа в пуле нет, Warner Official Trailer CoZqL9N6Rx4 и Official Trailer 2 As-vKW4ZboU; тизер и классика-1988 (ickbVzajrk0) исключены"
+  },
+  {
+    "film": {
+      "ru_title": "Джокер: Безумие на двоих",
+      "original_title": "Joker: Folie à Deux",
+      "year": 2024,
+      "cast": [
+        "Хоакин Феникс",
+        "Леди Гага"
+      ]
+    },
+    "correct": [
+      "6Gqk6ohloTU",
+      "2g4l_4mLt90"
+    ],
+    "candidates": [
+      {
+        "video_id": "6Gqk6ohloTU",
+        "title": "Джокер 2: Безумие на двоих — Русский трейлер (2024)",
+        "channel": "iVideos",
+        "description": "Русский трейлер фильма «Джокер 2: Безумие на двоих» 2024 года | Русские трейлеры к фильмам, сериалам и играм!",
+        "published_at": "2024-04-10T19:38:22Z"
+      },
+      {
+        "video_id": "2g4l_4mLt90",
+        "title": "Джокер 2: Безумие на двоих — Русский трейлер #2 (4K, 2024)",
+        "channel": "iVideos",
+        "description": "Второй русский трейлер фильма «Джокер 2: Безумие на двоих» 2024 года | Русские трейлеры к фильмам, сериалам и ...",
+        "published_at": "2024-07-24T15:34:01Z"
+      },
+      {
+        "video_id": "zdW_eBySjcA",
+        "title": "Джокер 2: Безумие на двоих — Тизер-трейлер (2024)",
+        "channel": "Kinoman",
+        "description": "Тизер трейлер фильма «Джокер: Безумие на двоих» 2024 года Официальные русские трейлеры к фильмам, трейлеры к ...",
+        "published_at": "2024-04-09T16:55:16Z"
+      },
+      {
+        "video_id": "pws-u-OaneY",
+        "title": "🃏Вышел тизер-трейлер фильма «Джокер: Безумие на двоих»",
+        "channel": "Мосфид",
+        "description": "",
+        "published_at": "2024-04-13T18:00:29Z"
+      },
+      {
+        "video_id": "zTZhteQ2a-g",
+        "title": "📽Джокер 2: Безумие на двоих 🎬 Русский трейлер 🍿фильм 2024",
+        "channel": "kino_life99",
+        "description": "Название: Джокер 2: Безумие на двоих Производство: Франция жанр: мюзикл, триллер, драма, криминал ...",
+        "published_at": "2024-09-18T14:56:23Z"
+      },
+      {
+        "video_id": "_OKAwz2MsJs",
+        "title": "Joker: Folie À Deux | Official Trailer",
+        "channel": "Warner Bros.",
+        "description": "When you're smiling, the whole world smiles with you. Joker: Folie À Deux – only in theaters and IMAX, October 4. #JokerMovie ...",
+        "published_at": "2024-07-23T13:00:29Z"
+      },
+      {
+        "video_id": "xy8aJw1vYHo",
+        "title": "Joker: Folie à Deux | Official Teaser Trailer",
+        "channel": "Warner Bros.",
+        "description": "He's not alone anymore. Joker: Folie à Deux – only in theaters and @IMAX, October 4. #JokerMovie #FilmedForIMAX.",
+        "published_at": "2024-04-10T00:53:54Z"
+      },
+      {
+        "video_id": "fiqqAI0e4Nc",
+        "title": "Joker: Folie à Deux | That&#39;s Life",
+        "channel": "Warner Bros.",
+        "description": "You can do anything you want. You're Joker. Get tickets now for Joker: Folie à Deux - only in theaters and IMAX, October 4.",
+        "published_at": "2024-09-18T16:00:01Z"
+      },
+      {
+        "video_id": "D8ej3dPgJfs",
+        "title": "Joker 2: Folie à Deux – First Trailer (2024) Lady Gaga, Joaquin Phoenix",
+        "channel": "MOVIE BOX TRAILERS",
+        "description": "Joker2 #Joaquin Phoenix #WarnerBros Take a look at our 'First Trailer' concept for DC Elseworlds' upcoming movie Joker 2: Folie ...",
+        "published_at": "2024-03-17T14:20:49Z"
+      },
+      {
+        "video_id": "2M1bvc-80Nw",
+        "title": "JOKER 2: Folie à Deux Trailer German Deutsch (2024)",
+        "channel": "KinoCheck",
+        "description": "Offizieller \"Joker 2: Folie à Deux\" Trailer Deutsch German 2024 | Abonnieren ➤ https://abo.yt/kc | (OT: Joker 2: Folie à Deux) ...",
+        "published_at": "2024-04-10T01:02:15Z"
+      }
+    ],
+    "note": "реал: нумерованный сиквел — каналы пишут «Джокер 2», ru_title без цифры; полные RU-трейлеры iVideos 6Gqk6ohloTU и #2 4K 2g4l_4mLt90; ловушка — новостной клип Мосфида pws-u-OaneY, цитирующий точное название"
+  },
+  {
+    "film": {
+      "ru_title": "Анора",
+      "original_title": "Anora",
+      "year": 2024,
+      "cast": [
+        "Майки Мэдисон"
+      ]
+    },
+    "correct": [
+      "BUtvdzMxw3U",
+      "XTGdPJ6ignc"
+    ],
+    "candidates": [
+      {
+        "video_id": "BUtvdzMxw3U",
+        "title": "Анора — Русский трейлер (2024)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Анора» 2024 года Официальные русские трейлеры к фильмам, трейлеры к сериалам, ...",
+        "published_at": "2024-08-21T09:45:32Z"
+      },
+      {
+        "video_id": "RSFKSZWmh2M",
+        "title": "ANORA Trailer (2024)",
+        "channel": "KinoCheck.com",
+        "description": "Official Anora Movie Trailer 2024 | Subscribe ➤ https://abo.yt/ki | Mikey Madison Movie Trailer | Cinema: 18 Oct 2024 | More ...",
+        "published_at": "2024-10-15T15:13:01Z"
+      },
+      {
+        "video_id": "XTGdPJ6ignc",
+        "title": "Анора🔥💥Русский трейлер (Дубляж, 2024) Драма, комедия",
+        "channel": "Кино Трейлеры",
+        "description": "Русский трейлер фильма «Анора» 2024 года. ▸Дата выхода: 17 октября 2024 г. (РФ) ▸Молодая стриптизерша из ...",
+        "published_at": "2024-10-05T08:19:23Z"
+      },
+      {
+        "video_id": "GuPkfvxmtdw",
+        "title": "Anora Trailer #1 (2024)",
+        "channel": "Rotten Tomatoes Trailers",
+        "description": "Check out the official trailer for Anora starring Mikey Madison! ▻ Visit Fandango: ...",
+        "published_at": "2024-07-15T16:29:15Z"
+      },
+      {
+        "video_id": "p90SHE4C8Js",
+        "title": "ANORA | Official Trailer",
+        "channel": "Entract Films",
+        "description": "PALME D'OR WINNER | Cannes 2024 A love story from SEAN BAKER. Starring Mikey Madison. Anora, a young sex worker from ...",
+        "published_at": "2024-07-16T17:56:37Z"
+      },
+      {
+        "video_id": "7Bj_UEm4G0o",
+        "title": "ANORA Trailer German Deutsch (2024)",
+        "channel": "KinoCheck",
+        "description": "Offizieller \"Anora\" Trailer Deutsch German 2024 | Abonnieren ➤ https://abo.yt/kc | (OT: Anora) Movie Trailer | Kino: 31 Okt 2024 ...",
+        "published_at": "2024-09-16T13:04:04Z"
+      },
+      {
+        "video_id": "08sR1MY2wpU",
+        "title": "Anora Trailer #2 (2024)",
+        "channel": "Rotten Tomatoes Trailers",
+        "description": "Check out the official trailer for Anora starring Mikey Madison! ▻ Buy Tickets on Fandango: ...",
+        "published_at": "2024-10-09T16:56:07Z"
+      },
+      {
+        "video_id": "k68giG0yX5A",
+        "title": "Anora (2024)",
+        "channel": "Findingoodmovies",
+        "description": "Name: Anora (2024) Description: \"Anora\" is a 2024 American comedy-drama directed by Sean Baker, known for his authentic ...",
+        "published_at": "2025-02-07T04:23:04Z"
+      },
+      {
+        "video_id": "LsGvnMLqW1Q",
+        "title": "ANORA | Trailer Ufficiale (Universal Studios) - HD",
+        "channel": "Universal Pictures International Italy",
+        "description": "Dal 7 novembre al cinema. Seguici su Facebook: facebook.com/FocusFeaturesIT Trovaci su Instagram: ...",
+        "published_at": "2024-09-20T16:36:42Z"
+      }
+    ],
+    "note": "реал: RU-дубляж СУЩЕСТВУЕТ (Kinoman BUtvdzMxw3U, «Кино Трейлеры» дубляж XTGdPJ6ignc) — мульти-валидный русский трейлер как у остальных кейсов. NB: прод-retrieval (youtube.py) ищет с англ. «trailer» и на этом названии терял RU-дубляжи; пул отражает корректную retrieval-breadth (RU-ключ), баг заведён отдельным issue линии #315"
+  },
+  {
+    "film": {
+      "ru_title": "Субстанция",
+      "original_title": "The Substance",
+      "year": 2024,
+      "cast": [
+        "Деми Мур",
+        "Маргарет Куэлли"
+      ]
+    },
+    "correct": [
+      "HSg_3GSGt8U",
+      "kPFFHB3pjhc"
+    ],
+    "candidates": [
+      {
+        "video_id": "HSg_3GSGt8U",
+        "title": "Субстанция | Официальный трейлер | Смотрите в Okko",
+        "channel": "Онлайн-кинотеатр Okko",
+        "description": "Смотрите хоррор «Субстанция» в Okko: https://okko.tv/s/kpk В главных ролях: Деми Мур, Маргарет Куолли и Деннис Куэйд.",
+        "published_at": "2024-11-29T07:02:22Z"
+      },
+      {
+        "video_id": "kPFFHB3pjhc",
+        "title": "Субстанция — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Субстанция» 2024 года Официальные русские трейлеры к фильмам, трейлеры к сериалам, ...",
+        "published_at": "2024-07-29T10:03:49Z"
+      },
+      {
+        "video_id": "oPsQlO_fY7E",
+        "title": "Субстанція - фінальний трейлер (український)",
+        "channel": "ТОП КІНО",
+        "description": "Елізабет Спаркл (Демі Мур) - справжня суперзірка та володарка премії “Оскар” веде неймовірно популярне фітнес-шоу, ...",
+        "published_at": "2024-09-15T10:58:02Z"
+      },
+      {
+        "video_id": "laS6qVpKjpQ",
+        "title": "«Субстанция» (2024): Всё, что вы не знали о фильме",
+        "channel": "SAM Voice",
+        "description": "«Субстанция» (2024): Всё, что вы не знали о фильме Фильм «Субстанция» (The substance) — это новый проект 2024 года, ...",
+        "published_at": "2024-11-06T16:57:03Z"
+      },
+      {
+        "video_id": "vj71Bwflv64",
+        "title": "THE SUBSTANCE Trailer German Deutsch (2024) Demi Moore, Dennis Quaid",
+        "channel": "KinoCheck",
+        "description": "Offizieller \"The Substance\" Trailer Deutsch German 2024 | Abonnieren ➤ https://abo.yt/kc | (OT: The Substance) Movie Trailer ...",
+        "published_at": "2024-08-16T16:15:10Z"
+      },
+      {
+        "video_id": "LNlrGhBpYjc",
+        "title": "THE SUBSTANCE | Official Trailer | In Theaters &amp; On MUBI Now",
+        "channel": "MUBI",
+        "description": "Have you ever dreamt of a better version of yourself? You. Only better in every way. You've got to try this new product. It changed ...",
+        "published_at": "2024-08-15T13:00:19Z"
+      },
+      {
+        "video_id": "qVN3Zk-qb1Q",
+        "title": "The Substance Teaser Trailer (2024)",
+        "channel": "Rotten Tomatoes Trailers",
+        "description": "Check out the official teaser for The Substance starring Demi Moore! ▻ Buy Tickets on Fandango: ...",
+        "published_at": "2024-07-11T13:52:19Z"
+      },
+      {
+        "video_id": "xHml6sH7z3E",
+        "title": "THE SUBSTANCE Trailer (2024) Demi Moore",
+        "channel": "KinoCheck.com",
+        "description": "Official The Substance Movie Trailer 2024 | Subscribe ➤ https://abo.yt/ki | Demi Moore Movie Trailer | Cinema: 20 Sep 2024 ...",
+        "published_at": "2024-08-15T13:12:21Z"
+      },
+      {
+        "video_id": "xRd1KZZ76_o",
+        "title": "THE SUBSTANCE Official Trailer (2024) Demi Moore",
+        "channel": "Movie Trailers Source",
+        "description": "First movie trailer for The Substance starring Demi Moore.",
+        "published_at": "2024-07-11T13:52:57Z"
+      },
+      {
+        "video_id": "lR5nlovVgvQ",
+        "title": "THE SUBSTANCE | Official Trailer #2 | In Theaters &amp; On MUBI Now",
+        "channel": "MUBI",
+        "description": "Have you ever dreamt of a better version of yourself? You. Only better in every way. You've got to try this new product. It changed ...",
+        "published_at": "2024-10-31T15:54:08Z"
+      }
+    ],
+    "note": "реал: мульти-валидный RU (Okko official-платформа HSg_3GSGt8U, Kinoman дубляж kPFFHB3pjhc); украинский трейлер oPsQlO_fY7E — др. язык, исключён"
+  },
+  {
+    "film": {
+      "ru_title": "Дэдпул и Росомаха",
+      "original_title": "Deadpool & Wolverine",
+      "year": 2024,
+      "cast": [
+        "Райан Рейнольдс",
+        "Хью Джекман"
+      ]
+    },
+    "correct": [
+      "5GmXVEBcOpc",
+      "j0La8m0S568"
+    ],
+    "candidates": [
+      {
+        "video_id": "5GmXVEBcOpc",
+        "title": "Дэдпул и Росомаха — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер фильма «Дэдпул и Росомаха» 2024 года Официальные русские трейлеры к ...",
+        "published_at": "2024-02-12T05:20:56Z"
+      },
+      {
+        "video_id": "j0La8m0S568",
+        "title": "Дэдпул и Росомаха — Русский трейлер #2 (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер фильма «Дэдпул и Росомаха» 2024 года Официальные русские трейлеры к ...",
+        "published_at": "2024-04-22T14:18:55Z"
+      },
+      {
+        "video_id": "8z0TGHp3iZw",
+        "title": "Дэдпул и Росомаха [2024] Финальный трейлер [РУССКАЯ ОЗВУЧКА]",
+        "channel": "- MAXIMUS -",
+        "description": "ПОМОЧЬ КАНАЛУ – https://boosty.to/maximus93 Подпишись на мой канал ...",
+        "published_at": "2024-07-20T07:06:22Z"
+      },
+      {
+        "video_id": "2P_UbFLQ1EI",
+        "title": "Дэдпул и Росомаха 2024 (Русский трейлер) | Озвучка от DMITRY TER | Deadpool &amp; Wolverine",
+        "channel": "DMITRY TER | Озвучка и Музыка",
+        "description": "В трейлере продемонстрировали зачин сюжета и несколько боевых сцен, а также главных героев в исполнении Райана ...",
+        "published_at": "2024-02-12T08:42:39Z"
+      },
+      {
+        "video_id": "3o3LOvd7ev4",
+        "title": "Дэдпул и Росомаха (2024) | Новый Трейлер | В кино с 26 июля",
+        "channel": "Marvel DC Trailer",
+        "description": "deadpool3 #hughjackman #ryanreynolds #msu #trailer2024 Всем привет, друзья! Пока все в ожидании нового трейлера, ...",
+        "published_at": "2024-04-18T16:00:06Z"
+      },
+      {
+        "video_id": "73_1biulkYk",
+        "title": "Deadpool &amp; Wolverine | Official Trailer | In Theaters July 26",
+        "channel": "Marvel Entertainment",
+        "description": "LFG. Watch the new trailer for Marvel Studios' #DeadpoolAndWolverine. Only in theaters July 26. ▻ Watch Marvel on Disney+: ...",
+        "published_at": "2024-04-22T13:00:09Z"
+      },
+      {
+        "video_id": "uJMCNJP2ipI",
+        "title": "Deadpool &amp; Wolverine | Official Teaser | In Theaters July 26",
+        "channel": "Marvel Entertainment",
+        "description": "Everyone deserves a happy ending. In theaters July 26. #DeadpoolWolverine ▻ Watch Marvel on Disney+: https://bit.ly/2XyBSIW ...",
+        "published_at": "2024-02-11T23:36:49Z"
+      },
+      {
+        "video_id": "Idh8n5XuYIA",
+        "title": "Deadpool &amp; Wolverine | Final Trailer | In Theaters July 26",
+        "channel": "Marvel Entertainment",
+        "description": "Are you ready? In ONE WEEK, experience #DeadpoolAndWolverine in theaters everywhere. Get tickets: ...",
+        "published_at": "2024-07-19T14:00:23Z"
+      },
+      {
+        "video_id": "sMVIBr-7hgE",
+        "title": "Deadpool &amp; Wolverine | Official Trailer | In Theaters July 26",
+        "channel": "Marvel Entertainment",
+        "description": "LFG Watch the new trailer for Marvel Studios' #DeadpoolAndWolverine. Only in theaters July 26. ▻ Watch Marvel on Disney+: ...",
+        "published_at": "2024-04-22T13:00:26Z"
+      },
+      {
+        "video_id": "smfQRyUtmiM",
+        "title": "DEADPOOL 3 Official Teaser Announcement (2024)",
+        "channel": "Movie Trailers Source",
+        "description": "First movie trailer for Deadpool 3 starring Ryan Reynolds & Hugh Jackman (Wolverine).",
+        "published_at": "2022-09-27T21:24:06Z"
+      }
+    ],
+    "note": "реал: official RU-дубляж Kinoman #1 5GmXVEBcOpc и #2 j0La8m0S568; фан-озвучки (MAXIMUS 8z0TGHp3iZw, DMITRY TER 2P_UbFLQ1EI) — не дубляж, исключены"
+  },
+  {
+    "film": {
+      "ru_title": "Головоломка 2",
+      "original_title": "Inside Out 2",
+      "year": 2024,
+      "cast": []
+    },
+    "correct": [
+      "hLr8JdHFK-M",
+      "xbSLz5lR520",
+      "X-aiPGLSPUY"
+    ],
+    "candidates": [
+      {
+        "video_id": "hLr8JdHFK-M",
+        "title": "Головоломка 2 — Русский трейлер (4К, Дубляж, 2024)",
+        "channel": "iVideos",
+        "description": "Русский трейлер мультфильма «Головоломка 2» 2024 года | Русские трейлеры к фильмам, сериалам и играм! Интересные ...",
+        "published_at": "2024-03-18T15:20:16Z"
+      },
+      {
+        "video_id": "xbSLz5lR520",
+        "title": "Головоломка 2 — Русский трейлер (4К, Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер мультфильма «Головоломка 2 » 2024 года Официальные русские трейлеры к ...",
+        "published_at": "2024-03-07T19:56:20Z"
+      },
+      {
+        "video_id": "Y1WmqdWQ-4c",
+        "title": "Головоломка 2 | Финальный русский трейлер | Закадровое озвучивание",
+        "channel": "Daniel O'Conner - Перевод и Озвучивание",
+        "description": "Головоломка2 #InsideOut2 #disney Фильм Disney и Pixar «Головоломка 2» откроется в кинотеатрах по всей стране всего за ...",
+        "published_at": "2024-06-05T17:56:30Z"
+      },
+      {
+        "video_id": "V6UnhbS-bOE",
+        "title": "Головоломка 2 — Русский тизер-трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Русский тизер трейлер мультфильма «Головоломка 2 » 2024 года Официальные русские трейлеры к фильмам, трейлеры ...",
+        "published_at": "2023-11-09T16:13:24Z"
+      },
+      {
+        "video_id": "X-aiPGLSPUY",
+        "title": "Головоломка 2 — Финальный трейлер (2024)",
+        "channel": "Kinoman",
+        "description": "Финальный трейлер мультфильма «Головоломка 2 » 2024 года Официальные русские трейлеры к фильмам, трейлеры к ...",
+        "published_at": "2024-06-05T13:45:47Z"
+      },
+      {
+        "video_id": "LEjhY15eCx0",
+        "title": "Inside Out 2 | Official Trailer",
+        "channel": "Pixar",
+        "description": "make room for new emotions   Watch the new trailer for Disney & Pixar's Inside Out 2, only in theaters June 14! #Insideout2 The ...",
+        "published_at": "2024-03-07T17:00:10Z"
+      },
+      {
+        "video_id": "VWavstJydZU",
+        "title": "Inside Out 2 | Teaser Trailer",
+        "channel": "Pixar",
+        "description": "Things are getting messy   Disney and Pixar's #InsideOut2 is coming to theaters June 2024 with brand new emotions! The little ...",
+        "published_at": "2023-11-09T13:59:01Z"
+      },
+      {
+        "video_id": "L4DrolmDxmw",
+        "title": "Inside Out 2 | Final Trailer",
+        "channel": "Pixar",
+        "description": "Disney and Pixar's “Inside Out 2” opens in theaters nationwide in just 10 days, inviting moviegoers inside the mind of newly ...",
+        "published_at": "2024-06-04T16:00:17Z"
+      },
+      {
+        "video_id": "6_AVROEGlfE",
+        "title": "Inside Out 2 | Official Trailer | Disney UK",
+        "channel": "Disney UK",
+        "description": "make room for new emotions   Watch the new trailer for Disney & Pixar's #InsideOut2, only in cinemas June 14! Subscribe to ...",
+        "published_at": "2024-03-07T17:19:37Z"
+      },
+      {
+        "video_id": "zvZHQvFz2ek",
+        "title": "Intensamente 2 - 2024 Trailer Oficial",
+        "channel": "iLeorju",
+        "description": "Próximamente de Pixar, es Inside Out 2! Intensa Mente 2: Trailer de la película (2024) No olvides Suscribirte: http://goo.gl/Py2Eia ...",
+        "published_at": "2018-12-28T23:21:11Z"
+      }
+    ],
+    "note": "реал: мульти-валидный RU-дубляж 4K (iVideos hLr8JdHFK-M, Kinoman xbSLz5lR520, финальный X-aiPGLSPUY); тизер V6UnhbS-bOE и закадр-озвучка Y1WmqdWQ-4c исключены"
+  },
+  {
+    "film": {
+      "ru_title": "Мегалополис",
+      "original_title": "Megalopolis",
+      "year": 2024,
+      "cast": [
+        "Адам Драйвер"
+      ]
+    },
+    "correct": [
+      "30H_1gNgpBo"
+    ],
+    "candidates": [
+      {
+        "video_id": "pq6mvHZU0fc",
+        "title": "Megalopolis (2024) Official Trailer - Adam Driver, Giancarlo Esposito, Nathalie Emmanuel",
+        "channel": "Lionsgate Movies",
+        "description": "MEGALOPOLIS: The Ultimate IMAX Experience on September 23. In theaters & IMAX everywhere September 27. Starring Adam ...",
+        "published_at": "2024-09-05T13:01:28Z"
+      },
+      {
+        "video_id": "30H_1gNgpBo",
+        "title": "Мегалополис — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Мегалополис» 2024 года Официальные русские трейлеры к фильмам, трейлеры к сериалам, ...",
+        "published_at": "2024-09-27T14:20:19Z"
+      },
+      {
+        "video_id": "MkgJ1gSvatI",
+        "title": "MEGALOPOLIS Final Trailer (2024) Extended | 4K UHD",
+        "channel": "MovieGasm‍․com",
+        "description": "The city of New Rome is the main conflict between Cesar Catilina, a brilliant artist in favor of a utopian future, and the greedy ...",
+        "published_at": "2024-09-14T17:00:54Z"
+      },
+      {
+        "video_id": "RU1QyAYa60g",
+        "title": "Megalopolis - Teaser Trailer",
+        "channel": "Francis Ford Coppola ",
+        "description": "Our new film MEGALOPOLIS is the best work I've ever had the privilege to preside over.",
+        "published_at": "2024-05-14T04:24:36Z"
+      },
+      {
+        "video_id": "rcMkmavOAP0",
+        "title": "Мегалополис (2024) Драма, фэнтези | Русский трейлер фильма",
+        "channel": "HD Movies",
+        "description": "В американском городе Новый Рим архитектор Цезарь Катилина — умеющий останавливать время лауреат Нобелевской ...",
+        "published_at": "2024-12-02T15:14:55Z"
+      },
+      {
+        "video_id": "NA5ydinNXiE",
+        "title": "Megalopolis - Official Trailer (2024) Adam Driver, Giancarlo Esposito, Aubrey Plaza",
+        "channel": "IGN",
+        "description": "Megalopolis sci-fi drama from the iconic Francis Ford Coppola. Megalopolis is a Roman Epic fable set in an imagined Modern ...",
+        "published_at": "2024-08-21T14:10:34Z"
+      },
+      {
+        "video_id": "SX4b2hGBnes",
+        "title": "Megalopolis - Official Trailer",
+        "channel": "Madman Films",
+        "description": "A film by Francis Ford Coppola. Watch #Megalopolis at home. A Roman Epic set in an imagined Modern America. The City of New ...",
+        "published_at": "2024-07-04T03:57:23Z"
+      }
+    ],
+    "note": "реал: official RU-дубляж Kinoman 30H_1gNgpBo; HD Movies rcMkmavOAP0 — переозвучка/реаплоуд, исключён"
+  },
+  {
+    "film": {
+      "ru_title": "Дикий робот",
+      "original_title": "The Wild Robot",
+      "year": 2024,
+      "cast": []
+    },
+    "correct": [
+      "dnYMdlt1vCU",
+      "u7SfIW5tjdE"
+    ],
+    "candidates": [
+      {
+        "video_id": "u7SfIW5tjdE",
+        "title": "Дикий робот — Русский трейлер #2 (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер мультфильма «Дикий робот» 2024 года Официальные русские трейлеры к ...",
+        "published_at": "2024-06-26T12:00:21Z"
+      },
+      {
+        "video_id": "dnYMdlt1vCU",
+        "title": "Дикий робот — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер мультфильма «Дикий робот» 2024 года Официальные русские трейлеры к ...",
+        "published_at": "2024-03-28T11:44:08Z"
+      },
+      {
+        "video_id": "DAM9aJTXBQU",
+        "title": "Дикий робот | The Wild Robot (2024) трейлер українською мовою 🇺🇦",
+        "channel": "new kino ua",
+        "description": "",
+        "published_at": "2025-10-02T16:28:47Z"
+      },
+      {
+        "video_id": "VUCNBAmse04",
+        "title": "The Wild Robot | Final Trailer",
+        "channel": "Universal Pictures",
+        "description": "The Wild Robot - In Theaters September 27 From DreamWorks Animation comes a new adaptation of a literary sensation, Peter ...",
+        "published_at": "2024-09-10T15:00:10Z"
+      },
+      {
+        "video_id": "SyRY4GL2koQ",
+        "title": "Дикий робот 💥 официальный трейлер 💥 фильм 2024",
+        "channel": "MovieMania",
+        "description": "Официальный трейлер мультфильма «Дикий робот» 2024 года Официальные русские трейлеры к фильмам, сериалам, ...",
+        "published_at": "2024-03-25T08:15:01Z"
+      },
+      {
+        "video_id": "67vbA5ZJdKQ",
+        "title": "The Wild Robot | Official Trailer",
+        "channel": "Universal Pictures",
+        "description": "The Wild Robot - In Theaters September 27 From DreamWorks Animation comes a new adaptation of a literary sensation, Peter ...",
+        "published_at": "2024-03-05T16:00:09Z"
+      },
+      {
+        "video_id": "njPNg0A9VpY",
+        "title": "The Wild Robot | Official Trailer 2",
+        "channel": "Universal Pictures",
+        "description": "The Wild Robot - In Theaters September 27 From DreamWorks Animation comes a new adaptation of a literary sensation, Peter ...",
+        "published_at": "2024-06-11T15:00:11Z"
+      },
+      {
+        "video_id": "LbDiujN_0bc",
+        "title": "THE WILD ROBOT - Official Trailer (2024)",
+        "channel": "JoBlo Animated Videos",
+        "description": "THE WILD ROBOT - Official Trailer (2024) PLOT: After a shipwreck, an intelligent robot called Roz is stranded on an uninhabited ...",
+        "published_at": "2024-03-05T16:02:50Z"
+      },
+      {
+        "video_id": "tN4PvhbVcVU",
+        "title": "THE WILD ROBOT Trailer (2024)",
+        "channel": "KinoCheck.com",
+        "description": "Official The Wild Robot Movie Trailer 2024 | Subscribe ➤ https://abo.yt/ki | Movie Trailer | Cinema: 20 Sep 2024 | More ...",
+        "published_at": "2024-03-05T16:20:31Z"
+      }
+    ],
+    "note": "реал: official RU-дубляж Kinoman #1 dnYMdlt1vCU и #2 u7SfIW5tjdE; MovieMania SyRY4GL2koQ (реаплоуд) и украинский DAM9aJTXBQU исключены"
+  },
+  {
+    "film": {
+      "ru_title": "Гладиатор 2",
+      "original_title": "Gladiator II",
+      "year": 2024,
+      "cast": [
+        "Пол Мескаль",
+        "Дензел Вашингтон"
+      ]
+    },
+    "correct": [
+      "wL3mZn0YeIw",
+      "xLg5TurQTc8"
+    ],
+    "candidates": [
+      {
+        "video_id": "wL3mZn0YeIw",
+        "title": "Гладиатор 2 — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер фильма «Гладиатор 2» 2024 года Официальные русские трейлеры к фильмам, ...",
+        "published_at": "2024-07-10T07:50:03Z"
+      },
+      {
+        "video_id": "TQwSz88ITAE",
+        "title": "Gladiator II | Final Trailer (2024) - Paul Mescal, Pedro Pascal, Denzel Washington, Ridley Scott",
+        "channel": "Paramount Pictures",
+        "description": "Audiences are calling #GladiatorII “ferociously entertaining.” Watch the Final Trailer and get tickets now to see it in theatres Friday.",
+        "published_at": "2024-11-18T16:00:01Z"
+      },
+      {
+        "video_id": "xLg5TurQTc8",
+        "title": "Гладиатор 2 — Русский трейлер #2 (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер фильма «Гладиатор 2» 2024 года Официальные русские трейлеры к фильмам, ...",
+        "published_at": "2024-09-23T14:04:03Z"
+      },
+      {
+        "video_id": "4rgYUipGJNo",
+        "title": "Gladiator II | Official Trailer (2024 Movie) - Paul Mescal, Pedro Pascal, Denzel Washington",
+        "channel": "Paramount Pictures",
+        "description": "From director Ridley Scott, watch the new Official Trailer for #GladiatorII starring Paul Mescal, Pedro Pascal, Denzel Washington, ...",
+        "published_at": "2024-07-09T13:00:03Z"
+      },
+      {
+        "video_id": "ZS-nrNb8hXc",
+        "title": "GLADIATOR 2 Trailer 2 (2024)",
+        "channel": "KinoCheck.com",
+        "description": "Official Gladiator 2 Movie Trailer 2 2024 | Subscribe ➤ https://abo.yt/ki | Paul Mescal Movie Trailer | Cinema: 22 Nov 2024 | More ...",
+        "published_at": "2024-09-23T13:35:13Z"
+      },
+      {
+        "video_id": "8tlbXs5yNZY",
+        "title": "Gladiator II Trailer 2",
+        "channel": "Entertainment Tonight",
+        "description": "Paul Mescal, Denzel Washington, Pedro Pascal, Joseph Quinn, Connie Nielsen, Fred Hechinger, Lior Raz and more star in ...",
+        "published_at": "2024-09-23T17:04:52Z"
+      },
+      {
+        "video_id": "_uByxcee9Lc",
+        "title": "GLADIATOR 2 Trailer 2 German Deutsch (2024)",
+        "channel": "KinoCheck",
+        "description": "Offizieller \"Gladiator 2\" Trailer Deutsch German 2024 | Abonnieren ➤ https://abo.yt/kc | (OT: Gladiator 2) Movie Trailer | Kino: 14 ...",
+        "published_at": "2024-09-23T13:25:38Z"
+      },
+      {
+        "video_id": "Cha8mL7U2Mo",
+        "title": "Gladiator II | Official Trailer (2024 Movie) 4k - BUT BETTER (Original Music)",
+        "channel": "TheCaptainofGondor",
+        "description": "Gladiator 2 edited with an epic cover (trailer cover by the amazing https://www.youtube.com/@WEllFSILVAMusic Please donate to ...",
+        "published_at": "2024-07-09T17:02:22Z"
+      }
+    ],
+    "note": "реал: official RU-дубляж Kinoman #1 wL3mZn0YeIw и #2 xLg5TurQTc8; каст в EN-описаниях, но RU первичен (#315)"
+  },
+  {
+    "film": {
+      "ru_title": "Веном: Последний танец",
+      "original_title": "Venom: The Last Dance",
+      "year": 2024,
+      "cast": [
+        "Том Харди"
+      ]
+    },
+    "correct": [
+      "ck-b_28PMM8",
+      "Hou4gXex2WM"
+    ],
+    "candidates": [
+      {
+        "video_id": "ck-b_28PMM8",
+        "title": "Веном 3: Последний танец — Русский трейлер (Дубляж, 2024)",
+        "channel": "Kinoman",
+        "description": "Официальный дублированный трейлер фильма «Веном 3: Последний танец» 2024 года Официальные русские трейлеры ...",
+        "published_at": "2024-06-03T13:48:42Z"
+      },
+      {
+        "video_id": "Hou4gXex2WM",
+        "title": "Веном: Последний танец - Русский трейлер (2024)",
+        "channel": "Киноафиша Трейлеры",
+        "description": "Трейлер к фильму «Веном: Последний танец» (2024) Премьера: 26 октября 2024 года Подробнее: ...",
+        "published_at": "2024-09-12T13:59:06Z"
+      },
+      {
+        "video_id": "iuYfjlC2wqg",
+        "title": "Веном: Последний танец | Трейлер (2024) В кино с 25 октября",
+        "channel": "Marvel DC Trailer",
+        "description": "trailer #venom #venom3 #sony #sonypictures #tomhardy #marvel Всем привет, друзья! В скором времени должен выйти ...",
+        "published_at": "2024-05-26T05:00:05Z"
+      },
+      {
+        "video_id": "w6PiA4qf_50",
+        "title": "Дубляж трейлера &quot;Веном 3: Последний танец&quot; с теми самыми Веномом и Эдди скоро на канале!",
+        "channel": "Дмитрий Череватенко",
+        "description": "Дубляж трейлера \"Веном 3: Последний танец\" с теми самыми Веномом и Эдди скоро на канале!",
+        "published_at": "2024-06-05T07:43:29Z"
+      },
+      {
+        "video_id": "ySMP9462Eds",
+        "title": "Веном 3 Последний Танец (2024)",
+        "channel": "ScorpionFilms",
+        "description": "",
+        "published_at": "2024-11-12T16:15:12Z"
+      },
+      {
+        "video_id": "__2bjWbetsA",
+        "title": "VENOM: THE LAST DANCE – Official Trailer (HD)",
+        "channel": "Sony Pictures Entertainment",
+        "description": "Till death do they part. Tom Hardy returns in #Venom: The Last Dance – coming exclusively to theaters this October. Visit our site: ...",
+        "published_at": "2024-06-03T12:59:59Z"
+      },
+      {
+        "video_id": "HyIyd9joTTc",
+        "title": "VENOM: THE LAST DANCE  – Final Trailer (HD)",
+        "channel": "Sony Pictures Entertainment",
+        "description": "With you to the end. Witness the epic conclusion in #Venom: The Last Dance exclusively in theatres October 25. Visit our site: ...",
+        "published_at": "2024-09-12T12:59:42Z"
+      },
+      {
+        "video_id": "sdwApAs67bg",
+        "title": "Venom: The Last Dance (2024) - VENOM HORSE! Scene | Movieclips",
+        "channel": "Movieclips",
+        "description": "Venom: The Last Dance - VENOM HORSE!: Venom (Tom Hardy) takes over a horse. BUY THE MOVIE: ...",
+        "published_at": "2025-01-07T18:00:38Z"
+      },
+      {
+        "video_id": "STScKOUpXR8",
+        "title": "Venom: The Last Dance | Official Trailer",
+        "channel": "Marvel Entertainment",
+        "description": "Till death do they part. Tom Hardy returns in #Venom: The Last Dance – coming exclusively to theaters this October. ▻ Watch ...",
+        "published_at": "2024-06-03T13:02:09Z"
+      },
+      {
+        "video_id": "vxztvYBX1vk",
+        "title": "VENOM: THE LAST DANCE - Knull | In Cinemas October 24",
+        "channel": "Sony Pictures India",
+        "description": "KNULL THE MAKER is here for his key! #Venom: The Last Dance Releasing exclusively in cinemas on October 24 Join us on: ...",
+        "published_at": "2024-10-22T07:10:55Z"
+      }
+    ],
+    "note": "реал: нумерованный сиквел («Веном 3» в title, ru_title без цифры) — Kinoman дубляж ck-b_28PMM8 и Киноафиша Hou4gXex2WM; промо «скоро на канале» w6PiA4qf_50 — ловушка"
+  },
+  {
+    "film": {
+      "ru_title": "Смерть единорога",
+      "original_title": "Death of a Unicorn",
+      "year": 2025,
+      "cast": [
+        "Пол Радд",
+        "Дженна Ортега"
+      ]
+    },
+    "correct": [
+      "7ewzFEub32Q",
+      "r0eKbYttj64",
+      "8mePkYE0o_g",
+      "6dQYK51161g"
+    ],
+    "candidates": [
+      {
+        "video_id": "7ewzFEub32Q",
+        "title": "Смерть единорога — Русский трейлер (Дубляж, 2025)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Смерть единорога» 2025 года Друзья, подписывайтесь на нашу группу Вконтакте ...",
+        "published_at": "2024-12-24T08:15:32Z"
+      },
+      {
+        "video_id": "r0eKbYttj64",
+        "title": "Смерть единорога — Русский трейлер #2 (Дубляж, 2025)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Смерть единорога» 2025 года Официальные русские трейлеры к фильмам, трейлеры к ...",
+        "published_at": "2025-03-11T09:00:04Z"
+      },
+      {
+        "video_id": "8mePkYE0o_g",
+        "title": "Смерть единорога — Русский трейлер #3 (Дубляж, 2025)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Смерть единорога» 2025 года Официальные русские трейлеры к фильмам, трейлеры к ...",
+        "published_at": "2025-03-28T09:00:06Z"
+      },
+      {
+        "video_id": "62pyfjnzIuc",
+        "title": "Death Of A Unicorn | Official Trailer 2 HD | A24",
+        "channel": "A24",
+        "description": "SUBSCRIBE: http://bit.ly/A24subscribe From writer/director Alex Scharfman and starring Paul Rudd, Jenna Ortega, Will Poulter, ...",
+        "published_at": "2025-02-27T13:59:00Z"
+      },
+      {
+        "video_id": "6dQYK51161g",
+        "title": "Смерть единорога — Русский трейлер (Дубляж, 2025)",
+        "channel": "топКино",
+        "description": "Дата выхода в (РФ) — 3 апреля 2025 года. VK Видео — https://vk.com/video/@club227596514 Отец и дочь Райли и Эллиот ...",
+        "published_at": "2024-12-24T08:31:58Z"
+      },
+      {
+        "video_id": "9cMIarrxLGs",
+        "title": "Death Of A Unicorn | Official Trailer HD | A24",
+        "channel": "A24",
+        "description": "SUBSCRIBE: http://bit.ly/A24subscribe From writer/director Alex Scharfman and starring Paul Rudd, Jenna Ortega, Will Poulter, ...",
+        "published_at": "2024-12-18T13:59:00Z"
+      },
+      {
+        "video_id": "aSsGXdTRKZw",
+        "title": "DEATH OF A UNICORN | Official Trailer (2025)",
+        "channel": "JoBlo Horror 4K",
+        "description": "SUBSCRIBE for more JOBLO HORROR TRAILERS here: https://goo.gl/WiC41U A father (Paul Rudd) and daughter (Jenna ...",
+        "published_at": "2025-02-27T14:04:21Z"
+      },
+      {
+        "video_id": "94GCWahr3ZY",
+        "title": "DEATH OF A UNICORN Official “Unicorn Reveal” Teaser Trailer (2025) Jenna Ortega",
+        "channel": "FilmSelect",
+        "description": "Check out the official teaser trailer for Death of a Unicorn! In theaters March 28, 2025. Father-Daughter duo, Ridley and Elliot, hit a ...",
+        "published_at": "2025-03-17T17:07:28Z"
+      },
+      {
+        "video_id": "smW9t5UbTdo",
+        "title": "DEATH OF A UNICORN Trailer German Deutsch UT (2025) Paul Rudd, Jenna Ortega",
+        "channel": "KinoCheck",
+        "description": "Offizieller \"Death of a Unicorn\" Trailer Deutsch German 2025 | Abonnieren ➤ https://abo.yt/kc | (OT: Death of a Unicorn) Paul ...",
+        "published_at": "2025-04-21T12:06:37Z"
+      }
+    ],
+    "note": "реал: мульти-валидный RU-дубляж 2025 (Kinoman #1/#2/#3 7ewzFEub32Q/r0eKbYttj64/8mePkYE0o_g, топКино 6dQYK51161g)"
   }
 ]

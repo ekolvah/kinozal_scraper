@@ -84,11 +84,15 @@ Choose the cheapest reliable test for each category.
 ## Eval harness — trailer selection (#139)
 
 `scripts/eval_trailers.py` measures trailer-pick quality against a **frozen golden-set**
-(`tests/fixtures/trailer_golden.json`): each film carries a hand-annotated `correct` video_id
-(or `null` = no trailer exists) plus a recorded `candidates` snapshot. The harness replays
-candidates through a `TrailerStrategy` (`trailer_strategy.py`) offline — no network/quota —
-classifies each film Hit/Wrong/Miss **relative to `correct`**, and scores it (Hit +1 / Miss 0 /
-Wrong −2: a wrong film's trailer is worse than an honest §IV "not found" marker).
+(`tests/fixtures/trailer_golden.json`): each film carries a hand-annotated `correct` — a
+single video_id, an **accept-set** (`list[str]` of equally-valid RU dubs, since a real film
+often has several), or `null` (no trailer exists) — plus a recorded `candidates` snapshot. The
+harness replays candidates through a `TrailerStrategy` (`trailer_strategy.py`) offline — no
+network/quota — classifies each film Hit (pick ∈ accept-set) / Wrong / Miss **relative to
+`correct`**, and scores it (Hit +1 / Miss 0 / Wrong −2: a wrong film's trailer is worse than an
+honest §IV "not found" marker). The set mixes synthetic seed cases with ≥10 **real** retrieved
+pools (dirty candidates + honest per-id-justified accept-sets, `note`-annotated) so the metric is
+grounded in reality, not self-fulfilling (#327).
 
 - **`correct` vs `candidates` are separate on purpose.** `correct` is durable ground truth
   (retrieval-independent); `candidates` is a regenerable snapshot. This lets the harness
@@ -98,8 +102,10 @@ Wrong −2: a wrong film's trailer is worse than an honest §IV "not found" mark
   reseeds the `candidates` snapshot — for initial seeding / a *conscious* refresh, not a
   routine run: re-recording can silently drift a hand-annotated `correct` out of a new YouTube
   result set (Hit → retrieval-miss). The loader is fail-loud (§IV/§VI): a broken entry (empty
-  set, missing field, duplicate `video_id`, `correct` not str|null) raises `GoldenSetError`,
-  never degrades to a silent Miss. The harness is deliberately **not** in `ci_check` — no green
+  set, missing field, duplicate `video_id`, `correct` of a wrong type, empty accept-set, or an
+  accept-set id absent from the case's candidate pool) raises `GoldenSetError`, never degrades to
+  a silent Miss. (Legacy single-`str` `correct` may still point outside the pool — the miss-branch
+  idiom "ideal id not retrieved → Miss" — so the in-pool cross-check applies to accept-sets only.) The harness is deliberately **not** in `ci_check` — no green
   strategy exists yet to gate; the known-gap guard below carries the RED signal instead.
 
 ## What does NOT get tested in this repo

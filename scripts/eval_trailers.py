@@ -7,9 +7,10 @@
 печатает взвешенную скоркарту. Метрика — раньше оптимизации: baseline красный,
 порог затягивается по мере #141/#144.
 
-Fail-loud (§IV/§VI): битая запись golden-set (пустой набор, отсутствующее поле,
-дубль `video_id`, `correct` не str|null) → GoldenSetError + exit≠0, НИКОГДА не
-деградирует в тихий Miss.
+Эталон `correct` — один id, accept-set (`list[str]` равноценных RU-дубляжей) или
+null. Fail-loud (§IV/§VI): битая запись golden-set (пустой набор/accept-set,
+отсутствующее поле, дубль `video_id`, `correct` неверного типа, id accept-set вне
+пула) → GoldenSetError + exit≠0, НИКОГДА не деградирует в тихий Miss.
 
 `--record` (dev-only, live) разово пересобирает снимок `candidates` из YouTube;
 без `API_KEY` — явный fail-fast, не тихий no-op. Фикстуры frozen: `--record` —
@@ -53,7 +54,7 @@ class GoldenSetError(ValueError):
 @dataclass
 class GoldenCase:
     film: FilmProfile
-    correct: str | None
+    correct: str | list[str] | None
     candidates: list[Candidate]
     note: str
 
@@ -65,14 +66,17 @@ def default_strategy() -> TrailerStrategy:
     return HeuristicStrategy()
 
 
-def classify(correct: str | None, pick_id: str | None) -> Outcome:
-    """Исход относительно эталона. Null-ветка явная: при correct=NONE пустой
-    pick — Hit (правильно ничего не выбрать), непустой — Wrong."""
+def classify(correct: str | list[str] | None, pick_id: str | None) -> Outcome:
+    """Исход относительно эталона. `correct` — один id, accept-set (несколько
+    равноценных RU-дубляжей) или NONE. Null-ветка явная: при correct=NONE пустой
+    pick — Hit (правильно ничего не выбрать), непустой — Wrong. Иначе Hit, если
+    pick ∈ accept-set."""
     if correct is None:
         return "hit" if pick_id is None else "wrong"
     if pick_id is None:
         return "miss"
-    return "hit" if pick_id == correct else "wrong"
+    accept = {correct} if isinstance(correct, str) else set(correct)
+    return "hit" if pick_id in accept else "wrong"
 
 
 def score(outcomes: list[Outcome]) -> int:
@@ -136,19 +140,43 @@ def _parse_candidates(raw: Any, where: str) -> list[Candidate]:
     return out
 
 
+def _parse_correct(raw: Any, candidate_ids: set[str], where: str) -> str | list[str] | None:
+    """`correct` — str | accept-set (list[str]) | null. Fail-loud (B2/S2):
+    пустой accept-set (тихий коллапс в null-семантику, маскирует Miss/Wrong) и
+    не-str элемент отвергаются; каждый id accept-set обязан быть в пуле кандидатов
+    (typo-id иначе тихо превращает верный pick в wrong). Legacy single-str
+    сохраняет miss-branch идиому (эталон-вне-пула → Miss) и от cross-check
+    освобождён."""
+    if raw is None or isinstance(raw, str):
+        return raw
+    if isinstance(raw, list):
+        if not raw:
+            raise GoldenSetError(
+                f"{where}: 'correct' accept-set must be non-empty (use null for 'no trailer')"
+            )
+        for k, el in enumerate(raw):
+            if not isinstance(el, str):
+                raise GoldenSetError(
+                    f"{where}: 'correct'[{k}] must be str, got {type(el).__name__}"
+                )
+            if el not in candidate_ids:
+                raise GoldenSetError(f"{where}: 'correct' id {el!r} not among candidate video_ids")
+        return raw
+    raise GoldenSetError(
+        f"{where}: 'correct' must be str, list[str] or null, got {type(raw).__name__}"
+    )
+
+
 def _parse_case(raw: Any, where: str) -> GoldenCase:
     if not isinstance(raw, dict):
         raise GoldenSetError(f"{where}: case must be an object, got {type(raw).__name__}")
     _require(raw, ("film", "correct", "candidates"), where)
-    correct = raw["correct"]
-    if correct is not None and not isinstance(correct, str):
-        raise GoldenSetError(
-            f"{where}: 'correct' must be str or null, got {type(correct).__name__}"
-        )
+    candidates = _parse_candidates(raw["candidates"], where)
+    correct = _parse_correct(raw["correct"], {c.video_id for c in candidates}, where)
     return GoldenCase(
         film=_parse_film(raw["film"], where),
         correct=correct,
-        candidates=_parse_candidates(raw["candidates"], where),
+        candidates=candidates,
         note=raw.get("note", ""),
     )
 
