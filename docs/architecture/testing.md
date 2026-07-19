@@ -250,6 +250,16 @@ work-for-work (goal-function priority (2)).
   lands RU-aware selection and `default_strategy()` starts picking the RU trailer, the xfail flips
   to XPASS → strict → red → the fix is **audible** at merge. Until then the baseline is
   consciously red (the harness score reflects it); not re-litigated as an open bug.
+- **O. EN-only arthouse — one accept-set WRONG left on the scorecard, deferred to #144 (#327).**
+  The real "Анора" golden case (`trailer_golden.json`) has no RU dub; its pool holds several
+  equally-official English trailers plus aggregator reposts. With no language signal and no
+  channel-authority scorer (deliberately out of scope — §VII, a 2-defect fix doesn't justify it),
+  `HeuristicStrategy` goes **ambiguous** (conf 0.3, 5 EN trailers tie) and takes the first by pool
+  order → an aggregator repost → `WRONG` vs. the official-distributor accept-set. This is left as
+  an honest §IV low-confidence flag, **not** patched by padding `correct` with aggregators (S1 —
+  that would re-fulfil the self-fulfilling metric #327 removed). Resolving it needs #144's
+  low-confidence fallback (LLM/embeddings) or a channel-authority signal; recorded here so a future
+  contributor doesn't "fix" the WRONG by inflating the accept-set.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
