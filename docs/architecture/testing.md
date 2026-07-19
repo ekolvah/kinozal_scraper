@@ -103,10 +103,29 @@ grounded in reality, not self-fulfilling (#327).
   routine run: re-recording can silently drift a hand-annotated `correct` out of a new YouTube
   result set (Hit → retrieval-miss). The loader is fail-loud (§IV/§VI): a broken entry (empty
   set, missing field, duplicate `video_id`, `correct` of a wrong type, empty accept-set, or an
-  accept-set id absent from the case's candidate pool) raises `GoldenSetError`, never degrades to
-  a silent Miss. (Legacy single-`str` `correct` may still point outside the pool — the miss-branch
-  idiom "ideal id not retrieved → Miss" — so the in-pool cross-check applies to accept-sets only.) The harness is deliberately **not** in `ci_check` — no green
+  accept-set id absent from **both** the candidate pool and the TMDB snapshot) raises
+  `GoldenSetError`, never degrades to a silent Miss. (Legacy single-`str` `correct` may still point
+  outside the pool — the miss-branch idiom "ideal id not retrieved → Miss" — so the cross-check
+  applies to accept-sets only.) The harness is deliberately **not** in `ci_check` — no green
   strategy exists yet to gate; the known-gap guard below carries the RED signal instead.
+
+- **TMDB dual-source measure (#329).** Beside the `TrailerStrategy` (YouTube-retrieval) column the
+  harness prints a second scorecard: `evaluate_tmdb` replays a frozen per-film `tmdb_videos`
+  snapshot through the pure `pick_trailer` (`tmdb_trailer.py`) — TMDB `/movie/{id}/videos` gives
+  `iso_639_1`/`type`/`official`/`site` directly, so language+officialness are metadata, not a
+  YouTube-title heuristic. Same accept-set, so the columns compare side-by-side. `--record-tmdb`
+  (dev-only, live, needs `TMDB_TOKEN`) reseeds snapshots for the **real** cases only (accept-set /
+  `correct: list` form); synthetic HeuristicStrategy logic fixtures (`str`/`null` `correct`,
+  placeholder ids a real YouTube id can't hit) are blanked → out of TMDB scope, and `evaluate_tmdb`
+  skips empty-snapshot cases. A real "TMDB found nothing" is a **non-empty** snapshot with no
+  eligible Trailer/Teaser → `pick_trailer`→None→Miss (distinct from out-of-scope).
+  - **Honest accept-set expansion (B1, #329).** The #327 accept-sets are YouTube-retrieval-derived,
+    so TMDB's *valid* RU dubs (different video_id, same film) scored Wrong against them. Fix:
+    per-id **content-verified** additions (the video name identifies the correct film + RU dub),
+    hard-coded — never "trust TMDB output wholesale". The non-circular control is TMDB measured
+    against the **pre-expansion** #327 set (a conservative floor); expansion is only for ground-truth
+    completeness, symmetric — the set holds both the YouTube-surfaced and TMDB-surfaced valid dubs,
+    so neither source is unfairly penalised.
 
 ## What does NOT get tested in this repo
 

@@ -16,7 +16,6 @@ from typing import Any
 from unittest import mock
 
 from kinozal_scraper.tmdb_trailer import TmdbVideo
-
 from scripts.eval_trailers import (
     GoldenSetError,
     classify,
@@ -355,11 +354,22 @@ class TestEvaluateTmdb(unittest.TestCase):
             ],
             "note": "",
         }
+        # Реальный Miss: снимок НЕ пустой, но eligible-видео нет (только Clip) →
+        # pick_trailer→None. Отличается от out-of-scope (пустой снимок, ниже).
         miss_case = {
             "film": {"ru_title": "C", "original_title": "C", "year": 2026},
             "correct": ["ruC"],
             "candidates": [{"video_id": "ruC", "title": "C 2026 трейлер"}],
-            "tmdb_videos": [],
+            "tmdb_videos": [
+                {
+                    "key": "clipC",
+                    "iso_639_1": "ru",
+                    "type": "Clip",
+                    "official": True,
+                    "site": "YouTube",
+                    "name": "",
+                }
+            ],
             "note": "",
         }
         cases = load_golden_set(self._write([hit_case, wrong_case, miss_case]))
@@ -367,6 +377,36 @@ class TestEvaluateTmdb(unittest.TestCase):
         outcomes = [o for _, _, o in rows]
         self.assertEqual(outcomes, ["hit", "wrong", "miss"])
         self.assertEqual(total, 1 - 2 + 0)
+
+    def test_evaluate_tmdb_skips_cases_without_snapshot(self) -> None:
+        # Кейс без tmdb_videos-снимка вне TMDB-scope (синтетические logic-фикстуры),
+        # НЕ попадает в rows — иначе placeholder-id раздувает TMDB Wrong'ами.
+        with_snapshot = {
+            "film": {"ru_title": "A", "original_title": "A", "year": 2026},
+            "correct": ["ruKey"],
+            "candidates": [{"video_id": "yt1", "title": "A 2026 трейлер"}],
+            "tmdb_videos": [
+                {
+                    "key": "ruKey",
+                    "iso_639_1": "ru",
+                    "type": "Trailer",
+                    "official": False,
+                    "site": "YouTube",
+                    "name": "",
+                }
+            ],
+            "note": "",
+        }
+        no_snapshot = {
+            "film": {"ru_title": "B", "original_title": "B", "year": 2026},
+            "correct": "placeholder_id",
+            "candidates": [{"video_id": "placeholder_id", "title": "B 2026 трейлер"}],
+            "note": "",
+        }
+        cases = load_golden_set(self._write([with_snapshot, no_snapshot]))
+        rows, _ = evaluate_tmdb(cases)
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0][0].film.ru_title, "A")
 
 
 # ── #138 red baseline: known-gap guard ────────────────────────────────────────
