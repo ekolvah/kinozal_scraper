@@ -525,16 +525,16 @@
       ]
     },
     "correct": [
-      "8m6UrWMl18M",
-      "p90SHE4C8Js"
+      "BUtvdzMxw3U",
+      "XTGdPJ6ignc"
     ],
     "candidates": [
       {
-        "video_id": "GuPkfvxmtdw",
-        "title": "Anora Trailer #1 (2024)",
-        "channel": "Rotten Tomatoes Trailers",
-        "description": "Check out the official trailer for Anora starring Mikey Madison! ▻ Visit Fandango: ...",
-        "published_at": "2024-07-15T16:29:15Z"
+        "video_id": "BUtvdzMxw3U",
+        "title": "Анора — Русский трейлер (2024)",
+        "channel": "Kinoman",
+        "description": "Русский трейлер фильма «Анора» 2024 года Официальные русские трейлеры к фильмам, трейлеры к сериалам, ...",
+        "published_at": "2024-08-21T09:45:32Z"
       },
       {
         "video_id": "RSFKSZWmh2M",
@@ -544,11 +544,18 @@
         "published_at": "2024-10-15T15:13:01Z"
       },
       {
-        "video_id": "8m6UrWMl18M",
-        "title": "ANORA - Official Trailer #2 - In Select Theaters October",
-        "channel": "NEON",
-        "description": "Sean Baker's Palme d'Or winner ANORA is an audacious, thrilling, and comedic variation on a modern day Cinderella story.",
-        "published_at": "2024-10-09T15:59:15Z"
+        "video_id": "XTGdPJ6ignc",
+        "title": "Анора🔥💥Русский трейлер (Дубляж, 2024) Драма, комедия",
+        "channel": "Кино Трейлеры",
+        "description": "Русский трейлер фильма «Анора» 2024 года. ▸Дата выхода: 17 октября 2024 г. (РФ) ▸Молодая стриптизерша из ...",
+        "published_at": "2024-10-05T08:19:23Z"
+      },
+      {
+        "video_id": "GuPkfvxmtdw",
+        "title": "Anora Trailer #1 (2024)",
+        "channel": "Rotten Tomatoes Trailers",
+        "description": "Check out the official trailer for Anora starring Mikey Madison! ▻ Visit Fandango: ...",
+        "published_at": "2024-07-15T16:29:15Z"
       },
       {
         "video_id": "p90SHE4C8Js",
@@ -558,11 +565,11 @@
         "published_at": "2024-07-16T17:56:37Z"
       },
       {
-        "video_id": "k68giG0yX5A",
-        "title": "Anora (2024)",
-        "channel": "Findingoodmovies",
-        "description": "Name: Anora (2024) Description: \"Anora\" is a 2024 American comedy-drama directed by Sean Baker, known for his authentic ...",
-        "published_at": "2025-02-07T04:23:04Z"
+        "video_id": "7Bj_UEm4G0o",
+        "title": "ANORA Trailer German Deutsch (2024)",
+        "channel": "KinoCheck",
+        "description": "Offizieller \"Anora\" Trailer Deutsch German 2024 | Abonnieren ➤ https://abo.yt/kc | (OT: Anora) Movie Trailer | Kino: 31 Okt 2024 ...",
+        "published_at": "2024-09-16T13:04:04Z"
       },
       {
         "video_id": "08sR1MY2wpU",
@@ -570,9 +577,23 @@
         "channel": "Rotten Tomatoes Trailers",
         "description": "Check out the official trailer for Anora starring Mikey Madison! ▻ Buy Tickets on Fandango: ...",
         "published_at": "2024-10-09T16:56:07Z"
+      },
+      {
+        "video_id": "k68giG0yX5A",
+        "title": "Anora (2024)",
+        "channel": "Findingoodmovies",
+        "description": "Name: Anora (2024) Description: \"Anora\" is a 2024 American comedy-drama directed by Sean Baker, known for his authentic ...",
+        "published_at": "2025-02-07T04:23:04Z"
+      },
+      {
+        "video_id": "LsGvnMLqW1Q",
+        "title": "ANORA | Trailer Ufficiale (Universal Studios) - HD",
+        "channel": "Universal Pictures International Italy",
+        "description": "Dal 7 novembre al cinema. Seguici su Facebook: facebook.com/FocusFeaturesIT Trovaci su Instagram: ...",
+        "published_at": "2024-09-20T16:36:42Z"
       }
     ],
-    "note": "реал: артхаус без RU-дубляжа → эталон = official-дистрибьютор (NEON 8m6UrWMl18M — Palme d'Or, Entract Films p90SHE4C8Js). Без RU-сигнала и channel-authority (out of scope §VII, #144) эвристика уходит в ambiguous (conf 0.3, 5 EN-трейлеров делят топ-ранг) и берёт первый по порядку → RT-агрегатор, WRONG. Честная граница EN-only, флагнутая §IV low-confidence — цель fallback #144, а не тихая ошибка; accept-set НЕ раздут агрегаторами (S1)"
+    "note": "реал: RU-дубляж СУЩЕСТВУЕТ (Kinoman BUtvdzMxw3U, «Кино Трейлеры» дубляж XTGdPJ6ignc) — мульти-валидный русский трейлер как у остальных кейсов. NB: прод-retrieval (youtube.py) ищет с англ. «trailer» и на этом названии терял RU-дубляжи; пул отражает корректную retrieval-breadth (RU-ключ), баг заведён отдельным issue линии #315"
   },
   {
     "film": {
