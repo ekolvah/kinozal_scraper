@@ -13,16 +13,17 @@ from __future__ import annotations
 
 import logging
 import unittest
+from typing import Any
 from unittest import mock
 
 import google.api_core.exceptions
+
+from kinozal_scraper.gemini_enricher import ModelUnavailable, QuotaExhausted
 from kinozal_scraper.trailer_picker_embeddings import (
     EmbeddingTrailerStrategy,
     GeminiEmbedder,
     _cosine,
 )
-
-from kinozal_scraper.gemini_enricher import ModelUnavailable, QuotaExhausted
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
 
 
@@ -127,7 +128,7 @@ class TestEmbeddingTrailerStrategy(unittest.TestCase):
 
 
 class TestGeminiEmbedder(unittest.TestCase):
-    def _patch(self, **kwargs: object) -> mock._patch:
+    def _patch(self, **kwargs: Any) -> Any:
         return mock.patch("kinozal_scraper.trailer_picker_embeddings.genai.embed_content", **kwargs)
 
     def test_returns_vectors(self) -> None:
