@@ -26,7 +26,8 @@
         "published_at": "2026-01-11T00:00:00Z"
       }
     ],
-    "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)"
+    "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -47,7 +48,8 @@
         "channel": "КиноПоиск"
       }
     ],
-    "note": "seed: #138 (RU в пуле, но англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)"
+    "note": "seed: #138 (RU в пуле, но англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -68,7 +70,8 @@
         "channel": "Кинопрокат"
       }
     ],
-    "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)"
+    "note": "seed: #138 (RU в пуле после union-retrieval #140; англ первый → baseline берёт англ, чинит selection #141)",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -94,7 +97,8 @@
         "channel": "Кинопрокат"
       }
     ],
-    "note": "seed: #138 (RU третий в пуле, англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)"
+    "note": "seed: #138 (RU третий в пуле, англ первый → baseline берёт англ; чинит selection #141; иллюстративно до --record)",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -115,7 +119,8 @@
         "channel": "ReactChannel"
       }
     ],
-    "note": "нормальный: первый кандидат корректен → baseline Hit"
+    "note": "нормальный: первый кандидат корректен → baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -131,7 +136,8 @@
         "channel": "Universal Pictures"
       }
     ],
-    "note": "нормальный: baseline Hit"
+    "note": "нормальный: baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -152,7 +158,8 @@
         "channel": "Warner Bros."
       }
     ],
-    "note": "нормальный: baseline Hit"
+    "note": "нормальный: baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -168,7 +175,8 @@
         "channel": "Searchlight"
       }
     ],
-    "note": "нормальный: baseline Hit"
+    "note": "нормальный: baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -184,7 +192,8 @@
         "channel": "Warner Bros."
       }
     ],
-    "note": "нормальный: baseline Hit"
+    "note": "нормальный: baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -200,7 +209,8 @@
         "channel": "Paramount"
       }
     ],
-    "note": "нормальный: baseline Hit"
+    "note": "нормальный: baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -216,7 +226,8 @@
         "channel": "Universal"
       }
     ],
-    "note": "нормальный: baseline Hit"
+    "note": "нормальный: baseline Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -237,7 +248,8 @@
         "channel": "Archive"
       }
     ],
-    "note": "miss-ветка: эталон существует, но в пуле только чужой год → baseline None → Miss"
+    "note": "miss-ветка: эталон существует, но в пуле только чужой год → baseline None → Miss",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -253,7 +265,8 @@
         "channel": "RetroTrailers"
       }
     ],
-    "note": "miss-ветка: baseline None → Miss"
+    "note": "miss-ветка: baseline None → Miss",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -263,7 +276,8 @@
     },
     "correct": null,
     "candidates": [],
-    "note": "NONE-ветка: трейлера не существует, пул пуст → baseline None → Hit"
+    "note": "NONE-ветка: трейлера не существует, пул пуст → baseline None → Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -279,7 +293,8 @@
         "channel": "FanUploads"
       }
     ],
-    "note": "NONE-ветка: только чужой год в пуле → baseline None → Hit"
+    "note": "NONE-ветка: только чужой год в пуле → baseline None → Hit",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -305,7 +320,8 @@
         "description": "В главной роли Иван Петров"
       }
     ],
-    "note": "cast tie-break (#141): два RU-кандидата равного языка+года, каст в description различает → эвристика выбирает cast-несущий; измеряет cast-ось harness'ом"
+    "note": "cast tie-break (#141): два RU-кандидата равного языка+года, каст в description различает → эвристика выбирает cast-несущий; измеряет cast-ось harness'ом",
+    "tmdb_videos": []
   },
   {
     "film": {
@@ -319,7 +335,8 @@
     },
     "correct": [
       "2TN9DnF2Yhw",
-      "esfYGlJd0k8"
+      "esfYGlJd0k8",
+      "dkv5KtVG4T0"
     ],
     "candidates": [
       {
@@ -372,7 +389,417 @@
         "published_at": "2024-10-01T14:02:47Z"
       }
     ],
-    "note": "реал: мульти-валидный RU-дубляж (Kinoman 2TN9DnF2Yhw, Movie Boxes esfYGlJd0k8 — оба «Русский трейлер, Дубляж 2024»); шум WERWULF (cmjpadVj-Vk, др. фильм Эггерса 2026) в пуле не должен матчиться"
+    "note": "реал: мульти-валидный RU-дубляж (Kinoman 2TN9DnF2Yhw, Movie Boxes esfYGlJd0k8 — оба «Русский трейлер, Дубляж 2024»); шум WERWULF (cmjpadVj-Vk, др. фильм Эггерса 2026) в пуле не должен матчиться +TMDB RU-дубляж dkv5KtVG4T0 (контент-проверен: «Носферату — Русский трейлер #2 (Дубляж, 2024)»); #329 симметричное расширение accept-set (B1).",
+    "tmdb_videos": [
+      {
+        "key": "dkv5KtVG4T0",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Носферату — Русский трейлер #2 (Дубляж, 2024)"
+      },
+      {
+        "key": "rsKT_wdAmtE",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Spirit Speaks"
+      },
+      {
+        "key": "ctDvKvP6JzU",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Girl Possessed"
+      },
+      {
+        "key": "8PBi2gZnePA",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Thomas Meets Count Orlok"
+      },
+      {
+        "key": "tVv-_6h_Ofs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"A Black Omen\" - Deleted Scene"
+      },
+      {
+        "key": "EAHYitb3mb0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behold The Third Night - Deleted Scene"
+      },
+      {
+        "key": "X9hFwBygvlI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Streaming Now on Peacock"
+      },
+      {
+        "key": "xHKW7DWteL4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Q&A with Director Robert Eggers and Cinematographer Jarin Blaschke"
+      },
+      {
+        "key": "lsEgC4FRDcA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"He's Here!\" They're here!"
+      },
+      {
+        "key": "LpQGM7mkq_w",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Nosferatu team's incredible work in transforming Bill Skarsgård into the pinnacle of horror has earned the movie FOUR Oscar nominations!"
+      },
+      {
+        "key": "WyEgHWoQFDY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Nosferatu raises the stakes in horror with Academy Award nominations for: Best Cinematography, Best Production Design, Best Costume Design and Best Makeup and Hairstyling"
+      },
+      {
+        "key": "JuOg3gisag8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Nosferatu Cast Share Their Experience Working with Robert Eggers"
+      },
+      {
+        "key": "vAEM5mDrhSc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Watch at Home Now"
+      },
+      {
+        "key": "BIlcvsqhXPU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "“The detail was so authentic, that’s the gift Robert Eggers creates.”"
+      },
+      {
+        "key": "S9zYWyzwyPM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "On a Robert Eggers’ set, the camera is a main character."
+      },
+      {
+        "key": "EClTcR4imC4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "The true stars of NOSFERATU"
+      },
+      {
+        "key": "Cxpl4Mt275I",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Building tension with long shots."
+      },
+      {
+        "key": "1kupP6KIQ1U",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Horses. Wolves. 2,000 live rats. The animal actors of NOSFERATU."
+      },
+      {
+        "key": "IXoPa88aj4Q",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Say your prayers."
+      },
+      {
+        "key": "9H7bQkAfHyo",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"Come To Me\""
+      },
+      {
+        "key": "8HWtNewYwIg",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Unsettling and perfectly horrifying."
+      },
+      {
+        "key": "oRKGR_w9yKw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trapped in darkness. There is no escape."
+      },
+      {
+        "key": "Smi6Ck_uiQ4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "A mesmerizing gothic tale that's captivating critics and audiences alike."
+      },
+      {
+        "key": "FZJeVP7Tmvs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "The making of a nightmare castle."
+      },
+      {
+        "key": "kjDBcDLMtts",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "You can't escape the grip of this death."
+      },
+      {
+        "key": "v8r3cwPDyBU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "This is what nightmares are made of!"
+      },
+      {
+        "key": "7nwR_O3rG2o",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "a voice deeper than an ancient crypt"
+      },
+      {
+        "key": "18xrNB_Y4VU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Death's shadow falls long. Nosferatu is coming."
+      },
+      {
+        "key": "PHdVBjDm-UA",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "The 1830s Gothic Fashion of Robert Eggers' Nosferatu - Dressed Ep 10"
+      },
+      {
+        "key": "Ky4A2jdWoic",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lily-Rose Depp's Nosferatu Transformation Will Leave You Speechless - BAFTA"
+      },
+      {
+        "key": "wHGOhaXNqiM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Cast of Nosferatu Discusses the Props That Shaped Their Characters - Prop Shop"
+      },
+      {
+        "key": "KtFcImFoxZE",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "There's no stopping him. Pray you survive the night! Nosferatu is coming."
+      },
+      {
+        "key": "E5hN_bVgE38",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Every dream begins in darkness."
+      },
+      {
+        "key": "17AnB6bv9iw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": false,
+        "site": "YouTube",
+        "name": "Lily-Rose Depp & Robert Eggers on Isabelle Adjani's Performances and Butoh"
+      },
+      {
+        "key": "BWfMBSNF2eU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Conversations @ Curzon - Robert Eggers on the making of Nosferatu, Vampires and humour in his films"
+      },
+      {
+        "key": "YWgfJ0R2Cs4",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"Come To Me\" Official Clip"
+      },
+      {
+        "key": "3jiwKbQVrxc",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Robert Eggers on Nosferatu"
+      },
+      {
+        "key": "NmpB_KTW46w",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Interview - Robert Eggers and Chris Columbus"
+      },
+      {
+        "key": "Y3A404l4pGY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® Interview"
+      },
+      {
+        "key": "T3hEp-hZmGU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Nosferatu' With Robert Eggers, Lily-Rose Depp, Bill Skarsgård, And More - Academy Conversations"
+      },
+      {
+        "key": "Dqts3wKStHY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Thirst 30"
+      },
+      {
+        "key": "gSlY0pdRk6c",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "There is a dread storm rising."
+      },
+      {
+        "key": "MlSrSLCx8zI",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Look Inside"
+      },
+      {
+        "key": "zAcdt9CUFw8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "He shall reign over all of your empty corpses."
+      },
+      {
+        "key": "pgFUzOlXzwc",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "“Nosferatu” Official Clip"
+      },
+      {
+        "key": "4EdBsxPK1Bs",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"Held Hands With Death\" Official Clip"
+      },
+      {
+        "key": "XWjyMhycL5s",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "How Robert Eggers' Past Truly Crafted Nosferatu - Origin Story"
+      },
+      {
+        "key": "5172Vt3FOYw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Devourance 30"
+      },
+      {
+        "key": "x9wECXvy288",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"Within\""
+      },
+      {
+        "key": "nulvWqYUM8k",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "b59rxDB_JRg",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Teaser Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -425,7 +852,297 @@
         "published_at": "2018-09-21T20:24:48Z"
       }
     ],
-    "note": "реал: EN-only official — RU-дубляжа в пуле нет, Warner Official Trailer CoZqL9N6Rx4 и Official Trailer 2 As-vKW4ZboU; тизер и классика-1988 (ickbVzajrk0) исключены"
+    "note": "реал: EN-only official — RU-дубляжа в пуле нет, Warner Official Trailer CoZqL9N6Rx4 и Official Trailer 2 As-vKW4ZboU; тизер и классика-1988 (ickbVzajrk0) исключены",
+    "tmdb_videos": [
+      {
+        "key": "EVm9EEpq4vU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Now Streaming on Max"
+      },
+      {
+        "key": "xnbAxOEiMis",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official American Sign Language Trailer"
+      },
+      {
+        "key": "7NfsCqItcWI",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Handbook for the Recently Deceased"
+      },
+      {
+        "key": "u4H3M4qyn2Q",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Movie Clip: Entering the Afterlife"
+      },
+      {
+        "key": "byrjAcIC3cA",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Til Death Do We Park"
+      },
+      {
+        "key": "P5KK2H4Dxpc",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Movie Clip: Marriage Counseling"
+      },
+      {
+        "key": "atViikswY7A",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Meet the Deetz"
+      },
+      {
+        "key": "t80XeiXBsks",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Beetlejuice Returns!"
+      },
+      {
+        "key": "WR6kF7tkKvs",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Stop-Motion Art"
+      },
+      {
+        "key": "W2HXtyIYdfI",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Extended Movie Preview"
+      },
+      {
+        "key": "R5IDp5xG6h4",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: The Juice is Loose!"
+      },
+      {
+        "key": "NvUWBQtYhmM",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "#1 Movie in the World"
+      },
+      {
+        "key": "VnARC5pprkY",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Jenna knows a thing or two about making an iconic dance scene."
+      },
+      {
+        "key": "4Y7AQ32IoTQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tim Burton Interview"
+      },
+      {
+        "key": "hsEIwBKBshM",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "#Beetlejuice #Beetlejuice is gleefully zany time."
+      },
+      {
+        "key": "Wsxn2DUtz4M",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "He has been summoned!"
+      },
+      {
+        "key": "mLAZHgAQYPI",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "This one's for you."
+      },
+      {
+        "key": "HK_20nhXvu0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Now Playing Only in Theaters"
+      },
+      {
+        "key": "6b7-49Y23vg",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Now Playing"
+      },
+      {
+        "key": "6TBakiNnHZk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": false,
+        "site": "YouTube",
+        "name": "New ways to search: Beetlejuice Beetlejuice (ft. Bob)"
+      },
+      {
+        "key": "JxtbHkZmLlc",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Willem Dafoe Interview"
+      },
+      {
+        "key": "gTA0CwZJRhE",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Waymo"
+      },
+      {
+        "key": "KsvzxTXylOQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "We saved a seat for you."
+      },
+      {
+        "key": "6ra5We-taDE",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® Interview"
+      },
+      {
+        "key": "AMn6-dzzeZc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "You can always call the #1 bio-exorcist to help."
+      },
+      {
+        "key": "AA4L0YqxXrU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "RIP to our notifications."
+      },
+      {
+        "key": "r_uGRfF4AYY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Beetlejuice's Fantasy Football League Winning Tips"
+      },
+      {
+        "key": "eI5TLolXk7M",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "London Premiere"
+      },
+      {
+        "key": "knXbOhZE2gQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "It may not be a Wednesday, but we thought you might like this."
+      },
+      {
+        "key": "lEpoz1_TjXA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Beetlejuice goes ghost pepper while eating to die for ribs"
+      },
+      {
+        "key": "ypAUDTNOsLU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Astrid Featurette"
+      },
+      {
+        "key": "_Hm9LQx0yvE",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tickets On Sale"
+      },
+      {
+        "key": "JE2TD7kJttk",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "The ghost with the most is back. Full Trailer Out Now."
+      },
+      {
+        "key": "As-vKW4ZboU",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer 2"
+      },
+      {
+        "key": "CoZqL9N6Rx4",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "e6yDanmWI1E",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Teaser Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -513,7 +1230,345 @@
         "published_at": "2024-04-10T01:02:15Z"
       }
     ],
-    "note": "реал: нумерованный сиквел — каналы пишут «Джокер 2», ru_title без цифры; полные RU-трейлеры iVideos 6Gqk6ohloTU и #2 4K 2g4l_4mLt90; ловушка — новостной клип Мосфида pws-u-OaneY, цитирующий точное название"
+    "note": "реал: нумерованный сиквел — каналы пишут «Джокер 2», ru_title без цифры; полные RU-трейлеры iVideos 6Gqk6ohloTU и #2 4K 2g4l_4mLt90; ловушка — новостной клип Мосфида pws-u-OaneY, цитирующий точное название",
+    "tmdb_videos": [
+      {
+        "key": "2g4l_4mLt90",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Джокер 2: Безумие на двоих — Русский трейлер #2 (4K, 2024)"
+      },
+      {
+        "key": "6Gqk6ohloTU",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Джокер 2: Безумие на двоих — Русский трейлер (2024)"
+      },
+      {
+        "key": "f8rupP9AQMU",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Finding Lee with Lady Gaga"
+      },
+      {
+        "key": "vcyG78OvtcQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind The Scenes: The Character of Music"
+      },
+      {
+        "key": "OZYkbpuLQJs",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: King of Nothing"
+      },
+      {
+        "key": "2z107KZWPG0",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Movie Clip - Come On Get Happy"
+      },
+      {
+        "key": "qqL6fjCMljw",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Movie Clip - If My Friends Could See Me Now"
+      },
+      {
+        "key": "UjO7eikD66E",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Scenes: Can I Have a Cigarette?"
+      },
+      {
+        "key": "aQL8D1K0W_M",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Extended Preview"
+      },
+      {
+        "key": "Cnbp4YldOyo",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Joker: Folie à Deux' with filmmakers | Academy Conversations"
+      },
+      {
+        "key": "EVu1V9K6KeY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® Interview"
+      },
+      {
+        "key": "E3Ay2QU3ZXI",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lee (Harley) Quinzel"
+      },
+      {
+        "key": "ykBQvAr3mSc",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "JOKER: FOLIE À DEUX | Put on a happy face, 🇨🇦!"
+      },
+      {
+        "key": "2_YvsFwTdBQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Shared Madness - Joker Featurette"
+      },
+      {
+        "key": "sPdZ2KcunN8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Finish what he started."
+      },
+      {
+        "key": "wTLQbani47g",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Send in the clowns"
+      },
+      {
+        "key": "8jUGY10R-PA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Shared Madness - Lee"
+      },
+      {
+        "key": "b0YfWILWH5U",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "UK Premiere"
+      },
+      {
+        "key": "f5mLjNHzo4g",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Shared Madness - Arthur Fleck"
+      },
+      {
+        "key": "kkrh-XhNkoY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Folie à Deux Featurette"
+      },
+      {
+        "key": "Y6h4LahGWcI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Knock knock…"
+      },
+      {
+        "key": "ktIkoKl032w",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "It’s time to finish what he started"
+      },
+      {
+        "key": "ZnhfYyAiRok",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip"
+      },
+      {
+        "key": "fiqqAI0e4Nc",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "That's Life"
+      },
+      {
+        "key": "V6AWayFmIoA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Get Ready for Judgment Day."
+      },
+      {
+        "key": "gu3OX_kdIfQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Joaquin's Joker Featurette"
+      },
+      {
+        "key": "wTzOF4ZY2yo",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip"
+      },
+      {
+        "key": "39Kj08_Yjng",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind-the-Scenes Featurette | Filmed For IMAX®"
+      },
+      {
+        "key": "UI56wR6Gd-c",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "“My Name is Lee” Featurette"
+      },
+      {
+        "key": "nHXlugkUtkU",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "What The World Needs Now"
+      },
+      {
+        "key": "8aDxPC9dVDQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tickets Now On Sale"
+      },
+      {
+        "key": "uG4DoPcBAhw",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Music Within Featurette"
+      },
+      {
+        "key": "HaFrUMO1ggM",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Who do you think they see?"
+      },
+      {
+        "key": "2Ql3s_X7VPU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "New Trailer Online Now"
+      },
+      {
+        "key": "mffO1wnxbG4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer Out Now"
+      },
+      {
+        "key": "_OKAwz2MsJs",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "AnyVZKj6Sjo",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Drop it"
+      },
+      {
+        "key": "HWyZyN3s_Ns",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Knock knock"
+      },
+      {
+        "key": "bVhgRzreqFY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Something’s changed"
+      },
+      {
+        "key": "HKT7JlHtVng",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Welcome to the Joker & Harley Show"
+      },
+      {
+        "key": "W2xZ41L1DRk",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trailer out now"
+      },
+      {
+        "key": "xy8aJw1vYHo",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Teaser Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -593,7 +1648,321 @@
         "published_at": "2024-09-20T16:36:42Z"
       }
     ],
-    "note": "реал: RU-дубляж СУЩЕСТВУЕТ (Kinoman BUtvdzMxw3U, «Кино Трейлеры» дубляж XTGdPJ6ignc) — мульти-валидный русский трейлер как у остальных кейсов. NB: прод-retrieval (youtube.py) ищет с англ. «trailer» и на этом названии терял RU-дубляжи; пул отражает корректную retrieval-breadth (RU-ключ), баг заведён отдельным issue линии #315"
+    "note": "реал: RU-дубляж СУЩЕСТВУЕТ (Kinoman BUtvdzMxw3U, «Кино Трейлеры» дубляж XTGdPJ6ignc) — мульти-валидный русский трейлер как у остальных кейсов. NB: прод-retrieval (youtube.py) ищет с англ. «trailer» и на этом названии терял RU-дубляжи; пул отражает корректную retrieval-breadth (RU-ключ), баг заведён отдельным issue линии #315",
+    "tmdb_videos": [
+      {
+        "key": "BUtvdzMxw3U",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Анора — Русский трейлер (2024)"
+      },
+      {
+        "key": "_fPEaPBMNTQ",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"Will you marry me?\""
+      },
+      {
+        "key": "BzbdVJkM7T0",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Ani and Vanya Get Married"
+      },
+      {
+        "key": "RGt3gOzjm7g",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Vanya's Parents Are Coming"
+      },
+      {
+        "key": "d-BovJALTtY",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "“Game Over For You”"
+      },
+      {
+        "key": "1ztYZFzps8c",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Anora' Wins Best Editing | 97th Oscars Speech (2025)"
+      },
+      {
+        "key": "RjickaRRLtQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Anora' Best Actress Press Room Speech | 97th Oscars (2025)[Mikey Madison]"
+      },
+      {
+        "key": "MiEk-rWom9Y",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Anora' Best Picture, Best Original Screenplay, Best Director Press Room Speech | 97th Oscars (2025)"
+      },
+      {
+        "key": "hnTWP7jaXQY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Amelia Dimoldenberg Pitches Yura Borisov As The Next James Bond Over Pre Oscars Brunch"
+      },
+      {
+        "key": "aKSWSNDlHg8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Mikey Madison & Amelia Dimoldenberg Tease The Chicken Shop Date Movie At Pre Oscars Brunch"
+      },
+      {
+        "key": "wABdmegRLbs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Sean Baker Unveils Vintage-Inspired 'Anora' Posters"
+      },
+      {
+        "key": "EMTHwp1UPjk",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Sean Baker’s 30 Year Journey to 'Anora'"
+      },
+      {
+        "key": "aA53nbOcARM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Mikey EPK Character"
+      },
+      {
+        "key": "kX6zSsKOYFI",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Mikey EPK Spontaneity On Set"
+      },
+      {
+        "key": "aTwkRsc1bYQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Featurette Sean EPK Working With Cast"
+      },
+      {
+        "key": "E9OOIVsDcbM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Working With Sean"
+      },
+      {
+        "key": "S5r3OplFjJ8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Mikey Madison and Sean Baker on Anora"
+      },
+      {
+        "key": "YO-x2x4WoFg",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Describing ANORA's Vanya In 3 Words"
+      },
+      {
+        "key": "A9qyGbh-Zyo",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "ANORA Cast Reacts To PRETTY WOMAN Comparisons"
+      },
+      {
+        "key": "V6nQDyZWafE",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "ANORA Co-Stars Call Mikey Madison The Superhero Of The Film | TIFF 2024"
+      },
+      {
+        "key": "ylZEFGMp2-8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Sean Baker on Working with Cast"
+      },
+      {
+        "key": "Bm25_Zcku9g",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Marriage"
+      },
+      {
+        "key": "PojwBTaaixY",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Candy Shop"
+      },
+      {
+        "key": "j0Rr_t54b6E",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Anora is the name on everyone's lips 💋"
+      },
+      {
+        "key": "A-Z0C0pmfwk",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Vanya's House"
+      },
+      {
+        "key": "9OZ25F40hiI",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "You're Funny"
+      },
+      {
+        "key": "yWtzcjoUx7c",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Wedding"
+      },
+      {
+        "key": "qFAp_yI3HEw",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Clip - Ivan's Crew Arrival in Las Vegas"
+      },
+      {
+        "key": "AAAY1psCOCU",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Clip - Ani and Ivan Meeting"
+      },
+      {
+        "key": "Amo2s-mKrcI",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Anora’ with Mikey Madison, Sean Baker & more"
+      },
+      {
+        "key": "yTrhxWo01_0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "TIFF Q&A With Sean Baker & Mikey Madison"
+      },
+      {
+        "key": "mYipRZ4xvkg",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Anora' Is Character Collaboration At Its Finest"
+      },
+      {
+        "key": "mwcxBJZgwH4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Anora director Sean Baker: \"It's a traditional romantic comedy ... and then we pull the rug\""
+      },
+      {
+        "key": "8m6UrWMl18M",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer #2"
+      },
+      {
+        "key": "N-AEky8LYxw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Sean Baker and Mikey Madison on Anora"
+      },
+      {
+        "key": "BnXvmhfWzDA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Sean Baker, Mikey Madison, Karren Karagulian, and Vache Tovmasyan on Anora"
+      },
+      {
+        "key": "PLhZ8tyVMSc",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official International Trailer 1"
+      },
+      {
+        "key": "p1HxTmV5i7c",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Redband Trailer"
+      },
+      {
+        "key": "vgrXTvL_l_c",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Greenband Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -607,7 +1976,8 @@
     },
     "correct": [
       "HSg_3GSGt8U",
-      "kPFFHB3pjhc"
+      "kPFFHB3pjhc",
+      "CZIdRUCO-_0"
     ],
     "candidates": [
       {
@@ -681,7 +2051,257 @@
         "published_at": "2024-10-31T15:54:08Z"
       }
     ],
-    "note": "реал: мульти-валидный RU (Okko official-платформа HSg_3GSGt8U, Kinoman дубляж kPFFHB3pjhc); украинский трейлер oPsQlO_fY7E — др. язык, исключён"
+    "note": "реал: мульти-валидный RU (Okko official-платформа HSg_3GSGt8U, Kinoman дубляж kPFFHB3pjhc); украинский трейлер oPsQlO_fY7E — др. язык, исключён +TMDB RU-дубляж CZIdRUCO-_0 (контент-проверен: «Субстанция | Трейлер (RU)»); #329 симметричное расширение accept-set (B1).",
+    "tmdb_videos": [
+      {
+        "key": "CZIdRUCO-_0",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Субстанция | Трейлер"
+      },
+      {
+        "key": "cBh97-obqKQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Director Coralie Fargeat Dives Deep with Sean Evans on David Lynch & More"
+      },
+      {
+        "key": "UMicrbtjFKU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Inside the Screenplay"
+      },
+      {
+        "key": "KASLYEChinM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Conversation with Demi Moore & \"Charlie's Angels\""
+      },
+      {
+        "key": "Wgfk_gtwvPA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Coralie Fargeat’s reaction on her Academy Award nomination for Best Director for The Substance"
+      },
+      {
+        "key": "8H64HNvXrqU",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Making-Of Featurette"
+      },
+      {
+        "key": "s0vATsOGW1Y",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"Especially not now...\""
+      },
+      {
+        "key": "m53cJl9O7QY",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"We got you just a little something...\""
+      },
+      {
+        "key": "BKcMm5RG2M4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Q&A with Coralie Fargeat & Guillermo del Toro"
+      },
+      {
+        "key": "dQU7LHh7ANU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tree’s up 🎄"
+      },
+      {
+        "key": "Rk3u4_IH0cY",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Pretty Girls Should Always Smile"
+      },
+      {
+        "key": "DBiPdgIZt1g",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Conversation with THE SUBSTANCE Filmmaker Coralie Fargeat"
+      },
+      {
+        "key": "jNQtxvA2zPY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Interview - Margaret Qualley"
+      },
+      {
+        "key": "HGmRKUYWN48",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Interview - Demi Moore at Cannes Film Festival"
+      },
+      {
+        "key": "O9nfzMT05ck",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Get Ready With Me"
+      },
+      {
+        "key": "lR5nlovVgvQ",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer #2"
+      },
+      {
+        "key": "4dzYB2JiMAA",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - I'd Like To Order"
+      },
+      {
+        "key": "0uUEiKr9FmA",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": false,
+        "site": "YouTube",
+        "name": "The Substance (2024) - \"I'm Sue\""
+      },
+      {
+        "key": "QzbgCI-FFu0",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Lucky Day"
+      },
+      {
+        "key": "hYCkO4uuzt4",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "To everyone who has gone out to see The Substance in cinemas…"
+      },
+      {
+        "key": "4DPFdsDVK4w",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Pump It Up With Sue"
+      },
+      {
+        "key": "vRM4IC9jNkc",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "On my way to see The Substance again 🧪"
+      },
+      {
+        "key": "kEWzeBLhLD4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "THE SUBSTANCE - Coralie Fargeat rips beauty standards to gory shreds | MUBI Podcast"
+      },
+      {
+        "key": "1_SSwbYYIQc",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Breaking Down THE SUBSTANCE's Shrimp Scene"
+      },
+      {
+        "key": "aA-vyoIPcL4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "The hype is real"
+      },
+      {
+        "key": "seyGZLvAauk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "TIFF 2024 Q&A"
+      },
+      {
+        "key": "86wkRfWQWiY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Mark it in your calendar"
+      },
+      {
+        "key": "LNlrGhBpYjc",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "B1B3HZRHpEw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Teaser"
+      },
+      {
+        "key": "ZFV4tGgf5rA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Vertical Teaser"
+      },
+      {
+        "key": "U-RxVJrLKrk",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip"
+      }
+    ]
   },
   {
     "film": {
@@ -769,7 +2389,505 @@
         "published_at": "2022-09-27T21:24:06Z"
       }
     ],
-    "note": "реал: official RU-дубляж Kinoman #1 5GmXVEBcOpc и #2 j0La8m0S568; фан-озвучки (MAXIMUS 8z0TGHp3iZw, DMITRY TER 2P_UbFLQ1EI) — не дубляж, исключены"
+    "note": "реал: official RU-дубляж Kinoman #1 5GmXVEBcOpc и #2 j0La8m0S568; фан-озвучки (MAXIMUS 8z0TGHp3iZw, DMITRY TER 2P_UbFLQ1EI) — не дубляж, исключены",
+    "tmdb_videos": [
+      {
+        "key": "Vtp4466Hx8I",
+        "iso_639_1": "ru",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine | Best Bubs"
+      },
+      {
+        "key": "5GmXVEBcOpc",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Дэдпул и Росомаха — Русский трейлер (Дубляж, 2024)"
+      },
+      {
+        "key": "CGLDAXFtqbM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Wolverine Breathing Exercise"
+      },
+      {
+        "key": "8zY0dZr8t28",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool and Kidpool Help SickKids"
+      },
+      {
+        "key": "dyq7hMlF9iY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool and Blind Al Have a Big Announcement"
+      },
+      {
+        "key": "rl2fAfnNftw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Now Streaming on Disney+"
+      },
+      {
+        "key": "WQLDg45IJqA",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Magic: The Visual Effects of Deadpool & Wolverine"
+      },
+      {
+        "key": "LYaJVfiwv0w",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "On Digital Oct 1 & On Blu-ray Oct 22"
+      },
+      {
+        "key": "k2q1haFRQaA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine Come Home"
+      },
+      {
+        "key": "nY5IAhjTclY",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Visual Effects of Cassandra Nova's Powers"
+      },
+      {
+        "key": "65oqnYN6as8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Name For Myself"
+      },
+      {
+        "key": "hiGPEYgOdOs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Thank You"
+      },
+      {
+        "key": "7dOcH4HN5fA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "All Time"
+      },
+      {
+        "key": "PWdtBp5opqw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Billion with a B"
+      },
+      {
+        "key": "YyVAwYCzuDk",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Flame On"
+      },
+      {
+        "key": "83KmAr0aviA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Popcorn and Jazz - 10 Hours"
+      },
+      {
+        "key": "YBYOuQJ5Wno",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Portal"
+      },
+      {
+        "key": "qhAB4Y1VrO8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Smashing"
+      },
+      {
+        "key": "U8XGephn-gI",
+        "iso_639_1": "en",
+        "type": "Bloopers",
+        "official": true,
+        "site": "YouTube",
+        "name": "Hugh's Acting Masterclass"
+      },
+      {
+        "key": "BId1AMHzItQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Crying"
+      },
+      {
+        "key": "XBLJ6XOCBdY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Watch Deadpool & Wolverine again and again and again and again and again and again and again and again"
+      },
+      {
+        "key": "QQ_jvHQM53o",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Smash"
+      },
+      {
+        "key": "G9BWRaXdA-M",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Score"
+      },
+      {
+        "key": "45LohjMTJOM",
+        "iso_639_1": "en",
+        "type": "Bloopers",
+        "official": true,
+        "site": "YouTube",
+        "name": "Dogpool Blooper"
+      },
+      {
+        "key": "3yPfmJMzVVY",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Thank You, Ray Chan"
+      },
+      {
+        "key": "9Bo_GQtD7vo",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Ultimate Deadpool & Wolverine Celebration of Life"
+      },
+      {
+        "key": "Y2Op5pFoqS0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Let's keep our little secret"
+      },
+      {
+        "key": "XfD4F9E3yX0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine & Walking4Hope"
+      },
+      {
+        "key": "TPcJrh-VeJk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "GRWM to Host a Special Screening of Deadpool & Wolverine"
+      },
+      {
+        "key": "dIpNpMfGxK8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Legendary"
+      },
+      {
+        "key": "eoFCmgF8Cjs",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Go"
+      },
+      {
+        "key": "xdUc7qURlk4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® Interview"
+      },
+      {
+        "key": "u06vqfLcBas",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Pray"
+      },
+      {
+        "key": "wqeWqCcnDoY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Kevin Feige Welcomes Mutants Into the MCU"
+      },
+      {
+        "key": "01tu2bUX59w",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "My not so secret weapon."
+      },
+      {
+        "key": "ETuda6ZGQkU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Gear Up"
+      },
+      {
+        "key": "UffWG-yFGgw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "This Friday"
+      },
+      {
+        "key": "8BjXzXq3O5A",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": false,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine in the Studio"
+      },
+      {
+        "key": "Idh8n5XuYIA",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Final Trailer"
+      },
+      {
+        "key": "C2QCuBX_byg",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Everyone"
+      },
+      {
+        "key": "zE1wKmQ98ZA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine & Chicken Strips"
+      },
+      {
+        "key": "eN2rNIgy9JQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Can’t Unsee It"
+      },
+      {
+        "key": "eS-MpmL6fPc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Pumped"
+      },
+      {
+        "key": "S2sBNY9Wg8o",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine & The Bachelorette"
+      },
+      {
+        "key": "Up6hJCihbL8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Purpose"
+      },
+      {
+        "key": "LYuc1wDC318",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "World Tour"
+      },
+      {
+        "key": "qoAYNhOWol8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Shanghai Fan Event"
+      },
+      {
+        "key": "pABY-rpsfH4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "LFG"
+      },
+      {
+        "key": "r3LisZEIK34",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Nice"
+      },
+      {
+        "key": "pn5fdK61o9c",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Best Friends Day"
+      },
+      {
+        "key": "ewkLcCQ1O-0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Deadpool And Wolverine popcorn bucket has arrived"
+      },
+      {
+        "key": "90lAiDCdwX4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool & Wolverine Popcorn Bucket"
+      },
+      {
+        "key": "Esc_qtkULBE",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tickets On Sale"
+      },
+      {
+        "key": "NebqFm0PoVw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": false,
+        "site": "YouTube",
+        "name": "Heineken Silver - World-Class Light Beer for World-Class Bubs"
+      },
+      {
+        "key": "YLswizPsdYk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Get Tickets Now"
+      },
+      {
+        "key": "2I5aSPn_eYQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tickets On Sale Now"
+      },
+      {
+        "key": "pCdR7mgWT4s",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Disclaimers"
+      },
+      {
+        "key": "73_1biulkYk",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "umxRwIKOPA4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trailer Tomorrow"
+      },
+      {
+        "key": "uJMCNJP2ipI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Teaser"
+      },
+      {
+        "key": "Szj1iqYanFM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool Update, Part Hugh"
+      },
+      {
+        "key": "Yd47Z8HYf0Y",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Deadpool Update"
+      }
+    ]
   },
   {
     "film": {
@@ -781,7 +2899,8 @@
     "correct": [
       "hLr8JdHFK-M",
       "xbSLz5lR520",
-      "X-aiPGLSPUY"
+      "X-aiPGLSPUY",
+      "EV8APU07JaM"
     ],
     "candidates": [
       {
@@ -855,7 +2974,249 @@
         "published_at": "2018-12-28T23:21:11Z"
       }
     ],
-    "note": "реал: мульти-валидный RU-дубляж 4K (iVideos hLr8JdHFK-M, Kinoman xbSLz5lR520, финальный X-aiPGLSPUY); тизер V6UnhbS-bOE и закадр-озвучка Y1WmqdWQ-4c исключены"
+    "note": "реал: мульти-валидный RU-дубляж 4K (iVideos hLr8JdHFK-M, Kinoman xbSLz5lR520, финальный X-aiPGLSPUY); тизер V6UnhbS-bOE и закадр-озвучка Y1WmqdWQ-4c исключены +TMDB RU-дубляж EV8APU07JaM (контент-проверен: «Головоломка 2 — Русский трейлер 4К #2»); #329 симметричное расширение accept-set (B1).",
+    "tmdb_videos": [
+      {
+        "key": "EV8APU07JaM",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Головоломка 2 💎 Русский трейлер 4К #2 💎 Мультфильм 2024"
+      },
+      {
+        "key": "xo2swVa5KPc",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Animation Motivation: Thread the Needle"
+      },
+      {
+        "key": "AjILG76-txs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Scene at The Academy"
+      },
+      {
+        "key": "QGFELnpig2M",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Available September 25 on Disney+"
+      },
+      {
+        "key": "Wt_0EKdTiE4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Global Phenomenon"
+      },
+      {
+        "key": "u69y5Ie519M",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Announce Trailer"
+      },
+      {
+        "key": "RY5aH21ohU4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Time to Celebrate"
+      },
+      {
+        "key": "eioXDOSx6rQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Best Movie of the Year"
+      },
+      {
+        "key": "b0mVq8LGOkI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "#1 Movie is Certified Fresh"
+      },
+      {
+        "key": "RUFqAHPLkzI",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® Interview"
+      },
+      {
+        "key": "j7jvAHcKJGs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "IMAX® Upgrade"
+      },
+      {
+        "key": "xSeavZfiO0s",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Warm Fuzzies"
+      },
+      {
+        "key": "-OrsTqfN-sg",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Father's Day"
+      },
+      {
+        "key": "RtoKrwYQ20E",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Maya Hawke And The 'Inside Out 2' Team Explored Their Own Emotions Through The Pixar Sequel"
+      },
+      {
+        "key": "uyzQw8-8k9U",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Meet the Cast of Inside Out 2"
+      },
+      {
+        "key": "uskbXdnbcvg",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Remember How You Felt..."
+      },
+      {
+        "key": "0W6mhdueFec",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Summer Kick Off"
+      },
+      {
+        "key": "L4DrolmDxmw",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Final Trailer"
+      },
+      {
+        "key": "uwnlgp64shw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Hop On"
+      },
+      {
+        "key": "nm35CQL3yms",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Moments"
+      },
+      {
+        "key": "tnLtvSxNU1o",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Riley and Her Mom"
+      },
+      {
+        "key": "2GMtiofogKI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Bad Memories"
+      },
+      {
+        "key": "sqJ1Tz91TNA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Meet envy"
+      },
+      {
+        "key": "Zpcr6u-eu50",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "That Feeling When"
+      },
+      {
+        "key": "C27fmGCmPa4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Meet Anxiety"
+      },
+      {
+        "key": "MvKzg3rrP30",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Booth To Screen"
+      },
+      {
+        "key": "nDL4nbvT9T0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Tickets on Sale!"
+      },
+      {
+        "key": "LEjhY15eCx0",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "aYRnM4nyuKs",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Team"
+      },
+      {
+        "key": "VWavstJydZU",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Teaser Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -867,7 +3228,8 @@
       ]
     },
     "correct": [
-      "30H_1gNgpBo"
+      "30H_1gNgpBo",
+      "EAUQi5RoA9o"
     ],
     "candidates": [
       {
@@ -920,7 +3282,153 @@
         "published_at": "2024-07-04T03:57:23Z"
       }
     ],
-    "note": "реал: official RU-дубляж Kinoman 30H_1gNgpBo; HD Movies rcMkmavOAP0 — переозвучка/реаплоуд, исключён"
+    "note": "реал: official RU-дубляж Kinoman 30H_1gNgpBo; HD Movies rcMkmavOAP0 — переозвучка/реаплоуд, исключён +TMDB RU-дубляж EAUQi5RoA9o (контент-проверен: «Мегалополис — Русский трейлер»); #329 симметричное расширение accept-set (B1).",
+    "tmdb_videos": [
+      {
+        "key": "EAUQi5RoA9o",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Мегалополис | Фильм [2024] Русский трейлер"
+      },
+      {
+        "key": "WVZd5b--U6w",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official International Streaming Trailer"
+      },
+      {
+        "key": "KzD7FLDk2Ww",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Purgatory"
+      },
+      {
+        "key": "_-kgdXirVCA",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Satellite"
+      },
+      {
+        "key": "8AN-OMhJREs",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Show Me The Future"
+      },
+      {
+        "key": "tOxaBU8tPy8",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Walk Into The Future"
+      },
+      {
+        "key": "h0tw7Sws3lw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Francis Ford Coppola on Megalopolis"
+      },
+      {
+        "key": "tNybhMsO5ew",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Clip - Go Back To The Club"
+      },
+      {
+        "key": "T9B56tzId6w",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Francis Ford Coppola Compares Directors To Coaches"
+      },
+      {
+        "key": "vC_GM4u9Y0s",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Get Tickets"
+      },
+      {
+        "key": "2ivrLY9ahzA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "UK TV Spot 4"
+      },
+      {
+        "key": "6wutLO5f5gA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "UK TV Spot 3"
+      },
+      {
+        "key": "gRlNjzMFV0w",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "UK TV Spot 2"
+      },
+      {
+        "key": "oD-cb65tByo",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "UK TV Spot 1"
+      },
+      {
+        "key": "FHYlEOK0uOE",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "pq6mvHZU0fc",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      },
+      {
+        "key": "RU1QyAYa60g",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Teaser Trailer"
+      },
+      {
+        "key": "ZZL3U1j3K1c",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "First Look Clip"
+      }
+    ]
   },
   {
     "film": {
@@ -998,7 +3506,449 @@
         "published_at": "2024-03-05T16:20:31Z"
       }
     ],
-    "note": "реал: official RU-дубляж Kinoman #1 dnYMdlt1vCU и #2 u7SfIW5tjdE; MovieMania SyRY4GL2koQ (реаплоуд) и украинский DAM9aJTXBQU исключены"
+    "note": "реал: official RU-дубляж Kinoman #1 dnYMdlt1vCU и #2 u7SfIW5tjdE; MovieMania SyRY4GL2koQ (реаплоуд) и украинский DAM9aJTXBQU исключены",
+    "tmdb_videos": [
+      {
+        "key": "u7SfIW5tjdE",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Дикий робот — Русский трейлер #2 (Дубляж, 2024)"
+      },
+      {
+        "key": "dnYMdlt1vCU",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Дикий робот — Русский трейлер (Дубляж, 2024)"
+      },
+      {
+        "key": "fI6IK6ELaf0",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Robots Attack!! Brightbill's Wild Goose Chase"
+      },
+      {
+        "key": "-AZcmx7bGmw",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "“I Could Use a Boost” – Full Film Clip"
+      },
+      {
+        "key": "7uM0qBn1nxs",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Are You My Mother? Roz Finds an Egg!"
+      },
+      {
+        "key": "3Hi8Rm2ACek",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Chris Sanders Legacy"
+      },
+      {
+        "key": "wrx-BY4fB6o",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Scene at The Academy (Feat. Lupita Nyong’o, Chris Sanders, Kris Bowers, & More)"
+      },
+      {
+        "key": "oEC84M0GMdg",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Streaming Now on Peacock"
+      },
+      {
+        "key": "H_E8Roxe_j8",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Overall Achievement"
+      },
+      {
+        "key": "0-AQ5o9htzg",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "\"The Heart Of The Film\" - Bonus Feature"
+      },
+      {
+        "key": "scdl0iS0_zs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Script to Scene (Longneck)"
+      },
+      {
+        "key": "Id--P16c8qw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Script to Scene (Rescue)"
+      },
+      {
+        "key": "OniCL6neBog",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Baby Hatches"
+      },
+      {
+        "key": "nSlBljYjA70",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Magic Behind The Movie (Featuring Lupita Nyong'o)"
+      },
+      {
+        "key": "af9seyn4jXQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lupita Nyong'o And Pedro Pascal Talk The Wild Robot Origins"
+      },
+      {
+        "key": "-Q3riC-J9DI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Watch at Home Now"
+      },
+      {
+        "key": "FLgpxZp505w",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Watch at Home Now"
+      },
+      {
+        "key": "F7QZTj0k2Ng",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Deep Dive Into The Original Music - Bonus Feature"
+      },
+      {
+        "key": "yUmw4fZ5VZ0",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind The Scenes (Featuring Lupita Nyong'o, Pedro Pascal And Mark Hamill)"
+      },
+      {
+        "key": "OTLAsi9WOKw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Interview | Dir. Chris Sanders"
+      },
+      {
+        "key": "Q8U17DfIxd0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Storyboard Side By Side"
+      },
+      {
+        "key": "cVjoeNI8f1M",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lupita Nyong'o on being inspired by AI for The Wild Robot #lff"
+      },
+      {
+        "key": "EJHR3fDhHJ8",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Roz Becomes One With Nature"
+      },
+      {
+        "key": "HakytPyvYhA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Pedro Pascal on his first animated voice role in The Wild Robot #lff"
+      },
+      {
+        "key": "d6V61TtFdiw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Watch at Home Tomorrow"
+      },
+      {
+        "key": "NNyRED1pOD0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "How To Draw"
+      },
+      {
+        "key": "cpurXDJvYeo",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Animation \"Migration\""
+      },
+      {
+        "key": "Nwem-IdqkDY",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Animation \"Beach\""
+      },
+      {
+        "key": "WnE51QfRxvE",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Score"
+      },
+      {
+        "key": "hAXH3euTYRc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Theaters Now (Performance Fresh Vertical)"
+      },
+      {
+        "key": "2-1beB3bFI8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Theaters Now (Number One Vertical)"
+      },
+      {
+        "key": "hKn-CBW8KOA",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Theaters Now (Number One Winning Certified RT Review)"
+      },
+      {
+        "key": "xpJdljNdsR0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "The Love & Kindness Behind THE WILD ROBOT | TIFF 2024"
+      },
+      {
+        "key": "9tR6uVUw9sw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Sustainability"
+      },
+      {
+        "key": "gWxRpSMHmxU",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Actors Going Wild \"Vontra\""
+      },
+      {
+        "key": "H9SCA4kRGy0",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Actors Going Wild \"Fink & Thorn\""
+      },
+      {
+        "key": "bS5UcOdz5vQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Actors Going Wild \"Brightbill\""
+      },
+      {
+        "key": "F_pguJEJmBc",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Wild Voices"
+      },
+      {
+        "key": "MaogzaRA3Zc",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Look Inside"
+      },
+      {
+        "key": "tktFUrkX4Kc",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Mark Hamill On The Heart Of THE WILD ROBOT"
+      },
+      {
+        "key": "ii1Jn5alVtg",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'The Wild Robot' with filmmakers | Academy Conversations"
+      },
+      {
+        "key": "uZ7rG16MowY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Cast Run"
+      },
+      {
+        "key": "VUCNBAmse04",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Final Trailer"
+      },
+      {
+        "key": "17XI28jjvnE",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "National Read A Book Day With Lupita Nyong’o"
+      },
+      {
+        "key": "Laa__YPZFYI",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Goose That... Can't Swim?"
+      },
+      {
+        "key": "dq36zIPc9GY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Humor"
+      },
+      {
+        "key": "oC1cicjljf0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Pick and Flick"
+      },
+      {
+        "key": "SuyoyEhaklQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Skunk"
+      },
+      {
+        "key": "gR6_y64E6N4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Maren Morris Announcement"
+      },
+      {
+        "key": "hbciJR5CsBA",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trailer feat. Maren Morris"
+      },
+      {
+        "key": "jxAu5FM5LJo",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Wild Vision"
+      },
+      {
+        "key": "e8PM4GY9Nnc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Biggest Dream Featuring “Birds of a Feather” by Billie Eilish"
+      },
+      {
+        "key": "inFF5a4uXpQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Wild"
+      },
+      {
+        "key": "njPNg0A9VpY",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer 2"
+      },
+      {
+        "key": "67vbA5ZJdKQ",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -1072,7 +4022,441 @@
         "published_at": "2024-07-09T17:02:22Z"
       }
     ],
-    "note": "реал: official RU-дубляж Kinoman #1 wL3mZn0YeIw и #2 xLg5TurQTc8; каст в EN-описаниях, но RU первичен (#315)"
+    "note": "реал: official RU-дубляж Kinoman #1 wL3mZn0YeIw и #2 xLg5TurQTc8; каст в EN-описаниях, но RU первичен (#315)",
+    "tmdb_videos": [
+      {
+        "key": "wL3mZn0YeIw",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Гладиатор 2 — Русский трейлер (Дубляж, 2024)"
+      },
+      {
+        "key": "ROfw3912xug",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Boat Battle"
+      },
+      {
+        "key": "D1q0eo-z4LU",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lucius vs Acacius"
+      },
+      {
+        "key": "W3p_7DjGBVQ",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Denzel Washington is Impressed By Lucius' Fist Fight - Clip"
+      },
+      {
+        "key": "UNxfpXD2eGA",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lucius and Emperor Geta Meet ft. Paul Mescal & Joseph Quinn"
+      },
+      {
+        "key": "QywdAdJcwJI",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "General Acacius Speech in Colosseum"
+      },
+      {
+        "key": "IRVx_QZ-oZk",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Magic: Creating the Colosseum for Gladiator II"
+      },
+      {
+        "key": "ryD4j4Iwapw",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Behind the Magic | The Visual Effects of Gladiator II"
+      },
+      {
+        "key": "_ZBYN01c7OM",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "20 Years of Making a Sequel - Exclusive Behind the Scenes"
+      },
+      {
+        "key": "gGmaZCZz48g",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Screenwriting of Gladiator II"
+      },
+      {
+        "key": "L5HZw0tGAv8",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Cinematography of Gladiator II"
+      },
+      {
+        "key": "eEFRXtV5LTE",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Extended Clip - The Gateway to Rome"
+      },
+      {
+        "key": "ICvbuugHjUg",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Costume Design of Gladiator II"
+      },
+      {
+        "key": "uwd0uX0h1Mc",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "A Conversation with Director Ridley Scott and Christopher Nolan"
+      },
+      {
+        "key": "abP1EYHvGvc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "It's time to enter the arena"
+      },
+      {
+        "key": "lLl6Bx8coJ4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "'Gladiator II' With Paul Mescal, Denzel Washington, Ridley Scott, and More | Academy Conversations"
+      },
+      {
+        "key": "d-_apjZSE_s",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Gladiator II is “what movies are made for.”"
+      },
+      {
+        "key": "QiDTEfTSRbw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "See it. Feel it. Experience Gladiator II in 4DX"
+      },
+      {
+        "key": "fdh8bUZHt6s",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Rebuilding Rome for Gladiator II"
+      },
+      {
+        "key": "DFgIdcti2KQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "This is what movies are made for"
+      },
+      {
+        "key": "HL6IOyKy8Fc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "“The best action blockbuster of the year”!"
+      },
+      {
+        "key": "7-CLwRoh4m0",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "World Tour"
+      },
+      {
+        "key": "NlJE-JayNIk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "HBCU Student Roundtable with Denzel Washington"
+      },
+      {
+        "key": "lkOEfB0U1IQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lucilla"
+      },
+      {
+        "key": "6q4vdtNnxMs",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Acacius"
+      },
+      {
+        "key": "L9-Vwg82mfQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Emperors"
+      },
+      {
+        "key": "cuzExc4OpK0",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Lucius"
+      },
+      {
+        "key": "tnQu4VrggM8",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Macrinus"
+      },
+      {
+        "key": "8Lld3U0sVho",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "The birth of a new Roman epic"
+      },
+      {
+        "key": "SL0ellaO20k",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "London Premiere"
+      },
+      {
+        "key": "TQwSz88ITAE",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Final Trailer"
+      },
+      {
+        "key": "mmbLQNsZqh0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Let the games begin"
+      },
+      {
+        "key": "mw3NuoRkDCw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Prepare for the roar of the crowd"
+      },
+      {
+        "key": "g_yU1rS261M",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Strength x Honor"
+      },
+      {
+        "key": "botmnZBsji8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Prepare to be entertained"
+      },
+      {
+        "key": "lKAosomWZto",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Directing Gladiator II"
+      },
+      {
+        "key": "DizBLLrSMSc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "He will defy an empire"
+      },
+      {
+        "key": "iK7EDIzgJw0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "The fire of vengeance burns hot"
+      },
+      {
+        "key": "4OQnvl6zOTs",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "A new Roman legacy begins."
+      },
+      {
+        "key": "504X_zXULVs",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Roundtable Interview"
+      },
+      {
+        "key": "nZtmOBiXOjc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Rage can be a gift"
+      },
+      {
+        "key": "LBpqSQJFl90",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "A day you’ll never forget"
+      },
+      {
+        "key": "-LNvW2ofxdI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "For vengeance. For honor."
+      },
+      {
+        "key": "L1foOR4beXQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Honor isn’t given. It’s fought for."
+      },
+      {
+        "key": "utK0oXB_waQ",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Training"
+      },
+      {
+        "key": "9F2zmfRu5SM",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Experience the Music of Gladiator II - Behind the scoring with Ridley Scott, Harry Gregson-Williams"
+      },
+      {
+        "key": "rbbNgvm3SS8",
+        "iso_639_1": "en",
+        "type": "Behind the Scenes",
+        "official": true,
+        "site": "YouTube",
+        "name": "Making of an Epic"
+      },
+      {
+        "key": "Ts0N8swyWFI",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "New Trailer"
+      },
+      {
+        "key": "le6-HvwsyQc",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "New Trailer Tomorrow"
+      },
+      {
+        "key": "zBUlcCtE-fk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Paul Mescal Featurette"
+      },
+      {
+        "key": "HMlPacqbVf8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Joseph Quinn Featurette"
+      },
+      {
+        "key": "Sfewq6MbT8c",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Denzel Washington Featurette"
+      },
+      {
+        "key": "7fGnxleq7vA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Pedro Pascal Featurette"
+      },
+      {
+        "key": "4rgYUipGJNo",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -1159,7 +4543,289 @@
         "published_at": "2024-10-22T07:10:55Z"
       }
     ],
-    "note": "реал: нумерованный сиквел («Веном 3» в title, ru_title без цифры) — Kinoman дубляж ck-b_28PMM8 и Киноафиша Hou4gXex2WM; промо «скоро на канале» w6PiA4qf_50 — ловушка"
+    "note": "реал: нумерованный сиквел («Веном 3» в title, ru_title без цифры) — Kinoman дубляж ck-b_28PMM8 и Киноафиша Hou4gXex2WM; промо «скоро на канале» w6PiA4qf_50 — ловушка",
+    "tmdb_videos": [
+      {
+        "key": "ck-b_28PMM8",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Веном 3: Последний танец — Русский трейлер (Дубляж, 2024)"
+      },
+      {
+        "key": "tVqo-hIE4qA",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Special Features Preview"
+      },
+      {
+        "key": "041KTRpr0XU",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "First 10 Minutes Preview"
+      },
+      {
+        "key": "Op8P4xzbmhg",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Welcome to the Nice List"
+      },
+      {
+        "key": "bI5vwW_1JjQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Welcome to the Naughty List"
+      },
+      {
+        "key": "VqJWP_6rudk",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Director Kelly Marcel breaks down the Venom trilogy | Film4"
+      },
+      {
+        "key": "y1M-nGQblmw",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Who wouldn’t want to get paid to talk to themselves?!"
+      },
+      {
+        "key": "BX2uhw9UOiQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Snacks with the Venom cast? Say less 👀🔥"
+      },
+      {
+        "key": "sZgZL6Yn2fw",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Venom: The Last Dance is only in cinemas NOW"
+      },
+      {
+        "key": "ZY34ufXPFl8",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "POV: it's the UK premiere of your film."
+      },
+      {
+        "key": "Tujcuvurc1U",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "This is your sign to go and see Venom: The Last Dance on the big screen!"
+      },
+      {
+        "key": "oAazxCOLF8c",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "A VIP cutie patootie 🖤 Blue stole our hearts"
+      },
+      {
+        "key": "z5aYy3qktGg",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "London, it was a blast"
+      },
+      {
+        "key": "utiep_e9hnU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® Interview"
+      },
+      {
+        "key": "HcfFZwIg8cY",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "He’s backkkk"
+      },
+      {
+        "key": "4RT-yq4pb0E",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Savor the Last Bite: The Venom Legacy"
+      },
+      {
+        "key": "5EyqQEiKeq4",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "HAAS x Venom"
+      },
+      {
+        "key": "En9N-MltoqM",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Austin Grand Prix Sizzle"
+      },
+      {
+        "key": "ZAULZiKbJoU",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Hero"
+      },
+      {
+        "key": "R3QCR4juFHQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Ahh with Megan Thee Stallion"
+      },
+      {
+        "key": "O3wFg9z8WWI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Venom's world incoming..."
+      },
+      {
+        "key": "aZTrRFHXz5A",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "In the Studio with Busta Rhymes"
+      },
+      {
+        "key": "sm93tBNyz-g",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "xrpdt2tdvVY",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "Gy9-A2WLHzs",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "dx4z9BY0Qm0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "Sy4sCnMnMEU",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "drJHT245_W8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "dZSqSfgG-Q8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "In Cinemas Oct 23"
+      },
+      {
+        "key": "HkBv-gjnXxQ",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Not That Kind of Cowboy with Dak Prescott"
+      },
+      {
+        "key": "jPPVqQGQW2g",
+        "iso_639_1": "en",
+        "type": "Featurette",
+        "official": true,
+        "site": "YouTube",
+        "name": "Eddie Pays Dana White a Visit"
+      },
+      {
+        "key": "FKBN1qAzW3s",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official IMAX® 1.90 Trailer"
+      },
+      {
+        "key": "HyIyd9joTTc",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Final Trailer"
+      },
+      {
+        "key": "8dyO_MGWWME",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trailer Countdown"
+      },
+      {
+        "key": "__2bjWbetsA",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Trailer"
+      }
+    ]
   },
   {
     "film": {
@@ -1242,6 +4908,144 @@
         "published_at": "2025-04-21T12:06:37Z"
       }
     ],
-    "note": "реал: мульти-валидный RU-дубляж 2025 (Kinoman #1/#2/#3 7ewzFEub32Q/r0eKbYttj64/8mePkYE0o_g, топКино 6dQYK51161g)"
+    "note": "реал: мульти-валидный RU-дубляж 2025 (Kinoman #1/#2/#3 7ewzFEub32Q/r0eKbYttj64/8mePkYE0o_g, топКино 6dQYK51161g)",
+    "tmdb_videos": [
+      {
+        "key": "r0eKbYttj64",
+        "iso_639_1": "ru",
+        "type": "Trailer",
+        "official": false,
+        "site": "YouTube",
+        "name": "Смерть единорога — Русский трейлер #2 (Дубляж, 2025)"
+      },
+      {
+        "key": "TlF0r0nc2Jo",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Jenna Ortega & Paul Rudd HIT A UNICORN"
+      },
+      {
+        "key": "uG2gsnq7SJE",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Odd 6 NOW PLAYING"
+      },
+      {
+        "key": "iPUCGB6NOnk",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Carnage 6 NOW PLAYING"
+      },
+      {
+        "key": "_WadST9QnkQ",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Discovering The Unicorn"
+      },
+      {
+        "key": "J2slPTOH4S4",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Only in UK Cinemas April 4 | Book Tickets Now"
+      },
+      {
+        "key": "KrrIjeQVoVk",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Only in UK Cinemas April 4 | Book Tickets Now"
+      },
+      {
+        "key": "yxOEuEDtn9A",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "On Three"
+      },
+      {
+        "key": "b6BcexVCj6A",
+        "iso_639_1": "en",
+        "type": "Clip",
+        "official": true,
+        "site": "YouTube",
+        "name": "Exclusive Clip"
+      },
+      {
+        "key": "75_HJDV_09I",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Save 15 GET TICKETS"
+      },
+      {
+        "key": "uS5BMrteLG8",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Run 15 GET TICKETS"
+      },
+      {
+        "key": "ui_F_e5TEQQ",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Only In UK Cinemas April 4"
+      },
+      {
+        "key": "8gnR7MfJ9v0",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Featurette"
+      },
+      {
+        "key": "kbscSSGkOQI",
+        "iso_639_1": "en",
+        "type": "Teaser",
+        "official": true,
+        "site": "YouTube",
+        "name": "Official Promo"
+      },
+      {
+        "key": "aQOle3MHnGs",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trailer #2"
+      },
+      {
+        "key": "fOfndMsG8rs",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Trailer"
+      },
+      {
+        "key": "9cMIarrxLGs",
+        "iso_639_1": "en",
+        "type": "Trailer",
+        "official": true,
+        "site": "YouTube",
+        "name": "Death Of A Unicorn | Official Trailer HD | A24"
+      }
+    ]
   }
 ]

@@ -23,7 +23,7 @@ import argparse
 import json
 import os
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -31,6 +31,7 @@ from typing import Any, Literal
 # `import kinozal_scraper` резолвился без editable install (как в ci_check.py).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from kinozal_scraper.tmdb_trailer import TmdbVideo, pick_trailer  # noqa: E402
 from kinozal_scraper.trailer_strategy import (  # noqa: E402
     Candidate,
     FilmProfile,
@@ -57,6 +58,9 @@ class GoldenCase:
     correct: str | list[str] | None
     candidates: list[Candidate]
     note: str
+    # #329: замороженный снимок TMDB-видео (опционален — записи до #329 грузятся
+    # с пустым списком; evaluate_tmdb по ним даёт Miss, пока не записан снимок).
+    tmdb_videos: list[TmdbVideo] = field(default_factory=list)
 
 
 def default_strategy() -> TrailerStrategy:
@@ -140,13 +144,44 @@ def _parse_candidates(raw: Any, where: str) -> list[Candidate]:
     return out
 
 
-def _parse_correct(raw: Any, candidate_ids: set[str], where: str) -> str | list[str] | None:
+def _parse_tmdb_videos(raw: Any, where: str) -> list[TmdbVideo]:
+    """Опциональный снимок TMDB-видео. Fail-loud (§IV): битый video (нет
+    `key`/`iso_639_1`/`type`/`site`, не-str поля) → GoldenSetError, НЕ тихий дроп —
+    иначе смещённый пул (потерянное RU-видео) запекается в замороженный снимок."""
+    if not isinstance(raw, list):
+        raise GoldenSetError(f"{where}: 'tmdb_videos' must be a list, got {type(raw).__name__}")
+    out: list[TmdbVideo] = []
+    for j, vid in enumerate(raw):
+        spot = f"{where}.tmdb_videos[{j}]"
+        if not isinstance(vid, dict):
+            raise GoldenSetError(f"{spot}: video must be an object, got {type(vid).__name__}")
+        _require(vid, ("key", "iso_639_1", "type", "site"), spot)
+        for str_field in ("key", "iso_639_1", "type", "site", "name"):
+            if str_field in vid and not isinstance(vid[str_field], str):
+                raise GoldenSetError(
+                    f"{spot}: {str_field!r} must be str, got {type(vid[str_field]).__name__}"
+                )
+        out.append(
+            TmdbVideo(
+                key=vid["key"],
+                iso_639_1=vid["iso_639_1"],
+                type=vid["type"],
+                official=bool(vid.get("official", False)),
+                site=vid["site"],
+                name=vid.get("name", ""),
+            )
+        )
+    return out
+
+
+def _parse_correct(raw: Any, valid_ids: set[str], where: str) -> str | list[str] | None:
     """`correct` — str | accept-set (list[str]) | null. Fail-loud (B2/S2):
     пустой accept-set (тихий коллапс в null-семантику, маскирует Miss/Wrong) и
-    не-str элемент отвергаются; каждый id accept-set обязан быть в пуле кандидатов
-    (typo-id иначе тихо превращает верный pick в wrong). Legacy single-str
-    сохраняет miss-branch идиому (эталон-вне-пула → Miss) и от cross-check
-    освобождён."""
+    не-str элемент отвергаются; каждый id accept-set обязан быть в `valid_ids` —
+    union пулов YouTube-`candidates` И TMDB-`tmdb_videos` (dual-source ground truth:
+    валидный TMDB-key вне YouTube-пула легитимен, но typo-id, которого нет НИГДЕ,
+    тихо превратил бы верный pick в wrong). Legacy single-str сохраняет miss-branch
+    идиому (эталон-вне-пула → Miss) и от cross-check освобождён."""
     if raw is None or isinstance(raw, str):
         return raw
     if isinstance(raw, list):
@@ -159,8 +194,10 @@ def _parse_correct(raw: Any, candidate_ids: set[str], where: str) -> str | list[
                 raise GoldenSetError(
                     f"{where}: 'correct'[{k}] must be str, got {type(el).__name__}"
                 )
-            if el not in candidate_ids:
-                raise GoldenSetError(f"{where}: 'correct' id {el!r} not among candidate video_ids")
+            if el not in valid_ids:
+                raise GoldenSetError(
+                    f"{where}: 'correct' id {el!r} not among candidate/tmdb video_ids"
+                )
         return raw
     raise GoldenSetError(
         f"{where}: 'correct' must be str, list[str] or null, got {type(raw).__name__}"
@@ -172,12 +209,15 @@ def _parse_case(raw: Any, where: str) -> GoldenCase:
         raise GoldenSetError(f"{where}: case must be an object, got {type(raw).__name__}")
     _require(raw, ("film", "correct", "candidates"), where)
     candidates = _parse_candidates(raw["candidates"], where)
-    correct = _parse_correct(raw["correct"], {c.video_id for c in candidates}, where)
+    tmdb_videos = _parse_tmdb_videos(raw.get("tmdb_videos", []), where)
+    valid_ids = {c.video_id for c in candidates} | {v.key for v in tmdb_videos}
+    correct = _parse_correct(raw["correct"], valid_ids, where)
     return GoldenCase(
         film=_parse_film(raw["film"], where),
         correct=correct,
         candidates=candidates,
         note=raw.get("note", ""),
+        tmdb_videos=tmdb_videos,
     )
 
 
@@ -200,6 +240,29 @@ def evaluate(
     for case in cases:
         pick = strategy.pick(case.film, case.candidates)
         rows.append((case, pick.video_id, classify(case.correct, pick.video_id)))
+    return rows, score([o for _, _, o in rows])
+
+
+def evaluate_tmdb(
+    cases: list[GoldenCase],
+) -> tuple[list[tuple[GoldenCase, str | None, Outcome]], int]:
+    """Прогон TMDB-источника: `pick_trailer` по ЗАМОРОЖЕННОМУ `tmdb_videos`,
+    классификация против того же accept-set `correct`. Тот же контракт, что и
+    `evaluate` (стратегия), — скоркарты сравнимы бок о бок.
+
+    Scope: только кейсы с непустым `tmdb_videos`-снимком. Синтетические
+    logic-фикстуры HeuristicStrategy (#138/#140 — placeholder-id вроде
+    `dune2_official`, которые реальный YouTube-id из TMDB структурно НЕ может
+    hit'нуть) снимка не несут (`_record_tmdb` их обнуляет) → вне cross-source
+    сравнения. Реальный «TMDB ничего не нашёл» — непустой снимок без eligible
+    видео → `pick_trailer`→None→Miss (не путать с out-of-scope)."""
+    rows: list[tuple[GoldenCase, str | None, Outcome]] = []
+    for case in cases:
+        if not case.tmdb_videos:
+            continue
+        pick = pick_trailer(case.tmdb_videos)
+        pick_id = pick.video_id if pick is not None else None
+        rows.append((case, pick_id, classify(case.correct, pick_id)))
     return rows, score([o for _, _, o in rows])
 
 
@@ -248,6 +311,34 @@ def _record(golden_path: str | Path) -> int:
     return 0
 
 
+def _record_tmdb(golden_path: str | Path) -> int:
+    """dev-only live: пересобрать снимок `tmdb_videos`, ПЕРЕИСПОЛЬЗУЯ
+    `TmdbClient.resolve` (§II — не вторая копия query-build, как `_record` тянет
+    `search_candidates`). Без `TMDB_TOKEN` — fail-fast (KeyError в конструкторе).
+    Малформный ответ (нет `key`) резолвер дропает; всё остальное — fail-loud при
+    следующей загрузке снимка (`_parse_tmdb_videos`)."""
+    cases = load_golden_set(golden_path)  # валидируем перед перезаписью
+    from dataclasses import asdict
+
+    from kinozal_scraper.tmdb_trailer import TmdbClient
+
+    client = TmdbClient()
+    raw = json.loads(Path(golden_path).read_text(encoding="utf-8"))
+    for entry, case in zip(raw, cases, strict=True):
+        # Scope = реальные cross-source кейсы (accept-set-форма `correct: list`).
+        # Синтетические logic-фикстуры (`str`/`null` correct) обнуляются: не тратим
+        # TMDB-квоту на вымышленные тайтлы и не запекаем их шум в снимок (§IV).
+        if isinstance(case.correct, list):
+            entry["tmdb_videos"] = [asdict(v) for v in client.resolve(case.film)]
+        else:
+            entry["tmdb_videos"] = []
+    Path(golden_path).write_text(
+        json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    print(f"recorded tmdb_videos for {len(cases)} films → {golden_path}")
+    return 0
+
+
 def _ensure_utf8_stdout() -> None:
     """Скоркарта печатает кириллические названия; дефолтная Windows-консоль
     (cp1252) иначе роняет harness UnicodeEncodeError'ом. Root cause — кодировка
@@ -266,16 +357,27 @@ def main(argv: list[str] | None = None) -> int:
         "--record", action="store_true", help="dev-only: пересобрать снимок candidates из YouTube"
     )
     parser.add_argument(
+        "--record-tmdb",
+        action="store_true",
+        help="dev-only: пересобрать снимок tmdb_videos из TMDB (нужен TMDB_TOKEN)",
+    )
+    parser.add_argument(
         "--threshold", type=int, default=None, help="exit≠0 если итоговый score ниже порога"
     )
     args = parser.parse_args(argv)
 
     if args.record:
         return _record(args.golden)
+    if args.record_tmdb:
+        return _record_tmdb(args.golden)
 
     cases = load_golden_set(args.golden)
     rows, total = evaluate(default_strategy(), cases)
+    print("── HeuristicStrategy (YouTube retrieval) ──")
     _print_scorecard(rows, total)
+    tmdb_rows, tmdb_total = evaluate_tmdb(cases)
+    print("── TMDB videos (metadata source) ──")
+    _print_scorecard(tmdb_rows, tmdb_total)
     if args.threshold is not None and total < args.threshold:
         print(f"below threshold {args.threshold}", file=sys.stderr)
         return 1

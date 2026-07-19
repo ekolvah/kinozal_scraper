@@ -103,10 +103,29 @@ grounded in reality, not self-fulfilling (#327).
   routine run: re-recording can silently drift a hand-annotated `correct` out of a new YouTube
   result set (Hit → retrieval-miss). The loader is fail-loud (§IV/§VI): a broken entry (empty
   set, missing field, duplicate `video_id`, `correct` of a wrong type, empty accept-set, or an
-  accept-set id absent from the case's candidate pool) raises `GoldenSetError`, never degrades to
-  a silent Miss. (Legacy single-`str` `correct` may still point outside the pool — the miss-branch
-  idiom "ideal id not retrieved → Miss" — so the in-pool cross-check applies to accept-sets only.) The harness is deliberately **not** in `ci_check` — no green
+  accept-set id absent from **both** the candidate pool and the TMDB snapshot) raises
+  `GoldenSetError`, never degrades to a silent Miss. (Legacy single-`str` `correct` may still point
+  outside the pool — the miss-branch idiom "ideal id not retrieved → Miss" — so the cross-check
+  applies to accept-sets only.) The harness is deliberately **not** in `ci_check` — no green
   strategy exists yet to gate; the known-gap guard below carries the RED signal instead.
+
+- **TMDB dual-source measure (#329).** Beside the `TrailerStrategy` (YouTube-retrieval) column the
+  harness prints a second scorecard: `evaluate_tmdb` replays a frozen per-film `tmdb_videos`
+  snapshot through the pure `pick_trailer` (`tmdb_trailer.py`) — TMDB `/movie/{id}/videos` gives
+  `iso_639_1`/`type`/`official`/`site` directly, so language+officialness are metadata, not a
+  YouTube-title heuristic. Same accept-set, so the columns compare side-by-side. `--record-tmdb`
+  (dev-only, live, needs `TMDB_TOKEN`) reseeds snapshots for the **real** cases only (accept-set /
+  `correct: list` form); synthetic HeuristicStrategy logic fixtures (`str`/`null` `correct`,
+  placeholder ids a real YouTube id can't hit) are blanked → out of TMDB scope, and `evaluate_tmdb`
+  skips empty-snapshot cases. A real "TMDB found nothing" is a **non-empty** snapshot with no
+  eligible Trailer/Teaser → `pick_trailer`→None→Miss (distinct from out-of-scope).
+  - **Honest accept-set expansion (B1, #329).** The #327 accept-sets are YouTube-retrieval-derived,
+    so TMDB's *valid* RU dubs (different video_id, same film) scored Wrong against them. Fix:
+    per-id **content-verified** additions (the video name identifies the correct film + RU dub),
+    hard-coded — never "trust TMDB output wholesale". The non-circular control is TMDB measured
+    against the **pre-expansion** #327 set (a conservative floor); expansion is only for ground-truth
+    completeness, symmetric — the set holds both the YouTube-surfaced and TMDB-surfaced valid dubs,
+    so neither source is unfairly penalised.
 
 ## What does NOT get tested in this repo
 
@@ -264,6 +283,7 @@ work-for-work (goal-function priority (2)).
 | Module | Reason | Mitigation |
 |---|---|---|
 | `youtube.py::get_trailer_url`/`_search_youtube` (frozen prod path) | Requires live YouTube API | Indirect coverage via `test_kinozal_pipeline.py::TestEnrichWithTrailer` (retrieval `search_candidates`/`_search_one` **is** directly tested — `test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140; only the frozen `get_trailer_url` remains indirect until #144 rewires the prod path) |
+| `tmdb_trailer.py::TmdbClient` (`resolve`/`_get`/`_find_movie_id`) | Requires live `TMDB_TOKEN` + network — retrieval boundary (DI, mirror of `youtube.py`) | Pure selection `pick_trailer` **is** directly tested (`test_tmdb_trailer.py`, 7 cases); only the network boundary is untested, same §II precedent as `youtube.py`'s frozen path (#329) |
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
 | `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
 | Package import-resolution & repo layout | A module failing to resolve as `kinozal_scraper.X`, or source drifting back to a flat `src/*.py` layout | `test_package_importable.py::TestPackage` (all modules import as `kinozal_scraper.X`); `test_repo_layout.py::TestLayout`. (The #237 B1 empty-/nested-scan guard moved off the retired `test_check_headers.py` — [#253](https://github.com/ekolvah/kinozal_scraper/issues/253) replaced `check_headers.py` with ruff `D100`/`D104`/`D419`; the "mis-pointed/empty `src/` scanned nothing" failure mode is now subsumed by these two guards, which fire strictly harder — 17 hard-coded imports + layout-drift — than the old zero-file check) |
