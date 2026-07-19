@@ -54,6 +54,27 @@ class TruncatedResponse(Exception):
     instead of forwarding the half-finished string to the notifier."""
 
 
+def classify_generate_error(exc: BaseException) -> type[Exception]:
+    """Map a raw `generate_content` failure to a rotation-exception CLASS.
+
+    `NotFound` (direct or wrapped as `__cause__`) → `ModelUnavailable`;
+    `ResourceExhausted` (direct or wrapped) → `QuotaExhausted`; anything else →
+    `TryNextModel`. Pure `exc → class` mapping, shared by `GeminiEnricher` and
+    the structured-output `GeminiJsonGenerator` (#142) so the quota/unavailable
+    taxonomy is not reinvented. Context-specific logging stays at each call site
+    (§II — no `item` coupling dragged into the mapping). The direct-instance
+    checks matter for callers without tenacity (the JSON generator raises the
+    raw SDK error); `GeminiEnricher` only ever sees the `__cause__` shape, so
+    adding them leaves its behaviour unchanged."""
+    not_found = google.api_core.exceptions.NotFound
+    resource_exhausted = google.api_core.exceptions.ResourceExhausted
+    if isinstance(exc, not_found) or isinstance(exc.__cause__, not_found):
+        return ModelUnavailable
+    if isinstance(exc, resource_exhausted) or isinstance(exc.__cause__, resource_exhausted):
+        return QuotaExhausted
+    return TryNextModel
+
+
 _MARKDOWN_FENCE_BLOCK_RE = re.compile(r"```[^\n]*\n.*?```", re.DOTALL)
 _MARKDOWN_FENCE_LINE_RE = re.compile(r"^\s*```\s*\w*\s*$", re.MULTILINE)
 _LEADING_BULLET_RE = re.compile(r"^[\s>*#\-]+", re.MULTILINE)
@@ -166,14 +187,12 @@ class GeminiEnricher:
             )
             raise TryNextModel from exc
         except Exception as exc:
-            if isinstance(exc, google.api_core.exceptions.NotFound) or isinstance(
-                exc.__cause__, google.api_core.exceptions.NotFound
-            ):
-                raise ModelUnavailable from exc
-            if isinstance(exc.__cause__, google.api_core.exceptions.ResourceExhausted):
-                raise QuotaExhausted from exc
-            logger.warning("[%s] enrichment failed: %s — trying next model", item.dedupe_key, exc)
-            raise TryNextModel from exc
+            mapped = classify_generate_error(exc)
+            if mapped is TryNextModel:
+                logger.warning(
+                    "[%s] enrichment failed: %s — trying next model", item.dedupe_key, exc
+                )
+            raise mapped from exc
 
         if response_pattern and not re.match(response_pattern, text):
             logger.warning(
