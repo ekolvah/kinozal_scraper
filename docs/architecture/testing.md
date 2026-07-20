@@ -262,13 +262,16 @@ work-for-work (goal-function priority (2)).
   a follow-up issue so `_retry_transient_http` can be reused there. Recorded so neither is re-opened as
   work-for-work.
 
-- **N. RU-language trailer preference not yet implemented (#315 epic).** The trailer golden-set
-  (`tests/fixtures/trailer_golden.json`) seeds the #138 English-trailer regression as a RED
-  baseline; `test_eval_trailers.py::test_138_ru_misses_are_red` pins it with
-  `@pytest.mark.xfail(strict=True)`. This is a *known-gap guard*, not a missing test: when #141
-  lands RU-aware selection and `default_strategy()` starts picking the RU trailer, the xfail flips
-  to XPASS → strict → red → the fix is **audible** at merge. Until then the baseline is
-  consciously red (the harness score reflects it); not re-litigated as an open bug.
+- **N. LLM / embedding / TMDB trailer-picker strategies built but deliberately NOT in the prod
+  hot path (#144/#315).** Прод `enrich_with_trailer` отбирает детерминированным `HeuristicStrategy`
+  (#141); `LLMTrailerStrategy` (#142), `EmbeddingTrailerStrategy` (#143) и `tmdb_trailer.pick_trailer`
+  (#329) остаются eval-only. **Обоснование выбора (negative-ROI, wrong=0 на golden-set) — канон в
+  [pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection-140-141-144)**,
+  здесь не дублируем. Coverage-следствие (дом здесь): чистые selection-слои этих стратегий **покрыты**
+  unit-тестами; без покрытия только живые Gemini-движки (строки ниже). Записано, чтобы «почему
+  LLM-picker не в проде?» не переоткрывали. **Open-world caveat:** wrong=0 доказан на 28
+  curated-кейсах; success-path breadcrumb (`reason`/`confidence` INFO-лог в `enrich_with_trailer`)
+  вскроет прод-ambiguity — пересмотреть, если в проде всплывут ничьи, которых нет в golden-set.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
@@ -282,8 +285,8 @@ work-for-work (goal-function priority (2)).
 
 | Module | Reason | Mitigation |
 |---|---|---|
-| `youtube.py::get_trailer_url`/`_search_youtube` (frozen prod path) | Requires live YouTube API | Indirect coverage via `test_kinozal_pipeline.py::TestEnrichWithTrailer` (retrieval `search_candidates`/`_search_one` **is** directly tested — `test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140; only the frozen `get_trailer_url` remains indirect until #144 rewires the prod path) |
-| `tmdb_trailer.py::TmdbClient` (`resolve`/`_get`/`_find_movie_id`) | Requires live `TMDB_TOKEN` + network — retrieval boundary (DI, mirror of `youtube.py`) | Pure selection `pick_trailer` **is** directly tested (`test_tmdb_trailer.py`, 7 cases); only the network boundary is untested, same §II precedent as `youtube.py`'s frozen path (#329) |
+| `youtube.py::Youtube` (live-client wrapper: `__init__` + `search_candidates` method) | Requires live YouTube API (`build()` + `API_KEY`) | Pure retrieval `search_candidates(client, profile)`/`_search_one` **is** directly tested (`test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140); only the thin live-`build()` wrapper is untested. `get_trailer_url`/`_search_youtube` удалены в #144 (прод перешёл на `search_candidates` + `HeuristicStrategy`) |
+| `tmdb_trailer.py::TmdbClient` (`resolve`/`_get`/`_find_movie_id`) | Requires live `TMDB_TOKEN` + network — retrieval boundary (DI, mirror of `youtube.py`) | Pure selection `pick_trailer` **is** directly tested (`test_tmdb_trailer.py`, 7 cases); only the network boundary is untested, same §II precedent as `youtube.py`'s live-client wrapper (#329) |
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
 | `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
 | Package import-resolution & repo layout | A module failing to resolve as `kinozal_scraper.X`, or source drifting back to a flat `src/*.py` layout | `test_package_importable.py::TestPackage` (all modules import as `kinozal_scraper.X`); `test_repo_layout.py::TestLayout`. (The #237 B1 empty-/nested-scan guard moved off the retired `test_check_headers.py` — [#253](https://github.com/ekolvah/kinozal_scraper/issues/253) replaced `check_headers.py` with ruff `D100`/`D104`/`D419`; the "mis-pointed/empty `src/` scanned nothing" failure mode is now subsumed by these two guards, which fire strictly harder — 17 hard-coded imports + layout-drift — than the old zero-file check) |

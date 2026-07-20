@@ -1,15 +1,17 @@
-"""Поиск YouTube-трейлера (Youtube) + retrieval пула кандидатов (#140)."""
+"""YouTube-retrieval пула кандидатов трейлера (#140): `Youtube.search_candidates`.
+
+Selection (выбор одного) — не здесь, а в `trailer_strategy.HeuristicStrategy` (#141),
+вызывается из `kinozal_pipeline.enrich_with_trailer` (#144). Прежний одиночный
+`get_trailer_url` (англо-смещённый после #138 → RU-регрессия #315) удалён."""
 
 from __future__ import annotations
 
 import logging
 import os
-from datetime import date, timedelta
 from typing import Any
 
 from googleapiclient.discovery import build
 
-from kinozal_scraper.text_utils import title_year_matches
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
 
 logger = logging.getLogger(__name__)
@@ -80,37 +82,3 @@ class Youtube:
     def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
         """Пул кандидатов для `profile` через общий `search_candidates` (#140)."""
         return search_candidates(self.youtube, profile)
-
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
-        query = f"{film} {year} trailer" if year else f"{film} trailer"
-        if year:
-            published_after = f"{year}-01-01T00:00:00Z"
-        else:
-            cutoff = date.today() - timedelta(days=180)
-            published_after = f"{cutoff.isoformat()}T00:00:00Z"
-        result = self._search_youtube(query, published_after, film_year=year)
-        if result:
-            return result
-        return self._search_youtube(query, published_after=None, film_year=year) or ""
-
-    def _search_youtube(
-        self,
-        query: str,
-        published_after: str | None = None,
-        film_year: int | None = None,
-    ) -> str | None:
-        params: dict = dict(
-            q=query, part="id,snippet", maxResults=5, type="video", videoDuration="short"
-        )
-        if published_after:
-            params["publishedAfter"] = published_after
-        response = self.youtube.search().list(**params).execute()
-        for item in response.get("items", []):
-            if item["id"].get("kind") != "youtube#video":
-                continue
-            if film_year:
-                title = item.get("snippet", {}).get("title", "")
-                if not title_year_matches(title, film_year):
-                    continue
-            return f"https://www.youtube.com/watch?v={item['id']['videoId']}"
-        return None

@@ -21,7 +21,7 @@ from kinozal_scraper.sheets_storage import InMemoryStorage
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
 from kinozal_scraper.text_utils import original_title
 from kinozal_scraper.text_utils import title_year_matches as _title_year_matches
-from kinozal_scraper.trailer_strategy import FilmProfile
+from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
 
 # ── minimal synthetic HTML matching kinozal_movies row_selector ──────────────
 
@@ -57,29 +57,27 @@ _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
 
 
 class _FakeYoutube:
+    """#144 retrieval-фейк для пайплайн-прогонов: синтезирует один релевантный
+    кандидат из профиля (title+year), чтобы `HeuristicStrategy` его выбрал и прод
+    отдал youtube.com-URL (прежний `get_trailer_url`-фейк — прод ходит через
+    `search_candidates`)."""
+
     def __init__(self) -> None:
-        self.last_film: str = ""
-        self.last_year: int | None = None
+        self.last_profile: FilmProfile | None = None
 
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
-        self.last_film = film
-        self.last_year = year
-        return f"https://youtube.com/watch?v={film.replace(' ', '_')}"
-
-
-class _EmptyYoutube:
-    """Fake YouTube с пустой выдачей (clean miss) — проверяет §IV miss-маркер в
-    enrich_with_trailer. Год-фильтрация selection'а переехала в
-    FirstResultStrategy (tests/test_trailer_strategy.py, #139); прежний
-    _FilteringFakeYoutube переизобретал title_year_matches (§II-мок внутренней
-    логики) и удалён — тут остаётся только прод-маркерный контракт."""
-
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
-        return ""
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
+        self.last_profile = profile
+        year = f" {profile.year}" if profile.year else ""
+        return [
+            Candidate(
+                video_id=profile.ru_title.replace(" ", "_"),
+                title=f"{profile.ru_title}{year} trailer",
+            )
+        ]
 
 
 class _RaisingYoutube:
-    def get_trailer_url(self, film: str, year: int | None = None) -> str:
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
         raise RuntimeError("YouTube API down")
 
 
@@ -116,6 +114,27 @@ class TestBaseUrlResolution(unittest.TestCase):
 # ── enrich_with_trailer ───────────────────────────────────────────────────────
 
 
+class _PoolYoutube:
+    """#144 retrieval-фейк: отдаёт фиксированный пул кандидатов и захватывает
+    `FilmProfile`, с которым его позвали (проверка деривации профиля). Заменяет
+    прежний `get_trailer_url`-фейк — прод теперь ходит через `search_candidates`."""
+
+    def __init__(self, pool: list[Candidate]) -> None:
+        self.pool = pool
+        self.last_profile: FilmProfile | None = None
+
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
+        self.last_profile = profile
+        return list(self.pool)
+
+
+class _RaisingRetrieval:
+    """Retrieval-сбой (§IV): `search_candidates` бросает → error-маркер + WARNING."""
+
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
+        raise RuntimeError("YouTube API down")
+
+
 class TestEnrichWithTrailer(unittest.TestCase):
     def _item(self, raw: str) -> NormalizedItem:
         return NormalizedItem(
@@ -125,89 +144,68 @@ class TestEnrichWithTrailer(unittest.TestCase):
             raw={"kinozal_raw_title": raw},
         )
 
-    def test_clean_title_used_for_lookup(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Film One / 2024 / BDRip")
+    def test_prefers_ru_candidate_over_en(self) -> None:
+        # #315 регрессия: в пуле RU- и EN-трейлер одного фильма+года → выбирается RU.
+        pool = [
+            Candidate(video_id="en01", title="Man on Fire 2026 Official Trailer"),
+            Candidate(video_id="ru01", title="Гнев 2026 официальный трейлер"),
+        ]
+        youtube = _PoolYoutube(pool)
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
         trailer = enrich_with_trailer(item, youtube)
-        self.assertIn("Film_One", trailer)
-        self.assertNotIn("/", trailer.split("watch?v=")[1])
+        self.assertEqual(trailer, "https://www.youtube.com/watch?v=ru01")
 
-    def test_parentheses_stripped(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Film (2024)")
-        trailer = enrich_with_trailer(item, youtube)
-        self.assertIn("Film", trailer)
-        self.assertNotIn("(2024)", trailer)
+    def test_builds_film_profile_from_item(self) -> None:
+        youtube = _PoolYoutube([])
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        enrich_with_trailer(item, youtube)
+        assert youtube.last_profile is not None
+        self.assertEqual(youtube.last_profile.ru_title, "Гнев")
+        self.assertEqual(youtube.last_profile.original_title, "Man on Fire")
+        self.assertEqual(youtube.last_profile.year, 2026)
 
-    def test_failure_returns_error_marker(self) -> None:
-        # §IV (#138): a lookup exception must surface a visible marker + WARNING,
-        # not a silent "". WARNING (not ERROR) is pinned via levelno.
-        item = self._item("Some Film")
-        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
-            trailer = enrich_with_trailer(item, _RaisingYoutube())
-        self.assertEqual(trailer, _TRAILER_ERROR_MARKER)
-        self.assertEqual(cm.records[-1].levelno, logging.WARNING)
+    def test_no_original_segment_profile_uses_clean_title(self) -> None:
+        youtube = _PoolYoutube([])
+        item = self._item("Film One / 2024 / BDRip")  # 2-й сегмент — год, оригинала нет
+        enrich_with_trailer(item, youtube)
+        assert youtube.last_profile is not None
+        self.assertEqual(youtube.last_profile.ru_title, "Film One")
+        self.assertEqual(youtube.last_profile.original_title, "")
+        self.assertEqual(youtube.last_profile.year, 2024)
+
+    def test_no_year_profile_year_none(self) -> None:
+        youtube = _PoolYoutube([])
+        item = self._item("Film Without Year")
+        enrich_with_trailer(item, youtube)
+        assert youtube.last_profile is not None
+        self.assertIsNone(youtube.last_profile.year)
 
     def test_miss_returns_miss_marker(self) -> None:
-        # §IV (#138): a clean miss (API OK, 0 results) surfaces a visible marker
-        # + INFO log (expected, not an anomaly), distinct from the error marker.
+        # §IV: пустой пул → pick=None → видимый miss-маркер + INFO (ожидаемо, не аномалия).
+        youtube = _PoolYoutube([])
         item = self._item("Some Film")
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
-            trailer = enrich_with_trailer(item, _EmptyYoutube())
+            trailer = enrich_with_trailer(item, youtube)
         self.assertEqual(trailer, _TRAILER_MISS_MARKER)
         self.assertTrue(any(r.levelno == logging.INFO for r in cm.records))
 
-    def test_original_title_used_for_lookup(self) -> None:
-        youtube = _FakeYoutube()
+    def test_failure_returns_error_marker(self) -> None:
+        # §IV (#138): retrieval-исключение → видимый error-маркер + WARNING, не тихий "".
+        item = self._item("Some Film")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
+            trailer = enrich_with_trailer(item, _RaisingRetrieval())
+        self.assertEqual(trailer, _TRAILER_ERROR_MARKER)
+        self.assertEqual(cm.records[-1].levelno, logging.WARNING)
+
+    def test_success_logs_pick_reason(self) -> None:
+        # Breadcrumb (§IV, architect-review SHOULD-FIX): успешный pick пишет reason,
+        # чтобы «ru language» отличался от «ambiguous» в прод-логах при разборе.
+        pool = [Candidate(video_id="ru01", title="Гнев 2026 официальный трейлер")]
+        youtube = _PoolYoutube(pool)
         item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_film, "Man on Fire")
-
-    def test_falls_back_to_clean_title_when_no_original(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Film One / 2024 / BDRip")  # 2nd segment is a year
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_film, "Film One")
-
-    def test_year_still_passed_with_original_title(self) -> None:
-        # SHOULD-FIX guard: switching the query to the original title must not
-        # drop the year= that feeds title_year_matches.
-        youtube = _FakeYoutube()
-        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_year, 2026)
-
-    def test_original_segment_used_verbatim(self) -> None:
-        # Documents the non-strip decision: the original segment goes to YouTube
-        # as-is (parentheticals not stripped), unlike the clean-title fallback.
-        youtube = _FakeYoutube()
-        item = self._item("Русское / Man on Fire (uncut) / 2026 / WEB")
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_film, "Man on Fire (uncut)")
-
-    def test_year_extracted_from_dedupe_key_and_passed(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Film One / 2024 / BDRip")
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_year, 2024)
-
-    def test_no_year_passes_none(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Film Without Year")
-        enrich_with_trailer(item, youtube)
-        self.assertIsNone(youtube.last_year)
-
-    def test_year_in_parentheses_extracted(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Film (2023)")
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_year, 2023)
-
-    def test_parentheses_stripped_before_youtube_query(self) -> None:
-        youtube = _FakeYoutube()
-        item = self._item("Great Film / 2025 / WEB-DL")
-        enrich_with_trailer(item, youtube)
-        self.assertEqual(youtube.last_film, "Great Film")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            enrich_with_trailer(item, youtube)
+        self.assertTrue(any("ru language" in r.getMessage() for r in cm.records))
 
 
 # ── _kinozal_title ────────────────────────────────────────────────────────────
@@ -707,15 +705,14 @@ class TestDeliveryTruthfulness(unittest.TestCase):
 class TestKinozalKnownBugs(unittest.TestCase):
     """Documents current behaviour for scenarios that should ideally be louder."""
 
-    def test_youtube_quota_exhausted_pipeline_continues_with_empty_trailer(self) -> None:
-        """YouTube quota → enrich_with_trailer swallows the exception → trailer=''.
-
-        Pipeline still publishes items, but their notification text carries no
-        trailer link. Documented as a quiet degradation (G in the taxonomy).
+    def test_youtube_quota_exhausted_still_notifies_with_visible_marker(self) -> None:
+        """YouTube quota → `search_candidates` бросает → enrich отдаёт видимый §IV
+        error-маркер (#138), НЕ тихий пустой трейлер. Пайплайн всё равно публикует
+        items — деградация громкая (маркер + WARNING), не quiet-G из таксономии.
         """
 
         class _QuotaExhaustedYoutube:
-            def get_trailer_url(self, film: str, year: int | None = None) -> str:
+            def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
                 raise RuntimeError("quotaExceeded")
 
         storage, notifier = _run(youtube=_QuotaExhaustedYoutube())
@@ -723,6 +720,7 @@ class TestKinozalKnownBugs(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 2)
         for notif in notifier.sent:
             self.assertNotIn("youtube.com", notif.text)
+            self.assertIn(_TRAILER_ERROR_MARKER, notif.text)
 
 
 class TestMirrorUrl(unittest.TestCase):

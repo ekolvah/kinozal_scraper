@@ -1,11 +1,10 @@
 """Граница retrieval → selection подбора трейлера (#139, эпик трейлеров).
 
-Сейчас `youtube.py` слитно делает retrieval (запрос → кандидаты) и selection
-(выбор одного). Эпик разводит их: retrieval остаётся в `youtube.py` (#140),
-selection переезжает сюда за `TrailerStrategy`. #139 определяет типы + Protocol
-+ baseline `FirstResultStrategy` (= текущая прод-логика отбора) и НЕ меняет
-прод-поведение — baseline измеряется harness'ом (`scripts/eval_trailers.py`), но
-в прод-путь (`enrich_with_trailer`) не подключается до #144.
+Retrieval (запрос → кандидаты) живёт в `youtube.py` (#140), selection (выбор одного)
+— здесь за `TrailerStrategy`. #139 задал типы + Protocol + baseline `FirstResultStrategy`
+(= прежняя прод-логика отбора, теперь только под harness/сравнение). Прод-путь
+`kinozal_pipeline.enrich_with_trailer` (#144) отбирает язык-aware `HeuristicStrategy`
+(#141) = eval `default_strategy()` — RU-приоритет закрывает регрессию #315.
 """
 
 from __future__ import annotations
@@ -107,12 +106,12 @@ class TrailerStrategy(Protocol):
 
 
 class FirstResultStrategy:
-    """Baseline = текущая прод-логика `_search_youtube`: первый кандидат, чей
-    title проходит год-фильтр. Год-правило шарится с продом через общий
-    `title_year_matches` (§II — не переизобретается). При falsy year (None/0) —
-    как прод (`if film_year:`, youtube.py) — год-фильтр не применяется, берётся
-    первый кандидат (`not year`, а не `year is None`, — точное зеркало прода).
-    """
+    """Baseline = прежняя прод-логика отбора (одиночный `get_trailer_url`, удалён в
+    #144): первый кандидат, чей title проходит год-фильтр. Теперь только под
+    harness/сравнение (прод отбирает `HeuristicStrategy` #141). Год-правило шарится
+    через общий `title_year_matches` (§II — не переизобретается). При falsy year
+    (None/0) год-фильтр не применяется, берётся первый кандидат (`not year`, а не
+    `year is None`)."""
 
     def pick(self, film_profile: FilmProfile, candidates: list[Candidate]) -> TrailerPick:
         year = film_profile.year

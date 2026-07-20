@@ -1,9 +1,10 @@
 """RED tests for #139: TrailerStrategy Protocol + FirstResultStrategy baseline.
 
-FirstResultStrategy повторяет текущую прод-логику отбора (`_search_youtube`
-loop): первый Candidate, чей title проходит общий `title_year_matches`; при
-year=None — первый кандидат (как прод, который применяет год-фильтр только при
-truthy year). Год-правило шарится с продом (§II), не переписывается.
+FirstResultStrategy повторяет ПРЕЖНЮЮ прод-логику отбора (одиночный
+`get_trailer_url`, удалён в #144): первый Candidate, чей title проходит общий
+`title_year_matches`; при year=None — первый кандидат (год-фильтр только при
+truthy year). Теперь baseline под harness/сравнение (прод отбирает
+`HeuristicStrategy` #141). Год-правило шарится (§II), не переписывается.
 """
 
 from __future__ import annotations
