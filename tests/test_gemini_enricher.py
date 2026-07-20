@@ -27,9 +27,10 @@ class _FakeCandidate:
 
 
 class _FakeResponse:
-    def __init__(self, text: str, finish_reason: str = "STOP") -> None:
+    def __init__(self, text: str, finish_reason: str = "STOP", usage_metadata: Any = None) -> None:
         self.text = text
         self.candidates = [_FakeCandidate(finish_reason)]
+        self.usage_metadata = usage_metadata
 
 
 class _FakeGenerativeModel:
@@ -709,9 +710,12 @@ class TestObservability(unittest.TestCase):
     token spend instead of just prompt/response lengths (#145)."""
 
     def test_generate_logs_token_usage_and_latency(self) -> None:
-        response = _FakeResponse(text="hello", finish_reason="STOP")
-        response.usage_metadata = SimpleNamespace(
-            prompt_token_count=320, candidates_token_count=48, total_token_count=368
+        response = _FakeResponse(
+            text="hello",
+            finish_reason="STOP",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=320, candidates_token_count=48, total_token_count=368
+            ),
         )
         enricher = GeminiEnricher("models/gemini-2.5-flash")
         with (

@@ -132,9 +132,10 @@ class TestSummarizeChannelsOrchestration(unittest.TestCase):
 
 
 class _FakeResponse:
-    def __init__(self, text: str, has_candidates: bool = True) -> None:
+    def __init__(self, text: str, has_candidates: bool = True, usage_metadata: Any = None) -> None:
         self.text = text
         self.candidates = [object()] if has_candidates else []
+        self.usage_metadata = usage_metadata
 
 
 class TestGeminiSummarizerQuota(unittest.TestCase):
@@ -258,9 +259,11 @@ class TestGeminiSummarizerObservability(unittest.TestCase):
 
     def test_summarize_logs_token_usage(self) -> None:
         summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
-        response = _FakeResponse("summary text")
-        response.usage_metadata = SimpleNamespace(
-            prompt_token_count=200, candidates_token_count=30, total_token_count=230
+        response = _FakeResponse(
+            "summary text",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=200, candidates_token_count=30, total_token_count=230
+            ),
         )
         with unittest.mock.patch(
             "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"

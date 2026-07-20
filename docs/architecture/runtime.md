@@ -38,6 +38,10 @@ ready clients, not credentials" — are now machine-enforced by `import-linter`
 (the `imports` gate in `ci_check.py`, contracts in `.importlinter`). See
 [ci.md](ci.md) for the two contracts (`adapter-no-auth`, `pipeline-layers`) (#234).
 
+Both live-Gemini call sites (`GeminiEnricher._generate`, `GeminiSummarizer.summarize`)
+emit a structured `llm_call` breadcrumb with token usage (`usage_metadata`) and
+latency — see [gemini.md § Call observability](gemini.md#call-observability--tokens--latency-145) (#145).
+
 ## Data flow (generic pipelines)
 
 ```

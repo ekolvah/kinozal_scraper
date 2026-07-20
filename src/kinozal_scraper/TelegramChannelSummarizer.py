@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
@@ -13,6 +14,9 @@ import google.generativeai as genai
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
+
+from kinozal_scraper.gemini_enricher import _extract_finish_reason
+from kinozal_scraper.llm_observability import extract_usage, log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +110,17 @@ class GeminiSummarizer:
         for model_name in self._models:
             try:
                 model = genai.GenerativeModel(model_name)
+                start = time.perf_counter()
                 response = model.generate_content(request)
+                latency_ms = int((time.perf_counter() - start) * 1000)
+                log_llm_call(
+                    logger,
+                    model=model_name,
+                    usage=extract_usage(response),
+                    latency_ms=latency_ms,
+                    finish_reason=_extract_finish_reason(response),
+                    outcome="ok" if getattr(response, "candidates", None) else "empty",
+                )
 
                 logger.info("------Оригинальный текст------")
                 logger.info(text)
