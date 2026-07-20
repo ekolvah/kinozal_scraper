@@ -732,6 +732,32 @@ class TestObservability(unittest.TestCase):
         self.assertIn("total_tokens=368", line)
         self.assertIn("latency_ms=", line)
 
+    def test_generate_logs_truncated_outcome_on_max_tokens(self) -> None:
+        # A truncated call is still observed (breadcrumb fires before the raise),
+        # tagged outcome=truncated — the log must not go silent on the calls that
+        # burned tokens without a usable answer (§IV).
+        response = _FakeResponse(
+            text="partial",
+            finish_reason="MAX_TOKENS",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=10, candidates_token_count=150, total_token_count=160
+            ),
+        )
+        enricher = GeminiEnricher("models/gemini-2.5-flash")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
+            ),
+            self.assertLogs("kinozal_scraper.gemini_enricher", level="INFO") as cm,
+            self.assertRaises(TruncatedResponse),
+        ):
+            enricher._generate(
+                "p",
+                __import__("google.generativeai", fromlist=["types"]).types.GenerationConfig(),
+            )
+        self.assertIn("outcome=truncated", "\n".join(cm.output))
+
 
 if __name__ == "__main__":
     unittest.main()
