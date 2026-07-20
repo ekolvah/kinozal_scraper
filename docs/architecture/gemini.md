@@ -106,6 +106,51 @@ Every call logs `model_name`, `prompt_len`, `resp_len`, `finish_reason`,
 and the first line of the answer at INFO level — the diagnostic surface
 needed to triage drift without instrumenting each call ad hoc.
 
+## Call observability — tokens & latency (#145)
+
+Both live Gemini call sites — `GeminiEnricher._generate` (item enrichment) and
+`GeminiSummarizer.summarize` (Telegram channel summaries) — emit one structured
+`llm_call` breadcrumb per completed call via `llm_observability.log_llm_call`:
+
+```
+llm_call model=… prompt_tokens=… candidates_tokens=… total_tokens=… latency_ms=… finish=… outcome=…
+```
+
+Token counts come from `response.usage_metadata` (read by the pure, tolerant
+`llm_observability.extract_usage`); latency is `time.perf_counter()` around the
+live call. A missing / partial `usage_metadata` degrades to `None` fields plus an
+`outcome=…,degraded` marker rather than crashing or logging a misleading zero
+(§IV — visibility over silence). This is the cheap, dependency-free observability
+layer that runs **in cron**; it complements, not replaces, the older
+`prompt_len/resp_len/first_line` INFO line above.
+
+### Phoenix / OpenInference — local dev only (not cron)
+
+For a visual trace (spans, per-call token spend, latency waterfall) during manual
+debugging, run [Arize Phoenix](https://github.com/Arize-ai/phoenix) locally with the
+OpenInference instrumentor for `google-generativeai`. It is **opt-in, local, and
+deliberately not committed**: no `arize-phoenix` / `openinference-*` in
+`requirements*.txt`, and no activation code in the repo — unrunnable-in-CI code rots
+(#145). The in-cron structured `llm_call` log stays the only production surface.
+
+Recipe (throwaway venv, real `GOOGLE_API_KEY`):
+
+```bash
+pip install arize-phoenix openinference-instrumentation-google-generativeai
+```
+
+```python
+import phoenix.otel
+from openinference.instrumentation.google_generativeai import (
+    GoogleGenerativeAIInstrumentor,
+)
+
+phoenix.otel.register()  # local collector + UI at http://127.0.0.1:6006
+GoogleGenerativeAIInstrumentor().instrument()  # patches genai.generate_content
+
+# then run the enricher / summarizer locally; spans stream into the Phoenix UI
+```
+
 ## `summary_ru` invariant (GitHub sources)
 
 Both `github_new_popular` and `github_trending` write the enrich result to

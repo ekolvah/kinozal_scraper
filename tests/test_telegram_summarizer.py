@@ -132,9 +132,10 @@ class TestSummarizeChannelsOrchestration(unittest.TestCase):
 
 
 class _FakeResponse:
-    def __init__(self, text: str, has_candidates: bool = True) -> None:
+    def __init__(self, text: str, has_candidates: bool = True, usage_metadata: Any = None) -> None:
         self.text = text
         self.candidates = [object()] if has_candidates else []
+        self.usage_metadata = usage_metadata
 
 
 class TestGeminiSummarizerQuota(unittest.TestCase):
@@ -249,6 +250,54 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
         called_request = mock_model.return_value.generate_content.call_args.args[0]
         self.assertIn("CHAT", called_request)
         self.assertNotIn("BROADCAST", called_request)
+
+
+class TestGeminiSummarizerObservability(unittest.TestCase):
+    """A live summarization call must emit a structured `llm_call` breadcrumb with
+    token usage and latency, mirroring the enricher, so channel-summary token spend
+    is visible in cron logs (#145)."""
+
+    def test_summarize_logs_token_usage(self) -> None:
+        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
+        response = _FakeResponse(
+            "summary text",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=200, candidates_token_count=30, total_token_count=230
+            ),
+        )
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
+            mock_model.return_value.generate_content.return_value = response
+            with self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="INFO") as cm:
+                result = summ.summarize("channel payload", is_broadcast=True)
+        self.assertEqual(result, "summary text")
+        line = "\n".join(cm.output)
+        self.assertIn("llm_call", line)
+        self.assertIn("total_tokens=230", line)
+        self.assertIn("latency_ms=", line)
+
+    def test_summarize_logs_empty_outcome_when_no_candidates(self) -> None:
+        # No candidates → the call is logged with outcome=empty before it raises
+        # SummarizationFailed, so a blocked/empty response still shows up in cron.
+        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
+        response = _FakeResponse(
+            "",
+            has_candidates=False,
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=5, candidates_token_count=0, total_token_count=5
+            ),
+        )
+        with unittest.mock.patch(
+            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
+        ) as mock_model:
+            mock_model.return_value.generate_content.return_value = response
+            with (
+                self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="INFO") as cm,
+                self.assertRaises(SummarizationFailed),
+            ):
+                summ.summarize("channel payload", is_broadcast=True)
+        self.assertIn("outcome=empty", "\n".join(cm.output))
 
 
 # ── C. Auth & quota — TelethonReader error swallow ──────────────────────────

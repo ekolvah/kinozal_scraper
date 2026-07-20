@@ -14,6 +14,7 @@ import google.generativeai as genai
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from kinozal_scraper.generic_pipeline import NormalizedItem
+from kinozal_scraper.llm_observability import extract_usage, log_llm_call
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +211,9 @@ class GeminiEnricher:
     )
     def _generate(self, prompt: str, generation_config: genai.types.GenerationConfig) -> str:
         model = genai.GenerativeModel(self._model_name)
+        start = time.perf_counter()
         response = model.generate_content(prompt, generation_config=generation_config)
+        latency_ms = int((time.perf_counter() - start) * 1000)
         text: str = (response.text or "").strip()
         finish_reason = _extract_finish_reason(response)
         first_line = text.splitlines()[0] if text else ""
@@ -222,7 +225,16 @@ class GeminiEnricher:
             finish_reason,
             first_line,
         )
-        if finish_reason in ("MAX_TOKENS", "SAFETY"):
+        truncated = finish_reason in ("MAX_TOKENS", "SAFETY")
+        log_llm_call(
+            logger,
+            model=self._model_name,
+            usage=extract_usage(response),
+            latency_ms=latency_ms,
+            finish_reason=finish_reason,
+            outcome="truncated" if truncated else "ok",
+        )
+        if truncated:
             raise TruncatedResponse(finish_reason)
         return _strip_markdown_wrap(text)
 

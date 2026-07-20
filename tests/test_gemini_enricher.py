@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import unittest
 import unittest.mock
+from types import SimpleNamespace
 from typing import Any
 
 from kinozal_scraper.gemini_enricher import (
@@ -26,9 +27,10 @@ class _FakeCandidate:
 
 
 class _FakeResponse:
-    def __init__(self, text: str, finish_reason: str = "STOP") -> None:
+    def __init__(self, text: str, finish_reason: str = "STOP", usage_metadata: Any = None) -> None:
         self.text = text
         self.candidates = [_FakeCandidate(finish_reason)]
+        self.usage_metadata = usage_metadata
 
 
 class _FakeGenerativeModel:
@@ -700,6 +702,61 @@ class TestBuildDefaultEnricher(unittest.TestCase):
             result = build_default_enricher("real-key", log)
         self.assertIsInstance(result, RotatingGeminiEnricher)
         mock_configure.assert_called_once_with(api_key="real-key")
+
+
+class TestObservability(unittest.TestCase):
+    """A live Gemini call must emit a structured `llm_call` breadcrumb with token
+    usage (`usage_metadata`) and wall-clock latency, so cron logs show per-call
+    token spend instead of just prompt/response lengths (#145)."""
+
+    def test_generate_logs_token_usage_and_latency(self) -> None:
+        response = _FakeResponse(
+            text="hello",
+            finish_reason="STOP",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=320, candidates_token_count=48, total_token_count=368
+            ),
+        )
+        enricher = GeminiEnricher("models/gemini-2.5-flash")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
+            ),
+            self.assertLogs("kinozal_scraper.gemini_enricher", level="INFO") as cm,
+        ):
+            enricher.enrich(_item(), _ENRICH_CFG)
+        line = "\n".join(cm.output)
+        self.assertIn("llm_call", line)
+        self.assertIn("prompt_tokens=320", line)
+        self.assertIn("total_tokens=368", line)
+        self.assertIn("latency_ms=", line)
+
+    def test_generate_logs_truncated_outcome_on_max_tokens(self) -> None:
+        # A truncated call is still observed (breadcrumb fires before the raise),
+        # tagged outcome=truncated — the log must not go silent on the calls that
+        # burned tokens without a usable answer (§IV).
+        response = _FakeResponse(
+            text="partial",
+            finish_reason="MAX_TOKENS",
+            usage_metadata=SimpleNamespace(
+                prompt_token_count=10, candidates_token_count=150, total_token_count=160
+            ),
+        )
+        enricher = GeminiEnricher("models/gemini-2.5-flash")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.gemini_enricher.genai.GenerativeModel",
+                return_value=_FakeGenerativeModel(response),
+            ),
+            self.assertLogs("kinozal_scraper.gemini_enricher", level="INFO") as cm,
+            self.assertRaises(TruncatedResponse),
+        ):
+            enricher._generate(
+                "p",
+                __import__("google.generativeai", fromlist=["types"]).types.GenerationConfig(),
+            )
+        self.assertIn("outcome=truncated", "\n".join(cm.output))
 
 
 if __name__ == "__main__":
