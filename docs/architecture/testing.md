@@ -263,17 +263,15 @@ work-for-work (goal-function priority (2)).
   work-for-work.
 
 - **N. LLM / embedding / TMDB trailer-picker strategies built but deliberately NOT in the prod
-  hot path (#144/#315).** Прод `enrich_with_trailer` отбирает детерминированным language-aware
-  `HeuristicStrategy` (#141) — RU-предпочтение (#315) закрыто и измерено на golden-set
-  (`eval_trailers.py`: hit=26, **wrong=0**, n=28). `LLMTrailerStrategy` (#142),
-  `EmbeddingTrailerStrategy` (#143) и `tmdb_trailer.pick_trailer` (#329) остаются eval-only:
-  вплетение любой в cron 04:00 добавляет Gemini-вызов на item ради **нулевого измеримого
-  Hit-выигрыша** (heuristic уже wrong=0; 2 промаха — retrieval-дыры, A/B их не чинят) — ровно та
-  квота-дыра, которую #144 закрывал. Их чистые selection-слои **покрыты** unit-тестами; без покрытия
-  только живые Gemini-движки (строки ниже). Записано, чтобы «почему LLM-picker не в проде?» не
-  переоткрывали. **Open-world caveat:** wrong=0 доказан на 28 curated-кейсах; success-path breadcrumb
-  (`reason`/`confidence` INFO-лог в `enrich_with_trailer`) вскроет прод-ambiguity — пересмотреть,
-  если в проде всплывут ничьи, которых нет в golden-set.
+  hot path (#144/#315).** Прод `enrich_with_trailer` отбирает детерминированным `HeuristicStrategy`
+  (#141); `LLMTrailerStrategy` (#142), `EmbeddingTrailerStrategy` (#143) и `tmdb_trailer.pick_trailer`
+  (#329) остаются eval-only. **Обоснование выбора (negative-ROI, wrong=0 на golden-set) — канон в
+  [pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection-140-141-144)**,
+  здесь не дублируем. Coverage-следствие (дом здесь): чистые selection-слои этих стратегий **покрыты**
+  unit-тестами; без покрытия только живые Gemini-движки (строки ниже). Записано, чтобы «почему
+  LLM-picker не в проде?» не переоткрывали. **Open-world caveat:** wrong=0 доказан на 28
+  curated-кейсах; success-path breadcrumb (`reason`/`confidence` INFO-лог в `enrich_with_trailer`)
+  вскроет прод-ambiguity — пересмотреть, если в проде всплывут ничьи, которых нет в golden-set.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 

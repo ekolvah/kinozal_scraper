@@ -17,12 +17,11 @@ reader + Gemini summarizer behind Protocols) and the shared `TelegramNotifier`
 — see [Telethon-direct modules](#telethon-direct-modules) below.
 
 `kinozal_pipeline` additionally enriches each movie with a YouTube trailer
-(`enrich_with_trailer`, #144): union-retrieval `search_candidates` → детерминированный
-language-aware `HeuristicStrategy` (#141, RU-приоритет закрывает регрессию #315) →
-`video_id`-URL либо §IV-маркер. **Gemini НЕ в этом hot path** — LLM/embedding-пикеры
-(#142/#143) и TMDB-источник (#329) остаются eval-only, сознательно вне cron 04:00, так
-что отбор трейлера стоит ноль Gemini-квоты (обоснование + open-world caveat:
-[`testing.md` gap-ledger N](testing.md#consciously-accepted-coverage-gaps)).
+(`enrich_with_trailer`, #144). Отбор детерминированный, и **Gemini в этом cron-04:00
+hot path нет** — eval-only LLM/embedding/TMDB-пикеры (#142/#143/#329) сознательно вне
+прода, так что трейлер стоит ноль Gemini-квоты. Композиция retrieval → selection и
+обоснование выбора — канон в
+[pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection-140-141-144).
 
 ## Protocols
 
