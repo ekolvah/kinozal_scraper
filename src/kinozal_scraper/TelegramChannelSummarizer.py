@@ -9,13 +9,19 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, runtime_checkable
 
-import google.api_core.exceptions
-import google.generativeai as genai
+from google.genai import types
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
 
-from kinozal_scraper.gemini_enricher import _extract_finish_reason
+from kinozal_scraper.gemini_enricher import (
+    GenaiClient,
+    ModelUnavailable,
+    QuotaExhausted,
+    _extract_finish_reason,
+    _thinking_config,
+    classify_generate_error,
+)
 from kinozal_scraper.llm_observability import extract_usage, log_llm_call
 
 logger = logging.getLogger(__name__)
@@ -75,13 +81,6 @@ _DEFAULT_CHAT_PROMPT = (
 )
 
 
-def _is_model_unavailable_error(exc: Exception) -> bool:
-    message = str(exc).lower()
-    return "404" in message and (
-        "model" in message and ("no longer available" in message or "not found" in message)
-    )
-
-
 class GeminiSummarizer:
     """Sequential Gemini model fallback for recoverable per-model failures.
     Quota and unavailable-model errors advance to the next model. Unknown
@@ -92,10 +91,12 @@ class GeminiSummarizer:
     def __init__(
         self,
         models: list[str],
+        client: GenaiClient,
         broadcast_prompt: str | None = None,
         chat_prompt: str | None = None,
     ) -> None:
         self._models = models
+        self._client = client
         self._broadcast_prompt = broadcast_prompt or _DEFAULT_BROADCAST_PROMPT
         self._chat_prompt = chat_prompt or _DEFAULT_CHAT_PROMPT
 
@@ -109,9 +110,14 @@ class GeminiSummarizer:
 
         for model_name in self._models:
             try:
-                model = genai.GenerativeModel(model_name)
                 start = time.perf_counter()
-                response = model.generate_content(request)
+                response = self._client.models.generate_content(
+                    model=model_name,
+                    contents=request,
+                    config=types.GenerateContentConfig(
+                        thinking_config=_thinking_config(model_name)
+                    ),
+                )
                 latency_ms = int((time.perf_counter() - start) * 1000)
                 log_llm_call(
                     logger,
@@ -136,18 +142,18 @@ class GeminiSummarizer:
                 if not summary:
                     raise SummarizationFailed("empty_response", f"{model_name} returned empty text")
                 return summary
-            except google.api_core.exceptions.ResourceExhausted:
-                failures.append(f"{model_name}: quota exhausted")
-                logger.warning("model %s quota exhausted, trying next", model_name)
-                continue
-            except google.api_core.exceptions.NotFound as exc:
-                failures.append(f"{model_name}: unavailable: {exc}")
-                logger.warning("model %s unavailable, trying next: %s", model_name, exc)
-                continue
             except SummarizationFailed:
                 raise
             except Exception as exc:
-                if _is_model_unavailable_error(exc):
+                # New google.genai raises one APIError family — route via the
+                # shared classifier (#107 BLOCKING-1): quota (429) / unavailable
+                # (404) advance to the next model, everything else aborts.
+                mapped = classify_generate_error(exc)
+                if mapped is QuotaExhausted:
+                    failures.append(f"{model_name}: quota exhausted")
+                    logger.warning("model %s quota exhausted, trying next", model_name)
+                    continue
+                if mapped is ModelUnavailable:
                     failures.append(f"{model_name}: unavailable: {exc}")
                     logger.warning("model %s unavailable, trying next: %s", model_name, exc)
                     continue

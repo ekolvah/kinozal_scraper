@@ -342,7 +342,7 @@ class TestRetryOnlyOnQuota(unittest.TestCase):
         with self.assertRaises(QuotaExhausted):
             enricher.enrich(_item(), _ENRICH_CFG)
         # tenacity stop_after_attempt(3) → generate_content called 3×.
-        self.assertEqual(len(enricher._client.models.calls), 3)  # type: ignore[attr-defined]
+        self.assertEqual(len(enricher._client.models.calls), 3)
 
     @unittest.mock.patch("time.sleep")
     def test_not_found_404_is_not_retried(self, _sleep: Any) -> None:
@@ -350,7 +350,7 @@ class TestRetryOnlyOnQuota(unittest.TestCase):
         with self.assertRaises(ModelUnavailable):
             enricher.enrich(_item(), _ENRICH_CFG)
         # 404 is not retried → generate_content called exactly once.
-        self.assertEqual(len(enricher._client.models.calls), 1)  # type: ignore[attr-defined]
+        self.assertEqual(len(enricher._client.models.calls), 1)
 
 
 class TestModelVersionSorting(unittest.TestCase):

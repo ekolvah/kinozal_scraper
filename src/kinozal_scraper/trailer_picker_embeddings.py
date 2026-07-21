@@ -20,9 +20,9 @@ import logging
 import math
 from typing import Protocol, cast
 
-import google.generativeai as genai
+from google.genai import types
 
-from kinozal_scraper.gemini_enricher import classify_generate_error
+from kinozal_scraper.gemini_enricher import GenaiClient, classify_generate_error
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile, TrailerPick
 
 logger = logging.getLogger(__name__)
@@ -107,10 +107,11 @@ class GeminiEmbedder:
     `model_name` property зеркалит собратьев, чтобы #144 обернул `list[GeminiEmbedder]`
     экстракцией ротации, не переписыванием.
 
-    genai.configure() должен быть вызван один раз до инстанцирования (как у собратьев).
+    `client` (genai.Client) прокидывается в конструктор (§II — готовый клиент, не credentials).
     """
 
-    def __init__(self, model_name: str = EMBED_MODEL) -> None:
+    def __init__(self, client: GenaiClient, model_name: str = EMBED_MODEL) -> None:
+        self._client = client
         self._model_name = model_name
 
     @property
@@ -119,16 +120,17 @@ class GeminiEmbedder:
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         try:
-            response = genai.embed_content(
+            response = self._client.models.embed_content(
                 model=self._model_name,
-                content=texts,
-                task_type="semantic_similarity",
+                contents=texts,
+                config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
             )
-            # Индексация внутри try: malformed-ответ без ключа "embedding" (KeyError)
+            # Извлечение внутри try: malformed-ответ (embeddings=None) → TypeError
             # идёт через ту же таксономию (→ TryNextModel), а не сырым краком мимо неё.
-            vectors = response["embedding"]
+            embeddings = response.embeddings
+            if embeddings is None:
+                raise TypeError("embed_content returned no embeddings")
+            vectors = [embedding.values for embedding in embeddings]
         except Exception as exc:
             raise classify_generate_error(exc)() from exc
-        # SDK-стаб типизирует batch-ответ как list[float]; на списке текстов это
-        # list[list[float]] (по вектору на текст) — cast выправляет тип, не поведение.
         return cast("list[list[float]]", vectors)
