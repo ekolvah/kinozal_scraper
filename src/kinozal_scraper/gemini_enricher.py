@@ -156,9 +156,10 @@ class NullEnricher:
 # Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends
 # the whole `max_output_tokens` on thoughts and returns `finish_reason=MAX_TOKENS`
 # on valid prompts (#107). The knob to suppress it is version-specific: Gemini 3
-# replaced `thinking_budget` with `thinking_level`, and newer 3.x models 400 on
-# `thinking_budget=0` — so 3.x needs `thinking_level="minimal"` (Google's
-# documented near-zero setting), while 2.5 still uses `thinking_budget=0` (#338).
+# replaced `thinking_budget` with `thinking_level`, and some 3.x models
+# (e.g. gemini-3.6-flash, gemini-3.5-flash-lite) 400 on `thinking_budget=0` — so
+# 3.x uniformly gets `thinking_level="minimal"` (Google's documented near-zero
+# setting; STOPs on all 3.x), while 2.5 still uses `thinking_budget=0` (#338).
 # Older models (2.0) reject any `thinking_config` with 400, so gate it by version.
 _THINKING_MIN_VERSION = 2.5
 _THINKING_LEVEL_MIN_VERSION = 3.0
