@@ -303,10 +303,12 @@ class TestErrorClassification(unittest.TestCase):
 
 
 class TestThinkingConfigGate(unittest.TestCase):
-    """#107: `thinking_budget=0` disables the reasoning phase that made Gemini
-    3.x burn the whole `max_output_tokens` on thoughts. It must be set only for
-    models that support it (2.5+/3.x); older models (2.0) must NOT receive a
-    `thinking_config` (they 400 on it → false QuotaExhausted, §IV)."""
+    """Thinking must be suppressed with the version-correct knob so a short
+    2-line answer isn't eaten by the reasoning phase. Two-tier boundary (#338):
+    Gemini 3.x replaced `thinking_budget` with `thinking_level` — newer 3.x
+    models 400 on `thinking_budget=0`, so they get `thinking_level="minimal"`
+    (Google's documented near-zero setting). 2.5 still uses `thinking_budget=0`
+    (#107). Pre-2.5 models (2.0) get NO `thinking_config` — they 400 on it (§IV)."""
 
     def test_thinking_budget_zero_for_gemini_2_5(self) -> None:
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
@@ -315,23 +317,26 @@ class TestThinkingConfigGate(unittest.TestCase):
         self.assertIsNotNone(cfg.thinking_config)
         self.assertEqual(cfg.thinking_config.thinking_budget, 0)
 
-    def test_thinking_budget_zero_for_gemini_3_x(self) -> None:
+    def test_thinking_level_minimal_for_gemini_3_x(self) -> None:
+        # #338: 3.x models reject thinking_budget=0 (400) — the knob is
+        # thinking_level="minimal", and thinking_budget must stay unset.
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
         GeminiEnricher("models/gemini-3.1-flash-lite-preview", client).enrich(
             _item(), _TWO_LINE_CFG
         )
         cfg = client.models.calls[-1]["config"]
         self.assertIsNotNone(cfg.thinking_config)
-        self.assertEqual(cfg.thinking_config.thinking_budget, 0)
+        self.assertEqual(cfg.thinking_config.thinking_level, "minimal")
+        self.assertIsNone(cfg.thinking_config.thinking_budget)
 
-    def test_thinking_budget_zero_for_bare_major_gemini_3(self) -> None:
-        # Bare-major ID (no minor) must still get thinking_budget=0 — else the
-        # #107 MAX_TOKENS bug silently returns for these models (PR #333 review).
+    def test_thinking_level_minimal_for_bare_major_gemini_3(self) -> None:
+        # Bare-major ID (no minor) is still 3.x → thinking_level="minimal".
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
         GeminiEnricher("models/gemini-3-flash-preview", client).enrich(_item(), _TWO_LINE_CFG)
         cfg = client.models.calls[-1]["config"]
         self.assertIsNotNone(cfg.thinking_config)
-        self.assertEqual(cfg.thinking_config.thinking_budget, 0)
+        self.assertEqual(cfg.thinking_config.thinking_level, "minimal")
+        self.assertIsNone(cfg.thinking_config.thinking_budget)
 
     def test_no_thinking_config_for_gemini_2_0(self) -> None:
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
