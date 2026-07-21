@@ -273,6 +273,8 @@ work-for-work (goal-function priority (2)).
   curated-кейсах; success-path breadcrumb (`reason`/`confidence` INFO-лог в `enrich_with_trailer`)
   вскроет прод-ambiguity — пересмотреть, если в проде всплывут ничьи, которых нет в golden-set.
 
+- **O. Request-side Gemini API-contract drift — caught by runtime visibility, not a unit test (#340).** When Google changes what the API accepts (e.g. 3.x models reject `thinking_budget=0`, #338), a unit test with a `_FakeClient` **cannot** catch it: the fake encodes our assumption about the request contract and can only confirm it. A live-E2E against real Gemini is a scope-skip (credentials/flake/quota). So the standing safety net is **runtime visibility, not a test**: a `400 INVALID_ARGUMENT` is classified as `ModelConfigRejected` → ERROR log + operator Telegram alert + red job (`config_rejected_models`), instead of a silent `TryNextModel` that green rotation hides. The one unit-testable guard is a **contract test on a real `google.genai.errors.ClientError`** (`test_real_client_error_invalid_argument_routes_to_config_rejected`) — it fails loudly if our `.status` detection drifts from the SDK's actual error shape (which would otherwise ship the whole fix as a green-tested no-op). Recorded so the live-E2E isn't re-opened as work-for-work.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

@@ -63,6 +63,39 @@ def format_pipeline_failures(results: list[PipelineResult]) -> str:
     return "\n".join(lines)
 
 
+def format_config_rejection_alert(models: frozenset[str]) -> str:
+    """Читаемый алерт про систематический config-reject Gemini (#340): модели
+    отвергли наш запрос `400 INVALID_ARGUMENT` — это баг запроса, не quota. HTML-
+    эскейп для Telegram `parse_mode=HTML`. Сиблинг `format_pipeline_failures`."""
+    lines = [
+        "⚠️ Gemini config-reject",
+        "Модель(и) отвергли запрос (400 INVALID_ARGUMENT) — баг запроса, не quota. "
+        "Уведомления доставлены через ротацию, но это нужно чинить:",
+        "",
+    ]
+    lines.extend(f"- {_html.escape(m)}" for m in sorted(models))
+    return "\n".join(lines)
+
+
+def alert_config_rejections(notifier: Any, enricher: Any) -> bool:
+    """Если энричер (ротатор) накопил `config_rejected_models`, доставить
+    операторский алерт + пометить technical-marker; вернуть, был ли алерт.
+
+    Caller делает `if alert_config_rejections(...) | report_failures(...): sys.exit(1)`
+    — §IV: систематический config-reject доходит до оператора и краснит джоб, хотя
+    ротация уже доставила уведомления (#340). `getattr` защищает не-ротатор
+    (`NullEnricher`/`GeminiEnricher` не имеют свойства → пусто → False)."""
+    models: frozenset[str] = getattr(enricher, "config_rejected_models", frozenset())
+    if not models:
+        return False
+    if send_required_text(notifier, format_config_rejection_alert(models)):
+        try:
+            mark_technical_alert_sent()
+        except Exception as exc:  # noqa: BLE001 — marker write failure must not crash the alert path
+            logger.exception("Could not write technical alert marker: %s", exc)
+    return True
+
+
 def report_failures(notifier: Any, results: list[PipelineResult]) -> bool:
     """Отправить читаемый алерт по failed-результатам; вернуть, были ли сбои.
 

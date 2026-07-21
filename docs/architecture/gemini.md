@@ -55,9 +55,26 @@ falling back to `FALLBACK_MARKER` (#128, #130):
 |---|---|---|
 | `ResourceExhausted` (429, quota) | `QuotaExhausted` | switch to next live model |
 | `NotFound` (404, model deprecated mid-rotation) | `ModelUnavailable` | switch + mark dead for this run |
+| `400 INVALID_ARGUMENT` (malformed request, e.g. a `thinking_budget` a 3.x model rejects) | `ModelConfigRejected` | switch (rotate — other models may accept it), **but** ERROR-log + record in `config_rejected_models` → pipeline fires a Telegram alert + reds the job (§IV, #340) |
 | `TruncatedResponse` (MAX_TOKENS / SAFETY) | `TryNextModel` | switch to next live model |
-| Any other exception (network, `InvalidArgument`, …) | `TryNextModel` | switch to next live model |
+| Any other exception (network, non-API errors) | `TryNextModel` | switch to next live model |
 | `response_pattern` mismatch | (returns `FALLBACK_MARKER` directly) | no rotation — bad prompt is not a model problem |
+
+**Why `ModelConfigRejected` is loud, not silent (#340).** A `400 INVALID_ARGUMENT`
+is *our request* being malformed — deterministic (every item 400s identically on
+that model), a code bug, unlike a transient per-item `TryNextModel`. Bug #338
+(3.x models rejecting `thinking_budget=0`) hid for a while precisely because the
+rotator absorbed it as a routine `TryNextModel`: it rotated down to a working
+model, notifications shipped, the cron stayed green, and no §IV alert fired.
+`ModelConfigRejected` restores visibility: rotation still delivers data, but the
+config bug reaches the operator (Telegram alert + red job). It is deliberately
+**not** dead-marked (unlike 404): the alert forces a quick fix so the per-item
+re-hit is transient, and dead-marking would risk false-killing a healthy model on
+a rare *item-specific* 400 that `.status` alone can't distinguish from a
+config-wide one. Behavioral note: an item-specific `INVALID_ARGUMENT` that every
+model rejects now goes red + alert (previously silent green → fallback marker) —
+that is a genuinely-rejected item reaching the operator, correct per §IV, not a
+false-alarm regression.
 
 ## Prompt configuration
 

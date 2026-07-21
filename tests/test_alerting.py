@@ -11,9 +11,11 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+from kinozal_scraper import alerting
 from kinozal_scraper.alerting import format_pipeline_failures, report_failures
 from kinozal_scraper.generic_pipeline import PipelineResult
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
@@ -104,3 +106,34 @@ class TestReportFailures:
         notifier = InMemoryNotifier()
 
         assert report_failures(notifier, [_failed("soldout", "boom")]) is True
+
+
+class TestConfigRejectionAlert:
+    """#340: a rotator that accumulated `config_rejected_models` (a systematic
+    Gemini 400 INVALID_ARGUMENT — our request is malformed) must reach the
+    operator: `alert_config_rejections` sends a Telegram alert + marks the
+    technical marker, and the caller reds the job (sys.exit 1)."""
+
+    def test_alert_sent_and_marked_when_models_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        marker = tmp_path / "technical_alert_sent"
+        monkeypatch.setenv("TECH_ALERT_MARKER", str(marker))
+        notifier = InMemoryNotifier()
+        enricher = SimpleNamespace(config_rejected_models=frozenset({"models/gemini-3.6-flash"}))
+
+        assert alerting.alert_config_rejections(notifier, enricher) is True
+        assert len(notifier.texts) == 1
+        assert "gemini-3.6-flash" in notifier.texts[0]
+        assert marker.exists()
+
+    def test_no_alert_when_none_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        marker = tmp_path / "technical_alert_sent"
+        monkeypatch.setenv("TECH_ALERT_MARKER", str(marker))
+        notifier = InMemoryNotifier()
+        # A non-rotator enricher (e.g. NullEnricher) lacks the attribute entirely.
+        assert alerting.alert_config_rejections(notifier, object()) is False
+        assert notifier.texts == []
+        assert not marker.exists()
