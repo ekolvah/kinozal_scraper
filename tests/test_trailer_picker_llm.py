@@ -11,9 +11,8 @@ from __future__ import annotations
 
 import unittest
 from typing import Any
-from unittest import mock
 
-import google.api_core.exceptions
+from google.genai import errors
 
 from kinozal_scraper.gemini_enricher import (
     ModelUnavailable,
@@ -139,8 +138,17 @@ class _FakeResponse:
         self.candidates = [_FakeCandidate(finish_reason)]
 
 
-class _FakeGenerativeModel:
-    """Stand-in для genai.GenerativeModel: ловит generation_config, отдаёт canned/бросает error."""
+def _api_error(code: int) -> errors.ClientError:
+    """google.genai APIError double carrying only `.code` (the taxonomy field)."""
+    e = errors.ClientError.__new__(errors.ClientError)
+    e.code = code
+    e.status = "RESOURCE_EXHAUSTED" if code == 429 else "NOT_FOUND"
+    e.message = str(code)
+    return e
+
+
+class _FakeModels:
+    """Stand-in for `client.models`: captures the config, returns canned / raises."""
 
     def __init__(
         self, response: _FakeResponse | None = None, error: Exception | None = None
@@ -149,50 +157,48 @@ class _FakeGenerativeModel:
         self._error = error
         self.captured_config: Any = None
 
-    def generate_content(self, prompt: str, generation_config: Any = None) -> _FakeResponse:  # noqa: ARG002
-        self.captured_config = generation_config
+    def generate_content(self, *, model: str, contents: Any, config: Any = None) -> _FakeResponse:  # noqa: ARG002
+        self.captured_config = config
         if self._error is not None:
             raise self._error
         assert self._response is not None
         return self._response
 
 
-class TestGeminiJsonGenerator(unittest.TestCase):
-    def _patch(self, fake: _FakeGenerativeModel) -> Any:
-        return mock.patch(
-            "kinozal_scraper.trailer_picker_llm.genai.GenerativeModel", return_value=fake
-        )
+class _FakeClient:
+    def __init__(
+        self, response: _FakeResponse | None = None, error: Exception | None = None
+    ) -> None:
+        self.models = _FakeModels(response, error)
 
+
+class TestGeminiJsonGenerator(unittest.TestCase):
     def test_returns_response_text(self) -> None:
-        fake = _FakeGenerativeModel(
+        client = _FakeClient(
             _FakeResponse('{"video_id": "ru_01", "confidence": 0.8, "reason": "x"}')
         )
-        with self._patch(fake):
-            out = GeminiJsonGenerator("models/gemini-2.5-flash").generate("prompt")
+        out = GeminiJsonGenerator("models/gemini-2.5-flash", client).generate("prompt")
         self.assertIn("ru_01", out)
 
     def test_uses_json_mime_type(self) -> None:
-        fake = _FakeGenerativeModel(
-            _FakeResponse('{"video_id": null, "confidence": 0, "reason": ""}')
-        )
-        with self._patch(fake):
-            GeminiJsonGenerator("m").generate("p")
-        self.assertEqual(fake.captured_config.response_mime_type, "application/json")
+        client = _FakeClient(_FakeResponse('{"video_id": null, "confidence": 0, "reason": ""}'))
+        GeminiJsonGenerator("m", client).generate("p")
+        self.assertEqual(client.models.captured_config.response_mime_type, "application/json")
 
     def test_resource_exhausted_maps_to_quota_exhausted(self) -> None:
-        fake = _FakeGenerativeModel(error=google.api_core.exceptions.ResourceExhausted("quota"))
-        with self._patch(fake), self.assertRaises(QuotaExhausted):
-            GeminiJsonGenerator("m").generate("p")
+        client = _FakeClient(error=_api_error(429))
+        with self.assertRaises(QuotaExhausted):
+            GeminiJsonGenerator("m", client).generate("p")
 
     def test_not_found_maps_to_model_unavailable(self) -> None:
-        fake = _FakeGenerativeModel(error=google.api_core.exceptions.NotFound("gone"))
-        with self._patch(fake), self.assertRaises(ModelUnavailable):
-            GeminiJsonGenerator("m").generate("p")
+        client = _FakeClient(error=_api_error(404))
+        with self.assertRaises(ModelUnavailable):
+            GeminiJsonGenerator("m", client).generate("p")
 
     def test_truncated_response_maps_to_try_next_model(self) -> None:
-        fake = _FakeGenerativeModel(_FakeResponse('{"video_id":', finish_reason="MAX_TOKENS"))
-        with self._patch(fake), self.assertRaises(TryNextModel):
-            GeminiJsonGenerator("m").generate("p")
+        client = _FakeClient(_FakeResponse('{"video_id":', finish_reason="MAX_TOKENS"))
+        with self.assertRaises(TryNextModel):
+            GeminiJsonGenerator("m", client).generate("p")
 
 
 if __name__ == "__main__":

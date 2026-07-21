@@ -6,6 +6,10 @@
 #
 annotated-types==0.7.0
     # via pydantic
+anyio==4.14.2
+    # via
+    #   google-genai
+    #   httpx
 attrs==26.1.0
     # via
     #   outcome
@@ -17,6 +21,8 @@ bs4==0.0.2
 certifi==2026.4.22
     # via
     #   curl-cffi
+    #   httpcore
+    #   httpx
     #   requests
     #   selenium
 cffi==2.0.0
@@ -26,63 +32,55 @@ cffi==2.0.0
     #   trio
 charset-normalizer==3.4.7
     # via requests
-colorama==0.4.6
-    # via tqdm
 cryptography==49.0.0
     # via
     #   -r requirements.in
     #   google-auth
 curl-cffi==0.15.0
     # via -r requirements.in
+distro==1.9.0
+    # via google-genai
 et-xmlfile==2.0.0
     # via openpyxl
-google-ai-generativelanguage==0.6.15
-    # via google-generativeai
-google-api-core[grpc]==2.30.3
-    # via
-    #   google-ai-generativelanguage
-    #   google-api-python-client
-    #   google-generativeai
+google-api-core==2.30.3
+    # via google-api-python-client
 google-api-python-client==2.195.0
+    # via -r requirements.in
+google-auth[requests]==2.50.0
     # via
-    #   -r requirements.in
-    #   google-generativeai
-google-auth==2.50.0
-    # via
-    #   google-ai-generativelanguage
     #   google-api-core
     #   google-api-python-client
     #   google-auth-httplib2
     #   google-auth-oauthlib
-    #   google-generativeai
+    #   google-genai
     #   gspread
 google-auth-httplib2==0.3.1
     # via google-api-python-client
 google-auth-oauthlib==1.3.1
     # via gspread
-google-generativeai==0.8.6
+google-genai==2.12.1
     # via -r requirements.in
 googleapis-common-protos==1.74.0
-    # via
-    #   google-api-core
-    #   grpcio-status
-grpcio==1.80.0
-    # via
-    #   google-api-core
-    #   grpcio-status
-grpcio-status==1.67.1
     # via google-api-core
 gspread==6.2.1
     # via -r requirements.in
 h11==0.16.0
-    # via wsproto
+    # via
+    #   httpcore
+    #   wsproto
+httpcore==1.0.9
+    # via httpx
 httplib2==0.32.0
     # via
     #   google-api-python-client
     #   google-auth-httplib2
     #   oauth2client
+httpx==0.28.1
+    # via google-genai
 idna==3.15
     # via
+    #   anyio
+    #   httpx
     #   requests
     #   trio
 langdetect==1.0.9
@@ -106,17 +104,12 @@ outcome==1.3.0.post0
 pandas==3.0.2
     # via -r requirements.in
 proto-plus==1.27.2
-    # via
-    #   google-ai-generativelanguage
-    #   google-api-core
+    # via google-api-core
 protobuf==5.29.6
     # via
     #   -r requirements.in
-    #   google-ai-generativelanguage
     #   google-api-core
-    #   google-generativeai
     #   googleapis-common-protos
-    #   grpcio-status
     #   proto-plus
 pyaes==1.6.1
     # via telethon
@@ -132,7 +125,7 @@ pyasn1-modules==0.4.2
 pycparser==3.0
     # via cffi
 pydantic==2.13.3
-    # via google-generativeai
+    # via google-genai
 pydantic-core==2.46.3
     # via pydantic
 pygments==2.20.0
@@ -147,6 +140,8 @@ requests==2.33.1
     # via
     #   -r requirements.in
     #   google-api-core
+    #   google-auth
+    #   google-genai
     #   requests-oauthlib
 requests-oauthlib==2.0.0
     # via google-auth-oauthlib
@@ -164,7 +159,9 @@ six==1.17.0
     #   oauth2client
     #   python-dateutil
 sniffio==1.3.1
-    # via trio
+    # via
+    #   google-genai
+    #   trio
 sortedcontainers==2.4.0
     # via trio
 soupsieve==2.8.4
@@ -174,9 +171,9 @@ soupsieve==2.8.4
 telethon==1.43.2
     # via -r requirements.in
 tenacity==9.1.4
-    # via -r requirements.in
-tqdm==4.67.3
-    # via google-generativeai
+    # via
+    #   -r requirements.in
+    #   google-genai
 trio==0.33.0
     # via
     #   selenium
@@ -185,9 +182,9 @@ trio-websocket==0.12.2
     # via selenium
 typing-extensions==4.15.0
     # via
+    #   anyio
     #   beautifulsoup4
-    #   google-generativeai
-    #   grpcio
+    #   google-genai
     #   pydantic
     #   pydantic-core
     #   selenium
@@ -204,5 +201,7 @@ urllib3[socks]==2.7.0
     #   selenium
 websocket-client==1.9.0
     # via selenium
+websockets==16.1.1
+    # via google-genai
 wsproto==1.3.2
     # via trio-websocket

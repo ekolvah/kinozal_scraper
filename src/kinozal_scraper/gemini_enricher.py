@@ -9,9 +9,9 @@ import string
 import time
 from typing import Any, Protocol, runtime_checkable
 
-import google.api_core.exceptions
-import google.generativeai as genai
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from google import genai
+from google.genai import types
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from kinozal_scraper.generic_pipeline import NormalizedItem
 from kinozal_scraper.llm_observability import extract_usage, log_llm_call
@@ -58,20 +58,19 @@ class TruncatedResponse(Exception):
 def classify_generate_error(exc: BaseException) -> type[Exception]:
     """Map a raw `generate_content` failure to a rotation-exception CLASS.
 
-    `NotFound` (direct or wrapped as `__cause__`) → `ModelUnavailable`;
-    `ResourceExhausted` (direct or wrapped) → `QuotaExhausted`; anything else →
-    `TryNextModel`. Pure `exc → class` mapping, shared by `GeminiEnricher` and
-    the structured-output `GeminiJsonGenerator` (#142) so the quota/unavailable
-    taxonomy is not reinvented. Context-specific logging stays at each call site
-    (§II — no `item` coupling dragged into the mapping). The direct-instance
-    checks matter for callers without tenacity (the JSON generator raises the
-    raw SDK error); `GeminiEnricher` only ever sees the `__cause__` shape, so
-    adding them leaves its behaviour unchanged."""
-    not_found = google.api_core.exceptions.NotFound
-    resource_exhausted = google.api_core.exceptions.ResourceExhausted
-    if isinstance(exc, not_found) or isinstance(exc.__cause__, not_found):
+    The new `google.genai` SDK raises a single `APIError` family discriminated by
+    HTTP `.code`: 404 → `ModelUnavailable` (model listed but disabled), 429 →
+    `QuotaExhausted`, anything else (network, InvalidArgument, non-API errors) →
+    `TryNextModel`. The `.code` is read off both the exception and its
+    `__cause__` (tenacity's `RetryError` wraps the last SDK error as `__cause__`;
+    `GeminiEnricher` only ever sees that shape, the JSON/embedding generators see
+    the raw error directly). Pure `exc → class` mapping shared by all live Gemini
+    callers so the quota/unavailable taxonomy is not reinvented; context-specific
+    logging stays at each call site (§II — no `item` coupling in the mapping)."""
+    codes = {getattr(exc, "code", None), getattr(getattr(exc, "__cause__", None), "code", None)}
+    if 404 in codes:
         return ModelUnavailable
-    if isinstance(exc, resource_exhausted) or isinstance(exc.__cause__, resource_exhausted):
+    if 429 in codes:
         return QuotaExhausted
     return TryNextModel
 
@@ -129,6 +128,19 @@ def _extract_finish_reason(response: Any) -> str:
 
 
 @runtime_checkable
+class GenaiClient(Protocol):
+    """Narrow DI boundary (§II) for the `google.genai` client the live callers
+    need: only its `.models` surface (`generate_content` / `list` /
+    `embed_content`). The real `genai.Client` satisfies it structurally; unit
+    tests inject a fake with a `.models` double instead of monkeypatching the SDK.
+    Typed `Any` on purpose — `.models` is an external-SDK boundary, verified by
+    integration, not re-typed here."""
+
+    @property
+    def models(self) -> Any: ...
+
+
+@runtime_checkable
 class Enricher(Protocol):
     def enrich(self, item: NormalizedItem, enrich_config: dict[str, Any]) -> str: ...
 
@@ -142,11 +154,25 @@ class NullEnricher:
         return result
 
 
-class GeminiEnricher:
-    # genai.configure() must be called once before instantiating this class.
+# Gemini 2.5+ / 3.x run an internal reasoning phase that, left unbounded, spends
+# the whole `max_output_tokens` on thoughts and returns `finish_reason=MAX_TOKENS`
+# on valid prompts (#107). `thinking_budget=0` disables it. Older models (2.0)
+# reject `thinking_config` with 400 INVALID_ARGUMENT, so gate it by version.
+_THINKING_MIN_VERSION = 2.5
 
-    def __init__(self, model_name: str) -> None:
+
+def _thinking_config(model_name: str) -> types.ThinkingConfig | None:
+    """`ThinkingConfig(thinking_budget=0)` for models that support the reasoning
+    phase (2.5+/3.x), else `None` — passing it to a 2.0 model 400s (#107)."""
+    if _model_version_key(model_name)[0] >= _THINKING_MIN_VERSION:
+        return types.ThinkingConfig(thinking_budget=0)
+    return None
+
+
+class GeminiEnricher:
+    def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
+        self._client = client
 
     @property
     def model_name(self) -> str:
@@ -173,13 +199,14 @@ class GeminiEnricher:
         }
         prompt = string.Template(prompt_template).safe_substitute(context)
 
-        generation_config = genai.types.GenerationConfig(
+        config = types.GenerateContentConfig(
             temperature=params.get("temperature", 0.2),
             max_output_tokens=params.get("max_tokens", 150),
+            thinking_config=_thinking_config(self._model_name),
         )
 
         try:
-            text = self._generate(prompt, generation_config)
+            text = self._generate(prompt, config)
         except TruncatedResponse as exc:
             logger.info(
                 "[%s] enrichment truncated (%s) — asking rotator for next model",
@@ -205,14 +232,18 @@ class GeminiEnricher:
         return text
 
     @retry(
-        retry=retry_if_exception_type(google.api_core.exceptions.ResourceExhausted),
+        # Retry ONLY quota (429): the window can roll over. A 404 (dead model)
+        # or any other error must NOT be retried — that just burns 3× backoff
+        # before the rotator can advance (#107 BLOCKING-2).
+        retry=retry_if_exception(lambda e: getattr(e, "code", None) == 429),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, max=10),
     )
-    def _generate(self, prompt: str, generation_config: genai.types.GenerationConfig) -> str:
-        model = genai.GenerativeModel(self._model_name)
+    def _generate(self, prompt: str, config: types.GenerateContentConfig) -> str:
         start = time.perf_counter()
-        response = model.generate_content(prompt, generation_config=generation_config)
+        response = self._client.models.generate_content(
+            model=self._model_name, contents=prompt, config=config
+        )
         latency_ms = int((time.perf_counter() - start) * 1000)
         text: str = (response.text or "").strip()
         finish_reason = _extract_finish_reason(response)
@@ -240,12 +271,19 @@ class GeminiEnricher:
 
 
 def _model_version_key(name: str) -> tuple[float, str]:
-    """Extract version number for sorting: 'models/gemini-2.5-flash' → (2.5, 'flash')."""
+    """Extract version number for sorting: 'models/gemini-2.5-flash' → (2.5, name).
+
+    The minor version is optional: Google ships some IDs as bare majors
+    (e.g. 'models/gemini-3-flash-preview'), which map to `<major>.0`. Without
+    this, such a name fell back to (0.0, …) — mis-sorting it to the back of the
+    rotation AND making `_thinking_config` skip `thinking_budget=0`, silently
+    reproducing the #107 MAX_TOKENS bug (caught in PR #333 review)."""
     import re
 
-    match = re.search(r"gemini-(\d+)\.(\d+)", name)
+    match = re.search(r"gemini-(\d+)(?:\.(\d+))?", name)
     if match:
-        version = float(f"{match.group(1)}.{match.group(2)}")
+        minor = match.group(2) or "0"
+        version = float(f"{match.group(1)}.{minor}")
         return (version, name)
     return (0.0, name)
 
@@ -267,19 +305,24 @@ def _is_text_gemini(name: str) -> bool:
     return not any(s in name for s in _EXCLUDED_SUFFIXES)
 
 
-def get_generation_models() -> list[str]:
+def get_generation_models(client: GenaiClient) -> list[str]:
     """Return text-generation Gemini model names, newer versions first.
 
-    Models in GEMINI_EXCLUDED_MODELS are omitted from the result.
+    Models in GEMINI_EXCLUDED_MODELS are omitted from the result. The new SDK
+    exposes capabilities via `Model.supported_actions` (was
+    `supported_generation_methods` on the deprecated SDK, #107).
     """
     try:
-        names = [
-            m.name
-            for m in genai.list_models()
-            if "generateContent" in m.supported_generation_methods
-            and _is_text_gemini(m.name)
-            and m.name not in _EXCLUDED_MODELS
-        ]
+        names: list[str] = []
+        for m in client.models.list():
+            name = m.name
+            if (
+                name is not None
+                and "generateContent" in (m.supported_actions or [])
+                and _is_text_gemini(name)
+                and name not in _EXCLUDED_MODELS
+            ):
+                names.append(name)
     except Exception:  # noqa: BLE001 — list-models failure degrades to []; now visible via logger.exception (not silent)
         logger.exception("cannot list models")
         return []
@@ -293,10 +336,10 @@ class RotatingGeminiEnricher:
 
     _COOLDOWN = 60
 
-    def __init__(self, model_names: list[str]) -> None:
+    def __init__(self, model_names: list[str], client: GenaiClient) -> None:
         if not model_names:
             raise ValueError("model_names must not be empty")
-        self._enrichers = [GeminiEnricher(n) for n in model_names]
+        self._enrichers = [GeminiEnricher(n, client) for n in model_names]
         self._current = 0
         # Indices of models that returned `NotFound` this run. Skipped on
         # subsequent items until the cooldown window resets them (#128).
@@ -396,10 +439,10 @@ def build_default_enricher(api_key: str, log: logging.Logger) -> Enricher:
             "will lack enriched fields (e.g. summary_ru). Check workflow env-vars."
         )
         return NullEnricher()
-    genai.configure(api_key=api_key)
-    available_models = get_generation_models()
+    client = genai.Client(api_key=api_key)
+    available_models = get_generation_models(client)
     log.info("available generation models: %s", available_models)
     if not available_models:
         log.warning("no generation models found, enrichment disabled")
         return NullEnricher()
-    return RotatingGeminiEnricher(available_models)
+    return RotatingGeminiEnricher(available_models, client)

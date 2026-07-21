@@ -19,11 +19,13 @@ import json
 import logging
 from typing import Protocol
 
-import google.generativeai as genai
+from google.genai import types
 
 from kinozal_scraper.gemini_enricher import (
+    GenaiClient,
     TryNextModel,
     _extract_finish_reason,
+    _thinking_config,
     classify_generate_error,
 )
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile, TrailerPick
@@ -133,25 +135,28 @@ class GeminiJsonGenerator:
     деградация. `model_name` property зеркалит собрата, чтобы #144 обернул
     `list[GeminiJsonGenerator]` экстракцией ротации, не переписыванием.
 
-    genai.configure() должен быть вызван один раз до инстанцирования (как у собрата).
+    `client` (genai.Client) прокидывается в конструктор (§II — готовый клиент, не credentials).
     """
 
-    def __init__(self, model_name: str) -> None:
+    def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
+        self._client = client
 
     @property
     def model_name(self) -> str:
         return self._model_name
 
     def generate(self, prompt: str) -> str:
-        generation_config = genai.types.GenerationConfig(
+        config = types.GenerateContentConfig(
             temperature=0.2,
             response_mime_type="application/json",
             response_schema=PICK_SCHEMA,
+            thinking_config=_thinking_config(self._model_name),
         )
         try:
-            model = genai.GenerativeModel(self._model_name)
-            response = model.generate_content(prompt, generation_config=generation_config)
+            response = self._client.models.generate_content(
+                model=self._model_name, contents=prompt, config=config
+            )
         except Exception as exc:
             raise classify_generate_error(exc)() from exc
 

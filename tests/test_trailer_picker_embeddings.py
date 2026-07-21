@@ -14,9 +14,8 @@ from __future__ import annotations
 import logging
 import unittest
 from typing import Any
-from unittest import mock
 
-import google.api_core.exceptions
+from google.genai import errors
 
 from kinozal_scraper.gemini_enricher import ModelUnavailable, QuotaExhausted, TryNextModel
 from kinozal_scraper.trailer_picker_embeddings import (
@@ -127,35 +126,74 @@ class TestEmbeddingTrailerStrategy(unittest.TestCase):
 # ── GeminiEmbedder: живой движок + маппинг ошибок ротации ──────────────────────
 
 
-class TestGeminiEmbedder(unittest.TestCase):
-    def _patch(self, **kwargs: Any) -> Any:
-        return mock.patch("kinozal_scraper.trailer_picker_embeddings.genai.embed_content", **kwargs)
+class _FakeEmbedding:
+    def __init__(self, values: list[float]) -> None:
+        self.values = values
 
+
+class _FakeEmbedResponse:
+    def __init__(self, embeddings: Any) -> None:
+        self.embeddings = embeddings
+
+
+def _api_error(code: int) -> errors.ClientError:
+    """google.genai APIError double carrying only `.code` (the taxonomy field)."""
+    e = errors.ClientError.__new__(errors.ClientError)
+    e.code = code
+    e.status = "RESOURCE_EXHAUSTED" if code == 429 else "NOT_FOUND"
+    e.message = str(code)
+    return e
+
+
+class _FakeModels:
+    """Stand-in for `client.models`: captures embed_content kwargs, returns / raises."""
+
+    def __init__(self, response: Any = None, error: Exception | None = None) -> None:
+        self._response = response
+        self._error = error
+        self.captured: dict[str, Any] = {}
+
+    def embed_content(self, *, model: str, contents: Any, config: Any = None) -> Any:
+        self.captured = {"model": model, "contents": contents, "config": config}
+        if self._error is not None:
+            raise self._error
+        return self._response
+
+
+class _FakeClient:
+    def __init__(self, response: Any = None, error: Exception | None = None) -> None:
+        self.models = _FakeModels(response, error)
+
+
+class TestGeminiEmbedder(unittest.TestCase):
     def test_returns_vectors(self) -> None:
-        with self._patch(return_value={"embedding": [[1.0, 0.0], [0.0, 1.0]]}):
-            out = GeminiEmbedder("models/text-embedding-004").embed(["a", "b"])
+        client = _FakeClient(
+            _FakeEmbedResponse([_FakeEmbedding([1.0, 0.0]), _FakeEmbedding([0.0, 1.0])])
+        )
+        out = GeminiEmbedder(client, "models/text-embedding-004").embed(["a", "b"])
         self.assertEqual(out, [[1.0, 0.0], [0.0, 1.0]])
 
     def test_uses_semantic_similarity_task_type(self) -> None:
-        with self._patch(return_value={"embedding": [[1.0, 0.0]]}) as m:
-            GeminiEmbedder("m").embed(["a"])
-        self.assertEqual(m.call_args.kwargs["task_type"], "semantic_similarity")
+        client = _FakeClient(_FakeEmbedResponse([_FakeEmbedding([1.0, 0.0])]))
+        GeminiEmbedder(client, "m").embed(["a"])
+        self.assertEqual(client.models.captured["config"].task_type, "SEMANTIC_SIMILARITY")
 
     def test_resource_exhausted_maps_to_quota_exhausted(self) -> None:
-        exc = google.api_core.exceptions.ResourceExhausted("quota")
-        with self._patch(side_effect=exc), self.assertRaises(QuotaExhausted):
-            GeminiEmbedder("m").embed(["a"])
+        client = _FakeClient(error=_api_error(429))
+        with self.assertRaises(QuotaExhausted):
+            GeminiEmbedder(client, "m").embed(["a"])
 
     def test_not_found_maps_to_model_unavailable(self) -> None:
-        exc = google.api_core.exceptions.NotFound("gone")
-        with self._patch(side_effect=exc), self.assertRaises(ModelUnavailable):
-            GeminiEmbedder("m").embed(["a"])
+        client = _FakeClient(error=_api_error(404))
+        with self.assertRaises(ModelUnavailable):
+            GeminiEmbedder(client, "m").embed(["a"])
 
-    def test_missing_embedding_key_maps_to_try_next_model(self) -> None:
-        # Malformed-ответ без ключа "embedding" → KeyError внутри try → таксономия
-        # (не NotFound/ResourceExhausted → TryNextModel), а не сырой краш мимо неё.
-        with self._patch(return_value={}), self.assertRaises(TryNextModel):
-            GeminiEmbedder("m").embed(["a"])
+    def test_malformed_response_maps_to_try_next_model(self) -> None:
+        # Malformed response (`embeddings` is None) → TypeError inside the try →
+        # routed through the shared taxonomy (→ TryNextModel), not a raw crash.
+        client = _FakeClient(_FakeEmbedResponse(None))
+        with self.assertRaises(TryNextModel):
+            GeminiEmbedder(client, "m").embed(["a"])
 
 
 if __name__ == "__main__":

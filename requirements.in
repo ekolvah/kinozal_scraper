@@ -11,6 +11,6 @@ google-api-python-client
 langdetect
 protobuf
 telethon
-google-generativeai
+google-genai
 cryptography
 tenacity

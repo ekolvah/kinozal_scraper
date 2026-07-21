@@ -86,7 +86,7 @@ def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:
 if __name__ == "__main__":
     import sys
 
-    import google.generativeai as genai
+    from google import genai
 
     from kinozal_scraper.crypto import crypto
     from kinozal_scraper.gemini_enricher import get_generation_models
@@ -104,8 +104,8 @@ if __name__ == "__main__":
     # `TelegramClient(...)` construction.
     crypto.load_encrypter_session()
 
-    genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
-    available_models = get_generation_models()
+    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+    available_models = get_generation_models(client)
     if available_models:
         logger.info("Available models for summarization: %s", available_models)
     else:
@@ -119,6 +119,7 @@ if __name__ == "__main__":
     )
     summarizer = GeminiSummarizer(
         models=available_models,
+        client=client,
         broadcast_prompt=os.getenv("BROADCAST_PROMPT"),
         chat_prompt=os.getenv("CHAT_PROMPT"),
     )
