@@ -7,6 +7,7 @@ from typing import Any
 
 from google.genai import errors, types
 
+from kinozal_scraper import gemini_enricher
 from kinozal_scraper.gemini_enricher import (
     FALLBACK_MARKER,
     Enricher,
@@ -63,13 +64,15 @@ class _FakeClient:
         self.models = _FakeModels(response, error)
 
 
-def _api_error(code: int) -> errors.ClientError:
-    """Build a google.genai APIError double carrying only `.code` — the field the
-    new-SDK error taxonomy discriminates on (avoids the real constructor's
-    response_json parsing)."""
+def _api_error(code: int, status: str | None = None) -> errors.ClientError:
+    """Build a google.genai APIError double carrying `.code`/`.status` — the fields
+    the new-SDK error taxonomy discriminates on (avoids the real constructor's
+    response_json parsing). `status` defaults by code when not given."""
     e = errors.ClientError.__new__(errors.ClientError)
     e.code = code
-    e.status = "RESOURCE_EXHAUSTED" if code == 429 else "NOT_FOUND"
+    e.status = (
+        status if status is not None else ("RESOURCE_EXHAUSTED" if code == 429 else "NOT_FOUND")
+    )
     e.message = str(code)
     return e
 
@@ -301,6 +304,33 @@ class TestErrorClassification(unittest.TestCase):
         wrapper.__cause__ = _api_error(404)
         self.assertIs(classify_generate_error(wrapper), ModelUnavailable)
 
+    def test_code_400_invalid_argument_is_config_rejected(self) -> None:
+        # #340: a 400 INVALID_ARGUMENT means our request is malformed for this
+        # model (systematic, not transient) — a distinct class from try-next.
+        err = _api_error(400, status="INVALID_ARGUMENT")
+        self.assertIs(classify_generate_error(err), gemini_enricher.ModelConfigRejected)
+
+    def test_invalid_argument_via_cause_is_config_rejected(self) -> None:
+        wrapper = RuntimeError("wrapped")
+        wrapper.__cause__ = _api_error(400, status="INVALID_ARGUMENT")
+        self.assertIs(classify_generate_error(wrapper), gemini_enricher.ModelConfigRejected)
+
+    def test_real_client_error_invalid_argument_routes_to_config_rejected(self) -> None:
+        # Contract test (#340 SHOULD-FIX-1): build a REAL ClientError via the SDK
+        # constructor (not the `__new__` shortcut in `_api_error`) so a drift
+        # between our `.status` detection and the actual SDK shape fails loudly
+        # here instead of shipping as a green-tested no-op.
+        real = errors.ClientError(
+            400, {"error": {"code": 400, "message": "bad", "status": "INVALID_ARGUMENT"}}
+        )
+        self.assertIs(classify_generate_error(real), gemini_enricher.ModelConfigRejected)
+
+    def test_plain_400_without_invalid_argument_is_try_next(self) -> None:
+        # A 400 that is NOT INVALID_ARGUMENT must stay try-next — don't
+        # reclassify every 400 as a config rejection.
+        err = _api_error(400, status="FAILED_PRECONDITION")
+        self.assertIs(classify_generate_error(err), TryNextModel)
+
 
 class TestThinkingConfigGate(unittest.TestCase):
     """Thinking must be suppressed with the version-correct knob so a short
@@ -454,7 +484,6 @@ class TestGetGenerationModels(unittest.TestCase):
         """#334: the GEMINI_EXCLUDED_MODELS excludelist is removed — a model that a
         would-be excludelist names still enters rotation. `create=True` keeps the
         patch valid once `_EXCLUDED_MODELS` no longer exists on the module."""
-        from kinozal_scraper import gemini_enricher
         from kinozal_scraper.gemini_enricher import get_generation_models
 
         client = unittest.mock.MagicMock()
@@ -553,6 +582,48 @@ class TestRotatingGeminiEnricher(unittest.TestCase):
         with self.assertRaises(QuotaExhausted):
             enricher.enrich(_item(), _ENRICH_CFG)
         mock_sleep.assert_called_once_with(60)
+
+
+class TestConfigRejectionRotation(unittest.TestCase):
+    """#340: a systematic 400 INVALID_ARGUMENT (our request is malformed for
+    this model) must stay VISIBLE — the rotator keeps rotating so data still
+    ships, but logs ERROR (not WARNING) and records the model in
+    `config_rejected_models` so the pipeline can alert + red the job. Without
+    this, a config bug like #338 hides behind green rotation."""
+
+    def _rotator(self, names: list[str]) -> RotatingGeminiEnricher:
+        return RotatingGeminiEnricher(names, _FakeClient())
+
+    @staticmethod
+    def _reject(item: Any, cfg: Any) -> str:
+        raise gemini_enricher.ModelConfigRejected("bad config")
+
+    def test_config_rejection_rotates_to_next_model(self) -> None:
+        enricher = self._rotator(["model-a", "model-b"])
+        enricher._enrichers[0].enrich = self._reject  # type: ignore[assignment]
+        enricher._enrichers[1].enrich = lambda item, cfg: "from-b"  # type: ignore[assignment]
+
+        result = enricher.enrich(_item(), _ENRICH_CFG)
+        self.assertEqual(result, "from-b")
+        self.assertEqual(enricher.config_rejected_models, frozenset({"model-a"}))
+
+    def test_config_rejection_logs_error(self) -> None:
+        enricher = self._rotator(["model-a", "model-b"])
+        enricher._enrichers[0].enrich = self._reject  # type: ignore[assignment]
+        enricher._enrichers[1].enrich = lambda item, cfg: "ok"  # type: ignore[assignment]
+
+        with self.assertLogs("kinozal_scraper.gemini_enricher", level="ERROR") as cm:
+            enricher.enrich(_item(), _ENRICH_CFG)
+        self.assertTrue(any("model-a" in line for line in cm.output))
+
+    def test_all_models_config_rejected_still_raises_quota(self) -> None:
+        enricher = self._rotator(["model-a", "model-b"])
+        enricher._enrichers[0].enrich = self._reject  # type: ignore[assignment]
+        enricher._enrichers[1].enrich = self._reject  # type: ignore[assignment]
+
+        with self.assertRaises(QuotaExhausted):
+            enricher.enrich(_item(), _ENRICH_CFG)
+        self.assertEqual(enricher.config_rejected_models, frozenset({"model-a", "model-b"}))
 
 
 class TestGeminiEnricherModelUnavailable(unittest.TestCase):
