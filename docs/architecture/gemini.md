@@ -96,6 +96,23 @@ Every call logs `model_name`, `prompt_len`, `resp_len`, `finish_reason`,
 and the first line of the answer at INFO level — the diagnostic surface
 needed to triage drift without instrumenting each call ad hoc.
 
+### Thinking suppression (`_thinking_config`)
+
+Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends the
+whole `max_output_tokens` on thoughts and returns `MAX_TOKENS` on a valid short
+prompt (#107). The knob to suppress it is **version-specific** because Gemini 3
+replaced `thinking_budget` with `thinking_level`, and newer 3.x models (e.g.
+`gemini-3.6-flash`, `gemini-3.5-flash-lite`) return **`400 INVALID_ARGUMENT`** on
+`thinking_budget=0` (#338):
+
+- `v ≥ 3.0` → `ThinkingConfig(thinking_level="minimal")` — Google's documented
+  near-zero setting (verified: STOP with no thinking tokens across 3.x).
+- `2.5 ≤ v < 3.0` → `ThinkingConfig(thinking_budget=0)`.
+- `v < 2.5` → no `thinking_config` — a 2.0 model 400s on any of it.
+
+Sending `thinking_budget=0` to a 3.x model was a per-item 400 that the rotator
+absorbed (→ `TryNextModel`) but burned two round-trips before the first success.
+
 ## Call observability — tokens & latency (#145)
 
 Both live Gemini call sites — `GeminiEnricher._generate` (item enrichment) and

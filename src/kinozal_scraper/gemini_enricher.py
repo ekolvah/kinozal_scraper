@@ -153,17 +153,25 @@ class NullEnricher:
         return result
 
 
-# Gemini 2.5+ / 3.x run an internal reasoning phase that, left unbounded, spends
+# Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends
 # the whole `max_output_tokens` on thoughts and returns `finish_reason=MAX_TOKENS`
-# on valid prompts (#107). `thinking_budget=0` disables it. Older models (2.0)
-# reject `thinking_config` with 400 INVALID_ARGUMENT, so gate it by version.
+# on valid prompts (#107). The knob to suppress it is version-specific: Gemini 3
+# replaced `thinking_budget` with `thinking_level`, and newer 3.x models 400 on
+# `thinking_budget=0` — so 3.x needs `thinking_level="minimal"` (Google's
+# documented near-zero setting), while 2.5 still uses `thinking_budget=0` (#338).
+# Older models (2.0) reject any `thinking_config` with 400, so gate it by version.
 _THINKING_MIN_VERSION = 2.5
+_THINKING_LEVEL_MIN_VERSION = 3.0
 
 
 def _thinking_config(model_name: str) -> types.ThinkingConfig | None:
-    """`ThinkingConfig(thinking_budget=0)` for models that support the reasoning
-    phase (2.5+/3.x), else `None` — passing it to a 2.0 model 400s (#107)."""
-    if _model_version_key(model_name)[0] >= _THINKING_MIN_VERSION:
+    """Version-correct thinking suppression: `thinking_level="minimal"` for
+    3.x (they 400 on `thinking_budget=0`, #338), `thinking_budget=0` for 2.5,
+    else `None` — passing any `thinking_config` to a 2.0 model 400s (#107)."""
+    version = _model_version_key(model_name)[0]
+    if version >= _THINKING_LEVEL_MIN_VERSION:
+        return types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
+    if version >= _THINKING_MIN_VERSION:
         return types.ThinkingConfig(thinking_budget=0)
     return None
 

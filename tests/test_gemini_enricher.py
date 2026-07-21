@@ -326,7 +326,7 @@ class TestThinkingConfigGate(unittest.TestCase):
         )
         cfg = client.models.calls[-1]["config"]
         self.assertIsNotNone(cfg.thinking_config)
-        self.assertEqual(cfg.thinking_config.thinking_level, "minimal")
+        self.assertEqual(cfg.thinking_config.thinking_level, types.ThinkingLevel.MINIMAL)
         self.assertIsNone(cfg.thinking_config.thinking_budget)
 
     def test_thinking_level_minimal_for_bare_major_gemini_3(self) -> None:
@@ -335,7 +335,7 @@ class TestThinkingConfigGate(unittest.TestCase):
         GeminiEnricher("models/gemini-3-flash-preview", client).enrich(_item(), _TWO_LINE_CFG)
         cfg = client.models.calls[-1]["config"]
         self.assertIsNotNone(cfg.thinking_config)
-        self.assertEqual(cfg.thinking_config.thinking_level, "minimal")
+        self.assertEqual(cfg.thinking_config.thinking_level, types.ThinkingLevel.MINIMAL)
         self.assertIsNone(cfg.thinking_config.thinking_budget)
 
     def test_no_thinking_config_for_gemini_2_0(self) -> None:
