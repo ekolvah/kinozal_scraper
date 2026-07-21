@@ -277,7 +277,11 @@ if __name__ == "__main__":
         sources_config=sources_config,
     )
 
-    from kinozal_scraper.alerting import report_failures
+    from kinozal_scraper.alerting import alert_config_rejections, report_failures
 
-    if report_failures(prod_notifier, prod_results):
+    # Evaluate both (no short-circuit) so a config-reject alert fires even when
+    # sources all succeeded; either reddens the job (#340).
+    rejected = alert_config_rejections(prod_notifier, prod_enricher)
+    failures = report_failures(prod_notifier, prod_results)
+    if rejected or failures:
         sys.exit(1)

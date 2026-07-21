@@ -48,6 +48,16 @@ class TryNextModel(Exception):
     See #130."""
 
 
+class ModelConfigRejected(Exception):
+    """Model returned `400 INVALID_ARGUMENT` — our *request* is malformed for
+    this model (e.g. a `thinking_budget` a newer 3.x model doesn't accept, #338),
+    not a transient hiccup. It is deterministic: every item 400s identically on
+    this model. The rotator still advances (other models may accept the request,
+    so data ships) but treats it as a VISIBLE anomaly — ERROR log + recorded in
+    `config_rejected_models` so the pipeline alerts the operator + reds the job,
+    instead of a config bug hiding behind green rotation (#340)."""
+
+
 class TruncatedResponse(Exception):
     """Model returned an incomplete answer (`finish_reason` MAX_TOKENS / SAFETY).
     Surfacing as exception so `enrich` can route to the visible-anomaly marker
@@ -58,19 +68,25 @@ def classify_generate_error(exc: BaseException) -> type[Exception]:
     """Map a raw `generate_content` failure to a rotation-exception CLASS.
 
     The new `google.genai` SDK raises a single `APIError` family discriminated by
-    HTTP `.code`: 404 → `ModelUnavailable` (model listed but disabled), 429 →
-    `QuotaExhausted`, anything else (network, InvalidArgument, non-API errors) →
-    `TryNextModel`. The `.code` is read off both the exception and its
-    `__cause__` (tenacity's `RetryError` wraps the last SDK error as `__cause__`;
-    `GeminiEnricher` only ever sees that shape, the JSON/embedding generators see
-    the raw error directly). Pure `exc → class` mapping shared by all live Gemini
-    callers so the quota/unavailable taxonomy is not reinvented; context-specific
-    logging stays at each call site (§II — no `item` coupling in the mapping)."""
-    codes = {getattr(exc, "code", None), getattr(getattr(exc, "__cause__", None), "code", None)}
+    HTTP `.code` / `.status`: 404 → `ModelUnavailable` (model listed but disabled),
+    429 → `QuotaExhausted`, `INVALID_ARGUMENT` (a malformed *request*, e.g. a
+    `thinking_budget` a 3.x model rejects, #338/#340) → `ModelConfigRejected`,
+    anything else (network, non-API errors) → `TryNextModel`. Both `.code` and
+    `.status` are read off the exception AND its `__cause__` (tenacity's
+    `RetryError` wraps the last SDK error as `__cause__`; `GeminiEnricher` only
+    ever sees that shape, the JSON/embedding generators see the raw error
+    directly). Pure `exc → class` mapping shared by all live Gemini callers so the
+    taxonomy is not reinvented; context-specific logging stays at each call site
+    (§II — no `item` coupling in the mapping)."""
+    cause = getattr(exc, "__cause__", None)
+    codes = {getattr(exc, "code", None), getattr(cause, "code", None)}
+    statuses = {getattr(exc, "status", None), getattr(cause, "status", None)}
     if 404 in codes:
         return ModelUnavailable
     if 429 in codes:
         return QuotaExhausted
+    if "INVALID_ARGUMENT" in statuses:
+        return ModelConfigRejected
     return TryNextModel
 
 
@@ -343,6 +359,17 @@ class RotatingGeminiEnricher:
         # Indices of models that returned `NotFound` this run. Skipped on
         # subsequent items until the cooldown window resets them (#128).
         self._dead: set[int] = set()
+        # Names of models that returned `400 INVALID_ARGUMENT` this run (#340).
+        # Recorded — not dead-marked (see `_handle_rotation_failure`) — so the
+        # pipeline can raise a visible operator alert after the run.
+        self._config_rejected: set[str] = set()
+
+    @property
+    def config_rejected_models(self) -> frozenset[str]:
+        """Models that rejected our request with `400 INVALID_ARGUMENT` this run
+        (#340). Non-empty ⇒ a systematic config bug the operator must see —
+        the pipeline turns this into a Telegram alert + red job."""
+        return frozenset(self._config_rejected)
 
     def _advance_to_live(self) -> bool:
         """Move `_current` to the next non-dead index. Returns False when
@@ -362,6 +389,22 @@ class RotatingGeminiEnricher:
         a pure TryNextModel truncation repeats identically after the wait."""
         prev_idx = self._current
         prev = self._enrichers[prev_idx].model_name
+        if isinstance(exc, ModelConfigRejected):
+            # Systematic malformed request for this model (#340). Record + log
+            # LOUDLY (ERROR, not WARNING) so it reaches the operator, and rotate
+            # (other models may accept the request). Deliberately NOT dead-marked:
+            # the alert forces a quick fix so the per-item re-hit is transient,
+            # and dead-marking would risk false-killing a healthy model on a rare
+            # item-specific 400 that `.status` alone can't distinguish.
+            self._config_rejected.add(prev)
+            recoverable = False
+            logger.error(
+                "model %s rejected the request (400 INVALID_ARGUMENT) — config bug, "
+                "rotating but this needs a fix",
+                prev,
+            )
+            self._current = (self._current + 1) % len(self._enrichers)
+            return recoverable
         if isinstance(exc, ModelUnavailable):
             self._dead.add(prev_idx)
             recoverable = True
@@ -420,7 +463,12 @@ class RotatingGeminiEnricher:
                     continue
                 try:
                     return self._enrichers[self._current].enrich(item, enrich_config)
-                except (QuotaExhausted, ModelUnavailable, TryNextModel) as exc:
+                except (
+                    QuotaExhausted,
+                    ModelUnavailable,
+                    TryNextModel,
+                    ModelConfigRejected,
+                ) as exc:
                     if self._handle_rotation_failure(exc):
                         saw_recoverable_failure = True
                     last_exc = exc
