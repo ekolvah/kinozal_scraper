@@ -402,7 +402,6 @@ and the marker helpers share one canonical home in `alerting.py`.
 | `GH_TRENDING_LIMIT` | var | max GitHub trending repos to fetch (github_trending_pipeline; default 10) |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |
-| `GEMINI_EXCLUDED_MODELS` | var | comma-separated models to skip |
 
 ### steam_pipeline
 
@@ -478,7 +477,6 @@ and the marker helpers share one canonical home in `alerting.py`.
 | `TELETHON_SESSION` | secret | Telethon session string |
 | `SECRET_KEY` | secret | crypto module key |
 | `LLM_MODEL` | var | preferred Gemini model |
-| `GEMINI_EXCLUDED_MODELS` | var | comma-separated models to skip |
 
 ## Setup
 

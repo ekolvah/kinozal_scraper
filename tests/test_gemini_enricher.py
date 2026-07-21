@@ -445,6 +445,26 @@ class TestGetGenerationModels(unittest.TestCase):
         result = get_generation_models(client)
         self.assertEqual(result, ["models/gemini-2.5-flash", "models/gemini-2.0-flash"])
 
+    def test_excluded_models_is_ignored(self) -> None:
+        """#334: the GEMINI_EXCLUDED_MODELS excludelist is removed — a model that a
+        would-be excludelist names still enters rotation. `create=True` keeps the
+        patch valid once `_EXCLUDED_MODELS` no longer exists on the module."""
+        from kinozal_scraper import gemini_enricher
+        from kinozal_scraper.gemini_enricher import get_generation_models
+
+        client = unittest.mock.MagicMock()
+        client.models.list.return_value = [
+            SimpleNamespace(name="models/gemini-3.5-flash", supported_actions=["generateContent"]),
+        ]
+        with unittest.mock.patch.object(
+            gemini_enricher,
+            "_EXCLUDED_MODELS",
+            frozenset({"models/gemini-3.5-flash"}),
+            create=True,
+        ):
+            result = get_generation_models(client)
+        self.assertIn("models/gemini-3.5-flash", result)
+
     def test_list_failure_degrades_to_empty_and_logs(self) -> None:
         from kinozal_scraper.gemini_enricher import get_generation_models
 
