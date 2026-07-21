@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
 
-import google.api_core.exceptions
+from google.genai import errors
 
 from kinozal_scraper.telegram_summarizer import (
     deliver_results,
@@ -138,116 +138,110 @@ class _FakeResponse:
         self.usage_metadata = usage_metadata
 
 
+def _api_error(code: int) -> errors.ClientError:
+    """google.genai APIError double carrying only `.code` (the taxonomy field)."""
+    e = errors.ClientError.__new__(errors.ClientError)
+    e.code = code
+    e.status = "RESOURCE_EXHAUSTED" if code == 429 else "NOT_FOUND"
+    e.message = str(code)
+    return e
+
+
+class _FakeModels:
+    """Stand-in for `client.models`: per-model canned response/error. `outcomes`
+    maps a model name (or "*" default) to a `_FakeResponse` or an `Exception`."""
+
+    def __init__(self, outcomes: dict[str, Any]) -> None:
+        self._outcomes = outcomes
+        self.calls: list[dict[str, Any]] = []
+
+    def generate_content(self, *, model: str, contents: Any, config: Any = None) -> Any:
+        self.calls.append({"model": model, "contents": contents, "config": config})
+        outcome = self._outcomes.get(model, self._outcomes.get("*"))
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class _FakeClient:
+    def __init__(self, outcomes: dict[str, Any] | None = None) -> None:
+        self.models = _FakeModels(outcomes or {})
+
+
 class TestGeminiSummarizerQuota(unittest.TestCase):
     def test_empty_text_short_circuits(self) -> None:
-        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            result = summ.summarize("", False)
+        client = _FakeClient()
+        summ = GeminiSummarizer(models=["m1"], client=client, broadcast_prompt="b", chat_prompt="c")
+        result = summ.summarize("", False)
         self.assertEqual(result, "")
-        mock_model.assert_not_called()
+        self.assertEqual(client.models.calls, [])
 
-    def test_first_model_quota_falls_back_to_next(self) -> None:
-        summ = GeminiSummarizer(models=["m-a", "m-b"], broadcast_prompt="b", chat_prompt="c")
-
-        # First model raises ResourceExhausted, second returns a response.
-        def factory(name: str) -> Any:
-            instance = unittest.mock.MagicMock()
-            if name == "m-a":
-                instance.generate_content.side_effect = (
-                    google.api_core.exceptions.ResourceExhausted("quota")
-                )
-            else:
-                instance.generate_content.return_value = _FakeResponse("from-b")
-            return instance
-
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
-        ):
-            result = summ.summarize("text", is_broadcast=False)
+    def test_quota_advances_to_next_model(self) -> None:
+        # #107 BLOCKING-1: new-SDK 429 on model N must advance to N+1, not abort.
+        client = _FakeClient({"m-a": _api_error(429), "m-b": _FakeResponse("from-b")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+        result = summ.summarize("text", is_broadcast=False)
         self.assertEqual(result, "from-b")
 
-    def test_first_model_not_found_falls_back_to_next(self) -> None:
-        summ = GeminiSummarizer(models=["m-a", "m-b"], broadcast_prompt="b", chat_prompt="c")
-
-        def factory(name: str) -> Any:
-            instance = unittest.mock.MagicMock()
-            if name == "m-a":
-                instance.generate_content.side_effect = google.api_core.exceptions.NotFound(
-                    "404 model no longer available"
-                )
-            else:
-                instance.generate_content.return_value = _FakeResponse("from-b")
-            return instance
-
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel", side_effect=factory
-        ):
-            result = summ.summarize("text", is_broadcast=False)
+    def test_unavailable_advances_to_next_model(self) -> None:
+        # #107 BLOCKING-1: new-SDK 404 on model N must advance to N+1, not abort.
+        client = _FakeClient({"m-a": _api_error(404), "m-b": _FakeResponse("from-b")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+        result = summ.summarize("text", is_broadcast=False)
         self.assertEqual(result, "from-b")
 
     def test_all_models_exhausted_raises_failure(self) -> None:
-        summ = GeminiSummarizer(models=["m1", "m2"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.side_effect = (
-                google.api_core.exceptions.ResourceExhausted("quota")
-            )
-            with self.assertRaises(SummarizationFailed) as ctx:
-                summ.summarize("text", is_broadcast=True)
+        client = _FakeClient({"*": _api_error(429)})
+        summ = GeminiSummarizer(
+            models=["m1", "m2"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+        with self.assertRaises(SummarizationFailed) as ctx:
+            summ.summarize("text", is_broadcast=True)
         self.assertEqual(ctx.exception.error_kind, "all_models_failed")
         # Both models were tried.
-        self.assertEqual(mock_model.call_count, 2)
+        self.assertEqual(len(client.models.calls), 2)
 
     def test_non_quota_exception_raises_without_fallback(self) -> None:
-        """Behaviour pinned from TelegramChannelSummarizer.py:86-87 — any
-        non-`ResourceExhausted` exception aborts the loop. We don't try the
-        next model on a generic failure (different from `ResourceExhausted`
-        which is per-model)."""
-        summ = GeminiSummarizer(models=["m1", "m2"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.side_effect = RuntimeError("net down")
-            with self.assertRaises(SummarizationFailed) as ctx:
-                summ.summarize("text", False)
+        """Any non-quota / non-unavailable exception aborts the loop — we don't
+        try the next model on a generic failure (only 429/404 are per-model)."""
+        client = _FakeClient({"*": RuntimeError("net down")})
+        summ = GeminiSummarizer(
+            models=["m1", "m2"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+        with self.assertRaises(SummarizationFailed) as ctx:
+            summ.summarize("text", False)
         self.assertEqual(ctx.exception.error_kind, "api_error")
         # Only the first model was tried.
-        self.assertEqual(mock_model.call_count, 1)
+        self.assertEqual(len(client.models.calls), 1)
 
     def test_no_candidates_raises_failure(self) -> None:
-        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.return_value = _FakeResponse(
-                "", has_candidates=False
-            )
-            with self.assertRaises(SummarizationFailed) as ctx:
-                summ.summarize("text", False)
+        client = _FakeClient({"m1": _FakeResponse("", has_candidates=False)})
+        summ = GeminiSummarizer(models=["m1"], client=client, broadcast_prompt="b", chat_prompt="c")
+        with self.assertRaises(SummarizationFailed) as ctx:
+            summ.summarize("text", False)
         self.assertEqual(ctx.exception.error_kind, "empty_response")
 
     def test_broadcast_uses_broadcast_prompt(self) -> None:
-        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="BROADCAST", chat_prompt="CHAT")
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.return_value = _FakeResponse("ok")
-            summ.summarize("payload", is_broadcast=True)
-        called_request = mock_model.return_value.generate_content.call_args.args[0]
+        client = _FakeClient({"m1": _FakeResponse("ok")})
+        summ = GeminiSummarizer(
+            models=["m1"], client=client, broadcast_prompt="BROADCAST", chat_prompt="CHAT"
+        )
+        summ.summarize("payload", is_broadcast=True)
+        called_request = client.models.calls[-1]["contents"]
         self.assertIn("BROADCAST", called_request)
         self.assertNotIn("CHAT", called_request)
 
     def test_chat_uses_chat_prompt(self) -> None:
-        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="BROADCAST", chat_prompt="CHAT")
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.return_value = _FakeResponse("ok")
-            summ.summarize("payload", is_broadcast=False)
-        called_request = mock_model.return_value.generate_content.call_args.args[0]
+        client = _FakeClient({"m1": _FakeResponse("ok")})
+        summ = GeminiSummarizer(
+            models=["m1"], client=client, broadcast_prompt="BROADCAST", chat_prompt="CHAT"
+        )
+        summ.summarize("payload", is_broadcast=False)
+        called_request = client.models.calls[-1]["contents"]
         self.assertIn("CHAT", called_request)
         self.assertNotIn("BROADCAST", called_request)
 
@@ -258,19 +252,16 @@ class TestGeminiSummarizerObservability(unittest.TestCase):
     is visible in cron logs (#145)."""
 
     def test_summarize_logs_token_usage(self) -> None:
-        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
         response = _FakeResponse(
             "summary text",
             usage_metadata=SimpleNamespace(
                 prompt_token_count=200, candidates_token_count=30, total_token_count=230
             ),
         )
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.return_value = response
-            with self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="INFO") as cm:
-                result = summ.summarize("channel payload", is_broadcast=True)
+        client = _FakeClient({"m1": response})
+        summ = GeminiSummarizer(models=["m1"], client=client, broadcast_prompt="b", chat_prompt="c")
+        with self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="INFO") as cm:
+            result = summ.summarize("channel payload", is_broadcast=True)
         self.assertEqual(result, "summary text")
         line = "\n".join(cm.output)
         self.assertIn("llm_call", line)
@@ -280,7 +271,6 @@ class TestGeminiSummarizerObservability(unittest.TestCase):
     def test_summarize_logs_empty_outcome_when_no_candidates(self) -> None:
         # No candidates → the call is logged with outcome=empty before it raises
         # SummarizationFailed, so a blocked/empty response still shows up in cron.
-        summ = GeminiSummarizer(models=["m1"], broadcast_prompt="b", chat_prompt="c")
         response = _FakeResponse(
             "",
             has_candidates=False,
@@ -288,15 +278,13 @@ class TestGeminiSummarizerObservability(unittest.TestCase):
                 prompt_token_count=5, candidates_token_count=0, total_token_count=5
             ),
         )
-        with unittest.mock.patch(
-            "kinozal_scraper.TelegramChannelSummarizer.genai.GenerativeModel"
-        ) as mock_model:
-            mock_model.return_value.generate_content.return_value = response
-            with (
-                self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="INFO") as cm,
-                self.assertRaises(SummarizationFailed),
-            ):
-                summ.summarize("channel payload", is_broadcast=True)
+        client = _FakeClient({"m1": response})
+        summ = GeminiSummarizer(models=["m1"], client=client, broadcast_prompt="b", chat_prompt="c")
+        with (
+            self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="INFO") as cm,
+            self.assertRaises(SummarizationFailed),
+        ):
+            summ.summarize("channel payload", is_broadcast=True)
         self.assertIn("outcome=empty", "\n".join(cm.output))
 
 
