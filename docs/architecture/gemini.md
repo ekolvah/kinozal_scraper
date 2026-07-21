@@ -37,17 +37,7 @@ rotation gives ~280 requests/day without upgrading.
 1. `genai.list_models()` — all available models
 2. Filter: must support `generateContent`
 3. Filter: `_is_text_gemini()` — starts with `models/gemini-`, no suffix like `-tts`, `-image`, `-customtools`, `-computer-use`, `-robotics`
-4. Filter: not in `GEMINI_EXCLUDED_MODELS`
-5. Sort: newest version first (`_model_version_key`)
-
-## `GEMINI_EXCLUDED_MODELS`
-
-Env var, comma-separated full model names. Allows disabling broken or
-problematic models without code changes.
-
-Example: `models/gemini-3.1-pro-preview,models/gemini-3-flash-preview`
-
-Set as GitHub Actions variable (not secret) — see [ci.md](ci.md).
+4. Sort: newest version first (`_model_version_key`)
 
 ## Retry logic
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import string
 import time
@@ -290,16 +289,9 @@ def _model_version_key(name: str) -> tuple[float, str]:
 
 _EXCLUDED_SUFFIXES = ("-tts", "-image", "-customtools", "-computer-use", "-robotics")
 
-# Comma-separated model names to skip during rotation.
-# Set via GitHub Actions variable GEMINI_EXCLUDED_MODELS, e.g.:
-#   models/gemini-3.1-pro-preview,models/gemini-3-flash-preview
-_EXCLUDED_MODELS: frozenset[str] = frozenset(
-    m.strip() for m in os.getenv("GEMINI_EXCLUDED_MODELS", "").split(",") if m.strip()
-)
-
 
 def _is_text_gemini(name: str) -> bool:
-    """Return True for pure text-generation Gemini models (ignores the excluded list)."""
+    """Return True for pure text-generation Gemini models (skips non-text suffixes)."""
     if not name.startswith("models/gemini-"):
         return False
     return not any(s in name for s in _EXCLUDED_SUFFIXES)
@@ -308,8 +300,7 @@ def _is_text_gemini(name: str) -> bool:
 def get_generation_models(client: GenaiClient) -> list[str]:
     """Return text-generation Gemini model names, newer versions first.
 
-    Models in GEMINI_EXCLUDED_MODELS are omitted from the result. The new SDK
-    exposes capabilities via `Model.supported_actions` (was
+    The new SDK exposes capabilities via `Model.supported_actions` (was
     `supported_generation_methods` on the deprecated SDK, #107).
     """
     try:
@@ -320,7 +311,6 @@ def get_generation_models(client: GenaiClient) -> list[str]:
                 name is not None
                 and "generateContent" in (m.supported_actions or [])
                 and _is_text_gemini(name)
-                and name not in _EXCLUDED_MODELS
             ):
                 names.append(name)
     except Exception:  # noqa: BLE001 — list-models failure degrades to []; now visible via logger.exception (not silent)
