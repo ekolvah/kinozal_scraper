@@ -324,6 +324,15 @@ class TestThinkingConfigGate(unittest.TestCase):
         self.assertIsNotNone(cfg.thinking_config)
         self.assertEqual(cfg.thinking_config.thinking_budget, 0)
 
+    def test_thinking_budget_zero_for_bare_major_gemini_3(self) -> None:
+        # Bare-major ID (no minor) must still get thinking_budget=0 — else the
+        # #107 MAX_TOKENS bug silently returns for these models (PR #333 review).
+        client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
+        GeminiEnricher("models/gemini-3-flash-preview", client).enrich(_item(), _TWO_LINE_CFG)
+        cfg = client.models.calls[-1]["config"]
+        self.assertIsNotNone(cfg.thinking_config)
+        self.assertEqual(cfg.thinking_config.thinking_budget, 0)
+
     def test_no_thinking_config_for_gemini_2_0(self) -> None:
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
         GeminiEnricher("models/gemini-2.0-flash", client).enrich(_item(), _TWO_LINE_CFG)
@@ -378,6 +387,18 @@ class TestModelVersionSorting(unittest.TestCase):
         from kinozal_scraper.gemini_enricher import _model_version_key
 
         self.assertEqual(_model_version_key("models/chat-bison-001")[0], 0.0)
+
+    def test_bare_major_version_maps_to_major_dot_zero(self) -> None:
+        # Google ships some IDs without a minor (e.g. gemini-3-flash-preview);
+        # they must sort as <major>.0, not fall back to 0.0 (PR #333 review).
+        from kinozal_scraper.gemini_enricher import _model_version_key
+
+        self.assertEqual(_model_version_key("models/gemini-3-flash-preview")[0], 3.0)
+        # Sorts above every 2.x but below any 3.x with an explicit minor.
+        self.assertGreater(
+            _model_version_key("models/gemini-3-flash-preview")[0],
+            _model_version_key("models/gemini-2.5-flash")[0],
+        )
 
 
 class TestIsTextGemini(unittest.TestCase):

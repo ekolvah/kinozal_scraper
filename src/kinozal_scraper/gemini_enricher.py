@@ -271,12 +271,19 @@ class GeminiEnricher:
 
 
 def _model_version_key(name: str) -> tuple[float, str]:
-    """Extract version number for sorting: 'models/gemini-2.5-flash' → (2.5, 'flash')."""
+    """Extract version number for sorting: 'models/gemini-2.5-flash' → (2.5, name).
+
+    The minor version is optional: Google ships some IDs as bare majors
+    (e.g. 'models/gemini-3-flash-preview'), which map to `<major>.0`. Without
+    this, such a name fell back to (0.0, …) — mis-sorting it to the back of the
+    rotation AND making `_thinking_config` skip `thinking_budget=0`, silently
+    reproducing the #107 MAX_TOKENS bug (caught in PR #333 review)."""
     import re
 
-    match = re.search(r"gemini-(\d+)\.(\d+)", name)
+    match = re.search(r"gemini-(\d+)(?:\.(\d+))?", name)
     if match:
-        version = float(f"{match.group(1)}.{match.group(2)}")
+        minor = match.group(2) or "0"
+        version = float(f"{match.group(1)}.{minor}")
         return (version, name)
     return (0.0, name)
 
