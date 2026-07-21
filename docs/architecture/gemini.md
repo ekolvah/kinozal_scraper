@@ -34,8 +34,8 @@ rotation gives ~280 requests/day without upgrading.
 ## Model discovery
 
 `get_generation_models()` in `gemini_enricher.py`:
-1. `genai.list_models()` — all available models
-2. Filter: must support `generateContent`
+1. `client.models.list()` — all available models (new `google.genai` SDK)
+2. Filter: `generateContent` in `Model.supported_actions` (was `supported_generation_methods` on the deprecated SDK, #107)
 3. Filter: `_is_text_gemini()` — starts with `models/gemini-`, no suffix like `-tts`, `-image`, `-customtools`, `-computer-use`, `-robotics`
 4. Sort: newest version first (`_model_version_key`)
 
@@ -118,7 +118,9 @@ layer that runs **in cron**; it complements, not replaces, the older
 
 For a visual trace (spans, per-call token spend, latency waterfall) during manual
 debugging, run [Arize Phoenix](https://github.com/Arize-ai/phoenix) locally with the
-OpenInference instrumentor for `google-generativeai`. It is **opt-in, local, and
+OpenInference instrumentor for `google.genai` (the old-SDK instrumentor
+`openinference-instrumentation-google-generativeai` does not install on Python 3.12).
+It is **opt-in, local, and
 deliberately not committed**: no `arize-phoenix` / `openinference-*` in
 `requirements*.txt`, and no activation code in the repo — unrunnable-in-CI code rots
 (#145). The in-cron structured `llm_call` log stays the only production surface.
@@ -126,17 +128,17 @@ deliberately not committed**: no `arize-phoenix` / `openinference-*` in
 Recipe (throwaway venv, real `GOOGLE_API_KEY`):
 
 ```bash
-pip install arize-phoenix openinference-instrumentation-google-generativeai
+pip install arize-phoenix openinference-instrumentation-google-genai
 ```
 
 ```python
 import phoenix.otel
-from openinference.instrumentation.google_generativeai import (
-    GoogleGenerativeAIInstrumentor,
+from openinference.instrumentation.google_genai import (
+    GoogleGenAIInstrumentor,
 )
 
-phoenix.otel.register()  # local collector + UI at http://127.0.0.1:6006
-GoogleGenerativeAIInstrumentor().instrument()  # patches genai.generate_content
+tracer_provider = phoenix.otel.register()  # local collector + UI at http://127.0.0.1:6006
+GoogleGenAIInstrumentor().instrument(tracer_provider=tracer_provider)  # patches client.models.generate_content
 
 # then run the enricher / summarizer locally; spans stream into the Phoenix UI
 ```
