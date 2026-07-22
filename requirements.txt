@@ -113,7 +113,7 @@ protobuf==5.29.6
     #   proto-plus
 pyaes==1.6.1
     # via telethon
-pyasn1==0.6.3
+pyasn1==0.6.4
     # via
     #   oauth2client
     #   pyasn1-modules
