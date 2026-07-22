@@ -162,8 +162,16 @@ deliberately not committed**: no `arize-phoenix` / `openinference-*` in
 Recipe (throwaway venv, real `GOOGLE_API_KEY`):
 
 ```bash
+# from the repo root — throwaway venv
+python -m venv .venv-phoenix && .venv-phoenix/Scripts/activate   # *nix: source .venv-phoenix/bin/activate
+pip install -e . -r requirements.txt                            # project + its runtime pins: bs4, gspread, google-genai…
 pip install arize-phoenix openinference-instrumentation-google-genai
+export PYTHONUTF8=1                                             # Windows: Phoenix prints an emoji → cp1252 stdout 400s without it
 ```
+
+`-e .` alone is **not** enough — it installs only the deps declared in `pyproject.toml`, while
+the enricher's transitive imports (`bs4`, `gspread`, …) are pinned in `requirements.txt`; skip it
+and the harness dies on `ModuleNotFoundError: bs4`.
 
 ```python
 import phoenix.otel
@@ -176,6 +184,15 @@ GoogleGenAIInstrumentor().instrument(tracer_provider=tracer_provider)  # patches
 
 # then run the enricher / summarizer locally; spans stream into the Phoenix UI
 ```
+
+**Inspecting the traces.** Open the printed Phoenix UI (`http://localhost:6006`) for the visual
+waterfall, or read the spans from the terminal via `arize-phoenix-client`:
+`phoenix.client.Client(base_url=…).spans.get_spans(project_identifier="default")`. Each span carries
+`llm.model_name`, `llm.token_count.{prompt,completion,total}`, latency, and the full request
+`input.value` / `llm.invocation_parameters` (e.g. the on-the-wire `thinking_level`) — payload detail
+the in-cron `llm_call` breadcrumb does not capture. Phoenix also serves an **MCP** endpoint at
+`http://localhost:6006/mcp`; `claude mcp add --transport http phoenix http://localhost:6006/mcp` lets
+Claude Code query the traces via MCP (the server is consumer-side, loaded on the next session start).
 
 ## `summary_ru` invariant (GitHub sources)
 
