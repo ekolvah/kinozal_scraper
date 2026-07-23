@@ -190,6 +190,7 @@ def _evaluate_dataset(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     ключи метрик нормализует `normalize_ragas_output` (толерантна к alias'ам).
     """
     from ragas import EvaluationDataset, evaluate  # noqa: PLC0415 — lazy dev-only import
+    from ragas.dataset_schema import EvaluationResult  # noqa: PLC0415
     from ragas.metrics import answer_relevancy, faithfulness  # noqa: PLC0415
 
     dataset = EvaluationDataset.from_list(
@@ -203,6 +204,10 @@ def _evaluate_dataset(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         ]
     )
     result = evaluate(dataset, metrics=[faithfulness, answer_relevancy])
+    # evaluate() returns EvaluationResult | Executor; the Executor branch only fires with
+    # return_executor=True (default False), so this is always EvaluationResult. Assert to
+    # narrow for mypy and fail loud if a ragas upgrade ever changes that invariant.
+    assert isinstance(result, EvaluationResult)
     scores: list[dict[str, Any]] = list(result.scores)
     return scores
 
