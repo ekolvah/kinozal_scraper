@@ -34,10 +34,18 @@ from typing import Any, cast
 ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 # GitHub computes closingIssuesReferences asynchronously after `gh pr create`, so
 # the first read races and can report empty even for a correct `Closes #N` body
-# (observed dogfooding this script on PR #321). Poll a few times before declaring
-# the link broken — otherwise the §IV guard fires false-positive on every PR.
-LINKAGE_ATTEMPTS = 5
-LINKAGE_DELAY_S = 2.0
+# (observed dogfooding this script on PR #321). Poll before declaring the link
+# broken — otherwise the §IV guard fires false-positive on every PR.
+#
+# Budget sizing (#352): the old ~8s window (5×2.0s) was exhausted on PR #349,
+# where indexing took ~30+s → false-positive `NOT linked` for a correct `Closes
+# #308`. Widened to ~48s (12×4.0s) to cover the observed ~30–40s lag. The
+# fast-path returns on the first non-empty read, so a healthy PR pays nothing;
+# the wider budget only lengthens the worst case on a genuine failure — rare,
+# since `ensure_closes_line` forces the keyword in, and non-destructive (the PR
+# already exists and the script is idempotent on re-run).
+LINKAGE_ATTEMPTS = 12
+LINKAGE_DELAY_S = 4.0
 
 
 def issue_number_from_branch(branch: str) -> int | None:
