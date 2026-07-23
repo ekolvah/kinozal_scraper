@@ -145,6 +145,7 @@ orientation, которого в per-file docstring нет.
 | `testing.md` | Как гарантируем качество: уровни тестов, что мокать (ссылается на `principles.md §II`, не дублирует) + ledger сознательно-принятых дыр покрытия | ✅ |
 | `ci.md` | Микс: local/CI-гейты (dev-process) + production env-vars (runtime) | ❌ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts / call-observability (token+latency `llm_call`-лог + Phoenix dev-recipe, #145) | ✅ |
+| `llm-security.md` | LLM-угрозы enricher'а (OWASP LLM Top 10 → защиты/residual): prompt-injection fence, output-escaping, honest blast radius (#308) | ✅ |
 
 ### Скрипты и шаблоны процесса
 

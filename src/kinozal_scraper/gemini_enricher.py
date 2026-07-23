@@ -28,6 +28,15 @@ FALLBACK_MARKER = "⚠️ summary unavailable"
 # markdown leakage in the 19.05.2026 batch.
 _DESCRIPTION_MAX_LEN = 400
 
+# Data-fence sentinels wrapping every untrusted free-text field (`$description`,
+# `$title`) in the prompt — structural spotlighting so the model treats them as
+# data, not instructions (OWASP LLM01, #308). ASCII and highly distinctive on
+# purpose: `<|...|>` never occurs in real film/repo descriptions (guillemets «»
+# would — they appear in Russian prose — so are avoided). The prompt config
+# instructs the model that text between these markers is data, not commands.
+_FENCE_START = "<|untrusted_data|>"
+_FENCE_END = "<|/untrusted_data|>"
+
 
 class QuotaExhausted(Exception):
     """All retry attempts hit ResourceExhausted — caller should stop or switch models."""
@@ -112,6 +121,30 @@ def _sanitize_for_prompt(text: str, max_len: int = _DESCRIPTION_MAX_LEN) -> str:
     if len(cleaned) > max_len:
         cleaned = cleaned[:max_len].rsplit(" ", 1)[0] + "…"
     return cleaned
+
+
+def _fence_untrusted(text: str, dedupe_key: str = "") -> str:
+    """Sanitize untrusted external text and wrap it in a data-fence (#308).
+
+    Structural anti-injection (spotlighting): the returned block is bracketed by
+    `_FENCE_START`/`_FENCE_END` so the model treats it as data. Any fence-sentinel
+    occurring INSIDE the input is a delimiter-breakout attempt (the attacker trying
+    to close the fence early and inject instructions) — it is stripped
+    (strip-and-proceed): the marker goes, the content stays, the request still
+    ships. A stripped sentinel is logged at WARNING (visible, not silent — §IV),
+    NOT raised and NOT swapped for a fallback marker: forcing the marker would let
+    anyone grief an item by writing the sentinel into a description, and the blast
+    radius of a bypassed fence here is only cosmetic text (no tool-calling /
+    exfiltration — see docs/architecture/llm-security.md).
+    """
+    cleaned = _sanitize_for_prompt(text)
+    if _FENCE_START in cleaned or _FENCE_END in cleaned:
+        logger.warning(
+            "[%s] fence-sentinel in untrusted input — stripped (possible prompt-injection)",
+            dedupe_key or "?",
+        )
+        cleaned = cleaned.replace(_FENCE_START, "").replace(_FENCE_END, "")
+    return f"{_FENCE_START}\n{cleaned}\n{_FENCE_END}"
 
 
 def _strip_markdown_wrap(text: str) -> str:
@@ -213,10 +246,15 @@ class GeminiEnricher:
         on_error: str = enrich_config.get("on_error", "")
         response_pattern: str | None = enrich_config.get("response_pattern")
 
+        # `title` and `description` are untrusted external free-text (kinozal /
+        # README HTML) — fence them in code so every source is spotlighted
+        # regardless of its prompt config (#308). Rendering to Telegram uses
+        # `item.title` directly (build_notification), so the fence never leaks
+        # into the message — it exists only inside the prompt.
         context: dict[str, Any] = {
-            "title": item.title,
+            "title": _fence_untrusted(item.title, item.dedupe_key),
             "url": item.url,
-            "description": _sanitize_for_prompt(item.description),
+            "description": _fence_untrusted(item.description, item.dedupe_key),
             "metric": item.metric,
             "source_id": item.source_id,
             **item.raw,

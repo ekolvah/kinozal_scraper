@@ -84,16 +84,17 @@ class TestUntrustedFieldFencing(unittest.TestCase):
 
     def test_description_wrapped_in_fence_before_substitution(self) -> None:
         _, sent = _run(_item(description="just a normal description"))
+        # (?s): the fence wraps content newline-separated, so `.` must span \n.
         self.assertRegex(
             sent,
-            re.escape(_FENCE_START) + r".*?normal description.*?" + re.escape(_FENCE_END),
+            r"(?s)" + re.escape(_FENCE_START) + r".*?normal description.*?" + re.escape(_FENCE_END),
         )
 
     def test_title_wrapped_in_fence_before_substitution(self) -> None:
         _, sent = _run(_item(title="MyProjectTitle"))
         self.assertRegex(
             sent,
-            re.escape(_FENCE_START) + r".*?MyProjectTitle.*?" + re.escape(_FENCE_END),
+            r"(?s)" + re.escape(_FENCE_START) + r".*?MyProjectTitle.*?" + re.escape(_FENCE_END),
         )
 
 
