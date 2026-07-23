@@ -18,6 +18,7 @@ from __future__ import annotations
 from scripts.hooks import (
     classify_ruff_result,
     exit_code,
+    memory_write_signal,
     pipcompile_signal,
     plan_checks,
     run_on_edit,
@@ -100,6 +101,53 @@ class TestPipCompileGuard:
         # .txt is the generated lockfile, not the source — no reminder.
         assert plan_checks(_payload("requirements.txt")) == []
         assert plan_checks(_payload("requirements-dev.txt")) == []
+
+
+class TestMemoryWriteGuard:
+    """#353: запись в out-of-repo agent-память (`.claude/projects/<slug>/memory/`) —
+    детерминируемый governance-триггер политики Memory↔repo, вынесенный из прозы в
+    pure-предикат по пути (как `_is_python`/`_is_requirements_in`). Сигнал —
+    checkpoint-вопрос (reminder, exit 2), НЕ PreToolUse-блок: false-positive на
+    легит машинно-специфичную память допустим by-design (семантику не скриптуем)."""
+
+    _MEM = (
+        "C:/Users/jadow/.claude/projects/"
+        "C--Users-jadow-PycharmProjects-kinozal-scraper/memory/some_fact.md"
+    )
+
+    def test_memory_path_flags_memory_write(self) -> None:
+        assert plan_checks(_payload(self._MEM)) == ["memory_write"]
+
+    def test_memory_write_surfaces_exit_2(self) -> None:
+        # Сигнал = видимая аномалия (§IV), exit 2 → stderr доходит до агента; ruff
+        # не зовётся (memory-ветка до _is_python), поэтому _never_called безопасен.
+        code, stderr = run_on_edit(_payload(self._MEM), ruff_runner=_never_called)
+        assert code == 2
+        assert stderr != ""
+        sig = memory_write_signal(self._MEM)
+        assert sig.kind == "memory_write"
+
+    def test_windows_backslash_path(self) -> None:
+        # Грабля путей Windows: payload может нести backslash-путь — нормализуется.
+        p = r"C:\Users\jadow\.claude\projects\slug\memory\bar.md"
+        assert plan_checks(_payload(p)) == ["memory_write"]
+
+    def test_memory_index_root_file_flagged(self) -> None:
+        # MEMORY.md в корне memory-каталога — trailing-`/` не отсекает корневой файл.
+        p = "C:/Users/jadow/.claude/projects/slug/memory/MEMORY.md"
+        assert plan_checks(_payload(p)) == ["memory_write"]
+
+    def test_non_memory_subdir_of_projects_not_flagged(self) -> None:
+        # Специфичность `/memory/`, а не просто `projects/`: каталог projects несёт
+        # и другое (сессионные логи). Страхует границу от ослабления регекса.
+        p = "C:/Users/jadow/.claude/projects/slug/other/f.md"
+        assert plan_checks(_payload(p)) == []
+
+    def test_repo_paths_not_memory(self) -> None:
+        # Repo-файлы (в т.ч. repo-`.claude/`) не триггерят memory-сигнал — dispatch цел.
+        assert plan_checks(_payload("src/x.py")) == ["ruff"]
+        assert plan_checks(_payload("docs/architecture/project-map.md")) == []
+        assert plan_checks(_payload(".claude/rules/mindset.md")) == []
 
 
 def _never_called(_file: str) -> tuple[int, str]:
