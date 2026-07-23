@@ -114,7 +114,11 @@ orientation, которого в per-file docstring нет.
 или стиля работы с конкретным оператором; иначе при клоне на другой машине проектное знание не
 видно → источник истины расщепляется. Это **действующая политика, не backlog**: персона
 `architect-review` раньше жила в памяти, её перенесли в репо (`.claude/agents/architect-reviewer.md`
-+ гейт `validate_issue_sections.py` + `principles.md §Governance`), память удалили (#150).
++ гейт `validate_issue_sections.py` + `principles.md §Governance`), память удалили (#150). Тот же
+переезд memory→repo — механика приоритета issue (поле Priority в GitHub Project #1): жила в приватной
+памяти, теперь в репо как `scripts/set_issue_priority.py` (зашитые Project/field/option-ID + unit-тесты)
++ правило [`workflow.md`](../../.claude/rules/workflow.md) #11 (агент спрашивает приоритет у пользователя
+→ скрипт), память удалена (#351).
 
 ## Карта файлов
 
@@ -153,6 +157,7 @@ orientation, которого в per-file docstring нет.
 |---|---|
 | `scripts/validate_issue_sections.py` | Содержит ли issue все 7 required секций (gate `/plan` и `/implement`) |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
+| `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project #1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; вызывается агентом по правилу `workflow.md` #11 (спросил приоритет → скрипт). Механика переехала memory→repo (#351) |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
 | `scripts/open_pr.py` | Создание PR с гарантированным `Closes #N` в body + пост-верификация `closingIssuesReferences` (иначе exit 1, §IV): чтобы PR надёжно автозакрывал issue при squash-мёрдже (#320, precedent #319→#140). Pre-flight — делает правый путь дешёвым; enforcement — `verify_pr_link.py` |
 | `scripts/verify_pr_link.py` | CI-гейт (workflow `pr-link.yml`): PR из `issue-N` ветки обязан закрывать issue, иначе job red → required check блокирует мёрдж. Отдельный workflow (не `ci.yml`), т.к. триггерится и на `edited` (правка body убирает `Closes #N` → перепроверка), не гоняя тяжёлый `quality` на правку описания. Агент-независимый backstop к `open_pr.py` (переиспользует его чистые функции); enforcement через gate, не прозу (#320) |

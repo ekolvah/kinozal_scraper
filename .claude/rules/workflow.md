@@ -88,3 +88,17 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
     **Precedent:** #125 re-filed the `validate_issue_sections.py` UTF-8/cp1252
     bug already fixed in merged PR #123 (`e1548385`, closing #122); the
     duplicate had to be closed by hand.
+11. **Priority on issue creation** — an issue's priority is the **Priority**
+    single-select field of GitHub Project #1 ("kinozal_scraper — backlog &
+    priority") — **not** a label and **not** a roadmap emoji. When creating an
+    issue the agent MUST **explicitly ask the user which priority** (High /
+    Medium / Low), never guessing, then apply it with
+    `python scripts/set_issue_priority.py <N> <High|Medium|Low>` (`N` = the bare
+    issue number, e.g. `351` — not an `issue-N` prefix) (the
+    Project/field/option IDs are hardcoded there, unit-tested — "Скрипты >
+    инструкции"; the mechanics used to live only in private agent memory, a
+    Memory↔repo violation). **Prose for the *ask*, script for the *apply*:**
+    the priority itself is a human judgement call (like #10's dedup topic
+    overlap) so it stays an interactive question; only the deterministic
+    Project-mutation is scripted. A gate on "issue filed without a priority"
+    is a possible follow-up, not built here.
