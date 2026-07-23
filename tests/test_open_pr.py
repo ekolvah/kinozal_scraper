@@ -19,6 +19,8 @@ from typing import Any
 import pytest
 
 from scripts.open_pr import (
+    LINKAGE_ATTEMPTS,
+    LINKAGE_DELAY_S,
     ensure_closes_line,
     has_closing_reference,
     issue_number_from_branch,
@@ -218,3 +220,33 @@ class TestMainVerification:
         with pytest.raises(SystemExit) as exc:
             main(["--title", "T"])
         assert exc.value.code == 2
+
+
+class TestLinkageBudget:
+    """#352: бюджет поллинга линковки (~8с) исчерпался на PR #349, где GitHub
+    индексировал `closingIssuesReferences` ~30+с → false-positive «issue NOT
+    linked» при корректном `Closes #N`. Root cause — узкий бюджет, не отсутствие
+    ретрая. Бюджет расширен под наблюдаемый лаг (~40с)."""
+
+    def test_confirms_linkage_appearing_beyond_old_budget(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Линковка появляется на 9-м чтении (refs_empty_reads=8) — за пределами
+        # старого бюджета=5 (там main() бросил бы SystemExit false-positive),
+        # внутри нового. main() должен подтвердить линковку и не упасть; fast-path
+        # останавливает поллинг на появлении → ровно 9 чтений, не весь бюджет.
+        disp = _GhDispatcher(branch="issue-352-x", existing_pr=None, refs_empty_reads=8)
+        monkeypatch.setattr(subprocess, "run", disp)
+        monkeypatch.setattr("time.sleep", lambda *_: None)
+        main(["--title", "T"])  # не должно бросить SystemExit
+        refs_reads = sum(
+            1
+            for c in disp.calls
+            if c[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in c
+        )
+        assert refs_reads == 9, "fast-path останавливает поллинг на появлении линковки"
+
+    def test_budget_covers_observed_indexing_lag(self) -> None:
+        # Кодируем acceptance как ДЛИТЕЛЬНОСТЬ (~40с наблюдаемого лага), а не хардкод
+        # конкретного сплита attempts×delay — устойчиво к переразбивке.
+        assert LINKAGE_ATTEMPTS * LINKAGE_DELAY_S >= 40
