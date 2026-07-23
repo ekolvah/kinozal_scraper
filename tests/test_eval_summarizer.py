@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
 from scripts.eval_summarizer import (
     GoldenSetError,
     RowScore,

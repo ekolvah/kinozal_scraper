@@ -54,9 +54,24 @@ def check_pip_audit() -> None:
     _run([sys.executable, "-m", "pip_audit", "-r", "requirements.txt"])
 
 
+# Dev-only CVEs in the RAGAS eval tree (#347) that are unreachable in our offline
+# text-summarization eval and cannot be cleared by a bump today. Suppressed here (not
+# in prod audit) with a tracked follow-up (#TODO) to remove each ID once upstream ships
+# a fix that the ragas 0.4.x tree accepts:
+#   PYSEC-2026-2447  diskcache  unsafe pickle deserialization — local, needs an
+#       attacker-controlled cache file; our cache is self-produced. No fix released.
+#   PYSEC-2026-3046  ragas      SSRF in the Multi-Modal Faithfulness module — we run
+#       text-only faithfulness/answer_relevancy, never the multimodal path. No fix released.
+#   PYSEC-2026-76    langchain-openai  fixed in 1.1.14, but 1.1.14 requires openai>=2.26
+#       while ragas 0.4.3's `instructor` pins openai<2.0 → uninstallable together. Low-sev
+#       (image-URL sizing in a multimodal helper we don't call).
+_DEV_AUDIT_IGNORES = ("PYSEC-2026-2447", "PYSEC-2026-3046", "PYSEC-2026-76")
+
+
 def check_pip_audit_dev() -> None:
     print("==> pip-audit (dev)")
-    _run([sys.executable, "-m", "pip_audit", "-r", "requirements-dev.txt"])
+    ignores = [arg for vuln in _DEV_AUDIT_IGNORES for arg in ("--ignore-vuln", vuln)]
+    _run([sys.executable, "-m", "pip_audit", "-r", "requirements-dev.txt", *ignores])
 
 
 def _parse_pins(path: Path) -> dict[str, str]:
