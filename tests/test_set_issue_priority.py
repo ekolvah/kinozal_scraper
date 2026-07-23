@@ -16,6 +16,7 @@ import subprocess
 from typing import Any
 
 import pytest
+
 from scripts.set_issue_priority import (
     PRIORITY_FIELD_ID,
     PROJECT_ID,

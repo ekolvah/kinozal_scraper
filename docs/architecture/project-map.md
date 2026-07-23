@@ -114,7 +114,11 @@ orientation, которого в per-file docstring нет.
 или стиля работы с конкретным оператором; иначе при клоне на другой машине проектное знание не
 видно → источник истины расщепляется. Это **действующая политика, не backlog**: персона
 `architect-review` раньше жила в памяти, её перенесли в репо (`.claude/agents/architect-reviewer.md`
-+ гейт `validate_issue_sections.py` + `principles.md §Governance`), память удалили (#150).
++ гейт `validate_issue_sections.py` + `principles.md §Governance`), память удалили (#150). Тот же
+переезд memory→repo — механика приоритета issue (поле Priority в GitHub Project #1): жила в приватной
+памяти, теперь в репо как `scripts/set_issue_priority.py` (зашитые Project/field/option-ID + unit-тесты)
++ правило [`workflow.md`](../../.claude/rules/workflow.md) #11 (агент спрашивает приоритет у пользователя
+→ скрипт), память удалена (#351).
 
 ## Карта файлов
 
