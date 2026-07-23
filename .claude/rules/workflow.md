@@ -93,7 +93,8 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
     priority") — **not** a label and **not** a roadmap emoji. When creating an
     issue the agent MUST **explicitly ask the user which priority** (High /
     Medium / Low), never guessing, then apply it with
-    `python scripts/set_issue_priority.py <issue-N> <High|Medium|Low>` (the
+    `python scripts/set_issue_priority.py <N> <High|Medium|Low>` (`N` = the bare
+    issue number, e.g. `351` — not an `issue-N` prefix) (the
     Project/field/option IDs are hardcoded there, unit-tested — "Скрипты >
     инструкции"; the mechanics used to live only in private agent memory, a
     Memory↔repo violation). **Prose for the *ask*, script for the *apply*:**

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Set an issue's Priority field in GitHub Project #1, or fail visibly (#351).
 
-Usage: python scripts/set_issue_priority.py <issue-N> <High|Medium|Low>
+Usage: python scripts/set_issue_priority.py <N> <High|Medium|Low>  (N = bare issue number)
 
 Why a script and not prose: an issue's priority lives as the single-select
 **Priority** field of Project #1 ("kinozal_scraper — backlog & priority"), set via
