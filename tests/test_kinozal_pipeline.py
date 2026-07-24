@@ -11,6 +11,7 @@ from kinozal_scraper.kinozal_auth import KinozalLoginError
 from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_ERROR_MARKER,
     _TRAILER_MISS_MARKER,
+    _dedupe_key,
     _kinozal_title,
     _kinozal_urls,
     enrich_with_trailer,
@@ -223,6 +224,40 @@ class TestKinozalTitle(unittest.TestCase):
         self.assertEqual(_kinozal_title("ДБ (Videofilm/Int.)"), "ДБ (Videofilm/Int.)")
 
 
+# ── _dedupe_key ───────────────────────────────────────────────────────────────
+
+
+class TestDedupeKey(unittest.TestCase):
+    def test_sequel_and_original_get_distinct_keys(self) -> None:
+        # Namesake/sequel with a different original+year must NOT collapse (#363).
+        original = _dedupe_key("Дюна / Dune / 2021 / BDRip")
+        sequel = _dedupe_key("Дюна / Dune: Part Two / 2024 / BDRip")
+        self.assertEqual(original, "Дюна / Dune / 2021")
+        self.assertEqual(sequel, "Дюна / Dune: Part Two / 2024")
+        self.assertNotEqual(original, sequel)
+
+    def test_repacks_share_key(self) -> None:
+        # Same film, different Format segment → same key (repacks still collapse).
+        self.assertEqual(
+            _dedupe_key("Great Film / 2025 / Portable"),
+            _dedupe_key("Great Film / 2025 / RePack (FitGirl)"),
+        )
+        self.assertEqual(_dedupe_key("Great Film / 2025 / Portable"), "Great Film / 2025")
+
+    def test_no_year_falls_back_to_first_segment(self) -> None:
+        # No year segment → cannot locate the title/format boundary → keep the clean
+        # first segment (current behaviour, minimal-diff fallback).
+        self.assertEqual(_dedupe_key("Дюна"), "Дюна")
+        self.assertEqual(_dedupe_key("Foo / Bar"), "Foo")
+
+    def test_year_titled_film_collapses_to_year(self) -> None:
+        # Edge: the RU segment IS itself a bare year ("2012", "1917"). The scan
+        # matches it at index 0 → key "2012". This is a no-op vs. today's
+        # first-segment behaviour, consciously accepted and consistent with
+        # original_title's #138 numeric-original edge (see testing.md ledger).
+        self.assertEqual(_dedupe_key("2012 / 2012 / 2009 / BDRip"), "2012")
+
+
 # ── original_title ────────────────────────────────────────────────────────────
 
 
@@ -366,13 +401,15 @@ class TestPipelineDeduplication(unittest.TestCase):
         self.assertEqual(len(notifier.sent), 2)
 
     def test_already_existing_item_not_re_notified(self) -> None:
-        storage, notifier = _run(existing_keys={"Film One"})
+        # Keys are RU/Original/Year now (#363): "Film One / 2024 / BDRip" → "Film One
+        # / 2024"; "Film Two" has no year segment → stays "Film Two".
+        storage, notifier = _run(existing_keys={"Film One / 2024"})
         self.assertEqual(len(storage.stored_rows("movies")), 1)
         self.assertEqual(len(notifier.sent), 1)
         self.assertEqual(notifier.sent[0].id, "Film Two")
 
     def test_all_existing_no_notifications(self) -> None:
-        keys = {"Film One", "Film Two"}
+        keys = {"Film One / 2024", "Film Two"}
         storage, notifier = _run(existing_keys=keys)
         self.assertEqual(storage.stored_rows("movies"), [])
         self.assertEqual(notifier.sent, [])
@@ -387,14 +424,30 @@ class TestPipelineDeduplication(unittest.TestCase):
         """
         storage, notifier = _run(html=html)
         self.assertEqual(len(notifier.sent), 1)
-        self.assertEqual(notifier.sent[0].id, "Great Film")
+        self.assertEqual(notifier.sent[0].id, "Great Film / 2025")
         self.assertEqual(len(storage.stored_rows("movies")), 1)
 
-    def test_stored_dedupe_key_is_clean_title(self) -> None:
+    def test_sequel_and_namesake_both_notified(self) -> None:
+        # Two different films sharing the RU first segment but differing in
+        # original+year must both reach the user (#363) — the dedupe key widened
+        # from the clean RU title to RU/Original/Year, so they no longer collapse.
+        html = """
+        <html><body>
+        <a href="/details.php?id=1" title="Дюна / Dune / 2021 / BDRip"><img src="/p1.jpg"></a>
+        <a href="/details.php?id=2" title="Дюна / Dune: Part Two / 2024 / BDRip"><img src="/p2.jpg"></a>
+        </body></html>
+        """
+        storage, notifier = _run(html=html)
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertEqual(len(storage.stored_rows("movies")), 2)
+
+    def test_stored_dedupe_key_includes_year(self) -> None:
+        # The dedupe key now carries RU/Original/Year (#363), while the display
+        # title stays the clean RU segment — the "display ≠ key" invariant.
         storage, notifier = _run()
         row = storage.stored_rows("movies")[0]
         dedupe_key, title = row[0], row[1]
-        self.assertEqual(dedupe_key, "Film One")
+        self.assertEqual(dedupe_key, "Film One / 2024")
         self.assertEqual(title, "Film One")
 
 
@@ -444,7 +497,7 @@ class TestPipelineCoverage(unittest.TestCase):
         # The "0 new" path is the most common silent case — coverage must still
         # surface there, before the early return.
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
-            _run(existing_keys={"Film One", "Film Two"})
+            _run(existing_keys={"Film One / 2024", "Film Two"})
         joined = "\n".join(cm.output)
         self.assertRegex(joined, r"2 extracted.*0 new.*2 already-seen")
 
@@ -676,14 +729,15 @@ class TestDeliveryTruthfulness(unittest.TestCase):
     errors), and failed items must NOT be stored so they retry next run."""
 
     def test_failed_notifications_excluded_from_storage(self) -> None:
-        storage, notifier, _ = _run_results(fail_ids={"Film One"})
+        # notif.id is the dedupe key, now RU/Original/Year (#363): "Film One / 2024".
+        storage, notifier, _ = _run_results(fail_ids={"Film One / 2024"})
         stored_keys = {row[0] for row in storage.stored_rows("movies")}
         self.assertEqual(stored_keys, {"Film Two"})
         self.assertEqual({n.id for n in notifier.sent}, {"Film Two"})
-        self.assertEqual({n.id for n in notifier.failed}, {"Film One"})
+        self.assertEqual({n.id for n in notifier.failed}, {"Film One / 2024"})
 
     def test_failed_notifications_mark_result_not_ok(self) -> None:
-        _, _, results = _run_results(fail_ids={"Film One"})
+        _, _, results = _run_results(fail_ids={"Film One / 2024"})
         self.assertTrue(any(not r.ok for r in results))
         self.assertTrue(
             any(r.errors for r in results),
@@ -691,7 +745,7 @@ class TestDeliveryTruthfulness(unittest.TestCase):
         )
 
     def test_all_failed_writes_nothing(self) -> None:
-        storage, _, results = _run_results(fail_ids={"Film One", "Film Two"})
+        storage, _, results = _run_results(fail_ids={"Film One / 2024", "Film Two"})
         self.assertEqual(storage.stored_rows("movies"), [])
         self.assertTrue(any(not r.ok for r in results))
 
@@ -1164,6 +1218,10 @@ _GENRE_LISTING = (
     "</body></html>"
 )
 _GENRE_BY_ID = {"1": "Hidden objects", "2": "драма"}
+# Dedupe keys = RU/Original/Year prefix of the raw titles above (#363), the format
+# tail dropped. These are the notification ids / stored keys the genre tests assert on.
+_GAME_A_KEY = "Game A / RU / Hidden objects / 2024"
+_MOVIE_B_KEY = "Movie B / 2025"
 
 
 class TestParseGenre(unittest.TestCase):
@@ -1380,18 +1438,18 @@ class TestGenreFilter(unittest.TestCase):
     def test_excluded_genre_item_not_notified(self) -> None:
         _, notifier, _ = _run_genre_filter(excluded="Hidden objects")
         sent_ids = {n.id for n in notifier.sent}
-        self.assertNotIn("Game A", sent_ids)  # Hidden objects → filtered
-        self.assertIn("Movie B", sent_ids)  # драма → kept
+        self.assertNotIn(_GAME_A_KEY, sent_ids)  # Hidden objects → filtered
+        self.assertIn(_MOVIE_B_KEY, sent_ids)  # драма → kept
 
     def test_non_excluded_item_notified(self) -> None:
         _, notifier, _ = _run_genre_filter(excluded="Hidden objects")
-        self.assertIn("Movie B", {n.id for n in notifier.sent})
+        self.assertIn(_MOVIE_B_KEY, {n.id for n in notifier.sent})
 
     def test_filtered_item_is_stored(self) -> None:
         storage, notifier, _ = _run_genre_filter(excluded="Hidden objects")
         stored = {row[0] for row in storage.stored_rows("movies")}
-        self.assertIn("Game A", stored)  # stored so it isn't re-fetched next run
-        self.assertNotIn("Game A", {n.id for n in notifier.sent})  # but not notified
+        self.assertIn(_GAME_A_KEY, stored)  # stored so it isn't re-fetched next run
+        self.assertNotIn(_GAME_A_KEY, {n.id for n in notifier.sent})  # but not notified
 
     def test_all_filtered_still_stored(self) -> None:
         # Every new item excluded → kept empty, sent empty; filtered must STILL be
@@ -1399,14 +1457,14 @@ class TestGenreFilter(unittest.TestCase):
         storage, notifier, _ = _run_genre_filter(excluded="Hidden objects; драма")
         self.assertEqual(notifier.sent, [])
         stored = {row[0] for row in storage.stored_rows("movies")}
-        self.assertEqual(stored, {"Game A", "Movie B"})
+        self.assertEqual(stored, {_GAME_A_KEY, _MOVIE_B_KEY})
 
     def test_details_fetch_failure_fails_open_and_warns(self) -> None:
         # §IV: unknown genre (fetch failed) must not silently drop the item —
         # it ships (fail-open) with a WARNING tripwire.
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
             _, notifier, _ = _run_genre_filter(excluded="Hidden objects", details_error=True)
-        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})
+        self.assertEqual({n.id for n in notifier.sent}, {_GAME_A_KEY, _MOVIE_B_KEY})
         self.assertTrue(any("genre" in line.lower() for line in cm.output), cm.output)
 
     def test_no_details_fetch_when_denylist_empty(self) -> None:
@@ -1414,7 +1472,7 @@ class TestGenreFilter(unittest.TestCase):
         # details fetch at all. (Guard; passes trivially pre-implementation.)
         _, notifier, details_calls = _run_genre_filter(excluded=None)
         self.assertEqual(details_calls, [])
-        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})
+        self.assertEqual({n.id for n in notifier.sent}, {_GAME_A_KEY, _MOVIE_B_KEY})
 
     def test_filter_count_logged(self) -> None:
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
@@ -1431,7 +1489,7 @@ class TestGenreFilter(unittest.TestCase):
             _, notifier, _ = _run_genre_filter(
                 excluded="Hidden objects", genre_by_id={"1": "", "2": "драма"}
             )
-        self.assertEqual({n.id for n in notifier.sent}, {"Game A", "Movie B"})  # both kept
+        self.assertEqual({n.id for n in notifier.sent}, {_GAME_A_KEY, _MOVIE_B_KEY})  # both kept
         joined = "\n".join(cm.output)
         self.assertRegex(joined, r"(?i)no parseable genre")
         self.assertIn("Game A", joined)

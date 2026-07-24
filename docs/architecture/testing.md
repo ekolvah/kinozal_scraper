@@ -322,6 +322,18 @@ work-for-work (goal-function priority (2)).
   `--threshold` gates it; the [harness section](#eval-harness--summarizer-faithfulness-347) documents
   the seam split. Recorded so «why isn't the RAGAS score in CI?» isn't re-opened as a mock-the-judge
   work-for-work test.
+- **R. Dedupe-key edges where the year anchor can't disambiguate (#363).** The kinozal dedupe key is
+  the `RU / Original / Year` prefix of the raw title, located by scanning for the first bare-year
+  segment (`text_utils.YEAR_SEGMENT_RE`) and dropping the format tail. Two edges are **consciously
+  accepted**, characterized but not "fixed": (1) a film whose **RU title IS a bare year** (`2012`,
+  `1917` → raw `2012 / 2012 / 2009 / …`) keys on that first-segment year → `"2012"` — a no-op vs. the
+  pre-#363 first-segment behaviour, same class as `original_title`'s numeric-original edge (#138 Out of
+  scope), pinned by `test_year_titled_film_collapses_to_year`. (2) a **yearless** raw title (no bare-year
+  segment at all) falls back to the clean first segment, so yearless namesakes could still collapse — but
+  a top-page title without a year is anomalous, and any collapse is already visible in aggregate via the
+  `_dedup_and_log_coverage` INFO line (`N extracted (M after dedup-collapse)`), so it isn't a silent §IV
+  loss. Both accepted because the disambiguating signal (a distinct year) is genuinely absent; recorded so
+  a year-titled namesake collision isn't re-opened as a regression.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 

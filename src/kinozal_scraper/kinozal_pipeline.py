@@ -24,7 +24,7 @@ from kinozal_scraper.kinozal_auth import fetch_authenticated, login
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier, TelegramNotifier
-from kinozal_scraper.text_utils import original_title
+from kinozal_scraper.text_utils import YEAR_SEGMENT_RE, original_title
 from kinozal_scraper.trailer_strategy import FilmProfile, HeuristicStrategy
 
 logger = logging.getLogger(__name__)
@@ -379,6 +379,30 @@ def _kinozal_title(raw: str) -> str:
     return raw.split(" / ")[0].strip()
 
 
+def _dedupe_key(raw: str) -> str:
+    """Dedupe key from a raw kinozal `@title` = `RU / Original / Year / Format` (#363).
+
+    The key is the title-identity prefix `RU / Original / Year` — everything up to
+    and *including* the release-year segment — with the trailing `Format` segment(s)
+    dropped. This distinguishes namesakes/sequels that share the RU first segment but
+    differ in original title or year (`Дюна / Dune / 2021` vs
+    `Дюна / Dune: Part Two / 2024`), while still collapsing repacks of one film that
+    differ ONLY in the format tail (`… / 2025 / Portable` vs `… / 2025 / FitGirl`).
+
+    The year is located by scanning for the first ` / `-segment that is a bare year
+    (`YEAR_SEGMENT_RE.fullmatch`) — positional slicing would break on the no-original
+    form `Title / Year / Format`, and a substring match would false-hit a year baked
+    into a format token (`… / BDRip 2160p`). When no year segment exists (e.g. `Дюна`
+    with no separators) the boundary is unknowable, so we fall back to the clean first
+    segment — today's behaviour, keeping yearless repacks collapsed.
+    """
+    parts = [p.strip() for p in raw.split(" / ")]
+    for i, part in enumerate(parts):
+        if YEAR_SEGMENT_RE.fullmatch(part):
+            return " / ".join(parts[: i + 1])
+    return parts[0]
+
+
 def _extract_kinozal_items(
     html: str, source: dict[str, Any], base_url: str | None = None
 ) -> PipelineResult:
@@ -419,21 +443,31 @@ def _extract_kinozal_items(
 
 
 def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
-    """Deduplicate by clean title and normalize dedupe_key to match.
+    """Deduplicate by title-identity key (`RU / Original / Year`) and normalize
+    dedupe_key to match (#363).
 
-    Multiple repacks of the same title (Portable, FitGirl, etc.) share
-    the same item.title after _extract_kinozal_items. This collapses them
-    to one item and stores the clean title as the dedup key so future runs
-    also skip all repacks of an already-notified title.
+    The key comes from `_dedupe_key(raw @title)`, dropping only the trailing format
+    segment. Repacks of one film (Portable, FitGirl, …) differ ONLY in that tail, so
+    they still share a key and collapse to one item — while namesakes/sequels that
+    differ in original title or year no longer collapse (the #363 bug: `Дюна / Dune /
+    2021` and `Дюна / Dune: Part Two / 2024` both keyed on the clean RU `Дюна`, silently
+    dropping the second). The key becomes the stored dedupe_key so future runs also skip
+    all repacks of an already-notified film. `item.title` (display) stays the clean RU
+    segment — display ≠ key.
+
+    Reads the raw title straight from `item.raw["kinozal_raw_title"]` (always set by
+    `_extract_kinozal_items`); a KeyError here is a real upstream drift and must surface,
+    not be masked by a `.get` fallback (§IV/§VI).
     """
     seen: set[str] = set()
     result: list[NormalizedItem] = []
     for item in items:
-        if item.title in seen:
-            logger.debug("[kinozal] duplicate title collapsed: %r", item.title)
+        key = _dedupe_key(item.raw["kinozal_raw_title"])
+        if key in seen:
+            logger.debug("[kinozal] duplicate title collapsed: %r", key)
             continue
-        seen.add(item.title)
-        item.dedupe_key = item.title
+        seen.add(key)
+        item.dedupe_key = key
         result.append(item)
     return result
 

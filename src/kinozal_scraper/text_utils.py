@@ -4,6 +4,13 @@ from __future__ import annotations
 
 import re
 
+# A 4-digit release year (1900–2099) as it appears as a WHOLE ` / `-segment of a
+# raw kinozal title. Single canonical shape reused by `original_title` and the
+# pipeline's `_dedupe_key` (#363) so the raw-title parse isn't spelled with three
+# drifting regexes. The `19|20` alternation (not the narrower `20\d{2}`) admits
+# pre-2000 films.
+YEAR_SEGMENT_RE = re.compile(r"(?:19|20)\d{2}")
+
 
 def title_year_matches(title: str, film_year: int) -> bool:
     """Return False if the video title explicitly mentions a year other than film_year."""
@@ -45,6 +52,6 @@ def original_title(raw: str) -> str:
     if len(parts) < 2:
         return ""
     candidate = parts[1]
-    if re.fullmatch(r"(?:19|20)\d{2}", candidate):
+    if YEAR_SEGMENT_RE.fullmatch(candidate):
         return ""
     return candidate
