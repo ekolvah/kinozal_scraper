@@ -11,6 +11,7 @@ from kinozal_scraper.kinozal_auth import KinozalLoginError
 from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_ERROR_MARKER,
     _TRAILER_MISS_MARKER,
+    _TRAILER_UNSURE_PREFIX,
     _dedupe_key,
     _kinozal_title,
     _kinozal_urls,
@@ -207,6 +208,33 @@ class TestEnrichWithTrailer(unittest.TestCase):
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
             enrich_with_trailer(item, youtube)
         self.assertTrue(any("ru language" in r.getMessage() for r in cm.records))
+
+    def test_ambiguous_pick_returns_unsure_marker_with_url(self) -> None:
+        # #359: стратегия отдаёт ambiguous-ничью (conf=0.3) — признанную монетку.
+        # Прод раньше читал только `video_id is None` и выбрасывал confidence, так
+        # что коин-флип уходил пользователю неотличимо от уверенного pick'а (§IV).
+        # Теперь неуверенность видима, а URL сохранён (recall не теряем — на реальном
+        # пуле «Суета» все равноранговые кандидаты были настоящими трейлерами).
+        pool = [
+            Candidate(video_id="ru01", title="Суета трейлер"),
+            Candidate(video_id="ru02", title="Суета трейлер сериала"),
+        ]
+        youtube = _PoolYoutube(pool)
+        item = self._item("Суета (1 сезон: 1-8 серии из 8) / 2026 / WEB-DL")
+        trailer = enrich_with_trailer(item, youtube)
+        self.assertEqual(trailer, f"{_TRAILER_UNSURE_PREFIX}https://www.youtube.com/watch?v=ru01")
+
+    def test_confident_pick_returns_bare_url(self) -> None:
+        # Anti-over-hedging guard (#359): уникальный топ-ранг (трейлер бьёт тизер по
+        # `_trailer_signal`) → conf=0.9 → голая ссылка, кликабельный <a>Trailer</a>.
+        pool = [
+            Candidate(video_id="ru01", title="Суета 2026 трейлер"),
+            Candidate(video_id="ru02", title="Суета 2026 тизер"),
+        ]
+        youtube = _PoolYoutube(pool)
+        item = self._item("Суета (1 сезон: 1-8 серии из 8) / 2026 / WEB-DL")
+        trailer = enrich_with_trailer(item, youtube)
+        self.assertEqual(trailer, "https://www.youtube.com/watch?v=ru01")
 
 
 # ── _kinozal_title ────────────────────────────────────────────────────────────

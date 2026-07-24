@@ -291,6 +291,17 @@ class TestBuildNotificationLinks(unittest.TestCase):
         self.assertIn("🎬 трейлер не найден", note.text)
         self.assertNotIn("<a", note.text)
 
+    def test_unsure_trailer_marker_renders_as_text(self) -> None:
+        # #359: хедж-маркер низкой уверенности — тоже не-http строка, поэтому
+        # рендерится видимым текстом, а не <a href>-обёрткой всей строки. Ассерт на
+        # ТОЧНОЕ значение: URL внутри не должен экранироваться (нет `&` в `watch?v=ID`),
+        # иначе Telegram не авто-слинкует его и «recall не теряем» перестанет держаться.
+        marker = "⚠️ трейлер неточный: https://www.youtube.com/watch?v=abc"
+        item = self._item("Film", trailer_url=marker)
+        note = build_notification(item, "{trailer_link}")
+        self.assertEqual(note.text, marker)
+        self.assertNotIn("<a", note.text)
+
     def test_kinozal_template(self) -> None:
         item = self._item(
             "Фильм / 2026 / WEB",
