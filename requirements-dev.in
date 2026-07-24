@@ -6,6 +6,7 @@ pip-tools
 pre-commit
 pytest
 pytest-cov
+ragas
 ruff
 types-PyYAML
 types-requests

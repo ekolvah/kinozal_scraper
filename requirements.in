@@ -14,3 +14,9 @@ telethon
 google-genai
 cryptography
 tenacity
+# websockets is a transitive of google-genai (which declares <17,>=13). It is NOT used
+# in prod (we call only generate_content/list/embed, never the Live API). Cap at <16 so
+# the prod pin matches the dev RAGAS tree (langgraph-sdk requires websockets<16) and the
+# shared-dep gate (ci_check.check_requirements) passes without bumping the prod tree for
+# a dev-only eval. See #347.
+websockets<16

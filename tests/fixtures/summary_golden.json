@@ -1,0 +1,47 @@
+[
+  {
+    "input": {
+      "title": "httpx",
+      "description": "A next-generation HTTP client for Python. HTTPX offers a broadly requests-compatible API, HTTP/1.1 and HTTP/2 support, and the ability to make both sync and async requests.",
+      "language": "Python"
+    },
+    "summary": "Для кого: Python-разработчики, делающие HTTP-запросы\nЗачем: sync и async клиент с поддержкой HTTP/2",
+    "note": "faithful: оба факта (async, HTTP/2) есть в описании"
+  },
+  {
+    "input": {
+      "title": "ripgrep",
+      "description": "ripgrep recursively searches directories for a regex pattern while respecting your gitignore rules. It is a line-oriented search tool built on Rust's regex engine.",
+      "language": "Rust"
+    },
+    "summary": "Для кого: разработчики, ищущие код по репозиторию\nЗачем: быстрый grep с учётом .gitignore",
+    "note": "faithful: рекурсивный поиск + gitignore из описания"
+  },
+  {
+    "input": {
+      "title": "duckdb",
+      "description": "DuckDB is an in-process SQL OLAP database management system. It is designed to be fast, reliable and easy to use, with a rich SQL dialect and zero external dependencies.",
+      "language": "C++"
+    },
+    "summary": "Для кого: аналитики данных, работающие с локальными датасетами\nЗачем: встраиваемая OLAP-СУБД с обучением ML-моделей на GPU",
+    "note": "UNFAITHFUL anchor: 'обучение ML на GPU' — факт, которого НЕТ в описании (галлюцинация в правильном формате). Должен дать низкий faithfulness."
+  },
+  {
+    "input": {
+      "title": "diskcache",
+      "description": "DiskCache is an Apache2 licensed disk and file backed cache library, written in pure Python, and compatible with Django. It has no dependencies and is thread-safe.",
+      "language": "Python"
+    },
+    "summary": "Для кого: Python-разработчики, кэширующие данные на диск\nЗачем: потокобезопасный кэш без зависимостей",
+    "note": "faithful: thread-safe + no dependencies из описания"
+  },
+  {
+    "input": {
+      "title": "fzf",
+      "description": "fzf is a general-purpose command-line fuzzy finder. It is an interactive filter for any kind of list; files, command history, processes, hostnames, bookmarks, git commits, etc.",
+      "language": ""
+    },
+    "summary": "Для кого: пользователи командной строки\nЗачем: интерактивный fuzzy-поиск по любым спискам",
+    "note": "faithful; language пустой — проверяет опциональность языка в контексте"
+  }
+]

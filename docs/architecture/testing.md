@@ -127,6 +127,34 @@ grounded in reality, not self-fulfilling (#327).
     completeness, symmetric — the set holds both the YouTube-surfaced and TMDB-surfaced valid dubs,
     so neither source is unfairly penalised.
 
+## Eval harness — summarizer faithfulness (#347)
+
+`scripts/eval_summarizer.py` measures `summary_ru` **meaning** (not just the `response_pattern`
+regex, which only checks the two-line *format*) against a **frozen golden-set**
+(`tests/fixtures/summary_golden.json`: GitHub-project input + a recorded summary-under-eval +
+`note`, ≥1 deliberately **unfaithful** case as an audible anchor). It builds RAGAS inputs
+(`contexts` = title+description+language the model actually saw; `answer` = the summary;
+`question` = the fixed «для кого/зачем» intent) and runs RAGAS `faithfulness` (did the summary
+invent facts absent from the source?) + `answer_relevancy`. `--threshold` gates on mean
+faithfulness (baseline first, tighten later — same *metric-before-optimization* discipline as the
+trailer harness). The loader is fail-loud (§IV/§VI): non-list / empty / missing `input.*` / empty
+`summary` → `GoldenSetError`, never a silent skip.
+
+- **Unlike the trailer harness, the metric itself is an LLM.** RAGAS computes faithfulness /
+  relevancy via an LLM-as-judge, so a *routine* run is inherently live/API-gated (like the
+  trailer `--record`, not its offline scorecard). The live judge is isolated in the single seam
+  `_evaluate_dataset` (the only mocked boundary); the pure logic — `build_ragas_inputs`,
+  `normalize_ragas_output` (the fragile version-drift key mapping, kept out of the mock on
+  purpose), `scorecard` — is unit-tested directly (`tests/test_eval_summarizer.py`). CI never
+  calls the live judge; the baseline is produced by a dev run with the judge wired (see gap **Q**).
+- **RAGAS is a dev-only dependency** (`requirements-dev.in`, lazy-imported): prod never pays its
+  import or footprint. Landing it forced two adjacent, deliberately-scoped costs, both recorded in
+  the code: prod `websockets` capped `<16` (a google-genai transitive not used in prod — we call
+  only `generate_content`/`list`/`embed`, never the Live API — realigned so the shared-dep gate
+  matches the ragas tree without bumping prod up), and three low-severity, unreachable-in-our-usage
+  CVEs suppressed in `ci_check.check_pip_audit_dev` with an inline justification + a tracked
+  follow-up to un-suppress once upstream ships compatible fixes.
+
 ## What does NOT get tested in this repo
 
 - `SheetsStorage` gspread wiring — call order, worksheet creation.
@@ -285,6 +313,15 @@ work-for-work (goal-function priority (2)).
   A **semantic output-guard for the free-form Steam source** (`steam_charts_mostplayed`, no
   `response_pattern`) is likewise out — adding one changes prod behaviour, tracked as a separate unit.
   Recorded so neither is re-opened as work-for-work.
+- **Q. RAGAS summarizer eval — the live LLM-judge runs dev-only, never in CI (#347).**
+  `scripts/eval_summarizer.py` scores `summary_ru` faithfulness/answer_relevancy with RAGAS, whose
+  metric *is* an LLM-as-judge (+ embeddings). CI unit-tests the pure seams and mocks the single
+  `_evaluate_dataset` boundary, so the **baseline number** (mean faithfulness over the golden-set) is
+  produced by a **dev run with the judge wired**, not by CI — no API key/quota/cost in the pipeline,
+  same class as the trailer `--record`. Accepted, not silent: the harness prints the score and
+  `--threshold` gates it; the [harness section](#eval-harness--summarizer-faithfulness-347) documents
+  the seam split. Recorded so «why isn't the RAGAS score in CI?» isn't re-opened as a mock-the-judge
+  work-for-work test.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
