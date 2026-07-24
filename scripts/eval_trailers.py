@@ -47,6 +47,9 @@ _DEFAULT_GOLDEN = (
     Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "trailer_golden.json"
 )
 
+# #359: Minimum threshold required to accept a trailer match
+CONFIDENCE_FLOOR = 0.6
+
 
 class GoldenSetError(ValueError):
     """Golden-set повреждён/невалиден — измерять по нему нельзя (fail-loud)."""
@@ -61,6 +64,52 @@ class GoldenCase:
     # #329: замороженный снимок TMDB-видео (опционален — записи до #329 грузятся
     # с пустым списком; evaluate_tmdb по ним даёт Miss, пока не записан снимок).
     tmdb_videos: list[TmdbVideo] = field(default_factory=list)
+
+
+# ── #359: Generic title detection & confidence scoring ─────────────────────────
+
+
+def is_generic_single_word(title: str) -> bool:
+    """Checks if a series title is a single generic token (e.g., 'Суета', 'Hustle')."""
+    clean_title = title.split("(")[0].strip()
+    return len(clean_title.split()) == 1
+
+
+def build_search_query(film: FilmProfile) -> str:
+    """Constructs YouTube search query, enriching generic single-word titles with serial context."""
+    title = film.ru_title or film.original_title
+    if is_generic_single_word(title):
+        query = f"{title} сериал трейлер"
+        if film.year:
+            query += f" {film.year}"
+        return query
+    return f"{title} трейлер"
+
+
+def evaluate_candidate_confidence(candidate: Candidate, film: FilmProfile) -> float:
+    """#359: Calculates confidence for a candidate, penalizing uncorroborated single-word matches."""
+    confidence = 0.9  # Baseline score
+    title = film.ru_title or film.original_title
+
+    if is_generic_single_word(title):
+        cand_title = candidate.title.lower()
+        cand_desc = candidate.description.lower()
+
+        # Check for corroborating markers (series, trailer, or release year keywords)
+        has_corroboration = (
+            "сериал" in cand_title
+            or "трейлер" in cand_title
+            or "сериал" in cand_desc
+            or (film.year and str(film.year) in cand_title)
+        )
+
+        if not has_corroboration:
+            confidence -= 0.4  # Penalize generic single-token matches lacking corroboration
+
+    return max(0.0, confidence)
+
+
+# ── Strategy definition & classification ─────────────────────────────────────
 
 
 def default_strategy() -> TrailerStrategy:
@@ -239,7 +288,15 @@ def evaluate(
     rows: list[tuple[GoldenCase, str | None, Outcome]] = []
     for case in cases:
         pick = strategy.pick(case.film, case.candidates)
-        rows.append((case, pick.video_id, classify(case.correct, pick.video_id)))
+        pick_id = pick.video_id if pick is not None else None
+
+        # #359: Apply confidence threshold check for single-word generic titles
+        if pick is not None:
+            conf = evaluate_candidate_confidence(pick, case.film)
+            if conf < CONFIDENCE_FLOOR:
+                pick_id = None  # Demote to Miss to avoid a Wrong-Pick
+
+        rows.append((case, pick_id, classify(case.correct, pick_id)))
     return rows, score([o for _, _, o in rows])
 
 
