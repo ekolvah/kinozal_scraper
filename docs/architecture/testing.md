@@ -300,6 +300,14 @@ work-for-work (goal-function priority (2)).
   LLM-picker не в проде?» не переоткрывали. **Open-world caveat:** wrong=0 доказан на 28
   curated-кейсах; success-path breadcrumb (`reason`/`confidence` INFO-лог в `enrich_with_trailer`)
   вскроет прод-ambiguity — пересмотреть, если в проде всплывут ничьи, которых нет в golden-set.
+  **Ревизит состоялся (#359, 2026-07-24):** breadcrumb сработал ровно как задумано — в run
+  `30066249488` 5 из 6 picks оказались `ambiguous (conf=0.3)`. Следствие ушло **не** в golden-set,
+  а в доставку: `enrich_with_trailer` теперь хеджирует низкоуверенный pick видимым маркером.
+  Golden-запись по «Суете» сознательно **не добавлена**: (a) golden-set меряет
+  `HeuristicStrategy.pick`, которую #359 не менял, — запись не измерила бы фикс; (b) в реально
+  захваченном пуле нет верифицируемо-неверного кандидата (все 5 — трейлеры того же сериала), а
+  вписывать догадку в эталон значит отравить eval. Пулы с настоящим тёзкой замораживаются в #377,
+  где они действительно меряют изменение ранжирования. Записано, чтобы отказ не переоткрыли.
 
 - **O. Request-side Gemini API-contract drift — caught by runtime visibility, not a unit test (#340).** When Google changes what the API accepts (e.g. 3.x models reject `thinking_budget=0`, #338), a unit test with a `_FakeClient` **cannot** catch it: the fake encodes our assumption about the request contract and can only confirm it. A live-E2E against real Gemini is a scope-skip (credentials/flake/quota). So the standing safety net is **runtime visibility, not a test**: a `400 INVALID_ARGUMENT` is classified as `ModelConfigRejected` → ERROR log + operator Telegram alert + red job (`config_rejected_models`), instead of a silent `TryNextModel` that green rotation hides. The one unit-testable guard is a **contract test on a real `google.genai.errors.ClientError`** (`test_real_client_error_invalid_argument_routes_to_config_rejected`) — it fails loudly if our `.status` detection drifts from the SDK's actual error shape (which would otherwise ship the whole fix as a green-tested no-op). Recorded so the live-E2E isn't re-opened as work-for-work.
 - **P. Prompt-injection resistance of the *real model* — offline structural tests only, no live eval (#308).**
