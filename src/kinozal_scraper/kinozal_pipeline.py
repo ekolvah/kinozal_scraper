@@ -497,10 +497,23 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     граница — §II) и совпадает с eval `default_strategy()` (`scripts/eval_trailers.py`)
     — прод и замер меряют одну стратегию; при эскалации eval-стратегии обнови и здесь.
 
-    Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO; исключение retrieval
-    → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick пишет INFO-breadcrumb
-    с `reason`/`confidence` — «ru language» отличим от «ambiguous» при разборе прод-лога
-    (§IV, не тихий уверенный выбор). Либо путь — item всё равно уведомляется, не тихий "".
+    Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO с размером пула;
+    исключение retrieval → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick
+    пишет INFO-breadcrumb с `video_id`/`reason`/`confidence`. Любой путь — item всё равно
+    уведомляется, не тихий "".
+
+    **Почему breadcrumb несёт `video_id` (#359).** Без него отчёт «пришла не та ссылка»
+    неразбираем: по логу видно `ambiguous`, но не видно, какое видео ушло пользователю —
+    расследование упирается в реконструкцию по живому YouTube, чей выдач меняется за сутки.
+    Размер пула на miss-ветке отделяет «YouTube ничего не вернул» от «вернул N, ни один не
+    прошёл relevance» — это разные баги.
+
+    **Отбор по `confidence` здесь сознательно НЕ делается.** #359 пробовал давить
+    низкоуверенные picks (`< 0.5`) в miss-маркер и это откачено: замер на golden-set (28
+    кейсов) дал 26 hit → 16 hit, 2 miss → 12 miss, wrong 0 → 0. Все 10 подавленных picks
+    были ПОПАДАНИЯМИ: `confidence=0.3` («ничья») означает «несколько одинаково хороших
+    трейлеров одного фильма» (дубляж №1 vs №2), а не «возможно, не тот фильм». Не менять
+    логику отбора без прогона метрики (`scripts/eval_trailers.py`).
     """
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
@@ -514,9 +527,15 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         return _TRAILER_ERROR_MARKER
     pick = HeuristicStrategy().pick(profile, candidates)
     if pick.video_id is None:
-        logger.info("no trailer found for %r", item.title)
+        logger.info("no trailer found for %r (pool=%d candidates)", item.title, len(candidates))
         return _TRAILER_MISS_MARKER
-    logger.info("trailer pick for %r: %s (conf=%.1f)", item.title, pick.reason, pick.confidence)
+    logger.info(
+        "trailer pick for %r: %s (conf=%.1f, video_id=%s)",
+        item.title,
+        pick.reason,
+        pick.confidence,
+        pick.video_id,
+    )
     return f"https://www.youtube.com/watch?v={pick.video_id}"
 
 
