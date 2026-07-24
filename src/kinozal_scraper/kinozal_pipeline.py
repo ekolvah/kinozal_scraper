@@ -478,17 +478,6 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
 # dev-tripwire firing only on real anomalies (a clean miss is expected).
 _TRAILER_MISS_MARKER = "🎬 трейлер не найден"
 _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
-# Named boundary between "the strategy stands behind this pick" and "it admits a
-# coin flip". `HeuristicStrategy` emits 0.0 / 0.3 (ambiguous tie) / 0.9 today, so
-# 0.5 splits the two live cases. Below it the item gets NO link at all (#359):
-# a link the user has to verify himself is worth less than an honest miss — the
-# same preference the eval harness already scores (`Hit +1 / Miss 0 / Wrong −2`,
-# `scripts/eval_trailers.py`). A "picked, but unsure" marker was built and rejected
-# by the owner: it changes nothing the user does and fires on most items.
-# Ties are frequent in prod because the prod profile carries no cast, collapsing
-# the ranking key — that root cause is #377, and it is what buys the links back.
-# Do NOT lower this threshold to make more links appear.
-_TRAILER_MIN_CONFIDENCE = 0.5
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
@@ -508,16 +497,23 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     граница — §II) и совпадает с eval `default_strategy()` (`scripts/eval_trailers.py`)
     — прод и замер меряют одну стратегию; при эскалации eval-стратегии обнови и здесь.
 
-    Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO; исключение retrieval
-    → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick пишет INFO-breadcrumb
-    с `reason`/`confidence` — «ru language» отличим от «ambiguous» при разборе прод-лога.
+    Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO с размером пула;
+    исключение retrieval → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick
+    пишет INFO-breadcrumb с `video_id`/`reason`/`confidence`. Любой путь — item всё равно
+    уведомляется, не тихий "".
 
-    Pick ниже `_TRAILER_MIN_CONFIDENCE` (сегодня — только ambiguous-ничья, 0.3) отдаётся
-    как `_TRAILER_MISS_MARKER`, БЕЗ ссылки: стратегия признаёт монетку, а ссылка, которую
-    пользователь всё равно обязан проверить сам, стоит меньше честного маркера. #359 чинил
-    ровно то, что `confidence` здесь выбрасывался и коин-флип уходил неотличимо от
-    уверенного pick'а. Ссылку возвращает #377 (снимает причину массовых ничьих), а не
-    понижение порога. Любой путь — item всё равно уведомляется, не тихий "".
+    **Почему breadcrumb несёт `video_id` (#359).** Без него отчёт «пришла не та ссылка»
+    неразбираем: по логу видно `ambiguous`, но не видно, какое видео ушло пользователю —
+    расследование упирается в реконструкцию по живому YouTube, чей выдач меняется за сутки.
+    Размер пула на miss-ветке отделяет «YouTube ничего не вернул» от «вернул N, ни один не
+    прошёл relevance» — это разные баги.
+
+    **Отбор по `confidence` здесь сознательно НЕ делается.** #359 пробовал давить
+    низкоуверенные picks (`< 0.5`) в miss-маркер и это откачено: замер на golden-set (28
+    кейсов) дал 26 hit → 16 hit, 2 miss → 12 miss, wrong 0 → 0. Все 10 подавленных picks
+    были ПОПАДАНИЯМИ: `confidence=0.3` («ничья») означает «несколько одинаково хороших
+    трейлеров одного фильма» (дубляж №1 vs №2), а не «возможно, не тот фильм». Не менять
+    логику отбора без прогона метрики (`scripts/eval_trailers.py`).
     """
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
@@ -531,11 +527,15 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         return _TRAILER_ERROR_MARKER
     pick = HeuristicStrategy().pick(profile, candidates)
     if pick.video_id is None:
-        logger.info("no trailer found for %r", item.title)
+        logger.info("no trailer found for %r (pool=%d candidates)", item.title, len(candidates))
         return _TRAILER_MISS_MARKER
-    logger.info("trailer pick for %r: %s (conf=%.1f)", item.title, pick.reason, pick.confidence)
-    if pick.confidence < _TRAILER_MIN_CONFIDENCE:
-        return _TRAILER_MISS_MARKER
+    logger.info(
+        "trailer pick for %r: %s (conf=%.1f, video_id=%s)",
+        item.title,
+        pick.reason,
+        pick.confidence,
+        pick.video_id,
+    )
     return f"https://www.youtube.com/watch?v={pick.video_id}"
 
 
