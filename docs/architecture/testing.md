@@ -146,7 +146,7 @@ trailer harness). The loader is fail-loud (§IV/§VI): non-list / empty / missin
   `_evaluate_dataset` (the only mocked boundary); the pure logic — `build_ragas_inputs`,
   `normalize_ragas_output` (the fragile version-drift key mapping, kept out of the mock on
   purpose), `scorecard` — is unit-tested directly (`tests/test_eval_summarizer.py`). CI never
-  calls the live judge; the baseline is produced by a dev run with the judge wired (see gap **N**).
+  calls the live judge; the baseline is produced by a dev run with the judge wired (see gap **Q**).
 - **RAGAS is a dev-only dependency** (`requirements-dev.in`, lazy-imported): prod never pays its
   import or footprint. Landing it forced two adjacent, deliberately-scoped costs, both recorded in
   the code: prod `websockets` capped `<16` (a google-genai transitive not used in prod — we call

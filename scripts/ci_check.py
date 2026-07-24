@@ -56,7 +56,7 @@ def check_pip_audit() -> None:
 
 # Dev-only CVEs in the RAGAS eval tree (#347) that are unreachable in our offline
 # text-summarization eval and cannot be cleared by a bump today. Suppressed here (not
-# in prod audit) with a tracked follow-up (#TODO) to remove each ID once upstream ships
+# in prod audit) with a tracked follow-up (#360) to remove each ID once upstream ships
 # a fix that the ragas 0.4.x tree accepts:
 #   PYSEC-2026-2447  diskcache  unsafe pickle deserialization — local, needs an
 #       attacker-controlled cache file; our cache is self-produced. No fix released.
