@@ -11,6 +11,7 @@ from kinozal_scraper.kinozal_auth import KinozalLoginError
 from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_ERROR_MARKER,
     _TRAILER_MISS_MARKER,
+    _dedupe_key,
     _kinozal_title,
     _kinozal_urls,
     enrich_with_trailer,
@@ -223,6 +224,40 @@ class TestKinozalTitle(unittest.TestCase):
         self.assertEqual(_kinozal_title("ДБ (Videofilm/Int.)"), "ДБ (Videofilm/Int.)")
 
 
+# ── _dedupe_key ───────────────────────────────────────────────────────────────
+
+
+class TestDedupeKey(unittest.TestCase):
+    def test_sequel_and_original_get_distinct_keys(self) -> None:
+        # Namesake/sequel with a different original+year must NOT collapse (#363).
+        original = _dedupe_key("Дюна / Dune / 2021 / BDRip")
+        sequel = _dedupe_key("Дюна / Dune: Part Two / 2024 / BDRip")
+        self.assertEqual(original, "Дюна / Dune / 2021")
+        self.assertEqual(sequel, "Дюна / Dune: Part Two / 2024")
+        self.assertNotEqual(original, sequel)
+
+    def test_repacks_share_key(self) -> None:
+        # Same film, different Format segment → same key (repacks still collapse).
+        self.assertEqual(
+            _dedupe_key("Great Film / 2025 / Portable"),
+            _dedupe_key("Great Film / 2025 / RePack (FitGirl)"),
+        )
+        self.assertEqual(_dedupe_key("Great Film / 2025 / Portable"), "Great Film / 2025")
+
+    def test_no_year_falls_back_to_first_segment(self) -> None:
+        # No year segment → cannot locate the title/format boundary → keep the clean
+        # first segment (current behaviour, minimal-diff fallback).
+        self.assertEqual(_dedupe_key("Дюна"), "Дюна")
+        self.assertEqual(_dedupe_key("Foo / Bar"), "Foo")
+
+    def test_year_titled_film_collapses_to_year(self) -> None:
+        # Edge: the RU segment IS itself a bare year ("2012", "1917"). The scan
+        # matches it at index 0 → key "2012". This is a no-op vs. today's
+        # first-segment behaviour, consciously accepted and consistent with
+        # original_title's #138 numeric-original edge (see testing.md ledger).
+        self.assertEqual(_dedupe_key("2012 / 2012 / 2009 / BDRip"), "2012")
+
+
 # ── original_title ────────────────────────────────────────────────────────────
 
 
@@ -387,14 +422,30 @@ class TestPipelineDeduplication(unittest.TestCase):
         """
         storage, notifier = _run(html=html)
         self.assertEqual(len(notifier.sent), 1)
-        self.assertEqual(notifier.sent[0].id, "Great Film")
+        self.assertEqual(notifier.sent[0].id, "Great Film / 2025")
         self.assertEqual(len(storage.stored_rows("movies")), 1)
 
-    def test_stored_dedupe_key_is_clean_title(self) -> None:
+    def test_sequel_and_namesake_both_notified(self) -> None:
+        # Two different films sharing the RU first segment but differing in
+        # original+year must both reach the user (#363) — the dedupe key widened
+        # from the clean RU title to RU/Original/Year, so they no longer collapse.
+        html = """
+        <html><body>
+        <a href="/details.php?id=1" title="Дюна / Dune / 2021 / BDRip"><img src="/p1.jpg"></a>
+        <a href="/details.php?id=2" title="Дюна / Dune: Part Two / 2024 / BDRip"><img src="/p2.jpg"></a>
+        </body></html>
+        """
+        storage, notifier = _run(html=html)
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertEqual(len(storage.stored_rows("movies")), 2)
+
+    def test_stored_dedupe_key_includes_year(self) -> None:
+        # The dedupe key now carries RU/Original/Year (#363), while the display
+        # title stays the clean RU segment — the "display ≠ key" invariant.
         storage, notifier = _run()
         row = storage.stored_rows("movies")[0]
         dedupe_key, title = row[0], row[1]
-        self.assertEqual(dedupe_key, "Film One")
+        self.assertEqual(dedupe_key, "Film One / 2024")
         self.assertEqual(title, "Film One")
 
 
