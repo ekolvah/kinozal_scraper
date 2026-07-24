@@ -472,12 +472,30 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
     return result
 
 
-# §IV visible markers (#138): a trailer miss/failure must reach the user as a
-# legible line, never a silent empty `{trailer_link}`. Distinct text + log level
-# let the user tell "no trailer exists" from "lookup broke", and keep the WARNING
-# dev-tripwire firing only on real anomalies (a clean miss is expected).
+# §IV visible markers (#138): a trailer miss/failure/coin-flip must reach the user
+# as a legible line, never a silent empty `{trailer_link}` and never a link that
+# looks more certain than it is. Distinct text + log level let the user tell "no
+# trailer exists" from "lookup broke" from "we guessed", and keep the WARNING
+# dev-tripwire firing only on real anomalies (a miss and a tie are both expected).
+#
+# `_TRAILER_UNSURE_PREFIX` is a PREFIX, not an exact value like the two markers
+# above — an "is this a marker?" check by `==` will not match it (#359).
+#
+# Load-bearing rendering assumption (#359): a prefixed value no longer starts with
+# `http`, so `generic_pipeline.build_notification` routes it to `_html.escape` and
+# renders visible text instead of `<a href=…>Trailer</a>`. The URL stays clickable
+# only via the Telegram client's plain-URL auto-detection. `watch?v=ID` carries no
+# `&`, so escaping is a no-op; a query with `&` would render `&amp;` and break that
+# auto-link — do not change the URL shape without revisiting this.
 _TRAILER_MISS_MARKER = "🎬 трейлер не найден"
 _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
+_TRAILER_UNSURE_PREFIX = "⚠️ трейлер неточный: "
+# Named boundary between "the strategy stands behind this pick" and "it admits a
+# coin flip". `HeuristicStrategy` emits 0.0 / 0.3 (ambiguous tie) / 0.9 today. Ties
+# are frequent in prod because the prod profile carries no cast, collapsing the
+# ranking key — that root cause is #377, not this threshold; do not tune the
+# threshold down to silence the marker.
+_TRAILER_MIN_CONFIDENCE = 0.5
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
@@ -499,8 +517,14 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
 
     Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO; исключение retrieval
     → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick пишет INFO-breadcrumb
-    с `reason`/`confidence` — «ru language» отличим от «ambiguous» при разборе прод-лога
-    (§IV, не тихий уверенный выбор). Либо путь — item всё равно уведомляется, не тихий "".
+    с `reason`/`confidence` — «ru language» отличим от «ambiguous» при разборе прод-лога.
+
+    Pick ниже `_TRAILER_MIN_CONFIDENCE` (сегодня — только ambiguous-ничья, 0.3) отдаётся
+    под `_TRAILER_UNSURE_PREFIX`: стратегия признаёт монетку, и эта неуверенность обязана
+    дойти до пользователя, а не остаться в логе (§IV — #359 чинил ровно то, что
+    `confidence` здесь выбрасывался). URL сохраняется: на реальных пулах равноранговые
+    кандидаты — как правило настоящие трейлеры, поэтому Miss стоил бы recall'а зря.
+    Любой путь — item всё равно уведомляется, не тихий "".
     """
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
@@ -517,7 +541,10 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
         logger.info("no trailer found for %r", item.title)
         return _TRAILER_MISS_MARKER
     logger.info("trailer pick for %r: %s (conf=%.1f)", item.title, pick.reason, pick.confidence)
-    return f"https://www.youtube.com/watch?v={pick.video_id}"
+    url = f"https://www.youtube.com/watch?v={pick.video_id}"
+    if pick.confidence < _TRAILER_MIN_CONFIDENCE:
+        return f"{_TRAILER_UNSURE_PREFIX}{url}"
+    return url
 
 
 def _split_by_excluded_genre(
