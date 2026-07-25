@@ -300,6 +300,18 @@ work-for-work (goal-function priority (2)).
   LLM-picker не в проде?» не переоткрывали. **Open-world caveat:** wrong=0 доказан на 28
   curated-кейсах; success-path breadcrumb (`reason`/`confidence` INFO-лог в `enrich_with_trailer`)
   вскроет прод-ambiguity — пересмотреть, если в проде всплывут ничьи, которых нет в golden-set.
+  **Ревизит состоялся (#359, 2026-07-24) и дал обратный результат — записано, чтобы вывод не
+  переоткрывали.** Breadcrumb сработал: в run `30066249488` 5 из 6 picks оказались
+  `ambiguous (conf=0.3)`. Гипотеза «ничья → произвольный выбор → чужая ссылка» была реализована
+  (подавление picks с `confidence < 0.5` в miss-маркер) и **откачена по замеру**: на 28 golden-
+  кейсах 26 hit → 16, 2 miss → 12, wrong 0 → 0. Все 10 подавленных picks были **попаданиями** —
+  `confidence=0.3` означает «несколько одинаково хороших трейлеров одного фильма» (дубляж №1 vs
+  №2), ровно то, что и моделируют accept-set'ы. Прод-ничьи частые, но безвредные; #377 (каст как
+  разрыватель ничьих) закрыт как wontfix. Golden-запись по «Суете» не добавлена: верифицируемо-
+  неверного кандидата в захваченном пуле нет (все 5 — трейлеры того же сериала), а догадка в
+  эталоне отравила бы eval. **Остаточный пробел метрики:** в наборе ноль `wrong`-кейсов, поэтому
+  он структурно не может вознаградить изменение, защищающее от неверных ссылок, — только наказать
+  за осторожность (отдельный issue). #359 в итоге сузился до диагностики: `video_id` в breadcrumb.
 
 - **O. Request-side Gemini API-contract drift — caught by runtime visibility, not a unit test (#340).** When Google changes what the API accepts (e.g. 3.x models reject `thinking_budget=0`, #338), a unit test with a `_FakeClient` **cannot** catch it: the fake encodes our assumption about the request contract and can only confirm it. A live-E2E against real Gemini is a scope-skip (credentials/flake/quota). So the standing safety net is **runtime visibility, not a test**: a `400 INVALID_ARGUMENT` is classified as `ModelConfigRejected` → ERROR log + operator Telegram alert + red job (`config_rejected_models`), instead of a silent `TryNextModel` that green rotation hides. The one unit-testable guard is a **contract test on a real `google.genai.errors.ClientError`** (`test_real_client_error_invalid_argument_routes_to_config_rejected`) — it fails loudly if our `.status` detection drifts from the SDK's actual error shape (which would otherwise ship the whole fix as a green-tested no-op). Recorded so the live-E2E isn't re-opened as work-for-work.
 - **P. Prompt-injection resistance of the *real model* — offline structural tests only, no live eval (#308).**

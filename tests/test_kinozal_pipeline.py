@@ -208,6 +208,43 @@ class TestEnrichWithTrailer(unittest.TestCase):
             enrich_with_trailer(item, youtube)
         self.assertTrue(any("ru language" in r.getMessage() for r in cm.records))
 
+    def test_pick_breadcrumb_carries_video_id(self) -> None:
+        # #359: без `video_id` в логе отчёт «пришла не та ссылка» неразбираем — видно
+        # `ambiguous`, но не видно, ЧТО ушло пользователю. Расследование #359 уткнулось
+        # ровно в это и пришлось реконструировать пул по живому YouTube.
+        pool = [Candidate(video_id="ru01", title="Гнев 2026 официальный трейлер")]
+        youtube = _PoolYoutube(pool)
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            enrich_with_trailer(item, youtube)
+        self.assertTrue(any("video_id=ru01" in r.getMessage() for r in cm.records))
+
+    def test_miss_breadcrumb_reports_pool_size(self) -> None:
+        # #359: «YouTube ничего не вернул» и «вернул N, ни один не прошёл relevance» —
+        # разные баги, а miss-лог их не различал. Пул непустой, но год не тот.
+        pool = [Candidate(video_id="ru01", title="Гнев 1999 трейлер")]
+        youtube = _PoolYoutube(pool)
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
+            trailer = enrich_with_trailer(item, youtube)
+        self.assertEqual(trailer, _TRAILER_MISS_MARKER)
+        self.assertTrue(any("pool=1 candidates" in r.getMessage() for r in cm.records))
+
+    def test_ambiguous_pick_still_returns_url(self) -> None:
+        # Guard (#359): ambiguous-ничья (conf=0.3) ОТДАЁТ ссылку — подавление её в
+        # miss-маркер было реализовано и откачено по замеру на golden-set: все 10
+        # подавленных picks оказались попаданиями (26 hit → 16, wrong 0 → 0), потому
+        # что ничья = «несколько дубляжей одного фильма», а не «возможно, не тот фильм».
+        # Не подавлять снова без прогона `scripts/eval_trailers.py`.
+        pool = [
+            Candidate(video_id="ru01", title="Гнев 2026 русский трейлер"),
+            Candidate(video_id="ru02", title="Гнев 2026 трейлер #2"),
+        ]
+        youtube = _PoolYoutube(pool)
+        item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
+        trailer = enrich_with_trailer(item, youtube)
+        self.assertEqual(trailer, "https://www.youtube.com/watch?v=ru01")
+
 
 # ── _kinozal_title ────────────────────────────────────────────────────────────
 
