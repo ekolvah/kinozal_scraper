@@ -181,9 +181,10 @@ class TestBlockDiagnostics(unittest.TestCase):
         self.assertIn("challenge", out)
 
     def test_reads_case_insensitive_headers(self) -> None:
-        # curl_cffi returns a case-insensitive Headers mapping, but the exact
-        # casing on the wire is the server's choice — the diagnostic must not
-        # depend on it.
+        # In prod the mapping is curl_cffi `Headers`, which normalises casing
+        # itself (verified against a real Response). This pins the *pure*
+        # function's contract instead: it takes `Any` mapping, so the diagnostic
+        # must not depend on the casing the caller happened to use.
         out = describe_block(403, {"CF-Ray": "abc123-LCA"}, "")
         self.assertIn("abc123-LCA", out)
 
@@ -213,6 +214,7 @@ class TestBlockDiagnostics(unittest.TestCase):
         # §IV: the diagnostic is total by construction (.get()/slices), never
         # wrapped in try/except — a non-Cloudflare host with no body must still
         # produce a line instead of masking the failure with a second exception.
+        headers: dict[str, str] | None
         for headers in ({}, None):
             with self.subTest(headers=headers):
                 out = describe_block(503, headers, "")

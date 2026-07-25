@@ -165,7 +165,10 @@ trailer harness). The loader is fail-loud (§IV/§VI): non-list / empty / missin
   (Its **retry on transient HTTP responses (403 anti-bot + 429 + 5xx)** *is* tested — see
   `test_http_fetch.py::TestFetchRetry`, incl. a reality-anchor over a real curl_cffi
   `HTTPError` — because that is correctness logic mocked at the `requests.get` boundary,
-  the HTTP-transport sibling of the `SheetsStorage` retry above (#306).)
+  the HTTP-transport sibling of the `SheetsStorage` retry above (#306). Its **block
+  diagnostics** (`describe_block`, #358) are tested too — `TestBlockDiagnostics`, pure
+  formatter + a real captured Cloudflare block page; what *can't* be tested is which
+  block a given egress IP earns — gap **S**.)
 - `TelegramChannelSummarizer` / Telethon calls.
 - Any code path that requires live credentials.
 
@@ -346,6 +349,23 @@ work-for-work (goal-function priority (2)).
   `_dedup_and_log_coverage` INFO line (`N extracted (M after dedup-collapse)`), so it isn't a silent §IV
   loss. Both accepted because the disambiguating signal (a distinct year) is genuinely absent; recorded so
   a year-titled namesake collision isn't re-opened as a regression.
+- **S. Anti-bot 403: root cause is the *egress IP*, and it can only be observed in prod (#358).**
+  Замер 2026-07-25 тем же `curl_cffi==0.15.0`, что и прод: локально (residential IP)
+  `impersonate="chrome"` → 200, **без** impersonate → 403, `chrome124`/`chrome131` → те же 200;
+  в CI (датацентровый IP GitHub Actions) → 403 семь суток подряд (18–24.07), при этом 14.07 и 17.07
+  тот же CI получал 200. В теле блока **нет** `cdn-cgi/challenge-platform` и turnstile. Выводы,
+  записанные чтобы их не переоткрывали: (1) TLS-фингерпринт (#217) **исправен** — пин свежего
+  `impersonate`-таргета лечит ничего; (2) **Playwright бесполезен** — решать нечего, это плоский
+  WAF-отказ, а не JS-челлендж; (3) причина — репутация датацентрового IP (вероятностный bot score),
+  лечится только другим egress'ом (прокси / self-hosted runner) — решение оператора, вынесено в
+  отдельную issue. **Почему это не тест:** воспроизвести можно лишь с CI-IP, а исход зависит от
+  внешнего скоринга — любой «тест» мерил бы погоду у Cloudflare. Стоящая на этом месте страховка —
+  **видимость** (§IV): `describe_block` пишет per-attempt WARNING (`cf-ray`, `cf-mitigated`,
+  Cloudflare error code, `<title>`, размер тела), по которому следующий инцидент разбирается из
+  лога, а не повторным ручным замером. Сам форматтер — pure и покрыт unit'ами
+  (`TestBlockDiagnostics`) поверх **реальной** блок-страницы `tests/fixtures/cloudflare_block_403.html`
+  (IP/Ray-ID обезличены): reality-anchor держит контракт «сигнал в `<title>`, а не в префиксе тела»
+  — первые ~200 символов настоящей страницы это `<!DOCTYPE html> <!--[if lt IE 7]>…`.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
