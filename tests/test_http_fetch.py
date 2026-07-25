@@ -1,16 +1,28 @@
+import pathlib
 import unittest
 import unittest.mock
 
 from curl_cffi.requests.exceptions import HTTPError
 
-from kinozal_scraper.http_fetch import NotAnImageError, fetch_bytes, fetch_html
+from kinozal_scraper.http_fetch import NotAnImageError, describe_block, fetch_bytes, fetch_html
+
+_FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
 
-def _transient_resp(status_code: int) -> unittest.mock.Mock:
+def _transient_resp(
+    status_code: int,
+    headers: dict[str, str] | None = None,
+    body: bytes = b"",
+) -> unittest.mock.Mock:
     """A response whose raise_for_status raises a real curl_cffi HTTPError
-    carrying an int .response.status_code — the shape the retry predicate reads."""
+    carrying an int .response.status_code — the shape the retry predicate reads.
+
+    `headers`/`body` are real values (not Mocks) because the #358 block
+    diagnostics read them on the failure path."""
     resp = unittest.mock.Mock()
     resp.status_code = status_code
+    resp.headers = headers if headers is not None else {}
+    resp.content = body
     resp.raise_for_status.side_effect = HTTPError(f"HTTP Error {status_code}", 0, resp)
     return resp
 
@@ -152,6 +164,68 @@ class TestFetchBytes(unittest.TestCase):
             fetch_bytes("https://i126.fastpic.org/big/x.jpg")
 
 
+class TestBlockDiagnostics(unittest.TestCase):
+    """#358: an anti-bot 403 must reach the operator as evidence, not as a bare
+    `HTTP Error 403:`. `describe_block` is the pure formatter behind that WARNING —
+    what it extracts decides whether the follow-up fix is «pace the requests»
+    (1015), «different egress IP» (1020) or «solve a challenge» (cf-mitigated)."""
+
+    def test_reports_status_ray_and_mitigated(self) -> None:
+        out = describe_block(
+            403,
+            {"cf-ray": "a2085f48a9fad625-LCA", "cf-mitigated": "challenge"},
+            "<html><title>Just a moment...</title></html>",
+        )
+        self.assertIn("403", out)
+        self.assertIn("a2085f48a9fad625-LCA", out)
+        self.assertIn("challenge", out)
+
+    def test_reads_case_insensitive_headers(self) -> None:
+        # In prod the mapping is curl_cffi `Headers`, which normalises casing
+        # itself (verified against a real Response). This pins the *pure*
+        # function's contract instead: it takes `Any` mapping, so the diagnostic
+        # must not depend on the casing the caller happened to use.
+        out = describe_block(403, {"CF-Ray": "abc123-LCA"}, "")
+        self.assertIn("abc123-LCA", out)
+
+    def test_extracts_title_from_real_cloudflare_page(self) -> None:
+        # Reality-anchor over the real block page captured 2026-07-25 from
+        # soldoutticketbox.com (IP/Ray-ID scrubbed). Load-bearing: the first ~200
+        # chars of this page are `<!DOCTYPE html> <!--[if lt IE 7]>…`, i.e. a naive
+        # body prefix is diagnostically EMPTY — the signal lives in <title>.
+        body = (_FIXTURES / "cloudflare_block_403.html").read_text(encoding="utf-8")
+        out = describe_block(403, {"cf-ray": "aaaa-LCA"}, body)
+        self.assertIn("Attention Required! | Cloudflare", out)
+        self.assertNotIn("DOCTYPE", out)
+        self.assertIn(str(len(body)), out)
+
+    def test_extracts_cloudflare_error_code(self) -> None:
+        # 1020 (firewall rule → needs a different IP) and 1015 (rate limit → needs
+        # pacing) lead to opposite follow-up fixes, so the code must survive into
+        # the log line.
+        self.assertIn("1020", describe_block(403, {}, "<p>Error code: 1020</p>"))
+        self.assertIn("1015", describe_block(429, {}, "<p>error code 1015</p>"))
+
+    def test_falls_back_to_body_prefix_without_title(self) -> None:
+        out = describe_block(403, {}, "  Sorry, you have\nbeen blocked  ")
+        self.assertIn("Sorry, you have been blocked", out)
+
+    def test_survives_missing_headers_and_empty_body(self) -> None:
+        # §IV: the diagnostic is total by construction (.get()/slices), never
+        # wrapped in try/except — a non-Cloudflare host with no body must still
+        # produce a line instead of masking the failure with a second exception.
+        headers: dict[str, str] | None
+        for headers in ({}, None):
+            with self.subTest(headers=headers):
+                out = describe_block(503, headers, "")
+                self.assertIn("503", out)
+
+    def test_output_is_single_line_and_bounded(self) -> None:
+        out = describe_block(403, {"cf-ray": "x-LCA"}, "line\n" * 60000)
+        self.assertNotIn("\n", out)
+        self.assertLessEqual(len(out), 400)
+
+
 class TestFetchRetry(unittest.TestCase):
     """http_fetch retries transient HTTP responses (403 anti-bot / 429 / 5xx)
     instead of crashing the source on the first blip — the HTTP-transport sibling
@@ -235,6 +309,45 @@ class TestFetchRetry(unittest.TestCase):
         ):
             fetch_bytes("https://i126.fastpic.org/big/x.jpg")
         self.assertEqual(mget.call_count, 1)
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_fetch_html_logs_diagnostics_on_each_403_attempt(
+        self, _sleep: unittest.mock.Mock
+    ) -> None:
+        # #358: one WARNING per attempt, not one per give-up. Cloudflare answers
+        # from a different edge PoP each try, so per-attempt cf-ray is the only
+        # way to see whether attempt 4 differed from attempt 1 — which is exactly
+        # the evidence the retry-policy follow-up needs.
+        attempts = [
+            _transient_resp(403, {"cf-ray": f"ray{n}-LCA"}, b"<title>Attention Required!</title>")
+            for n in range(4)
+        ]
+        with (
+            unittest.mock.patch("kinozal_scraper.http_fetch.requests.get", side_effect=attempts),
+            self.assertLogs("kinozal_scraper.http_fetch", level="WARNING") as logs,
+            self.assertRaises(HTTPError),
+        ):
+            fetch_html("https://www.soldoutticketbox.com/x")
+        self.assertEqual(len(logs.output), 4)
+        for n in range(4):
+            self.assertIn(f"ray{n}-LCA", logs.output[n])
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_diagnostics_does_not_swallow_http_error(self, _sleep: unittest.mock.Mock) -> None:
+        # §IV: diagnostics must be additive. A 403 with no cf-* headers and an
+        # empty body (non-Cloudflare host) still logs, still raises, still retries
+        # the same number of times — the log must not become a silent skip.
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.http_fetch.requests.get",
+                side_effect=lambda *a, **k: _transient_resp(403),
+            ) as mget,
+            self.assertLogs("kinozal_scraper.http_fetch", level="WARNING") as logs,
+            self.assertRaises(HTTPError),
+        ):
+            fetch_html("https://example.com")
+        self.assertEqual(mget.call_count, 4)
+        self.assertEqual(len(logs.output), 4)
 
     def test_predicate_matches_real_curl_cffi_httperror(self) -> None:
         # Reality-anchor (SHOULD-FIX #1, sibling of TestGspreadRetryIntegrationAnchor):
