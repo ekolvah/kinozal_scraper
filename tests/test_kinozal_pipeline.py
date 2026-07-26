@@ -12,7 +12,6 @@ from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_ERROR_MARKER,
     _TRAILER_MISS_MARKER,
     _TRAILER_QUOTA_MARKER,
-    _TRAILER_RUN_BUDGET,
     _dedupe_key,
     _kinozal_title,
     _kinozal_urls,
@@ -25,6 +24,7 @@ from kinozal_scraper.telegram_notifier import InMemoryNotifier
 from kinozal_scraper.text_utils import original_title
 from kinozal_scraper.text_utils import title_year_matches as _title_year_matches
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
+from kinozal_scraper.youtube import YoutubeQuotaExhausted
 
 # ── minimal synthetic HTML matching kinozal_movies row_selector ──────────────
 
@@ -798,16 +798,21 @@ class TestDeliveryTruthfulness(unittest.TestCase):
 class _CountingYoutube:
     """Считает походы в retrieval и синтезирует релевантного кандидата (#384).
 
-    Счётчик — единственный способ проверить AC1: «фильмы сверх бюджета в сеть НЕ
-    ходят вообще», в отличие от «ходят и получают 429». Отсутствие маркера такого
-    различия не даёт.
+    `fail_from` — с какого по счёту вызова начинать бросать `raises`. Счётчик
+    здесь единственный способ отличить «оставшиеся фильмы в сеть НЕ ходят» от
+    «ходят и получают отказ»: маркер в уведомлении у обоих случаев одинаковый.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, fail_from: int | None = None, raises: Exception | None = None) -> None:
         self.calls = 0
+        self.fail_from = fail_from
+        self.raises = raises
 
     def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
         self.calls += 1
+        if self.fail_from is not None and self.calls >= self.fail_from:
+            assert self.raises is not None
+            raise self.raises
         year = f" {profile.year}" if profile.year else ""
         return [
             Candidate(
@@ -830,51 +835,69 @@ def _config_for(n: int) -> dict[str, Any]:
     return {"version": 1, "sources": [{**_KINOZAL_SOURCE, "limit": n}]}
 
 
-class TestTrailerRunBudget(unittest.TestCase):
+class TestQuotaStop(unittest.TestCase):
     """#384: суточная квота YouTube — 100 `search.list` (замер 2026-07-26), а прогон
-    при всплеске items просит втрое больше. Бюджет режет обогащение до того, как
-    запросы уйдут в гарантированный отказ."""
+    при всплеске items просит втрое больше. Границу называет сам API: первый квотный
+    отказ останавливает retrieval, вычислять потолок заранее не нужно."""
 
-    def test_enrichment_stops_after_run_budget(self) -> None:
-        over = _TRAILER_RUN_BUDGET + 3
-        youtube = _CountingYoutube()
-        _run(html=_html_rows(over), youtube=youtube, sources_config=_config_for(over))
-        self.assertEqual(youtube.calls, _TRAILER_RUN_BUDGET)
+    _TOTAL = 10
+    _FAIL_FROM = 4
 
-    def test_over_budget_items_get_distinct_quota_marker(self) -> None:
-        # §IV: исчерпание суточной квоты — не поломка поиска и не отсутствие трейлера.
-        # Третья причина требует от оператора третьего действия, значит и маркер третий.
-        over = _TRAILER_RUN_BUDGET + 3
+    def _run_with(self, youtube: _CountingYoutube) -> InMemoryNotifier:
         _, notifier = _run(
-            html=_html_rows(over), youtube=_CountingYoutube(), sources_config=_config_for(over)
+            html=_html_rows(self._TOTAL),
+            youtube=youtube,
+            sources_config=_config_for(self._TOTAL),
         )
-        tail = notifier.sent[_TRAILER_RUN_BUDGET:]
-        self.assertEqual(len(tail), 3)
+        return notifier
+
+    def test_enrichment_stops_after_first_quota_error(self) -> None:
+        # Цена обнаружения — запросы ОДНОГО фильма, а не 163 отказа подряд, как в
+        # прогоне 30143534431: после 4-го вызова в сеть не ходим вообще.
+        youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=YoutubeQuotaExhausted("429"))
+        self._run_with(youtube)
+        self.assertEqual(youtube.calls, self._FAIL_FROM)
+
+    def test_remaining_items_get_quota_marker(self) -> None:
+        # §IV: исчерпанная квота — не промах и не поломка поиска. Третья причина
+        # требует от оператора третьего действия, значит и маркер третий.
+        youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=YoutubeQuotaExhausted("429"))
+        notifier = self._run_with(youtube)
+        tail = notifier.sent[self._FAIL_FROM - 1 :]
+        self.assertEqual(len(tail), self._TOTAL - self._FAIL_FROM + 1)
         for notif in tail:
             self.assertIn(_TRAILER_QUOTA_MARKER, notif.text)
             self.assertNotIn("youtube.com", notif.text)
         self.assertNotEqual(_TRAILER_QUOTA_MARKER, _TRAILER_MISS_MARKER)
         self.assertNotEqual(_TRAILER_QUOTA_MARKER, _TRAILER_ERROR_MARKER)
 
-    def test_under_budget_run_is_unchanged(self) -> None:
-        # Обычные сутки — 1-6 новинок. Бюджет не должен быть заметен вообще.
+    def test_generic_retrieval_error_does_not_stop_enrichment(self) -> None:
+        # Регрессионный якорь на #383: сетевой сбой роняет ОДИН фильм (error-маркер),
+        # а не глушит трейлеры до конца прогона. Иначе один 500 стоил бы всего прогона.
+        youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=RuntimeError("YouTube 500"))
+        notifier = self._run_with(youtube)
+        self.assertEqual(youtube.calls, self._TOTAL)
+        for notif in notifier.sent[self._FAIL_FROM - 1 :]:
+            self.assertIn(_TRAILER_ERROR_MARKER, notif.text)
+            self.assertNotIn(_TRAILER_QUOTA_MARKER, notif.text)
+
+    def test_healthy_run_is_unchanged(self) -> None:
+        # Обычные сутки — 1-6 новинок, квота не при чём: ни маркеров, ни остановки.
         youtube = _CountingYoutube()
         _, notifier = _run(youtube=youtube)
         self.assertEqual(youtube.calls, 2)
         for notif in notifier.sent:
             self.assertNotIn(_TRAILER_QUOTA_MARKER, notif.text)
 
-    def test_budget_exhaustion_logs_single_warning_with_count(self) -> None:
+    def test_quota_stop_logs_single_warning_with_count(self) -> None:
         # Ровно одна строка, а не по строке на фильм: 163-строчный шум — часть того,
         # что чинится, повторять его новым маркером бессмысленно.
-        over = _TRAILER_RUN_BUDGET + 3
+        youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=YoutubeQuotaExhausted("429"))
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
-            _run(
-                html=_html_rows(over), youtube=_CountingYoutube(), sources_config=_config_for(over)
-            )
-        budget_warnings = [r for r in cm.records if "quota" in r.getMessage().lower()]
-        self.assertEqual(len(budget_warnings), 1)
-        self.assertIn("3", budget_warnings[0].getMessage())
+            self._run_with(youtube)
+        quota_warnings = [r for r in cm.records if "quota" in r.getMessage().lower()]
+        self.assertEqual(len(quota_warnings), 1)
+        self.assertIn(str(self._TOTAL - self._FAIL_FROM + 1), quota_warnings[0].getMessage())
 
 
 class TestKinozalKnownBugs(unittest.TestCase):
