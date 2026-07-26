@@ -17,9 +17,9 @@ import unittest
 import unittest.mock
 
 from curl_cffi.requests.exceptions import HTTPError
-from scripts.probe import is_expired, main
 
 from kinozal_scraper.http_fetch import fetch_html
+from scripts.probe import is_expired, main
 
 _BEFORE_EXPIRY = dt.date(2026, 7, 27)
 _URL = "https://www.soldoutticketbox.com/easyconsole.cfm/page/category/cat_id/17/lang/ru"

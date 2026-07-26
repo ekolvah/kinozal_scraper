@@ -118,9 +118,14 @@ def describe_block(status_code: int, headers: Any, body: str) -> str:
     return " ".join(parts)
 
 
-@_retry_transient_http
-def _get(url: str, **kwargs: Any) -> requests.Response:
-    """Single curl_cffi GET + raise_for_status, retrying transient 403/429/5xx.
+def _get_once(url: str, **kwargs: Any) -> requests.Response:
+    """Single curl_cffi GET + raise_for_status, WITHOUT the retry wrapper.
+
+    Split out of `_get` (#396) so a single attempt is a plain typed function
+    rather than tenacity's dynamic `retry_with(...)`, which mypy cannot see
+    (`attr-defined`) and which would need this repo's first `type: ignore`.
+    `scripts/probe.py` measures the probability of ONE attempt — the retry
+    masks it, turning the measurement into "did we get lucky at least once".
 
     Диагностика висит на `except HTTPError`, а не на `if status >= 400`: «что есть
     ошибка» решает сам curl_cffi, happy-path не трогается, и лог привязан к точке
@@ -138,6 +143,12 @@ def _get(url: str, **kwargs: Any) -> requests.Response:
         )
         raise
     return resp
+
+
+# The retrying transport every production call site uses. Applied as a plain call
+# rather than `@_retry_transient_http` so the single-attempt function above stays
+# importable and typed (#396).
+_get = _retry_transient_http(_get_once)
 
 
 class NotAnImageError(Exception):
@@ -160,8 +171,20 @@ class NotAnImageError(Exception):
         self.body = body
 
 
+# Request parameters live here, in one place, because a second caller now exists:
+# the #396 measurement in `scripts/probe.py` is only meaningful while it hits the
+# site exactly the way prod does. Copy-pasted values would let the two drift apart
+# with nothing turning red — `tests/test_http_fetch.py::TestSharedRequestKwargs`
+# pins them to the prod call sites.
+_HTML_GET: dict[str, Any] = {"impersonate": "chrome", "timeout": 30}
+_IMAGE_GET: dict[str, Any] = {
+    **_HTML_GET,
+    "headers": {"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"},
+}
+
+
 def fetch_html(url: str) -> str:
-    return _get(url, impersonate="chrome", timeout=30).text
+    return _get(url, **_HTML_GET).text
 
 
 def fetch_bytes(url: str) -> bytes:
@@ -189,12 +212,7 @@ def fetch_bytes(url: str) -> bytes:
     # NotAnImageError is raised BELOW, after _get returns — outside the retry
     # wrapper: a 200 text/html anti-hotlink page is a content problem, not a
     # transient, so it must not be retried.
-    resp = _get(
-        url,
-        impersonate="chrome",
-        timeout=30,
-        headers={"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"},
-    )
+    resp = _get(url, **_IMAGE_GET)
     content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
     if content_type == "text/html":
         raise NotAnImageError(url, content_type, resp.content)
