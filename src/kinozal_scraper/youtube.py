@@ -119,6 +119,7 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
     pool: list[Candidate] = []
     failed = 0
     last_exc: Exception | None = None
+    quota_seen = False
     for title in titles:
         query = f"{title} {year} trailer" if year else f"{title} trailer"
         try:
@@ -127,6 +128,7 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
             logger.warning("trailer retrieval branch failed for %r: %s", query, exc)
             failed += 1
             last_exc = exc
+            quota_seen = quota_seen or _is_quota_error(exc)
             continue
         for candidate in candidates:
             if candidate.video_id in seen:
@@ -137,17 +139,13 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
     # `failed == len(titles)` не может сработать на нулевом числе попыток —
     # страховка `attempted > 0` была бы мёртвым кодом (прецедент #256).
     if failed == len(titles):
-        # Класс исключения выбирается по последнему отказу: квотный останавливает
-        # обогащение до конца прогона (#384), любой другой роняет только этот фильм
-        # (#383). Смешать их значило бы глушить трейлеры из-за одного 500.
-        # `last_exc is not None` — сужение для mypy, а не страховка: при failed >= 1
-        # он заполнен. Порядок операндов важен — в невозможной ветке падаем в
-        # TrailerRetrievalError, то есть всё равно бросаем, а не проглатываем отказ.
-        error = (
-            YoutubeQuotaExhausted
-            if last_exc is not None and _is_quota_error(last_exc)
-            else TrailerRetrievalError
-        )
+        # Квотный отказ останавливает обогащение до конца прогона (#384), любой
+        # другой роняет только этот фильм (#383) — смешать их значило бы глушить
+        # трейлеры из-за одного 500. Решает ЛЮБАЯ квотная ветка, а не последняя:
+        # при смешанной паре (RU упал по квоте, оригинал по таймауту) выбор по
+        # `last_exc` потерял бы квотный сигнал и заставил следующий фильм открывать
+        # его заново — квота-то уже кончилась.
+        error = YoutubeQuotaExhausted if quota_seen else TrailerRetrievalError
         raise error(
             f"all {failed} retrieval branch(es) failed for {profile.ru_title!r}"
         ) from last_exc

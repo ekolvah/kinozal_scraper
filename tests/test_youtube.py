@@ -297,6 +297,20 @@ class TestQuotaDetection:
         with pytest.raises(YoutubeQuotaExhausted):
             search_candidates(client, profile)
 
+    def test_mixed_branch_failures_prefer_the_quota_signal(self) -> None:
+        # Квота уже кончилась — то, что вторая ветка успела упасть по другой причине,
+        # этого не отменяет. Выбор по «последнему отказу» потерял бы сигнал и заставил
+        # следующий фильм открывать его заново.
+        client = _FakeClient(
+            [
+                ("Волк", _http_error(429, _RATE_LIMIT_429)),
+                ("The Wolf", RuntimeError("connection reset")),
+            ]
+        )
+        profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        with pytest.raises(YoutubeQuotaExhausted):
+            search_candidates(client, profile)
+
     def test_generic_failure_raises_plain_retrieval_error(self) -> None:
         # Сетевой сбой ≠ исчерпанная квота: он роняет один фильм (#383), а не прогон.
         client = _FakeClient([("Волк", RuntimeError("boom")), ("The Wolf", RuntimeError("boom"))])
