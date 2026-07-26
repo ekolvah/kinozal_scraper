@@ -15,11 +15,14 @@ from pathlib import Path
 from typing import Any
 from unittest import mock
 
+from kinozal_scraper.kinozal_pipeline import _TRAILER_ERROR_MARKER
 from kinozal_scraper.tmdb_trailer import TmdbVideo
 from scripts.eval_trailers import (
     GoldenSetError,
     classify,
     default_strategy,
+    evaluate,
+    evaluate_delivery,
     evaluate_tmdb,
     load_golden_set,
     main,
@@ -407,6 +410,73 @@ class TestEvaluateTmdb(unittest.TestCase):
         rows, _ = evaluate_tmdb(cases)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0][0].film.ru_title, "A")
+
+
+# ── #379: delivery-прогон (прод-контракт, не только pick) ─────────────────────
+
+
+class TestDeliveryEval(unittest.TestCase):
+    """#379: харнесс мерил `pick`, а #359 сломал `enrich_with_trailer` — слой между
+    pick'ом и пользователем. `evaluate_delivery` гоняет golden-set через прод-
+    `select_trailer` и разбирает ОТВЕТ (URL / §IV-маркер) обратно в `video_id`."""
+
+    def _write(self, data: Any) -> str:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def _case(self, correct: Any, candidates: list[dict[str, str]]) -> Any:
+        return {
+            "film": {"ru_title": "Гнев", "original_title": "Man on Fire", "year": 2026},
+            "correct": correct,
+            "candidates": candidates,
+            "note": "",
+        }
+
+    def test_url_reply_classified_by_video_id(self) -> None:
+        cases = load_golden_set(
+            self._write([self._case("ru01", [{"video_id": "ru01", "title": "Гнев 2026 трейлер"}])])
+        )
+        rows, total = evaluate_delivery(cases)
+        self.assertEqual([(pick, out) for _, pick, out in rows], [("ru01", "hit")])
+        self.assertEqual(total, 1)
+
+    def test_miss_marker_maps_to_no_pick(self) -> None:
+        # Пустой пул → прод отдаёт _TRAILER_MISS_MARKER; замер обязан прочитать его
+        # как «ничего не выбрано», а не как непарсибельный ответ.
+        cases = load_golden_set(self._write([self._case("ru01", [])]))
+        rows, total = evaluate_delivery(cases)
+        self.assertEqual([(pick, out) for _, pick, out in rows], [(None, "miss")])
+        self.assertEqual(total, 0)
+
+    def test_null_correct_with_miss_marker_is_hit(self) -> None:
+        # Та же null-ветка, что у classify: трейлера не существует → правильно
+        # ничего не отдать. Проверяет, что маркер доезжает до classify как None.
+        cases = load_golden_set(self._write([self._case(None, [])]))
+        rows, total = evaluate_delivery(cases)
+        self.assertEqual([out for _, _, out in rows], ["hit"])
+        self.assertEqual(total, 1)
+
+    def test_error_marker_raises_not_scored(self) -> None:
+        # §IV: сломанный retrieval (в проде → _TRAILER_ERROR_MARKER) не имеет права
+        # выглядеть как «стратегия ничего не нашла» — иначе метрика тихо просядет и
+        # это спишут на подбор. Что маркер отдаёт именно сбой retrieval — уже
+        # пришпилено test_kinozal_pipeline::test_failure_returns_error_marker.
+        cases = load_golden_set(self._write([self._case("ru01", [])]))
+        with self.assertRaises(GoldenSetError):
+            evaluate_delivery(cases, select=lambda profile, youtube: _TRAILER_ERROR_MARKER)
+
+    def test_delivery_matches_pick_on_committed_golden_set(self) -> None:
+        # Сегодня на main обе скоркарты обязаны совпасть: между pick и доставкой
+        # нет политики. Расхождение СЕЙЧАС значит, что харнесс врёт; ценность в
+        # том, что после следующего #359 они смогут разойтись.
+        cases = load_golden_set(GOLDEN_PATH)
+        _, pick_total = evaluate(default_strategy(), cases)
+        _, delivery_total = evaluate_delivery(cases)
+        self.assertEqual(delivery_total, pick_total)
 
 
 # ── #138 red baseline: known-gap guard ────────────────────────────────────────
