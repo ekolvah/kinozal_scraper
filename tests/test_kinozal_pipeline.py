@@ -11,6 +11,8 @@ from kinozal_scraper.kinozal_auth import KinozalLoginError
 from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_ERROR_MARKER,
     _TRAILER_MISS_MARKER,
+    _TRAILER_QUOTA_MARKER,
+    _TRAILER_RUN_BUDGET,
     _dedupe_key,
     _kinozal_title,
     _kinozal_urls,
@@ -791,6 +793,88 @@ class TestDeliveryTruthfulness(unittest.TestCase):
         self.assertEqual(len(storage.stored_rows("movies")), 2)
         self.assertEqual(len(notifier.sent), 2)
         self.assertTrue(all(r.ok for r in results))
+
+
+class _CountingYoutube:
+    """Считает походы в retrieval и синтезирует релевантного кандидата (#384).
+
+    Счётчик — единственный способ проверить AC1: «фильмы сверх бюджета в сеть НЕ
+    ходят вообще», в отличие от «ходят и получают 429». Отсутствие маркера такого
+    различия не даёт.
+    """
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
+        self.calls += 1
+        year = f" {profile.year}" if profile.year else ""
+        return [
+            Candidate(
+                video_id=profile.ru_title.replace(" ", "_"),
+                title=f"{profile.ru_title}{year} trailer",
+            )
+        ]
+
+
+def _html_rows(n: int) -> str:
+    rows = "\n".join(
+        f'<a href="/details.php?id={i}" title="Film {i:03d} / 2024 / BDRip">'
+        f'<img src="/img/p{i}.jpg"></a>'
+        for i in range(1, n + 1)
+    )
+    return f"<html><body>\n{rows}\n</body></html>"
+
+
+def _config_for(n: int) -> dict[str, Any]:
+    return {"version": 1, "sources": [{**_KINOZAL_SOURCE, "limit": n}]}
+
+
+class TestTrailerRunBudget(unittest.TestCase):
+    """#384: суточная квота YouTube — 100 `search.list` (замер 2026-07-26), а прогон
+    при всплеске items просит втрое больше. Бюджет режет обогащение до того, как
+    запросы уйдут в гарантированный отказ."""
+
+    def test_enrichment_stops_after_run_budget(self) -> None:
+        over = _TRAILER_RUN_BUDGET + 3
+        youtube = _CountingYoutube()
+        _run(html=_html_rows(over), youtube=youtube, sources_config=_config_for(over))
+        self.assertEqual(youtube.calls, _TRAILER_RUN_BUDGET)
+
+    def test_over_budget_items_get_distinct_quota_marker(self) -> None:
+        # §IV: исчерпание суточной квоты — не поломка поиска и не отсутствие трейлера.
+        # Третья причина требует от оператора третьего действия, значит и маркер третий.
+        over = _TRAILER_RUN_BUDGET + 3
+        _, notifier = _run(
+            html=_html_rows(over), youtube=_CountingYoutube(), sources_config=_config_for(over)
+        )
+        tail = notifier.sent[_TRAILER_RUN_BUDGET:]
+        self.assertEqual(len(tail), 3)
+        for notif in tail:
+            self.assertIn(_TRAILER_QUOTA_MARKER, notif.text)
+            self.assertNotIn("youtube.com", notif.text)
+        self.assertNotEqual(_TRAILER_QUOTA_MARKER, _TRAILER_MISS_MARKER)
+        self.assertNotEqual(_TRAILER_QUOTA_MARKER, _TRAILER_ERROR_MARKER)
+
+    def test_under_budget_run_is_unchanged(self) -> None:
+        # Обычные сутки — 1-6 новинок. Бюджет не должен быть заметен вообще.
+        youtube = _CountingYoutube()
+        _, notifier = _run(youtube=youtube)
+        self.assertEqual(youtube.calls, 2)
+        for notif in notifier.sent:
+            self.assertNotIn(_TRAILER_QUOTA_MARKER, notif.text)
+
+    def test_budget_exhaustion_logs_single_warning_with_count(self) -> None:
+        # Ровно одна строка, а не по строке на фильм: 163-строчный шум — часть того,
+        # что чинится, повторять его новым маркером бессмысленно.
+        over = _TRAILER_RUN_BUDGET + 3
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
+            _run(
+                html=_html_rows(over), youtube=_CountingYoutube(), sources_config=_config_for(over)
+            )
+        budget_warnings = [r for r in cm.records if "quota" in r.getMessage().lower()]
+        self.assertEqual(len(budget_warnings), 1)
+        self.assertIn("3", budget_warnings[0].getMessage())
 
 
 class TestKinozalKnownBugs(unittest.TestCase):
