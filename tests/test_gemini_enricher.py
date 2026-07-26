@@ -871,7 +871,7 @@ class TestBuildDefaultEnricher(unittest.TestCase):
         ):
             result = build_default_enricher("real-key", log)
         self.assertIsInstance(result, RotatingGeminiEnricher)
-        mock_client.assert_called_once_with(api_key="real-key")
+        mock_client.assert_called_once_with(api_key="real-key")  # pragma: allowlist secret
 
 
 class TestObservability(unittest.TestCase):

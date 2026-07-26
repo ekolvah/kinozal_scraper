@@ -87,9 +87,14 @@ def _secrets_targets(files: Iterable[str]) -> list[str]:
 
 
 def _secrets_cmd(files: list[str]) -> list[str]:
+    # `-X utf8`: detect-secrets opens files with the *platform default* encoding
+    # (`core/scan.py:261`) and silently skips a UnicodeDecodeError, so on Windows
+    # (cp1252) every file with a Russian comment — most of this repo — went
+    # unscanned while the same commit was scanned in full on Linux CI. UTF-8 mode
+    # makes the two agree; without it "green locally" means nothing (§IV, #153).
     # The module, not the `detect-secrets-hook` console script: unreliable-on-PATH on
     # Windows, same reason as check_imports. No `--baseline` — see check_secrets.
-    return [sys.executable, "-m", "detect_secrets.pre_commit_hook", *files]
+    return [sys.executable, "-X", "utf8", "-m", "detect_secrets.pre_commit_hook", *files]
 
 
 def check_pytest() -> None:

@@ -33,7 +33,17 @@ Activate: `git config core.hooksPath .githooks`
 the local barrier between "an agent or contributor pasted a key into a source file"
 and `origin/main`. It sits **right after `lint`**, before the slow gates: a leaked key
 must redden the run in seconds, not after ~3 minutes of pytest + pip-audit. Cost is
-~2 s for ~130 files.
+~5 s for ~130 files.
+
+**`-X utf8` is load-bearing, not decoration.** `detect_secrets/core/scan.py:261` opens
+each file with the *platform default* encoding and silently swallows the resulting
+`UnicodeDecodeError`. On Windows (cp1252) that skipped every file carrying a Russian
+comment — most of this repo — so the gate ran, printed nothing and exited 0, while the
+same commit was scanned in full on Linux CI. Caught on PR #394: green locally, red in
+CI. UTF-8 mode makes both platforms scan the same set; without it "green locally"
+carries no information (§IV silent skip + the #153 local↔CI drift class).
+`tests/test_secrets_gate.py::TestGateFires::test_planted_secret_in_a_non_ascii_file_exits_nonzero`
+pins it.
 
 **It used to exist only as configuration and executed literally never.** Both layers
 were broken independently, and each alone was enough to make it a no-op:

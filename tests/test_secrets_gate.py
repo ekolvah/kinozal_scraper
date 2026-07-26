@@ -43,6 +43,18 @@ class TestGateFires:
 
         assert subprocess.run(_secrets_cmd([str(leaked)])).returncode != 0
 
+    def test_planted_secret_in_a_non_ascii_file_exits_nonzero(self, tmp_path: Path) -> None:
+        # `detect_secrets/core/scan.py:261` opens files with the *platform default*
+        # encoding and silently skips a UnicodeDecodeError. On Windows (cp1252) that
+        # skipped every file carrying a Russian comment — most of this repo — so the
+        # gate passed locally and failed in CI on the same commit (#389).
+        leaked = tmp_path / "leak_cyrillic.py"
+        leaked.write_text(
+            f"# комментарий по-русски — не ASCII\n{_PLANTED_SECRET}", encoding="utf-8"
+        )
+
+        assert subprocess.run(_secrets_cmd([str(leaked)])).returncode != 0
+
     def test_clean_file_exits_zero(self, tmp_path: Path) -> None:
         clean = tmp_path / "clean.py"
         clean.write_text("GREETING = 'hello'\n", encoding="utf-8")
