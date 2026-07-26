@@ -290,6 +290,15 @@ def _require_api_key() -> str:
 
 
 def _record(golden_path: str | Path) -> int:
+    """dev-only live: пересобрать пулы кандидатов в golden-снимке.
+
+    `search_candidates` вызывается без try/except **осознанно** (#383): при
+    тотальном отказе retrieval (все ветки union упали, напр. 429) он поднимает
+    `TrailerRetrievalError` и прогон падает целиком. Это желаемое поведение —
+    записать `candidates: []`, вызванный квотой, значит отравить baseline,
+    по которому потом меряется качество подбора. `write_text` идёт после цикла,
+    так что частично перезаписанного файла не остаётся.
+    """
     key = _require_api_key()
     cases = load_golden_set(golden_path)  # валидируем перед перезаписью
     from dataclasses import asdict

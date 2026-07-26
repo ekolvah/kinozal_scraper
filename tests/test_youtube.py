@@ -4,16 +4,21 @@
 со snippet-полями. Пул = union запроса по RU + оригинальному названию (retrieval
 breadth под #315), дедуп по `video_id`, БЕЗ year/title-фильтра (фильтр — забота
 selection, `FirstResultStrategy`, не retrieval). Сбой одной ветки union не роняет
-retrieval — best-effort (§IV). Клиент инъектируется, чтобы harness переиспользовал
-тот же retrieval (§II — убирает дубль `eval_trailers._search_candidates`).
+retrieval — best-effort (§IV), но падение ВСЕХ веток = отказ retrieval и поднимает
+`TrailerRetrievalError` (#383): пустой пул от 429 неотличим от честного «ничего не
+нашлось», и в прогоне 2026-07-25 это дало 74 фальшивых «no trailer found». Клиент
+инъектируется, чтобы harness переиспользовал тот же retrieval (§II — убирает дубль
+`eval_trailers._search_candidates`).
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
-from kinozal_scraper.youtube import search_candidates
+from kinozal_scraper.youtube import TrailerRetrievalError, search_candidates
 
 
 def _video_item(video_id: str, title: str, **snippet: str) -> dict[str, Any]:
@@ -129,6 +134,29 @@ class TestSearchCandidates:
         profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
         ids = {c.video_id for c in search_candidates(client, profile)}
         assert ids == {"ru_wolf"}
+
+    def test_all_branches_failed_raises(self) -> None:
+        # #383: пока падает ОДНА ветка — best-effort (тест выше). Когда падают ВСЕ,
+        # пул пуст не потому, что трейлера нет, а потому что retrieval не состоялся;
+        # молча вернуть [] значит выдать инфраструктурный отказ за честный промах.
+        client = _FakeClient(
+            [
+                ("Волк", RuntimeError("YouTube 429 rateLimitExceeded")),
+                ("The Wolf", RuntimeError("YouTube 429 rateLimitExceeded")),
+            ]
+        )
+        profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        with pytest.raises(TrailerRetrievalError):
+            search_candidates(client, profile)
+
+    def test_single_branch_failure_raises_when_titles_collapse(self) -> None:
+        # ru_title == original_title → ветка всего одна, поэтому её падение и есть
+        # «упали все». Иначе тот же 429 читался бы как miss ровно для фильмов без
+        # отдельного оригинального названия.
+        client = _FakeClient([("Дюна", RuntimeError("YouTube 429 rateLimitExceeded"))])
+        profile = FilmProfile(ru_title="Дюна", original_title="Дюна", year=2024)
+        with pytest.raises(TrailerRetrievalError):
+            search_candidates(client, profile)
 
     def test_no_year_filter_in_retrieval(self) -> None:
         # Retrieval = чистый breadth: кандидат с «чужим» годом в title остаётся в

@@ -112,7 +112,8 @@ title+year `FilmProfile` (ru_title=clean, original_title=2-й сегмент и�
 `youtube.search_candidates` (union #140) → `HeuristicStrategy().pick` (#141, = eval
 `default_strategy()`) → `video_id` в youtube-URL. RU-трейлер в приоритете, EN — fallback
 (закрывает RU-регрессию #138→#315; прежний одиночный `get_trailer_url` удалён). Пустой
-pick → §IV miss-маркер + INFO; retrieval-исключение → §IV error-маркер + WARNING; успех →
+pick → §IV miss-маркер + INFO; retrieval-исключение (в т.ч. `TrailerRetrievalError` —
+все ветки union упали, #383) → §IV error-маркер + WARNING; успех →
 INFO-breadcrumb `video_id`/`reason`/`confidence`; miss-ветка пишет размер пула (#359 —
 «YouTube ничего не вернул» и «вернул N, ни один не прошёл relevance» это разные баги, а
 без `video_id` отчёт «пришла не та ссылка» вообще неразбираем).

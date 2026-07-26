@@ -17,6 +17,15 @@ from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
 logger = logging.getLogger(__name__)
 
 
+class TrailerRetrievalError(RuntimeError):
+    """Ни одна ветка union не отработала — retrieval не состоялся (#383).
+
+    Живёт здесь, а не в отдельном модуле ошибок: один raiser (`search_candidates`),
+    один ловец (`kinozal_pipeline.enrich_with_trailer`) — выносить абстракцию с
+    единственным вызывающим запрещает §VII.
+    """
+
+
 def _search_one(client: Any, query: str) -> list[Candidate]:
     """Один YouTube-запрос → кандидаты (только `youtube#video`), snippet-поля
     отображены в `Candidate`. БЕЗ year/title-фильтра — это чистый retrieval, год
@@ -51,7 +60,11 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
 
     Один запрос при `ru_title == original_title` (нет отдельного оригинала —
     экономит YouTube-квоту). Сбой ОДНОЙ ветки union (§IV best-effort) логируется
-    WARNING и не роняет retrieval — отдаём кандидатов уцелевшей ветки. `client` —
+    WARNING и не роняет retrieval — отдаём кандидатов уцелевшей ветки. Но падение
+    ВСЕХ веток — это отказ retrieval, а не пустой пул: `TrailerRetrievalError`
+    (#383). Пустой список означает ровно одно — «запросы прошли, YouTube ничего не
+    вернул»; смешивать с ним 429 нельзя, иначе инфраструктурный отказ читается как
+    честный промах подбора (74 таких строки в прогоне 2026-07-25). `client` —
     инъектируемый googleapiclient youtube-resource, чтобы harness (`--record`)
     переиспользовал тот же retrieval (§II)."""
     year = profile.year
@@ -60,18 +73,29 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
         titles.append(profile.original_title)
     seen: set[str] = set()
     pool: list[Candidate] = []
+    failed = 0
+    last_exc: Exception | None = None
     for title in titles:
         query = f"{title} {year} trailer" if year else f"{title} trailer"
         try:
             candidates = _search_one(client, query)
-        except Exception as exc:  # noqa: BLE001 — best-effort breadth: one union branch failing must not sink the whole pool (§IV)
+        except Exception as exc:  # noqa: BLE001 — best-effort breadth: one union branch failing must not sink the whole pool (§IV); всеобщий отказ ловится счётчиком ниже
             logger.warning("trailer retrieval branch failed for %r: %s", query, exc)
+            failed += 1
+            last_exc = exc
             continue
         for candidate in candidates:
             if candidate.video_id in seen:
                 continue
             seen.add(candidate.video_id)
             pool.append(candidate)
+    # `titles` непуст по построению (в нём всегда есть ru_title), поэтому
+    # `failed == len(titles)` не может сработать на нулевом числе попыток —
+    # страховка `attempted > 0` была бы мёртвым кодом (прецедент #256).
+    if failed == len(titles):
+        raise TrailerRetrievalError(
+            f"all {failed} retrieval branch(es) failed for {profile.ru_title!r}"
+        ) from last_exc
     return pool
 
 
