@@ -245,7 +245,7 @@ class TestRecordMode(unittest.TestCase):
         Path(path).write_text(before, encoding="utf-8")
         drifted = [Candidate(video_id="fresh", title="Леший 2026 трейлер")]
         with (
-            mock.patch.dict(os.environ, {"API_KEY": "test-key"}),
+            mock.patch.dict(os.environ, {"API_KEY": "test-key"}),  # pragma: allowlist secret
             mock.patch("googleapiclient.discovery.build", return_value=object()),
             mock.patch("kinozal_scraper.youtube.search_candidates", return_value=drifted),
             self.assertRaises(GoldenSetError) as ctx,
