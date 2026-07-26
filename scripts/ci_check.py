@@ -14,7 +14,7 @@ import argparse
 import re
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 _EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
@@ -42,6 +42,54 @@ def check_format() -> None:
 def check_lint() -> None:
     print("==> ruff lint")
     _run([sys.executable, "-m", "ruff", "check", "."])
+
+
+# Captured third-party HTML kept as test fixtures: asset digests and cache-busting
+# hashes in someone else's markup read as high-entropy strings, i.e. false positives
+# by construction. Excluded as *files* rather than whitelisted as secret hashes — a
+# baseline would hand the gate a "make it green" button and, being written in the
+# host OS's path separators, would redden CI when regenerated on Windows (#389).
+# `git ls-files` always emits POSIX separators, so this pattern is platform-stable.
+_CAPTURED_HTML_FIXTURES = re.compile(r"^tests/fixtures/.*\.html$")
+
+
+def check_secrets() -> None:
+    """Block a secret from reaching a commit (#389).
+
+    The pre-commit hook config that used to declare this gate was never on any
+    execution path (`core.hooksPath` points at `.githooks`, which has only
+    `pre-push`), and the baseline it carried had an empty `plugins_used`, so the
+    hook exited 0 on a planted key. Both layers were silent; the gate now runs
+    here, in the one registry that `pre-push` and `ci.yml` both execute.
+    """
+    print("==> detect-secrets")
+    targets = _secrets_targets(_tracked_files())
+    if not targets:
+        # `detect_secrets.pre_commit_hook` returns 0 for an empty file list, so a
+        # vacuous scan would look exactly like a clean one (§IV).
+        print("no files to scan — refusing to report a vacuous pass")
+        sys.exit(1)
+    _run(_secrets_cmd(targets))
+
+
+def _tracked_files() -> list[str]:
+    proc = subprocess.run(["git", "ls-files", "-z"], capture_output=True, text=True)
+    if proc.returncode != 0:
+        print("git ls-files failed — the file set to scan is unknown")
+        sys.exit(1)
+    # -z: git otherwise quotes paths with spaces/non-ASCII, yielding names that
+    # don't exist on disk. `stdout or ""` — #109 (stdout=None on Windows+git-bash).
+    return [name for name in (proc.stdout or "").split("\0") if name]
+
+
+def _secrets_targets(files: Iterable[str]) -> list[str]:
+    return [name for name in files if not _CAPTURED_HTML_FIXTURES.match(name)]
+
+
+def _secrets_cmd(files: list[str]) -> list[str]:
+    # The module, not the `detect-secrets-hook` console script: unreliable-on-PATH on
+    # Windows, same reason as check_imports. No `--baseline` — see check_secrets.
+    return [sys.executable, "-m", "detect_secrets.pre_commit_hook", *files]
 
 
 def check_pytest() -> None:
@@ -157,6 +205,9 @@ def check_imports() -> None:
 CHECKS: dict[str, Callable[[], None]] = {
     "format": check_format,
     "lint": check_lint,
+    # Before the slow gates on purpose: a leaked key must redden the run in seconds,
+    # not after ~3 minutes of pytest + pip-audit.
+    "secrets": check_secrets,
     "pytest": check_pytest,
     "pip-audit": check_pip_audit,
     "pip-audit-dev": check_pip_audit_dev,

@@ -399,6 +399,20 @@ work-for-work (goal-function priority (2)).
   запрос тогда уходил с мусорным `x64`), не регрессия — записан здесь, чтобы его не открыли как
   новый баг #385 и не «починили» правку ранжирования без метрики, которой пока нет.
 
+- **V. Секрет-гейт: захваченные HTML-фикстуры вне скана, а ушедшие с `pre-commit` хуки не
+  заменяются (#389).** `ci_check` шаг `secrets` покрыт `tests/test_secrets_gate.py` (подсадной ключ →
+  non-zero, чистый файл → 0, сбой `git ls-files` и пустой список → видимый `exit 1`). **Вне скана
+  сознательно:** `tests/fixtures/**/*.html` — захваченная чужая разметка, где хеши ассетов дают
+  high-entropy FP по построению (15 находок на две фикстуры). Исключение файлом, а не baseline'ом:
+  baseline при совпадении переписывает себя и возвращает rc=3, а перегенерация — это кнопка «сделать
+  гейт зелёным» для настоящего утёкшего ключа (rationale — [`ci.md`](ci.md#secret-scan-secrets-389)).
+  Цена: ключ, вписанный **внутрь** такой фикстуры, гейтом не ловится — остаётся серверный слой
+  (GitHub push protection). **Второе — не пробел, а отсутствующий код:** вместе с `.pre-commit-config.yaml`
+  ушли `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer`; они не
+  исполнялись **ни разу** (`core.hooksPath` = `.githooks`), поэтому регрессии нет и замену им этот PR
+  не заводит. Записано, чтобы «а где проверка YAML?» не переоткрыли как пробел покрытия: это
+  осознанный не-скоуп, отдельная единица (workflow #4).
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

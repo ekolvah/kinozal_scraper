@@ -38,6 +38,9 @@ jobs:
       - name: Lint
         run: python scripts/ci_check.py --only lint
 
+      - name: Secret scan
+        run: python scripts/ci_check.py --only secrets
+
       - name: Run tests
         run: python scripts/ci_check.py --only pytest
 

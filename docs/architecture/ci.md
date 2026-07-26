@@ -7,8 +7,8 @@ python scripts/ci_check.py
 ```
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
-ruff format → ruff lint → pytest → pip-audit (runtime) → pip-audit (dev) →
-requirements consistency → mypy → import contracts. (Module-docstring presence
+ruff format → ruff lint → detect-secrets → pytest → pip-audit (runtime) →
+pip-audit (dev) → requirements consistency → mypy → import contracts. (Module-docstring presence
 is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
 see the Module-docstring gate below.)
 
@@ -26,6 +26,59 @@ Activate: `git config core.hooksPath .githooks`
 > pre-commit *moment* (the git-hook that runs before a push), **not** the
 > [`pre-commit`](https://pre-commit.com) framework — which this repo
 > deliberately does **not** use (next block).
+
+### Secret scan (`secrets`, #389)
+
+`detect_secrets.pre_commit_hook` over every tracked file, run as a registry check —
+the local barrier between "an agent or contributor pasted a key into a source file"
+and `origin/main`. It sits **right after `lint`**, before the slow gates: a leaked key
+must redden the run in seconds, not after ~3 minutes of pytest + pip-audit. Cost is
+~2 s for ~130 files.
+
+**It used to exist only as configuration and executed literally never.** Both layers
+were broken independently, and each alone was enough to make it a no-op:
+
+- `.pre-commit-config.yaml` declared a `Yelp/detect-secrets` hook, but
+  `core.hooksPath` = `.githooks` (which holds only `pre-push`) and nothing invoked
+  the `pre-commit` framework — so no hook in that file ever ran (the stripped
+  trailing newline in external PR #370 is the same config's `end-of-file-fixer`
+  not firing);
+- `.secrets.baseline` carried `"plugins_used": []`, so the hook printed
+  `No plugins to scan with!` and **exited 0** on a planted AWS key. Fixing only the
+  wiring would have produced a green gate that scans with zero plugins.
+
+**No baseline, by design.** `detect_secrets/pre_commit_hook.py` with `--baseline`
+can return `3` after *rewriting* the baseline file in place (line-number drift),
+which `ci_check` reports as a red push that already mutated a tracked file behind
+your back — the mutation-during-a-gate pattern this repo rejects for
+`scripts/hooks.py` — and the next run then fails differently with "baseline is
+unstaged". A baseline is also a one-command "make the gate green" button for a
+genuinely leaked key, and its paths are written in the host OS's separators, so a
+Windows-generated baseline reddens Linux CI. Without `--baseline` the hook only ever
+returns 0 or 1 and mutates nothing.
+
+The two **captured HTML fixtures** (`tests/fixtures/cloudflare_block_403.html`,
+`tests/fixtures/github_trending/trending_daily.html`) are excluded by
+`ci_check._secrets_targets` — asset digests in third-party markup are high-entropy
+false positives by construction. The exclusion is a tested pure function over
+`git ls-files` output (always POSIX separators), not a tool-side regex whose
+semantics shift with the OS path separator. For a false positive **inside** our own
+code the escape hatch is an inline `# pragma: allowlist secret` at the site (see
+`tests/test_secrets_gate.py`), never a blanket exclusion.
+
+`_tracked_files()` exits 1 when `git ls-files` fails, and `check_secrets()` exits 1
+on an empty file set: the hook returns 0 when handed no files, so a broken `git`
+invocation would otherwise reproduce this issue's own defect one layer deeper (§IV).
+`tests/test_secrets_gate.py` covers both, plus a planted key (non-zero) and a clean
+file (zero).
+
+`.pre-commit-config.yaml` and `.secrets.baseline` were **deleted** with this change,
+and `pre-commit` dropped from `requirements-dev.in`: the config was the source of the
+false "we have a secrets gate" signal, and after the move it would have been a second,
+competing home for `detect-secrets` settings. Its `ruff`/`ruff-format` hooks are
+already in the registry; `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/
+`end-of-file-fixer` never ran a single time, so removing them regresses nothing (no
+replacement gates are introduced here — that would be a different unit).
 
 ### Session hooks (`scripts/hooks.py`, #281)
 
@@ -95,6 +148,10 @@ root reason plus supporting ones (genre mirrors the vulture drop below):
 `pre-commit` (file-linters only) *iff* real contributor pain from manual
 hook-version management appears; adopt `tox`/`nox` *iff* a genuine multi-version
 Python matrix becomes a requirement.
+
+The `.pre-commit-config.yaml` that survived this no-go was deleted in #389 — it ran
+nothing (see [Secret scan](#secret-scan-secrets-389)) while reading as an active
+gate, so the doc and the repo now say the same thing.
 
 ## CI workflow (`ci.yml`)
 
