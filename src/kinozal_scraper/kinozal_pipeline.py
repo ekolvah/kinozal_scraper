@@ -478,6 +478,17 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
 # dev-tripwire firing only on real anomalies (a clean miss is expected).
 _TRAILER_MISS_MARKER = "🎬 трейлер не найден"
 _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
+# Третья причина (#384) — не промах и не поломка, а исчерпанная суточная квота.
+# Отдельный маркер, потому что действие оператора другое: не «чинить поиск», а
+# сократить объём прогона или сменить источник трейлеров.
+_TRAILER_QUOTA_MARKER = "⚠️ трейлер: дневная квота YouTube"
+
+# Замер 2026-07-26 (Service Usage API, проект kinozalscraper): `search.list` —
+# 100 запросов в сутки, квота дефолтная и поднятой быть не может (billing
+# выключен). Фильм стоит ≤2 запроса (RU + оригинал), значит 45 × 2 = 90 ≤ 100 с
+# запасом на ручной workflow_dispatch в те же сутки. Прогон 30143534431 просил 340
+# при этом потолке: 163 запроса ушли в гарантированный 429, ничего не дав.
+_TRAILER_RUN_BUDGET = 45
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
@@ -700,10 +711,36 @@ def _notify_and_persist(
     non-zero exit (Principle IV). The store-guard keys on `items_to_store` (not
     `sent`) so filtered items are persisted even when every new item was filtered
     and nothing was sent.
+
+    **Enrichment is capped at `_TRAILER_RUN_BUDGET` films (#384).** The daily
+    YouTube quota is 100 `search.list` calls (measured, see the constant); a spike
+    of new items asks for several times that, so the calls past the cap are not
+    merely wasted — they are *guaranteed* 429s that cost stage time and bury the
+    log. Films past the cap skip retrieval entirely and carry
+    `_TRAILER_QUOTA_MARKER` instead. The budget lives here because "a run" only
+    exists at this level: `search_candidates` is stateless and `Youtube` builds a
+    network client in its constructor. Deliberately counted in *films*, not
+    requests: a film costs 1 request when `ru_title == original_title` and 2
+    otherwise, so exact accounting would need either a counter inside
+    `search_candidates` or a duplicate of its title-building logic out here — §VII
+    prefers the conservative ≤2 estimate, which can never exceed the quota.
     """
     notifications: list[Notification] = []
-    for item in kept:
-        item.trailer_url = enrich_with_trailer(item, youtube)
+    for i, item in enumerate(kept):
+        if i == _TRAILER_RUN_BUDGET:
+            # Одна строка на прогон, не строка на фильм: 163-строчный шум прогона
+            # 30143534431 — часть чинимого дефекта, повторять его нельзя (§IV —
+            # аномалия должна быть читаемой, а не утопленной в повторах).
+            logger.warning(
+                "youtube daily quota budget reached (%d films enriched); "
+                "%d remaining films skip retrieval with a visible marker",
+                _TRAILER_RUN_BUDGET,
+                len(kept) - _TRAILER_RUN_BUDGET,
+            )
+        if i >= _TRAILER_RUN_BUDGET:
+            item.trailer_url = _TRAILER_QUOTA_MARKER
+        else:
+            item.trailer_url = enrich_with_trailer(item, youtube)
         template = source_map[item.source_id]["message_template"]
         notifications.append(build_notification(item, template))
 
