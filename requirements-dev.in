@@ -3,7 +3,6 @@ import-linter
 mypy
 pip-audit
 pip-tools
-pre-commit
 pytest
 pytest-cov
 ragas
