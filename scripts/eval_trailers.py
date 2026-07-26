@@ -23,14 +23,21 @@ import argparse
 import json
 import os
 import sys
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlsplit
 
 # Standalone-run bootstrap: mirror pytest's pythonpath=["src"] так, чтобы
 # `import kinozal_scraper` резолвился без editable install (как в ci_check.py).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from kinozal_scraper.kinozal_pipeline import (  # noqa: E402
+    _TRAILER_ERROR_MARKER,
+    _TRAILER_MISS_MARKER,
+    select_trailer,
+)
 from kinozal_scraper.tmdb_trailer import TmdbVideo, pick_trailer  # noqa: E402
 from kinozal_scraper.trailer_strategy import (  # noqa: E402
     Candidate,
@@ -42,10 +49,14 @@ from kinozal_scraper.trailer_strategy import (  # noqa: E402
 Outcome = Literal["hit", "wrong", "miss"]
 
 _SCORE: dict[Outcome, int] = {"hit": 1, "miss": 0, "wrong": -2}
+_OUTCOMES: tuple[Outcome, ...] = ("hit", "wrong", "miss")
 
-_DEFAULT_GOLDEN = (
-    Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "trailer_golden.json"
-)
+_FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
+_DEFAULT_GOLDEN = _FIXTURES / "trailer_golden.json"
+# Пришпиленный исход DELIVERY-скоркарты (их в выводе три — pick / delivery / TMDB).
+# Гейт — `tests/test_eval_baseline.py`, а не запись в `ci_check` CHECKS: `ci_check`
+# и так гоняет pytest, а pre-push — ci_check, так что второй реестр не нужен (#379).
+BASELINE_PATH = _FIXTURES / "trailer_baseline.json"
 
 
 class GoldenSetError(ValueError):
@@ -266,6 +277,178 @@ def evaluate_tmdb(
     return rows, score([o for _, _, o in rows])
 
 
+class _FrozenRetrieval:
+    """Retrieval-стаб для delivery-прогона: отдаёт замороженный пул кейса.
+
+    Внешняя граница (§II) — заменяется законно; всё, что за ней (`select_trailer`),
+    остаётся настоящим прод-кодом."""
+
+    def __init__(self, pool: list[Candidate]) -> None:
+        self._pool = pool
+
+    # `_profile` с подчёркиванием: сигнатуру диктует интерфейс retrieval, а пул уже
+    # заморожен — ARG002-ратчет (#236) в `scripts/**` не освобождён, в отличие от
+    # `tests/**`, и глушить его per-file-ignore ради одного стаба неправильно.
+    def search_candidates(self, _profile: FilmProfile) -> list[Candidate]:
+        return list(self._pool)
+
+
+def _pick_id_from_reply(reply: str, where: str) -> str | None:
+    """Ответ прод-доставки → `video_id` | None. Fail-loud на всём остальном.
+
+    Маркеры сверяются с ИМПОРТИРОВАННЫМИ константами, а не с копиями строк: реворд
+    маркера в проде иначе тихо превратил бы miss в «непарсибельный ответ». `video_id`
+    достаётся из query-параметра, а не срезом по префиксу, — формат URL живёт в
+    `select_trailer`, дублировать его здесь нечего.
+
+    Error-маркер — сбой ИНСТРУМЕНТА (retrieval-стаб бросить не может), и списать его
+    в `miss` значило бы тихо просадить метрику и подумать на подбор (§IV)."""
+    if reply == _TRAILER_MISS_MARKER:
+        return None
+    if reply == _TRAILER_ERROR_MARKER:
+        raise GoldenSetError(f"{where}: delivery returned the §IV error marker — harness is broken")
+    ids = parse_qs(urlsplit(reply).query).get("v", [])
+    if not ids:
+        raise GoldenSetError(f"{where}: unparsable delivery reply {reply!r}")
+    return ids[0]
+
+
+def evaluate_delivery(
+    cases: list[GoldenCase],
+    select: Callable[[FilmProfile, Any], str] = select_trailer,
+) -> tuple[list[tuple[GoldenCase, str | None, Outcome]], int]:
+    """Прогон через ПРОД-контракт доставки, а не только через `pick` (#379).
+
+    `evaluate` меряет `TrailerStrategy.pick`; #359 сломал слой НАД ним
+    (`kinozal_pipeline.select_trailer` — post-pick политика, §IV-маркеры, формат URL),
+    поэтому pick-скоркарта была бы одинаковой до и после регресса. Здесь golden-set
+    едет через прод-функцию и её ответ разбирается обратно в `video_id`.
+
+    `select` параметризован симметрично `evaluate(strategy, cases)`: дефолт — настоящая
+    прод-функция, а инъекция нужна, чтобы доказать срабатывание гейта на
+    контрфактической политике (`tests/test_eval_baseline.py`), не держа её в `src`.
+    """
+    rows: list[tuple[GoldenCase, str | None, Outcome]] = []
+    for i, case in enumerate(cases):
+        reply = select(case.film, _FrozenRetrieval(case.candidates))
+        pick_id = _pick_id_from_reply(reply, f"case[{i}] {case.film.ru_title!r}")
+        rows.append((case, pick_id, classify(case.correct, pick_id)))
+    return rows, score([o for _, _, o in rows])
+
+
+# ── baseline-храповик поверх delivery-скоркарты (#379) ────────────────────────
+
+
+@dataclass
+class BaselineEntry:
+    """Пришпиленный исход одного кейса. `i` рядом с `film`, потому что `ru_title`
+    в наборе НЕ уникален («Гладиатор 2» встречается дважды) и своп двух одноимённых
+    кейсов проверка по одному имени не увидела бы."""
+
+    i: int
+    film: str
+    outcome: Outcome
+
+
+@dataclass
+class BaselineReport:
+    """Вердикт сравнения. Чистые данные — ни I/O, ни exit: гейт (pytest) и печать
+    зовут одну и ту же `compare_to_baseline`, поэтому «в CLI зелено, а в тесте
+    красно» структурно невозможно."""
+
+    moved: list[tuple[str, Outcome, Outcome]]
+    baseline_score: int
+    current_score: int
+    n: int
+
+    @property
+    def ok(self) -> bool:
+        return not self.moved
+
+    @property
+    def text(self) -> str:
+        if self.ok:
+            return f"baseline: match (score={self.current_score}, n={self.n})"
+        delta = self.current_score - self.baseline_score
+        lines = [
+            f"baseline: MISMATCH (score {self.baseline_score} → {self.current_score}, "
+            f"Δ{delta:+d}), переехало кейсов: {len(self.moved)}"
+        ]
+        lines += [f"  {film!r} {was}→{now}" for film, was, now in self.moved]
+        lines.append(
+            "если изменение осознанное — обнови фикстуру: "
+            "python scripts/eval_trailers.py --update-baseline (дифф пойдёт в PR)"
+        )
+        return "\n".join(lines)
+
+
+def build_baseline(rows: list[tuple[GoldenCase, str | None, Outcome]]) -> list[BaselineEntry]:
+    return [BaselineEntry(i, case.film.ru_title, o) for i, (case, _, o) in enumerate(rows)]
+
+
+def load_baseline(path: str | Path) -> list[BaselineEntry]:
+    """Fail-loud как у golden-set: битый baseline — это неизмеримый гейт, а не
+    повод сравнить «как получится»."""
+    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, list) or not raw:
+        raise GoldenSetError(f"{path}: baseline must be a non-empty list")
+    out: list[BaselineEntry] = []
+    for j, entry in enumerate(raw):
+        where = f"{path}[{j}]"
+        if not isinstance(entry, dict):
+            raise GoldenSetError(f"{where}: entry must be an object")
+        for key in ("i", "film", "outcome"):
+            if key not in entry:
+                raise GoldenSetError(f"{where}: missing required field {key!r}")
+        outcome = next((o for o in _OUTCOMES if o == entry["outcome"]), None)
+        if outcome is None:
+            raise GoldenSetError(f"{where}: unknown outcome {entry['outcome']!r}")
+        out.append(BaselineEntry(i=entry["i"], film=entry["film"], outcome=outcome))
+    return out
+
+
+def save_baseline(path: str | Path, entries: list[BaselineEntry]) -> None:
+    payload = [{"i": e.i, "film": e.film, "outcome": e.outcome} for e in entries]
+    Path(path).write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def compare_to_baseline(
+    baseline: list[BaselineEntry], rows: list[tuple[GoldenCase, str | None, Outcome]]
+) -> BaselineReport:
+    """Чистое сравнение исходов. Расхождение — red в ЛЮБУЮ сторону.
+
+    Улучшение тоже красное намеренно: «зелёное с предупреждением» воспроизводит ровно
+    тот дефект, который чинит #379, — сигнал, который никто не обязан прочитать (§IV).
+    Плюс с приходом wrong-кейсов (#380) суммарно-положительная дельта сможет прятать
+    своп `hit→wrong`, а пофильмовое сравнение — нет. `--update-baseline` в том же PR
+    делает улучшение видимым в диффе и ревьюабельным.
+
+    Рассинхрон (длина / индекс / имя) — `GoldenSetError`: сравнивать позиционно
+    разъехавшиеся наборы значит тихо сопоставлять разные фильмы."""
+    if len(baseline) != len(rows):
+        raise GoldenSetError(
+            f"baseline out of sync: {len(baseline)} entries vs {len(rows)} cases — "
+            "regenerate with --update-baseline"
+        )
+    moved: list[tuple[str, Outcome, Outcome]] = []
+    for i, (entry, (case, _, outcome)) in enumerate(zip(baseline, rows, strict=True)):
+        if entry.i != i or entry.film != case.film.ru_title:
+            raise GoldenSetError(
+                f"baseline out of sync at position {i}: expected {case.film.ru_title!r} "
+                f"(i={i}), baseline has {entry.film!r} (i={entry.i})"
+            )
+        if entry.outcome != outcome:
+            moved.append((case.film.ru_title, entry.outcome, outcome))
+    return BaselineReport(
+        moved=moved,
+        baseline_score=score([e.outcome for e in baseline]),
+        current_score=score([o for _, _, o in rows]),
+        n=len(rows),
+    )
+
+
 def _print_scorecard(rows: list[tuple[GoldenCase, str | None, Outcome]], total: int) -> None:
     tally: dict[Outcome, int] = {"hit": 0, "wrong": 0, "miss": 0}
     for case, pick_id, outcome in rows:
@@ -373,6 +556,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--threshold", type=int, default=None, help="exit≠0 если итоговый score ниже порога"
     )
+    parser.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help="перезаписать trailer_baseline.json текущей delivery-скоркартой",
+    )
     args = parser.parse_args(argv)
 
     if args.record:
@@ -384,9 +572,22 @@ def main(argv: list[str] | None = None) -> int:
     rows, total = evaluate(default_strategy(), cases)
     print("── HeuristicStrategy (YouTube retrieval) ──")
     _print_scorecard(rows, total)
+    delivery_rows, delivery_total = evaluate_delivery(cases)
+    print("── delivery (kinozal_pipeline.select_trailer — то, что уходит юзеру) ──")
+    _print_scorecard(delivery_rows, delivery_total)
     tmdb_rows, tmdb_total = evaluate_tmdb(cases)
     print("── TMDB videos (metadata source) ──")
     _print_scorecard(tmdb_rows, tmdb_total)
+
+    if args.update_baseline:
+        save_baseline(BASELINE_PATH, build_baseline(delivery_rows))
+        print(f"baseline updated → {BASELINE_PATH}")
+        return 0
+    # Печать вердикта — информационная; красноту даёт `tests/test_eval_baseline.py`
+    # (единственный носитель гейта, #379). Сравнивающая функция у них общая, поэтому
+    # «в CLI зелено, в тесте красно» невозможно.
+    print(compare_to_baseline(load_baseline(BASELINE_PATH), delivery_rows).text)
+
     if args.threshold is not None and total < args.threshold:
         print(f"below threshold {args.threshold}", file=sys.stderr)
         return 1

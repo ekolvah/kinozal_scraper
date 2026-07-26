@@ -126,7 +126,8 @@ Renders as: clickable film title → kinozal page, then "Trailer" → YouTube.
 для игр стабилен, а «заодно» его чистить — повторить #363.
 
 **Прод-композиция (#144):** `enrich_with_trailer(item, youtube)` строит облегчённый
-title+year `FilmProfile` (ru_title=clean, original_title=2-й сегмент или "", year) →
+title+year `FilmProfile` (ru_title=clean, original_title=2-й сегмент или "", year) и
+делегирует `select_trailer(profile, youtube)` →
 `youtube.search_candidates` (union #140) → `HeuristicStrategy().pick` (#141, = eval
 `default_strategy()`) → `video_id` в youtube-URL. RU-трейлер в приоритете, EN — fallback
 (закрывает RU-регрессию #138→#315; прежний одиночный `get_trailer_url` удалён). Пустой
@@ -135,6 +136,17 @@ pick → §IV miss-маркер + INFO; retrieval-исключение (в т.ч
 INFO-breadcrumb `video_id`/`reason`/`confidence`; miss-ветка пишет размер пула (#359 —
 «YouTube ничего не вернул» и «вернул N, ни один не прошёл relevance» это разные баги, а
 без `video_id` отчёт «пришла не та ссылка» вообще неразбираем).
+
+**Почему композиция разрезана надвое (#379).** `select_trailer` — всё, что стоит между
+профилем и пользователем; `enrich_with_trailer` — только деривация профиля из
+kinozal-заголовка. Разрез не косметический: #359 сломал именно верхнюю половину, не
+тронув `HeuristicStrategy.pick`, и pick-скоркарта eval-харнесса была бы одинаковой до и
+после регресса. Теперь замер заходит в `select_trailer`, а его исход пришпилен
+`tests/fixtures/trailer_baseline.json` (см. [testing.md](testing.md#eval-harness--trailer-selection-139)).
+Шов проходит по `FilmProfile` — родной форме golden-set: будь входом `NormalizedItem`,
+фикстурам пришлось бы дублировать грамматику kinozal-заголовка (§II). Обратная сторона:
+**нижняя** половина (clean-title / `original_title` / year-regex / игровая ветка — там
+сидели #385 и #393) замером не покрыта и держится на юнит-тестах `TestEnrichWithTrailer`.
 
 **Остановка по первому квотному отказу (#384).** Суточная квота YouTube — **100 `search.list`**
 (замер 2026-07-26 через Service Usage API; квота дефолтная, billing выключен, поднять нельзя).

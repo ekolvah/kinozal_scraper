@@ -106,8 +106,40 @@ grounded in reality, not self-fulfilling (#327).
   accept-set id absent from **both** the candidate pool and the TMDB snapshot) raises
   `GoldenSetError`, never degrades to a silent Miss. (Legacy single-`str` `correct` may still point
   outside the pool — the miss-branch idiom "ideal id not retrieved → Miss" — so the cross-check
-  applies to accept-sets only.) The harness is deliberately **not** in `ci_check` — no green
-  strategy exists yet to gate; the known-gap guard below carries the RED signal instead.
+  applies to accept-sets only.)
+
+- **Delivery scorecard + baseline ratchet (#379).** Beside the `pick` column the harness prints a
+  **delivery** scorecard: `evaluate_delivery` replays the golden-set through the production
+  `kinozal_pipeline.select_trailer` (retrieval stub frozen at `case.candidates`) and parses the
+  reply back into a `video_id` — a §IV miss-marker → `None`, an **error**-marker → `GoldenSetError`
+  (a broken harness must never look like "the strategy found nothing"). Markers are *imported*, not
+  re-spelled, so a reword in prod can't silently turn a miss into an unparsable reply.
+  - **Why a second column at all.** #359 changed `enrich_with_trailer` — the layer *above*
+    `HeuristicStrategy.pick` — so the pick scorecard was identical before and after a 26→16 score
+    regression. Measuring `pick` alone is blind to exactly the class of change that motivated the
+    gate. Today both columns agree by construction (no policy sits between them); the point is that
+    they *can* diverge.
+  - **The baseline is the gate.** `tests/fixtures/trailer_baseline.json` pins the **delivery**
+    outcome per case (`{"i", "film", "outcome"}` — the index rides along because `ru_title` is not
+    unique: "Гладиатор 2" appears twice, and swapping two same-named cases would slip past a
+    name-only check). `compare_to_baseline` is a pure function; the red comes from
+    `tests/test_eval_baseline.py::TestBaselineGate::test_committed_baseline_matches_main`.
+    **This reverses the earlier "deliberately not in `ci_check`" stance** — that decision waited for
+    a strategy good enough to pin an absolute threshold, which never arrived. A ratchet needs no
+    such thing: it pins the *current fact*, so any movement becomes a reviewable diff line.
+  - **Any divergence is red, improvements included.** "Green with a warning" would rebuild the very
+    defect being fixed — a signal nobody is obliged to read (§IV). Worse, once wrong-cases land
+    (#380) a net-positive delta could hide a `hit→wrong` swap; per-case comparison cannot.
+    `--update-baseline` regenerates the fixture, so a deliberate improvement lands in the PR diff.
+  - **Proof, not reasoning.** `TestBaselineGate::test_reverted_359_policy_fails_the_gate` runs the
+    reverted #359 policy (suppress `confidence < 0.5`) through the same two functions the real gate
+    uses and asserts the verdict is red with the moved films named — reproducing 26→16 exactly. The
+    counterfactual policy lives in the test file, never in `src`.
+  - **Where the gate stops.** It covers `select_trailer`. Profile derivation from the kinozal title
+    (clean-title / `original_title` / year-regex / the game branch — where #385 and #393 lived) is
+    outside the measurement and rests on `TestEnrichWithTrailer` unit tests. And with `wrong=0`
+    (#380) the metric can only catch recall regressions, not "the wrong film's trailer started
+    arriving". Both limits are load-bearing: a change written in either blind spot passes green.
 
 - **TMDB dual-source measure (#329).** Beside the `TrailerStrategy` (YouTube-retrieval) column the
   harness prints a second scorecard: `evaluate_tmdb` replays a frozen per-film `tmdb_videos`
