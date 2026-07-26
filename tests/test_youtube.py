@@ -13,12 +13,19 @@ retrieval — best-effort (§IV), но падение ВСЕХ веток = от
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import pytest
+from googleapiclient.errors import HttpError
 
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
-from kinozal_scraper.youtube import TrailerRetrievalError, search_candidates
+from kinozal_scraper.youtube import (
+    TrailerRetrievalError,
+    YoutubeQuotaExhausted,
+    _is_quota_error,
+    search_candidates,
+)
 
 
 def _video_item(video_id: str, title: str, **snippet: str) -> dict[str, Any]:
@@ -181,3 +188,133 @@ class TestSearchCandidates:
         )
         profile = FilmProfile(ru_title="Дюна", original_title="Дюна", year=2024)
         assert [c.video_id for c in search_candidates(client, profile)] == ["v1"]
+
+
+class _Resp:
+    """Носитель статуса для настоящего `HttpError` (у httplib2-ответа нужны только
+    `.status`/`.reason`). Реальность, которую пинят тесты ниже, — не транспорт, а
+    форма тела: где именно лежит машинный код причины."""
+
+    def __init__(self, status: int, reason: str = "") -> None:
+        self.status = status
+        self.reason = reason
+
+
+def _http_error(status: int, body: dict[str, Any]) -> HttpError:
+    return HttpError(_Resp(status), json.dumps(body).encode("utf-8"))
+
+
+# Настоящие тела ответов YouTube Data API. Legacy-форма (`error.errors[]`) — та,
+# что пришла в прогоне 30143534431; ErrorInfo (`error.details[]`) — новая, куда
+# Google мигрирует, и код причины там в SCREAMING_SNAKE.
+_RATE_LIMIT_429 = {
+    "error": {
+        "code": 429,
+        "message": "Rate Limit Exceeded",
+        "errors": [
+            {
+                "message": "Rate Limit Exceeded",
+                "domain": "usageLimits",
+                "reason": "rateLimitExceeded",
+            }
+        ],
+    }
+}
+_QUOTA_403 = {
+    "error": {
+        "code": 403,
+        "message": "The request cannot be completed because you have exceeded your quota.",
+        "errors": [
+            {
+                "message": "The request cannot be completed because you have exceeded your quota.",
+                "domain": "youtube.quota",
+                "reason": "quotaExceeded",
+            }
+        ],
+    }
+}
+_RATE_LIMIT_ERRORINFO_429 = {
+    "error": {
+        "code": 429,
+        "message": "Quota exceeded for quota metric 'Queries'",
+        "details": [
+            {
+                "@type": "type.googleapis.com/google.rpc.ErrorInfo",
+                "reason": "RATE_LIMIT_EXCEEDED",
+                "domain": "youtube.googleapis.com",
+            }
+        ],
+    }
+}
+_BACKEND_500 = {
+    "error": {
+        "code": 500,
+        "message": "Internal error encountered.",
+        "errors": [{"message": "Internal error", "domain": "global", "reason": "backendError"}],
+    }
+}
+_FORBIDDEN_403 = {
+    "error": {
+        "code": 403,
+        "message": "The caller does not have permission",
+        "errors": [{"message": "Forbidden", "domain": "global", "reason": "forbidden"}],
+    }
+}
+
+
+class TestQuotaDetection:
+    """#384: остановка по первому квотному отказу требует отличать «квота кончилась»
+    от «сервер моргнул» — иначе один 500 глушил бы трейлеры на весь прогон."""
+
+    @pytest.mark.parametrize(
+        ("body", "status"),
+        [(_RATE_LIMIT_429, 429), (_QUOTA_403, 403), (_RATE_LIMIT_ERRORINFO_429, 429)],
+    )
+    def test_predicate_matches_real_googleapiclient_httperror(
+        self, body: dict[str, Any], status: int
+    ) -> None:
+        # Reality-anchor: собран настоящий HttpError, а не дубль. Пинится
+        # `error_details`, а НЕ `.reason`: в googleapiclient `self.reason =
+        # data["error"]["message"]` — человеческий текст («Rate Limit Exceeded»),
+        # который Google волен переписать, машинный же код живёт в error_details.
+        assert _is_quota_error(_http_error(status, body)) is True
+
+    @pytest.mark.parametrize(("body", "status"), [(_BACKEND_500, 500), (_FORBIDDEN_403, 403)])
+    def test_predicate_ignores_non_quota_httperror(self, body: dict[str, Any], status: int) -> None:
+        # 403 без usageLimits-причины — отказ доступа, не квота: остановка прогона
+        # тут была бы ложной. Статуса самого по себе для решения не хватает.
+        assert _is_quota_error(_http_error(status, body)) is False
+
+    def test_predicate_survives_body_without_machine_reason(self) -> None:
+        # `error_details` бывает строкой (в теле только `message`) — предикат обязан
+        # ответить «не квота», а не упасть на строке вместо списка.
+        assert _is_quota_error(_http_error(429, {"error": {"message": "boom"}})) is False
+
+    def test_all_branches_quota_failure_raises_quota_exhausted(self) -> None:
+        err = _http_error(429, _RATE_LIMIT_429)
+        client = _FakeClient([("Волк", err), ("The Wolf", err)])
+        profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        with pytest.raises(YoutubeQuotaExhausted):
+            search_candidates(client, profile)
+
+    def test_mixed_branch_failures_prefer_the_quota_signal(self) -> None:
+        # Квота уже кончилась — то, что вторая ветка успела упасть по другой причине,
+        # этого не отменяет. Выбор по «последнему отказу» потерял бы сигнал и заставил
+        # следующий фильм открывать его заново.
+        client = _FakeClient(
+            [
+                ("Волк", _http_error(429, _RATE_LIMIT_429)),
+                ("The Wolf", RuntimeError("connection reset")),
+            ]
+        )
+        profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        with pytest.raises(YoutubeQuotaExhausted):
+            search_candidates(client, profile)
+
+    def test_generic_failure_raises_plain_retrieval_error(self) -> None:
+        # Сетевой сбой ≠ исчерпанная квота: он роняет один фильм (#383), а не прогон.
+        client = _FakeClient([("Волк", RuntimeError("boom")), ("The Wolf", RuntimeError("boom"))])
+        profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        with pytest.raises(TrailerRetrievalError) as excinfo:
+            search_candidates(client, profile)
+        assert not isinstance(excinfo.value, YoutubeQuotaExhausted)

@@ -26,6 +26,7 @@ from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier, TelegramNotifier
 from kinozal_scraper.text_utils import YEAR_SEGMENT_RE, original_title
 from kinozal_scraper.trailer_strategy import FilmProfile, HeuristicStrategy
+from kinozal_scraper.youtube import YoutubeQuotaExhausted
 
 logger = logging.getLogger(__name__)
 
@@ -478,6 +479,10 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
 # dev-tripwire firing only on real anomalies (a clean miss is expected).
 _TRAILER_MISS_MARKER = "🎬 трейлер не найден"
 _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
+# Третья причина (#384) — не промах и не поломка, а исчерпанная суточная квота.
+# Отдельный маркер, потому что действие оператора другое: не «чинить поиск», а
+# сократить объём прогона или сменить источник трейлеров.
+_TRAILER_QUOTA_MARKER = "⚠️ трейлер: дневная квота YouTube"
 
 
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
@@ -522,6 +527,12 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     profile = FilmProfile(ru_title=clean, original_title=original_title(raw_for_year), year=year)
     try:
         candidates = youtube.search_candidates(profile)
+    except YoutubeQuotaExhausted:
+        # Единственное исключение, которое НЕ вырождается в маркер этого фильма:
+        # квота суточная и общая, значит следующий фильм упрётся в неё гарантированно.
+        # Решение «прекратить обогащение» принимает цикл прогона (§IV — сигнал должен
+        # долететь до того, кто может на него отреагировать), не эта функция.
+        raise
     except Exception as exc:  # noqa: BLE001 — retrieval failure degrades to a visible marker, item still notified
         logger.warning("trailer lookup failed for %r: %s", item.title, exc, exc_info=True)
         return _TRAILER_ERROR_MARKER
@@ -700,10 +711,52 @@ def _notify_and_persist(
     non-zero exit (Principle IV). The store-guard keys on `items_to_store` (not
     `sent`) so filtered items are persisted even when every new item was filtered
     and nothing was sent.
+
+    **Enrichment stops at the first quota refusal (#384).** The daily YouTube
+    quota is 100 `search.list` calls (measured 2026-07-26 via Service Usage API,
+    default tier, cannot be raised — billing is off), while a spike of new items
+    asks for several times that: run 30143534431 spent 163 requests on guaranteed
+    429s. Once `YoutubeQuotaExhausted` surfaces, every remaining film skips
+    retrieval and carries `_TRAILER_QUOTA_MARKER` — the quota is daily and
+    project-wide, so the next film would refuse just as certainly.
+
+    A *precomputed* cap was rejected: any fixed number is a guess, it breaks on a
+    second run in the same day (the quota is daily, a per-run budget is not), and
+    it underuses the quota on single-branch films (`ru_title == original_title`
+    costs 1 request, not 2). The real boundary is only known to the API, so we let
+    it name it. Cost of discovery is one film's requests, not 163.
+
+    Only quota refusals stop the loop. A generic `TrailerRetrievalError` (500,
+    timeout) still degrades to a per-film marker (#383) — otherwise one flaky
+    response would silence trailers for the whole run.
+
+    The stop lives here because "a run" only exists at this level:
+    `search_candidates` is stateless and `Youtube` builds a network client in its
+    constructor.
     """
     notifications: list[Notification] = []
-    for item in kept:
-        item.trailer_url = enrich_with_trailer(item, youtube)
+    quota_exhausted = False
+    for i, item in enumerate(kept):
+        if quota_exhausted:
+            item.trailer_url = _TRAILER_QUOTA_MARKER
+        else:
+            try:
+                item.trailer_url = enrich_with_trailer(item, youtube)
+            except YoutubeQuotaExhausted as exc:
+                quota_exhausted = True
+                item.trailer_url = _TRAILER_QUOTA_MARKER
+                # Одна строка на прогон, не строка на фильм: 163-строчный шум
+                # прогона 30143534431 — часть чинимого дефекта, повторять его
+                # нельзя (§IV — аномалия должна быть читаемой, а не утопленной
+                # в повторах). exc_info несёт, какой именно лимит назвал API.
+                logger.warning(
+                    "youtube quota exhausted after %d enriched films: %s; "
+                    "%d remaining films skip retrieval with a visible marker",
+                    i,
+                    exc,
+                    len(kept) - i,
+                    exc_info=True,
+                )
         template = source_map[item.source_id]["message_template"]
         notifications.append(build_notification(item, template))
 
