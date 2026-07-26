@@ -4,7 +4,14 @@ import unittest.mock
 
 from curl_cffi.requests.exceptions import HTTPError
 
-from kinozal_scraper.http_fetch import NotAnImageError, describe_block, fetch_bytes, fetch_html
+from kinozal_scraper.http_fetch import (
+    _HTML_GET,
+    _IMAGE_GET,
+    NotAnImageError,
+    describe_block,
+    fetch_bytes,
+    fetch_html,
+)
 
 _FIXTURES = pathlib.Path(__file__).parent / "fixtures"
 
@@ -364,6 +371,32 @@ class TestFetchRetry(unittest.TestCase):
         with self.assertRaises(HTTPError) as ctx:
             resp.raise_for_status()
         self.assertTrue(_is_transient_http_error(ctx.exception))
+
+
+class TestSharedRequestKwargs(unittest.TestCase):
+    """The request parameters live in one place so a second caller cannot drift
+    from prod silently (#396).
+
+    The `scripts/probe.py` measurement is only meaningful while it hits the site
+    exactly the way prod does — a copy-pasted `impersonate`/`timeout`/`Accept`
+    would let the two diverge with nothing turning red.
+    """
+
+    def test_fetch_html_uses_shared_kwargs(self) -> None:
+        with unittest.mock.patch(
+            "kinozal_scraper.http_fetch.requests.get", return_value=_ok_html()
+        ) as mget:
+            fetch_html("https://example.com")
+
+        self.assertEqual(mget.call_args.kwargs, _HTML_GET)
+
+    def test_fetch_bytes_uses_shared_kwargs(self) -> None:
+        with unittest.mock.patch(
+            "kinozal_scraper.http_fetch.requests.get", return_value=_ok_image()
+        ) as mget:
+            fetch_bytes("https://example.com/x.png")
+
+        self.assertEqual(mget.call_args.kwargs, _IMAGE_GET)
 
 
 if __name__ == "__main__":
