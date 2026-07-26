@@ -3,6 +3,19 @@
 .claude/settings.local.json
 .claude/worktrees/
 .claude/cache/
+# Secrets: MUST live here, not in .git/info/exclude — that file is not versioned,
+# so a fresh clone / second machine / contributor would get the repo unprotected
+# (#387). `.env` carries CREDENTIALS (service-account JSON with private_key),
+# API keys and a site password; `secret.key` is the Fernet key that decrypts
+# anon.session.encrypted and is written into the repo root by
+# crypto.save_encrypter_session().
+.env
+.env.*
+# ...but a values-free template MUST stay committable: without this negation
+# `.env.*` would silently swallow it, and the omission would only surface as a
+# contributor wondering which variables exist.
+!.env.example
+secret.key
 anon.session
 __pycache__/
 .coverage
