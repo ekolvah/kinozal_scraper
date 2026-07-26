@@ -1,10 +1,15 @@
-"""Anti-drift guard for the secret-file ignores (#387).
+"""Anti-drift guard for the secret-file ignores (#387, #386).
 
 `.env` and `secret.key` carry live credentials (service-account JSON with
-`private_key`, API keys, a site password, and the Fernet key that decrypts
-`anon.session.encrypted`). Before #387 they were ignored only via
+`private_key`, API keys, a site password). Before #387 they were ignored only via
 `.git/info/exclude`, which is NOT versioned — so a fresh clone, a second machine
 or a contributor got the repo unprotected.
+
+A Telethon session file is a credential of the same weight and is covered here
+too (#386): `anon.session.encrypted` — the *ciphertext* of a user-account session
+— sat in this public repo for two years, and encryption does not make it safe to
+publish (rotating the Fernet key cannot un-publish the blob). `secret.key` stays
+ignored for the stale local copy of that key, not because anything still writes it.
 
 These tests assert the ignore actually comes from the tracked `.gitignore`, so
 the protection travels with the repo and cannot be silently dropped by a future
@@ -47,7 +52,17 @@ def _ignore_source(path: str) -> str:
     return (result.stdout or "").strip()
 
 
-@pytest.mark.parametrize("path", [".env", ".env.local", "secret.key"])
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env",
+        ".env.local",
+        "secret.key",
+        "anon.session",
+        "anon.session.encrypted",
+        "b.session.encrypted",
+    ],
+)
 def test_secret_files_are_ignored_by_tracked_gitignore(path: str) -> None:
     source = _ignore_source(path)
     assert source, f"{path} is not ignored at all — a `git add -A` would commit it"
@@ -55,6 +70,27 @@ def test_secret_files_are_ignored_by_tracked_gitignore(path: str) -> None:
         f"{path} is ignored by {source.split(':')[0]!r}, not by the tracked .gitignore — "
         "an unversioned exclude does not protect a fresh clone (#387)"
     )
+
+
+def test_no_session_credential_is_tracked() -> None:
+    """No Telethon session file may be tracked — encrypted or not (#386).
+
+    The ignore rules above only protect a file that does not exist yet; this
+    asserts the repo state itself, because the way the credential got published
+    was a `git add` of an *encrypted* blob that looked harmless. Re-adding one
+    must redden CI, not pass review on the argument "but it's Fernet".
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=_REPO,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    sessions = [name for name in (tracked.stdout or "").split("\0") if ".session" in name]
+
+    assert not sessions, f"Telethon session credential(s) tracked in the repo: {sessions}"
 
 
 def test_env_example_template_stays_committable() -> None:

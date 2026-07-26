@@ -205,8 +205,9 @@ DI) into a deterministic gate. Two contracts, both green today — value is
 
 - **`adapter-no-auth`** (`forbidden`) — the real §II win: the service adapters
   (`sheets_storage`/`telegram_notifier`/`gemini_enricher`) must not import
-  `crypto`/`kinozal_auth`. Encodes "implementations receive ready clients, not
-  credentials — auth lives in the caller" as a machine rule.
+  `kinozal_auth`. Encodes "implementations receive ready clients, not
+  credentials — auth lives in the caller" as a machine rule. (`crypto` was the
+  second forbidden module until #386 deleted that module outright.)
 - **`pipeline-layers`** (`layers`) — pins dependency *direction*: orchestrators
   (`*_pipeline`) may import the adapters and the shared `generic_pipeline` core,
   never the reverse, and no orchestrator/adapter imports a sibling.
@@ -538,12 +539,38 @@ and the marker helpers share one canonical home in `alerting.py`.
 |---|---|---|
 | `CHANNEL_URL` | var | semicolon-separated Telegram channel URLs/IDs |
 | `GOOGLE_API_KEY` | secret | Gemini API for summarization |
-| `API_HASH` | secret | Telethon app hash |
-| `TELEGRAM_API_ID` | secret | Telethon app ID |
-| `PHONE_NUMBER` | secret | Telethon auth phone |
-| `TELETHON_SESSION` | secret | Telethon session string |
-| `SECRET_KEY` | secret | crypto module key |
+| `API_HASH` | secret | Telethon app hash — **required, empty value fails fast** |
+| `TELEGRAM_API_ID` | secret | Telethon app ID — **required, empty value fails fast** |
+| `TELETHON_SESSION` | secret | Telethon session string — **required, empty value fails fast** |
 | `LLM_MODEL` | var | preferred Gemini model |
+
+`require_env` (`telegram_summarizer.py`) rejects an empty value, not just a missing
+key: GitHub Actions expands an **undefined secret into an empty string**, so
+`os.environ["X"]` cannot tell "not configured" from "configured". That gap is what
+kept a user-account Telethon session (`anon.session.encrypted`) live in this public
+repo — `TELETHON_SESSION` was never set, so the reader silently fell back to the
+committed session file (#386).
+
+#### Minting a new `TELETHON_SESSION`
+
+Run locally, once, with the app credentials of the same Telegram account. Telethon
+asks for the phone number and the login code; the printed string **is** a
+credential — put it straight into the secret, never into a file in the repo:
+
+```python
+from telethon.sync import TelegramClient
+from telethon.sessions import StringSession
+
+with TelegramClient(StringSession(), api_id, api_hash) as client:
+    print(client.session.save())
+```
+
+```bash
+gh secret set TELETHON_SESSION   # paste the string
+```
+
+Revoking the old session (Telegram → Settings → Devices) is what actually
+invalidates a leaked one — re-encrypting or rotating a key cannot un-publish a blob.
 
 ## Setup
 

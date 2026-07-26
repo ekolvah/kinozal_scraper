@@ -6,9 +6,10 @@
 # Secrets: MUST live here, not in .git/info/exclude — that file is not versioned,
 # so a fresh clone / second machine / contributor would get the repo unprotected
 # (#387). `.env` carries CREDENTIALS (service-account JSON with private_key),
-# API keys and a site password; `secret.key` is the Fernet key that decrypts
-# anon.session.encrypted and is written into the repo root by
-# crypto.save_encrypter_session().
+# API keys and a site password; `secret.key` is a stale local copy of the Fernet
+# key that used to decrypt the session file (#386 removed both the file and the
+# code that wrote the key — the ignore stays so an old working copy cannot commit
+# it now).
 .env
 .env.*
 # ...but a values-free template MUST stay committable: without this negation
@@ -16,7 +17,13 @@
 # contributor wondering which variables exist.
 !.env.example
 secret.key
-anon.session
+# A Telethon session authenticates a *user* account — full read of every private
+# chat plus sending as the owner. Encrypting it does not make it publishable:
+# `anon.session.encrypted` sat in this public repo for two years, and rotating the
+# key cannot un-publish a blob that forks already hold (#386). Both forms are
+# ignored by pattern, so a differently-named session file cannot slip through.
+*.session
+*.session.encrypted
 __pycache__/
 .coverage
 .audit-tmp/

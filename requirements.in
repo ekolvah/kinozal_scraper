@@ -12,7 +12,6 @@ langdetect
 protobuf
 telethon
 google-genai
-cryptography
 tenacity
 # websockets is a transitive of google-genai (which declares <17,>=13). It is NOT used
 # in prod (we call only generate_content/list/embed, never the Live API). Cap at <16 so

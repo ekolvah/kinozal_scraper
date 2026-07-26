@@ -17,10 +17,9 @@ import importlib
 
 import pytest
 
-# All 17 source modules. The 7 production entry points are a subset; the rest
+# All 16 source modules. The 7 production entry points are a subset; the rest
 # are libraries imported by them. Names mirror the file stems under src/.
 _MODULES = [
-    "crypto",
     "gemini_enricher",
     "generic_pipeline",
     "github_popular_pipeline",

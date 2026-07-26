@@ -66,14 +66,20 @@ run failures instead of being collapsed into "no news." Details in
 
 ## Telethon-direct modules
 
-`TelegramChannelSummarizer.py`, `crypto.py`, and `telegram_summarizer.py`
-use Telethon + Gemini directly rather than going through the generic
-pipeline (sources.json → declarative extraction → Storage → Notifier).
-The reason is the domain: they read live Telegram channels, decrypt a
-Telethon session, and summarize free-form chat — none of which fits the
-"fetch → extract → dedupe → notify" shape the other pipelines share.
+`TelegramChannelSummarizer.py` and `telegram_summarizer.py` use Telethon +
+Gemini directly rather than going through the generic pipeline (sources.json
+→ declarative extraction → Storage → Notifier). The reason is the domain:
+they read live Telegram channels and summarize free-form chat — neither fits
+the "fetch → extract → dedupe → notify" shape the other pipelines share.
+
+Reading channels needs a **user** session, not a bot: the tracked channels
+are third-party, and the Bot API cannot fetch history where the bot is not an
+admin. That session is a `StringSession` built from the `TELETHON_SESSION`
+secret and from nothing else. Until #386 it was a Fernet-encrypted file
+(`anon.session.encrypted` + `crypto.py`) committed to this public repo, with
+the secret unset so the file branch was the live path.
 
 They are nevertheless covered by the same quality gates: ruff format,
-ruff lint, mypy, and dedicated tests (`test_telegram_summarizer.py`,
-`test_crypto.py`). Model rotation is the same strategy as the generic
-pipelines — see [gemini.md](gemini.md).
+ruff lint, mypy, and dedicated tests (`test_telegram_summarizer.py`). Model
+rotation is the same strategy as the generic pipelines — see
+[gemini.md](gemini.md).

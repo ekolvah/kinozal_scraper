@@ -167,23 +167,20 @@ class GeminiSummarizer:
 
 class TelethonReader:
     """Reads the last 24 hours of messages from a Telegram channel via
-    Telethon, renders them as a single text payload. Preserves the
-    pre-refactor behaviour 1:1: same day-cutoff, same sender-name format,
-    same broadcast detection, same swallowed-error path returning
-    `(None, "", False)`.
+    Telethon, renders them as a single text payload. Day-cutoff, sender-name
+    format, broadcast detection and the swallowed per-channel error path
+    returning `(None, "", False)` are unchanged since the refactor.
+
+    Authentication is a `StringSession` built from the `TELETHON_SESSION`
+    secret and nothing else. The session-file branch it used to fall back to
+    read `anon.session.encrypted` — a user-account credential committed to
+    this public repo (#386).
     """
 
-    def __init__(
-        self,
-        api_id: str | None,
-        api_hash: str | None,
-        session: str | None,
-        phone: str | None,
-    ) -> None:
+    def __init__(self, api_id: str, api_hash: str, session: str) -> None:
         self._api_id = api_id
         self._api_hash = api_hash
         self._session = session
-        self._phone = phone
 
     def fetch_channel(self, channel_url: str) -> ChannelMessages:
         return asyncio.run(self._fetch_channel_async(channel_url))
@@ -224,17 +221,27 @@ class TelethonReader:
         if isinstance(channel_url, str) and channel_url.lstrip("-").isdigit():
             target = int(channel_url)
 
-        if self._session:
-            client = TelegramClient(StringSession(self._session), self._api_id, self._api_hash)
-        else:
-            client = TelegramClient("anon", self._api_id, self._api_hash)
+        client = TelegramClient(StringSession(self._session), self._api_id, self._api_hash)
 
         try:
-            await client.start()
+            # Outside the per-channel `except` on purpose (#386): a session that
+            # is gone is a *credential* failure, and swallowing it turns one cause
+            # into fifteen identical `fetch_failed` lines with the reason lost.
+            # It also has to be answered by an operator, not by a retry — which is
+            # why there is no `send_code_request`/`sign_in` here any more: asking
+            # for a login code on stdin is meaningless on a cron runner.
+            await client.connect()
             if not await client.is_user_authorized():
-                await client.send_code_request(self._phone)
-                await client.sign_in(self._phone, input("Enter the code: "))
+                raise RuntimeError(
+                    "Telethon session is not authorized — it was revoked or the "
+                    "TELETHON_SESSION secret is stale. Mint a new session string "
+                    "(see docs/architecture/ci.md) and update the secret."
+                )
+        except BaseException:
+            await client.disconnect()
+            raise
 
+        try:
             entity = await client.get_entity(target)
             channel_title: str = getattr(entity, "title", str(target))
             posts = await client(

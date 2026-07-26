@@ -7,11 +7,13 @@ from types import SimpleNamespace
 from typing import Any
 
 from google.genai import errors
+from telethon.sessions import StringSession
 
 from kinozal_scraper.telegram_summarizer import (
     deliver_results,
     format_summary_message,
     format_technical_alert,
+    require_env,
     send_required_text,
 )
 from kinozal_scraper.TelegramChannelSummarizer import (
@@ -302,13 +304,16 @@ class TestTelethonReaderErrorSwallow(unittest.TestCase):
         Caveat (preserved from pre-refactor): `TelegramClient(...)` and
         `StringSession(...)` are constructed OUTSIDE the try-block, so a
         malformed session-string raises before the swallow fires. That's
-        intentional (PR1 was byte-identical). Tests of the swallow path
-        use `session=None` (the `'anon'` filename branch) and inject a
-        mock client whose `start()` raises.
+        intentional. Since #386 the connect + authorization check sits outside
+        it too — a revoked credential is not a per-channel failure — so the
+        swallow is exercised on the first call *after* auth (`get_entity`),
+        and the session is a real (empty) `StringSession`, never a mock.
         """
-        reader = TelethonReader(api_id="x", api_hash="y", session=None, phone="p")
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
         mock_client = unittest.mock.MagicMock()
-        mock_client.start = unittest.mock.AsyncMock(side_effect=RuntimeError("session expired"))
+        mock_client.connect = unittest.mock.AsyncMock()
+        mock_client.is_user_authorized = unittest.mock.AsyncMock(return_value=True)
+        mock_client.get_entity = unittest.mock.AsyncMock(side_effect=RuntimeError("channel gone"))
         mock_client.disconnect = unittest.mock.AsyncMock()
 
         with unittest.mock.patch(
@@ -319,6 +324,100 @@ class TestTelethonReaderErrorSwallow(unittest.TestCase):
 
         self.assertEqual(result, (None, "", False))
         mock_client.disconnect.assert_awaited_once()
+
+
+# ── C1. Credentials: required env + session-only auth (#386) ─────────────────
+#
+# The published `anon.session.encrypted` was the *live* production credential:
+# the `TELETHON_SESSION` secret did not exist, GitHub Actions expanded the missing
+# secret to an empty string, and `if self._session` fell through to the
+# `TelegramClient("anon", ...)` file branch. "Secret not configured" was
+# indistinguishable from "secret configured" — §IV, one config typo deep.
+
+
+class TestRequiredEnv(unittest.TestCase):
+    """An unset GitHub Actions secret arrives as `""`, not as a missing key, so
+    `os.environ["X"]` alone does not protect the boundary (#386)."""
+
+    def test_missing_key_raises_named_error(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            require_env({}, "TELETHON_SESSION")
+
+        self.assertIn("TELETHON_SESSION", str(ctx.exception))
+
+    def test_empty_value_raises_named_error(self) -> None:
+        with self.assertRaises(RuntimeError) as ctx:
+            require_env({"TELETHON_SESSION": ""}, "TELETHON_SESSION")
+
+        self.assertIn("TELETHON_SESSION", str(ctx.exception))
+
+    def test_present_value_returned(self) -> None:
+        self.assertEqual(require_env({"TELETHON_SESSION": "abc"}, "TELETHON_SESSION"), "abc")
+
+
+def _auth_client(*, authorized: bool) -> unittest.mock.MagicMock:
+    client = unittest.mock.MagicMock()
+    client.connect = unittest.mock.AsyncMock()
+    client.is_user_authorized = unittest.mock.AsyncMock(return_value=authorized)
+    client.send_code_request = unittest.mock.AsyncMock()
+    client.sign_in = unittest.mock.AsyncMock()
+    client.get_entity = unittest.mock.AsyncMock(return_value=_entity())
+    client.disconnect = unittest.mock.AsyncMock()
+
+    async def _call(_request: Any) -> SimpleNamespace:
+        return _posts([], [])
+
+    client.side_effect = _call
+    return client
+
+
+class TestTelethonReaderAuth(unittest.TestCase):
+    def test_client_is_built_from_string_session(self) -> None:
+        """The load-bearing assertion of #386: authentication comes from the
+        session *string*, never from a session file in the working tree.
+
+        Without it, re-adding `else: TelegramClient("anon", ...)` reddens nothing —
+        the `git ls-files` guard in `test_gitignore_secrets.py` catches only a
+        re-committed file, not a code path that recreates one.
+        """
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
+        client = _auth_client(authorized=True)
+
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.TelegramChannelSummarizer.TelegramClient", return_value=client
+            ) as telegram_client,
+            unittest.mock.patch("kinozal_scraper.TelegramChannelSummarizer.GetHistoryRequest"),
+        ):
+            reader.fetch_channel("https://t.me/whatever")
+
+        session_arg = telegram_client.call_args.args[0]
+        self.assertIsInstance(session_arg, StringSession)
+
+    def test_revoked_session_fails_fast_without_prompting(self) -> None:
+        """Revoking the leaked session is the mitigation this issue is about, so
+        the code must behave sanely when it happens.
+
+        A revoked session is a *credential* failure (§VI fail-fast), not a
+        per-channel data failure: swallowed into `(None, "", False)` it becomes 15
+        identical `fetch_failed` lines in the technical alert with the cause no
+        longer recoverable. And the pre-#386 code answered it by asking for a login
+        code on stdin — on a runner with no TTY.
+        """
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
+        client = _auth_client(authorized=False)
+
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.TelegramChannelSummarizer.TelegramClient", return_value=client
+            ),
+            self.assertRaises(RuntimeError),
+        ):
+            reader.fetch_channel("https://t.me/whatever")
+
+        client.send_code_request.assert_not_awaited()
+        client.sign_in.assert_not_awaited()
+        client.disconnect.assert_awaited_once()
 
 
 # ── C2. Happy-path rendering — TelethonReader._fetch_channel_async ───────────
@@ -348,7 +447,7 @@ def _posts(messages: list[SimpleNamespace], users: list[SimpleNamespace]) -> Sim
 
 def _mock_client(entity: SimpleNamespace, posts: SimpleNamespace) -> unittest.mock.MagicMock:
     client = unittest.mock.MagicMock()
-    client.start = unittest.mock.AsyncMock()
+    client.connect = unittest.mock.AsyncMock()
     client.is_user_authorized = unittest.mock.AsyncMock(return_value=True)
     client.get_entity = unittest.mock.AsyncMock(return_value=entity)
     client.disconnect = unittest.mock.AsyncMock()
@@ -364,7 +463,7 @@ class TestTelethonReaderFetchRender(unittest.TestCase):
     def _fetch(
         self, url: str, entity: SimpleNamespace, posts: SimpleNamespace
     ) -> tuple[ChannelMessages, unittest.mock.MagicMock]:
-        reader = TelethonReader(api_id="x", api_hash="y", session=None, phone="p")
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
         client = _mock_client(entity, posts)
         with (
             unittest.mock.patch(
