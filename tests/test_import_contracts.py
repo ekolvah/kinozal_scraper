@@ -8,13 +8,18 @@ contracts in `.importlinter`:
   reverse, and no orchestrator/adapter imports a sibling.
 - `adapter-no-auth` (forbidden) encodes the §II hard rule "implementations
   receive ready clients, not credentials — auth lives in the caller": the three
-  adapter modules must not import `crypto`/`kinozal_auth`.
+  adapter modules must not import `kinozal_auth`.
 
 These tests pin *enforcement*, not mere declaration. A future agent must not be
 able to quietly gut a contract while keeping its name (drop modules from
-`source_modules`, remove `crypto` from `forbidden_modules`, …) — so the meta-
-test asserts the load-bearing fields, not just that the contract names exist
+`source_modules`, drop one from `forbidden_modules`, …) — so the meta-test
+asserts the load-bearing fields, not just that the contract names exist
 (#234 architect-review SHOULD-FIX #1). Mirrors `test_ruff_silence_rules.py`.
+
+`crypto` used to be listed here as the second forbidden module. It left in #386
+because the module was **deleted outright** — the Telethon session stopped being
+a Fernet-encrypted file in the repo — not because the contract was narrowed. That
+is the one shape of this edit the guard above is not meant to block.
 """
 
 from __future__ import annotations
@@ -42,7 +47,7 @@ _ADAPTERS = {
     f"{_PKG}.telegram_notifier",
     f"{_PKG}.gemini_enricher",
 }
-_AUTH = {f"{_PKG}.crypto", f"{_PKG}.kinozal_auth"}
+_AUTH = {f"{_PKG}.kinozal_auth"}
 _CORE = {f"{_PKG}.generic_pipeline"}  # the layers contract's bottom layer
 
 

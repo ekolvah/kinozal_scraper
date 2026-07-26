@@ -99,9 +99,10 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           API_HASH: ${{ secrets.API_HASH }}
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
-          PHONE_NUMBER: ${{ secrets.PHONE_NUMBER }}
+          # The only source of the Telethon session (#386). An undefined secret
+          # expands to "" here, which the step rejects loudly instead of falling
+          # back to a session file.
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
-          SECRET_KEY: ${{ secrets.SECRET_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 
       - name: Send fallback failure alert

@@ -30,5 +30,4 @@ source_modules =
     kinozal_scraper.telegram_notifier
     kinozal_scraper.gemini_enricher
 forbidden_modules =
-    kinozal_scraper.crypto
     kinozal_scraper.kinozal_auth

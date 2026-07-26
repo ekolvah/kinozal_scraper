@@ -5,12 +5,32 @@ from __future__ import annotations
 import html as _html
 import logging
 import os
+from collections.abc import Mapping
 from typing import Any
 
 from kinozal_scraper.alerting import mark_technical_alert_sent, send_required_text
 from kinozal_scraper.TelegramChannelSummarizer import ChannelProcessResult, ChannelSummary
 
 logger = logging.getLogger(__name__)
+
+
+def require_env(env: Mapping[str, str], name: str) -> str:
+    """Return `env[name]`, refusing an empty value (#386).
+
+    GitHub Actions expands a *missing* secret into an empty string rather than
+    leaving the variable unset, so `os.environ["X"]` cannot tell "not configured"
+    from "configured". That gap is what kept the published `anon.session.encrypted`
+    in production: an unset `TELETHON_SESSION` looked like a deliberate choice and
+    the reader quietly fell back to the session file. Fail here — before any
+    network call — instead of failing obscurely inside Telethon (§IV, §VI).
+    """
+    value = env.get(name, "")
+    if not value:
+        raise RuntimeError(
+            f"{name} is unset or empty — required. Note that an undefined GitHub "
+            "Actions secret arrives as an empty string, so check the secret exists."
+        )
+    return value
 
 
 def format_summary_message(summary: ChannelSummary) -> str:
@@ -88,7 +108,6 @@ if __name__ == "__main__":
 
     from google import genai
 
-    from kinozal_scraper.crypto import crypto
     from kinozal_scraper.gemini_enricher import get_generation_models
     from kinozal_scraper.telegram_notifier import TelegramNotifier
     from kinozal_scraper.TelegramChannelSummarizer import (
@@ -99,11 +118,6 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-    # Decrypt the Telethon session file from `anon.session.encrypted` →
-    # `anon.session` so Telethon picks it up locally. Required before any
-    # `TelegramClient(...)` construction.
-    crypto.load_encrypter_session()
-
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
     available_models = get_generation_models(client)
     if available_models:
@@ -111,11 +125,12 @@ if __name__ == "__main__":
     else:
         logger.warning("No Gemini models available, summarization will be skipped")
 
+    # The session comes from a secret and nowhere else — it used to be read from
+    # `anon.session.encrypted`, committed to this public repo (#386).
     reader = TelethonReader(
-        api_id=os.getenv("TELEGRAM_API_ID"),
-        api_hash=os.getenv("API_HASH"),
-        session=os.getenv("TELETHON_SESSION"),
-        phone=os.getenv("PHONE_NUMBER"),
+        api_id=require_env(os.environ, "TELEGRAM_API_ID"),
+        api_hash=require_env(os.environ, "API_HASH"),
+        session=require_env(os.environ, "TELETHON_SESSION"),
     )
     summarizer = GeminiSummarizer(
         models=available_models,

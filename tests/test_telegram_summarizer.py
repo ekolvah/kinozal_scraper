@@ -304,13 +304,16 @@ class TestTelethonReaderErrorSwallow(unittest.TestCase):
         Caveat (preserved from pre-refactor): `TelegramClient(...)` and
         `StringSession(...)` are constructed OUTSIDE the try-block, so a
         malformed session-string raises before the swallow fires. That's
-        intentional (PR1 was byte-identical). Tests of the swallow path
-        use `session=None` (the `'anon'` filename branch) and inject a
-        mock client whose `start()` raises.
+        intentional. Since #386 the connect + authorization check sits outside
+        it too — a revoked credential is not a per-channel failure — so the
+        swallow is exercised on the first call *after* auth (`get_entity`),
+        and the session is a real (empty) `StringSession`, never a mock.
         """
-        reader = TelethonReader(api_id="x", api_hash="y", session=None, phone="p")
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
         mock_client = unittest.mock.MagicMock()
-        mock_client.start = unittest.mock.AsyncMock(side_effect=RuntimeError("session expired"))
+        mock_client.connect = unittest.mock.AsyncMock()
+        mock_client.is_user_authorized = unittest.mock.AsyncMock(return_value=True)
+        mock_client.get_entity = unittest.mock.AsyncMock(side_effect=RuntimeError("channel gone"))
         mock_client.disconnect = unittest.mock.AsyncMock()
 
         with unittest.mock.patch(
@@ -377,7 +380,7 @@ class TestTelethonReaderAuth(unittest.TestCase):
         the `git ls-files` guard in `test_gitignore_secrets.py` catches only a
         re-committed file, not a code path that recreates one.
         """
-        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save() or "seed")
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
         client = _auth_client(authorized=True)
 
         with (
@@ -401,7 +404,7 @@ class TestTelethonReaderAuth(unittest.TestCase):
         longer recoverable. And the pre-#386 code answered it by asking for a login
         code on stdin — on a runner with no TTY.
         """
-        reader = TelethonReader(api_id="x", api_hash="y", session="whatever")
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
         client = _auth_client(authorized=False)
 
         with (
@@ -444,7 +447,7 @@ def _posts(messages: list[SimpleNamespace], users: list[SimpleNamespace]) -> Sim
 
 def _mock_client(entity: SimpleNamespace, posts: SimpleNamespace) -> unittest.mock.MagicMock:
     client = unittest.mock.MagicMock()
-    client.start = unittest.mock.AsyncMock()
+    client.connect = unittest.mock.AsyncMock()
     client.is_user_authorized = unittest.mock.AsyncMock(return_value=True)
     client.get_entity = unittest.mock.AsyncMock(return_value=entity)
     client.disconnect = unittest.mock.AsyncMock()
@@ -460,7 +463,7 @@ class TestTelethonReaderFetchRender(unittest.TestCase):
     def _fetch(
         self, url: str, entity: SimpleNamespace, posts: SimpleNamespace
     ) -> tuple[ChannelMessages, unittest.mock.MagicMock]:
-        reader = TelethonReader(api_id="x", api_hash="y", session=None, phone="p")
+        reader = TelethonReader(api_id="x", api_hash="y", session=StringSession().save())
         client = _mock_client(entity, posts)
         with (
             unittest.mock.patch(
