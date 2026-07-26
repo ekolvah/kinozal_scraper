@@ -13,6 +13,7 @@ from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_MISS_MARKER,
     _TRAILER_QUOTA_MARKER,
     _dedupe_key,
+    _is_game_url,
     _kinozal_title,
     _kinozal_urls,
     enrich_with_trailer,
@@ -403,11 +404,16 @@ def _run(
     sources_config: dict[str, Any] | None = None,
     notifier: InMemoryNotifier | None = None,
     storage: InMemoryStorage | None = None,
+    urls: str = "top|https://test.example/top.php",
 ) -> tuple[InMemoryStorage, InMemoryNotifier]:
     """Run the real run_kinozal_pipeline with HTTP patched and KINOZAL_URLS env set.
 
     This invokes production code directly so tests fail if the pipeline
     behaviour changes — no inline copy of the orchestration logic.
+
+    `urls` overrides KINOZAL_URLS: the listing category (`t=`) lives there, so a
+    test about game listings has no other way to reach the production classifier
+    (#385).
     """
     storage = storage if storage is not None else InMemoryStorage()
     if existing_keys:
@@ -418,7 +424,7 @@ def _run(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
-            {"KINOZAL_URLS": "top|https://test.example/top.php"},
+            {"KINOZAL_URLS": urls},
             clear=False,
         ),
     ):
@@ -833,6 +839,51 @@ def _html_rows(n: int) -> str:
 
 def _config_for(n: int) -> dict[str, Any]:
     return {"version": 1, "sources": [{**_KINOZAL_SOURCE, "limit": n}]}
+
+
+class TestGameListingClassification(unittest.TestCase):
+    """#385: игровые раздачи приходят из `t=7`-листинга и разобраны фильмовой
+    грамматикой `RU / Original / Year / Format`. У игр форма другая —
+    `Название / x64 / RU / Жанр / Год / Формат / PC (Windows)` — поэтому вторым
+    сегментом оказывается архитектура, и она уходила в YouTube как «оригинальное
+    название»: 27 запросов вида `x64 2024 trailer` в прогоне 30143534431."""
+
+    _GAME_HTML = (
+        "<html><body>"
+        '<a href="/details.php?id=1" '
+        'title="S.T.A.L.K.E.R. 2 / x64 / RU / Action / 2024 / Portable / PC (Windows)">'
+        '<img src="/img/g1.jpg"></a>'
+        "</body></html>"
+    )
+
+    def test_is_game_url(self) -> None:
+        cases = [
+            ("https://kinozal.tv/top.php?j=&t=7&d=14", True),
+            ("https://kinozal.tv/top.php?j=&t=0&d=14", False),
+            ("https://kinozal.tv/top.php?t=32", False),
+            # `t=71` — почему матч через parse_qs, а не подстрокой "t=7".
+            ("https://kinozal.tv/top.php?t=71", False),
+            ("https://kinozal.tv/top.php", False),
+            ("not a url at all", False),
+        ]
+        for url, expected in cases:
+            with self.subTest(url=url):
+                self.assertIs(_is_game_url(url), expected)
+
+    def test_game_listing_item_has_no_original_title(self) -> None:
+        # Сквозь настоящий пайплайн: url → классификатор → raw → профиль. Юнит с
+        # руками выставленным `raw` зеленел бы даже при неподключённом
+        # протаскивании — ровно тот ложный RED, что поймало ревью #383.
+        youtube = _PoolYoutube([])
+        _run(
+            html=self._GAME_HTML,
+            youtube=youtube,
+            urls="игры|https://kinozal.tv/top.php?j=&t=7&d=14",
+        )
+        assert youtube.last_profile is not None
+        self.assertEqual(youtube.last_profile.original_title, "")
+        self.assertEqual(youtube.last_profile.ru_title, "S.T.A.L.K.E.R. 2")
+        self.assertEqual(youtube.last_profile.year, 2024)
 
 
 class TestQuotaStop(unittest.TestCase):
