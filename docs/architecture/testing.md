@@ -368,16 +368,21 @@ work-for-work (goal-function priority (2)).
   — первые ~200 символов настоящей страницы это `<!DOCTYPE html> <!--[if lt IE 7]>…`.
 
 - **T. YouTube throttle/retry: механизм отвергнут замером, поэтому тестов на него нет и не будет (#384).**
-  План #384 предполагал `tenacity` (предикат транзиентных ошибок на `HttpError.error_details`,
-  `wait_exponential`, глобальный give-up) и test plan под него — включая reality-anchor на настоящем
-  `HttpError`. Замер 2026-07-26 (Service Usage API): `search.list` — **100 запросов в сутки**, квота
+  План #384 предполагал `tenacity` (`wait_exponential`, 3 попытки, глобальный give-up) и test plan
+  под него. Замер 2026-07-26 (Service Usage API): `search.list` — **100 запросов в сутки**, квота
   дефолтная и поднятой быть не может (billing выключен), а прогон на 170 фильмов просит 340. Лимит
   считается **в запросах за сутки**, поэтому паузами не лечится: пейсинг раздаёт те же 100 ровнее,
-  retry отбирает бюджет у следующего фильма. Механизм снят целиком и заменён бюджетом прогона
-  (`_TRAILER_RUN_BUDGET`, покрыт `TestTrailerRunBudget`); rationale — в
+  retry отбирает квоту у следующего фильма. Вместо него — остановка обогащения по первому квотному
+  отказу (`YoutubeQuotaExhausted`, покрыто `TestQuotaStop` + `TestQuotaDetection`); rationale — в
   [`pipeline.md`](pipeline.md#trailer-retrieval-and-selection-140-141-144). Записано сюда, чтобы
   `tenacity`+`sleep` не переоткрыли как «очевидно недостающий retry»: это не пробел покрытия, а
   отсутствующий по замеру код. Единственный путь к полному охвату — смена источника (TMDB), не retry.
+  **Что покрыто, а не пропущено:** предикат квотных ошибок нужен и существует — `_is_quota_error`
+  пинится reality-anchor'ом на настоящем `googleapiclient.errors.HttpError` (429 legacy `errors[]`,
+  403 `quotaExceeded`, ErrorInfo `details[]` в SCREAMING_SNAKE), потому что `.reason` — человеческий
+  текст, а машинный код живёт в `error_details`. Промежуточный вариант с фиксированным бюджетом
+  (`_TRAILER_RUN_BUDGET = 45`) отвергнут до мержа: угаданное число, ломается на втором прогоне в
+  сутки и занижает охват на одноветочных items — в коде не осталось.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 

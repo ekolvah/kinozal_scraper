@@ -26,6 +26,50 @@ class TrailerRetrievalError(RuntimeError):
     """
 
 
+class YoutubeQuotaExhausted(TrailerRetrievalError):
+    """Квота YouTube исчерпана — до конца прогона в API ходить бессмысленно (#384).
+
+    Подкласс, а не соседняя ветка иерархии: всё, что ловит `TrailerRetrievalError`
+    (#383), продолжает работать без изменений, а знающий вызывающий
+    (`kinozal_pipeline`) отличает «кончилась квота» от «сервер моргнул» и
+    останавливает обогащение вместо того, чтобы биться о заведомый отказ.
+    """
+
+
+# Причины из usageLimits-семейства Google. Ось «квота/не-квота», а не «транзиент/
+# терминал»: при 100 `search.list` в сутки (замер 2026-07-26) `rateLimitExceeded`
+# и `quotaExceeded` для нас одно и то же событие — минутный и дневной потолки
+# численно совпадают, поэтому пауза не поможет ни в одном из случаев.
+_QUOTA_REASONS = frozenset(
+    {"quotaexceeded", "dailylimitexceeded", "ratelimitexceeded", "userratelimitexceeded"}
+)
+
+
+def _is_quota_error(exc: BaseException) -> bool:
+    """`HttpError` от исчерпанной квоты? Читает `error_details`, а НЕ `.reason`.
+
+    В `googleapiclient/errors.py` `self.reason = data["error"]["message"]` — это
+    человеческий текст («Rate Limit Exceeded»), который Google волен переписать;
+    машинный код лежит в `error_details` и приходит в двух формах: legacy
+    `errors[0]["reason"] == "rateLimitExceeded"` и ErrorInfo
+    `details[0]["reason"] == "RATE_LIMIT_EXCEEDED"` — отсюда нормализация.
+    Статус 403 наравне с 429: те же usageLimits-причины Google исторически отдаёт
+    и как 403. `error_details` бывает и строкой (когда в теле только `message`) —
+    такой ответ машинной причины не несёт, значит «не квота».
+    """
+    status = getattr(getattr(exc, "resp", None), "status", None)
+    if status not in (403, 429):
+        return False
+    details = getattr(exc, "error_details", None)
+    if not isinstance(details, list):
+        return False
+    for detail in details:
+        reason = detail.get("reason") if isinstance(detail, dict) else None
+        if isinstance(reason, str) and reason.replace("_", "").lower() in _QUOTA_REASONS:
+            return True
+    return False
+
+
 def _search_one(client: Any, query: str) -> list[Candidate]:
     """Один YouTube-запрос → кандидаты (только `youtube#video`), snippet-поля
     отображены в `Candidate`. БЕЗ year/title-фильтра — это чистый retrieval, год
@@ -93,7 +137,18 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
     # `failed == len(titles)` не может сработать на нулевом числе попыток —
     # страховка `attempted > 0` была бы мёртвым кодом (прецедент #256).
     if failed == len(titles):
-        raise TrailerRetrievalError(
+        # Класс исключения выбирается по последнему отказу: квотный останавливает
+        # обогащение до конца прогона (#384), любой другой роняет только этот фильм
+        # (#383). Смешать их значило бы глушить трейлеры из-за одного 500.
+        # `last_exc is not None` — сужение для mypy, а не страховка: при failed >= 1
+        # он заполнен. Порядок операндов важен — в невозможной ветке падаем в
+        # TrailerRetrievalError, то есть всё равно бросаем, а не проглатываем отказ.
+        error = (
+            YoutubeQuotaExhausted
+            if last_exc is not None and _is_quota_error(last_exc)
+            else TrailerRetrievalError
+        )
+        raise error(
             f"all {failed} retrieval branch(es) failed for {profile.ru_title!r}"
         ) from last_exc
     return pool
