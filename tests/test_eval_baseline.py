@@ -23,7 +23,9 @@ from kinozal_scraper.kinozal_pipeline import _TRAILER_MISS_MARKER
 from kinozal_scraper.trailer_strategy import FilmProfile, HeuristicStrategy
 from scripts.eval_trailers import (
     BASELINE_PATH,
+    GoldenCase,
     GoldenSetError,
+    Outcome,
     build_baseline,
     compare_to_baseline,
     evaluate_delivery,
@@ -94,7 +96,9 @@ class TestCompare(_CompareCase):
         # #359 нужно было знать, какие именно 10 picks подавились.
         rows, _ = evaluate_delivery(self._cases())
         baseline = build_baseline(rows)
-        degraded = [(case, None, "miss") for case, _, _ in rows]
+        degraded: list[tuple[GoldenCase, str | None, Outcome]] = [
+            (case, None, "miss") for case, _, _ in rows
+        ]
         report = compare_to_baseline(baseline, degraded)
         self.assertFalse(report.ok)
         self.assertIn("Гнев", report.text)
@@ -107,7 +111,9 @@ class TestCompare(_CompareCase):
         # #380 суммарно-положительная дельта сможет спрятать своп hit→wrong.
         rows, _ = evaluate_delivery(self._cases())
         baseline = build_baseline(rows)
-        improved = [(case, "ru01", "hit") for case, _, _ in rows]
+        improved: list[tuple[GoldenCase, str | None, Outcome]] = [
+            (case, "ru01", "hit") for case, _, _ in rows
+        ]
         report = compare_to_baseline(baseline, improved)
         self.assertFalse(report.ok)
         self.assertIn("--update-baseline", report.text)

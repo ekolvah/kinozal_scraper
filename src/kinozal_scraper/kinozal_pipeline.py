@@ -514,18 +514,14 @@ _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
 _TRAILER_QUOTA_MARKER = "⚠️ трейлер: дневная квота YouTube"
 
 
-def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
-    """Pick a YouTube trailer URL, or return a visible §IV marker (#144/#315).
+def select_trailer(profile: FilmProfile, youtube: Any) -> str:
+    """Retrieval + selection + §IV-маркеры: всё, что стоит между профилем и юзером.
 
     Retrieval → selection split (эпик трейлеров): собирает пул кандидатов через
     `youtube.search_candidates` (union запроса по RU + оригинальному названию, #140)
     и выбирает один язык-aware `HeuristicStrategy` (#141) — RU-трейлер в приоритете,
     EN как fallback (закрывает RU-регрессию #138→#315, которую давал одиночный
-    `get_trailer_url` по оригинальному названию). `FilmProfile` строится из title+year
-    (ru_title = clean, original_title = 2-й ` / `-сегмент или "", year из
-    kinozal_raw_title); cast/метаданные не тянем — RU-приоритет держится на языке
-    заголовка, а per-item details-фетч ради внутриязыкового тай-брейка — отдельный
-    юнит (см. #144 Out of scope), не #315.
+    `get_trailer_url` по оригинальному названию).
 
     `HeuristicStrategy` инстанцируется напрямую (pure internal logic, не внешняя
     граница — §II) и совпадает с eval `default_strategy()` (`scripts/eval_trailers.py`)
@@ -546,8 +542,57 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     низкоуверенные picks (`< 0.5`) в miss-маркер и это откачено: замер на golden-set (28
     кейсов) дал 26 hit → 16 hit, 2 miss → 12 miss, wrong 0 → 0. Все 10 подавленных picks
     были ПОПАДАНИЯМИ: `confidence=0.3` («ничья») означает «несколько одинаково хороших
-    трейлеров одного фильма» (дубляж №1 vs №2), а не «возможно, не тот фильм». Не менять
-    логику отбора без прогона метрики (`scripts/eval_trailers.py`).
+    трейлеров одного фильма» (дубляж №1 vs №2), а не «возможно, не тот фильм».
+
+    **Почему это отдельная функция (#379).** Эта половина — то, что реально уходит
+    пользователю, и именно её сломал #359, не тронув `HeuristicStrategy.pick`. Замер
+    (`scripts/eval_trailers.py::evaluate_delivery`) заходит СЮДА, а не в `pick`, и
+    исход пришпилен `tests/fixtures/trailer_baseline.json`: изменение post-pick
+    политики теперь валит `tests/test_eval_baseline.py`. Шов проходит по `FilmProfile`
+    — родной форме golden-set; будь входом `NormalizedItem`, фикстурам пришлось бы
+    дублировать kinozal-грамматику заголовка (§II).
+    """
+    try:
+        candidates = youtube.search_candidates(profile)
+    except YoutubeQuotaExhausted:
+        # Единственное исключение, которое НЕ вырождается в маркер этого фильма:
+        # квота суточная и общая, значит следующий фильм упрётся в неё гарантированно.
+        # Решение «прекратить обогащение» принимает цикл прогона (§IV — сигнал должен
+        # долететь до того, кто может на него отреагировать), не эта функция.
+        raise
+    except Exception as exc:  # noqa: BLE001 — retrieval failure degrades to a visible marker, item still notified
+        logger.warning("trailer lookup failed for %r: %s", profile.ru_title, exc, exc_info=True)
+        return _TRAILER_ERROR_MARKER
+    pick = HeuristicStrategy().pick(profile, candidates)
+    if pick.video_id is None:
+        logger.info(
+            "no trailer found for %r (pool=%d candidates)", profile.ru_title, len(candidates)
+        )
+        return _TRAILER_MISS_MARKER
+    logger.info(
+        "trailer pick for %r: %s (conf=%.1f, video_id=%s)",
+        profile.ru_title,
+        pick.reason,
+        pick.confidence,
+        pick.video_id,
+    )
+    return f"https://www.youtube.com/watch?v={pick.video_id}"
+
+
+def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
+    """Pick a YouTube trailer URL, or return a visible §IV marker (#144/#315).
+
+    Прод-вход: строит `FilmProfile` из kinozal-заголовка и делегирует доставку
+    `select_trailer`. `FilmProfile` собирается из title+year (ru_title = clean,
+    original_title = 2-й ` / `-сегмент или "", year из kinozal_raw_title);
+    cast/метаданные не тянем — RU-приоритет держится на языке заголовка, а per-item
+    details-фетч ради внутриязыкового тай-брейка — отдельный юнит (см. #144 Out of
+    scope), не #315.
+
+    **Граница гейта (#379).** Пришпилена baseline'ом только вторая половина
+    (`select_trailer`). Деривация профиля ниже замером НЕ покрыта и держится на
+    юнит-тестах `TestEnrichWithTrailer` — именно здесь сидели #385 (игровая
+    грамматика) и #393; правку в этой половине гейт `trailer_baseline.json` не увидит.
     """
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
@@ -561,30 +606,7 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     # существует и пустая строка здесь — не заглушка, а верное значение (#385).
     # Побочно: пустой original_title схлопывает union в один запрос (#384-квота).
     orig = "" if item.raw.get("kinozal_is_game") else original_title(raw_for_year)
-    profile = FilmProfile(ru_title=clean, original_title=orig, year=year)
-    try:
-        candidates = youtube.search_candidates(profile)
-    except YoutubeQuotaExhausted:
-        # Единственное исключение, которое НЕ вырождается в маркер этого фильма:
-        # квота суточная и общая, значит следующий фильм упрётся в неё гарантированно.
-        # Решение «прекратить обогащение» принимает цикл прогона (§IV — сигнал должен
-        # долететь до того, кто может на него отреагировать), не эта функция.
-        raise
-    except Exception as exc:  # noqa: BLE001 — retrieval failure degrades to a visible marker, item still notified
-        logger.warning("trailer lookup failed for %r: %s", item.title, exc, exc_info=True)
-        return _TRAILER_ERROR_MARKER
-    pick = HeuristicStrategy().pick(profile, candidates)
-    if pick.video_id is None:
-        logger.info("no trailer found for %r (pool=%d candidates)", item.title, len(candidates))
-        return _TRAILER_MISS_MARKER
-    logger.info(
-        "trailer pick for %r: %s (conf=%.1f, video_id=%s)",
-        item.title,
-        pick.reason,
-        pick.confidence,
-        pick.video_id,
-    )
-    return f"https://www.youtube.com/watch?v={pick.video_id}"
+    return select_trailer(FilmProfile(ru_title=clean, original_title=orig, year=year), youtube)
 
 
 def _split_by_excluded_genre(
