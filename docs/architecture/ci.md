@@ -379,6 +379,80 @@ behaviour — full SDK transcript appears in Actions logs. Remove once
 the loop is reliable; it adds noise and may surface internal model
 chatter.
 
+### Coverage-first prompt: no filtering at the search stage (#374)
+
+The prompt used to say `Skip nitpicks — ruff handles formatting/lint`.
+From Opus 4.7 on, models follow such an instruction **literally**: the
+finding is made, judged below the stated bar, and silently not reported
+— and a filtered finding is indistinguishable from no finding at all
+(§IV). The same defect had a second instance at the *reporting* stage:
+`post exactly "✅ Review complete — no blocking issues found."` forbade
+adding anything else, so a run with three should-fix findings and zero
+blocking was required to print that one line and nothing more. Removing
+the filter from the input while leaving it on the output would have
+fixed half the defect.
+
+The contract now is **grade, never drop**:
+
+- every finding is reported with `severity` (blocking / should-fix /
+  nice-to-have) and `confidence` (high / medium / low) — the human
+  filters, not the model;
+- `blocking` is a concrete bar (wrong behaviour, failing or missing test
+  for changed behaviour, misleading result, leaked secret, CLAUDE.md
+  convention violation), not the qualitative word "nitpick";
+- what the deterministic gate already catches (ruff / mypy in
+  `ci_check.py`) is graded `nice-to-have, duplicate of ci_check` —
+  ranked last because another executor covers it, not withheld;
+- inline comments carry blocking / should-fix only, so the inline
+  channel does not drown; everything else appears in the summary, which
+  lists all findings grouped by severity. The fixed one-line summary is
+  scoped to "nothing found at any severity".
+
+`tests/test_claude_review_workflow.py` guards the **form** of this: no
+suppression imperative at the start of a prompt line, `severity` +
+`confidence` present, no `no blocking issues` gag string. It cannot
+check the prompt's *semantics* — a filter rephrased as "be selective"
+passes — so the qualitative half (that the blocking bar stays concrete,
+that the ruff exception stays non-imperative) is held by this prose and
+by review, not by an exit code.
+
+### Model pinning and what a stale pin looks like
+
+The action runs on whatever model the upstream default points at unless
+we say otherwise, so a default change would move the review quality
+without a line in any diff. The model is therefore pinned explicitly:
+
+```yaml
+claude_args: |
+  --model claude-opus-5
+```
+
+`claude_args` is the action's documented passthrough to the Claude CLI
+(`action.yml`: "Additional arguments to pass to Claude CLI"); the action
+has **no `model` input**. This matters more than it looks: GitHub Actions
+**silently ignores an unknown `with:` input**, so a misspelled input name
+would leave the review unpinned while every static check stayed green.
+
+The pin is **family-level** on purpose — this generation has no dated
+snapshot id, so point-release upgrades inside Opus 5 are accepted; a
+generation change is not.
+
+**A stale pin is loud, and that is the design.** When the id is retired
+or mistyped, the review job reds on every PR with a model-not-found
+error. That is the forcing function, not a flake: bump the id in
+`claude-review.yml` (the guard test only rejects short aliases like
+`opus`/`sonnet`, so any full id passes). There is **no notification when
+a newer model ships** — revision happens when the job goes red, not on a
+calendar. Local agents (`.claude/agents/*.md`) are a separate, still
+unpinned surface — that is #392, not this file.
+
+**Verifying a prompt change**: a PR that edits `claude-review.yml`
+itself gets a green review job **with no comment** — the action skips
+reviewing its own workflow definition for security reasons. So neither
+the prompt contract nor the resolved model is observable on that PR;
+both are checked on the next unrelated PR (summary grading in the
+comment, model line in the Actions transcript via `show_full_output`).
+
 ### One-time setup
 
 1. Locally: `claude setup-token` (requires Claude Pro/Max subscription) → copy the token.

@@ -25,6 +25,16 @@ jobs:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           track_progress: true
           show_full_output: true
+          # Model pinned explicitly (#374): without it the action's upstream
+          # default decides the review quality, and a default change lands
+          # silently. `claude_args` is the action's documented passthrough to
+          # the Claude CLI — there is no `model` input. Family-level pin, on
+          # purpose: this generation has no dated snapshot id, so point-release
+          # upgrades inside Opus 5 are accepted; a generation change is not.
+          # A retired id reds the review job on every PR — that is the intended
+          # forcing function, see docs/architecture/ci.md.
+          claude_args: |
+            --model claude-opus-5
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -33,7 +43,7 @@ jobs:
             first — it lists project conventions that take precedence over your
             defaults.
 
-            Focus on:
+            Look at:
             - Bugs and logic errors
             - Security issues
             - Adherence to the conventions in CLAUDE.md (PR workflow, branch
@@ -42,16 +52,34 @@ jobs:
               consciously-rejected coverage decision is recorded in the
               `docs/architecture/testing.md` accepted-gaps ledger
 
-            Skip nitpicks — ruff handles formatting/lint. Skip docstring style
-            and small wording issues unless they obscure intent.
+            Coverage first: report every issue you find. Grade findings, never
+            drop them — a finding you decided was too small to mention is
+            indistinguishable from a review that never ran. Each finding
+            carries `severity` (blocking / should-fix / nice-to-have) and
+            `confidence` (high / medium / low); the human filters, not you.
+
+            `blocking` is a concrete bar, not a feeling: wrong behaviour, a
+            failing test, a missing test for changed behaviour, a result that
+            misleads the reader, a leaked secret, or a violation of the
+            CLAUDE.md conventions listed above. Everything else is graded
+            below blocking and still reported.
+
+            Something the deterministic gate already catches (ruff / mypy in
+            `scripts/ci_check.py`) is graded `nice-to-have, duplicate of
+            ci_check` — it is redundant with another executor, which is a
+            reason to rank it last, not a reason to withhold it.
 
             How to deliver feedback:
-            - For each issue found: call `mcp__github_inline_comment__create_inline_comment`
-              at the relevant line.
+            - Inline comment via `mcp__github_inline_comment__create_inline_comment`
+              at the relevant line for every blocking and should-fix finding.
+              Lower-severity and low-confidence findings stay out of the inline
+              channel so it does not drown, and appear in the summary instead.
             - Always finish by posting a top-level summary via
-              `Bash(gh pr comment $PR_NUMBER --repo $REPO --body "...")`.
-              If no blocking issues, post exactly: "✅ Review complete — no
-              blocking issues found." This is mandatory: a silent finish is
-              indistinguishable from a broken review and is not acceptable.
+              `Bash(gh pr comment $PR_NUMBER --repo $REPO --body "...")`. The
+              summary lists every finding grouped by severity, including the
+              ones that got no inline comment. Only when you found nothing at
+              any severity, post exactly: "✅ Review complete — nothing found."
+              This is mandatory: a silent finish is indistinguishable from a
+              broken review and is not acceptable.
 
             Do not approve or merge — those stay with the human reviewer.
