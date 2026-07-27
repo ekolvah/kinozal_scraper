@@ -27,6 +27,7 @@ from scripts.eval_trailers import (
     GoldenSetError,
     Outcome,
     build_baseline,
+    classify,
     compare_to_baseline,
     evaluate_delivery,
     load_baseline,
@@ -138,6 +139,44 @@ class TestCompare(_CompareCase):
     def test_load_baseline_rejects_unknown_outcome(self) -> None:
         with self.assertRaises(GoldenSetError):
             load_baseline(self._write([{"i": 0, "film": "Гнев", "outcome": "maybe"}]))
+
+
+class TestWrongPole(unittest.TestCase):
+    """#380: у метрики должен быть живой отрицательный полюс.
+
+    Шкала `Hit +1 / Miss 0 / Wrong −2` объявляла, что чужой трейлер вдвое хуже
+    честного маркера, но на наборе #327 `wrong` не встречался НИ РАЗУ: все кейсы
+    строились как «правильный ответ существует, найди его». Половина шкалы была
+    мертва — набор мог только наказать за осторожность (#359: −10 hit), а
+    «сколько wrong предотвращено» показать был не в состоянии.
+
+    Гейт — инвариант ФИКСТУРЫ, а не утверждение о стратегии: он считает разметку
+    `trap`, поэтому не краснеет от улучшения подбора (иначе он штрафовал бы ровно
+    то изменение, ради которого заводился) и при этом ловит выхолащивание разметки.
+    """
+
+    _MIN_TRAP_CASES = 3
+
+    def test_golden_set_keeps_verified_traps(self) -> None:
+        cases = load_golden_set(GOLDEN_PATH)
+        marked = [c.film.ru_title for c in cases if c.trap]
+        self.assertGreaterEqual(
+            len(marked),
+            self._MIN_TRAP_CASES,
+            "в наборе не осталось кейсов с верифицированным чужим кандидатом — "
+            "метрика снова слепа к изменениям, защищающим от чужих ссылок (#380); "
+            f"размечены: {marked}",
+        )
+
+    def test_trap_pick_classifies_as_wrong(self) -> None:
+        # Связь разметки со шкалой, а не декларация: `trap` не участвует в
+        # скоринге (веса #380 не трогает), поэтому «ловушка = wrong» держится
+        # исключительно на дизъюнктности trap и accept-set, которую валидирует
+        # загрузчик. Тест фиксирует это следствие на реальных кейсах.
+        for case in (c for c in load_golden_set(GOLDEN_PATH) if c.trap):
+            for trap_id in case.trap:
+                with self.subTest(film=case.film.ru_title, trap=trap_id):
+                    self.assertEqual(classify(case.correct, trap_id), "wrong")
 
 
 class TestBaselineGate(unittest.TestCase):

@@ -72,6 +72,12 @@ class GoldenCase:
     # #329: замороженный снимок TMDB-видео (опционален — записи до #329 грузятся
     # с пустым списком; evaluate_tmdb по ним даёт Miss, пока не записан снимок).
     tmdb_videos: list[TmdbVideo] = field(default_factory=list)
+    # #380: кандидаты пула, про которых ВЕРИФИЦИРОВАНО, что это другая работа
+    # (основание — в `note`). Отвечает на вопрос, которого accept-set задать не
+    # может: «чужой фильм» против «недозаписанный дубляж того же». Ground truth
+    # про ПУЛ, а не про исход, поэтому переживает улучшение стратегии; в скоринге
+    # не участвует (веса — вне скоупа #380), `wrong` за него даёт `classify`.
+    trap: list[str] = field(default_factory=list)
 
 
 def default_strategy() -> TrailerStrategy:
@@ -215,13 +221,44 @@ def _parse_correct(raw: Any, valid_ids: set[str], where: str) -> str | list[str]
     )
 
 
+def _parse_trap(
+    raw: Any, pool_ids: set[str], correct: str | list[str] | None, where: str
+) -> list[str]:
+    """Верифицированные чужие кандидаты. Fail-loud (§IV/§VI) наравне с остальным
+    набором: опечатка в id иначе тихо разоружила бы разметку — кейс выглядел бы
+    размеченным, не будучи им, и гейт «полюс жив» считал бы пустышку.
+
+    Сверка с пулом `candidates`, а НЕ с union'ом candidates|tmdb (в отличие от
+    `correct`): ловушка осмысленна только среди того, что стратегия реально
+    ранжирует. Пересечение с accept-set — противоречие в ground truth (кандидат
+    не может быть одновременно эталоном и чужой работой), а не уточнение."""
+    if not isinstance(raw, list):
+        raise GoldenSetError(f"{where}: 'trap' must be a list, got {type(raw).__name__}")
+    accept: set[str] = set()
+    if isinstance(correct, str):
+        accept = {correct}
+    elif isinstance(correct, list):
+        accept = set(correct)
+    out: list[str] = []
+    for j, vid in enumerate(raw):
+        if not isinstance(vid, str):
+            raise GoldenSetError(f"{where}: 'trap'[{j}] must be str, got {type(vid).__name__}")
+        if vid not in pool_ids:
+            raise GoldenSetError(f"{where}: 'trap' id {vid!r} not among candidate video_ids")
+        if vid in accept:
+            raise GoldenSetError(f"{where}: 'trap' id {vid!r} is also in the accept-set")
+        out.append(vid)
+    return out
+
+
 def _parse_case(raw: Any, where: str) -> GoldenCase:
     if not isinstance(raw, dict):
         raise GoldenSetError(f"{where}: case must be an object, got {type(raw).__name__}")
     _require(raw, ("film", "correct", "candidates"), where)
     candidates = _parse_candidates(raw["candidates"], where)
     tmdb_videos = _parse_tmdb_videos(raw.get("tmdb_videos", []), where)
-    valid_ids = {c.video_id for c in candidates} | {v.key for v in tmdb_videos}
+    pool_ids = {c.video_id for c in candidates}
+    valid_ids = pool_ids | {v.key for v in tmdb_videos}
     correct = _parse_correct(raw["correct"], valid_ids, where)
     return GoldenCase(
         film=_parse_film(raw["film"], where),
@@ -229,6 +266,7 @@ def _parse_case(raw: Any, where: str) -> GoldenCase:
         candidates=candidates,
         note=raw.get("note", ""),
         tmdb_videos=tmdb_videos,
+        trap=_parse_trap(raw.get("trap", []), pool_ids, correct, where),
     )
 
 
@@ -453,8 +491,12 @@ def _print_scorecard(rows: list[tuple[GoldenCase, str | None, Outcome]], total: 
     tally: dict[Outcome, int] = {"hit": 0, "wrong": 0, "miss": 0}
     for case, pick_id, outcome in rows:
         tally[outcome] += 1
+        # §IV-атрибуция (#380): «wrong» само по себе не отличает «взял чужую
+        # работу» от «взял недозаписанный дубляж той же» — маркер называет первое.
+        trap = " TRAP" if pick_id is not None and pick_id in case.trap else ""
         print(
-            f"  {outcome.upper():5} {case.film.ru_title!r} → pick={pick_id!r} correct={case.correct!r}"
+            f"  {outcome.upper():5}{trap} {case.film.ru_title!r} → "
+            f"pick={pick_id!r} correct={case.correct!r}"
         )
     print(
         f"score={total}  hit={tally['hit']} miss={tally['miss']} wrong={tally['wrong']} "
@@ -481,6 +523,12 @@ def _record(golden_path: str | Path) -> int:
     записать `candidates: []`, вызванный квотой, значит отравить baseline,
     по которому потом меряется качество подбора. `write_text` идёт после цикла,
     так что частично перезаписанного файла не остаётся.
+
+    Свежий payload перевалидируется ДО записи (#380): пулы дрейфуют — повторная
+    запись «Крайних мер» через час уже не вернула пришпиленный `qpMTP6obUeo`, — а
+    `correct`/`trap` ссылаются на конкретные id. Записать такой пул молча значит
+    уронить следующую ЗАГРУЗКУ у всех, кто просто запустил `pytest`, и без намёка
+    на причину; проверка здесь называет уехавшие id на месте (§IV/§V).
     """
     key = _require_api_key()
     cases = load_golden_set(golden_path)  # валидируем перед перезаписью
@@ -496,6 +544,8 @@ def _record(golden_path: str | Path) -> int:
     raw = json.loads(Path(golden_path).read_text(encoding="utf-8"))
     for entry, case in zip(raw, cases, strict=True):
         entry["candidates"] = [asdict(c) for c in search_candidates(youtube, case.film)]
+    for i, entry in enumerate(raw):
+        _parse_case(entry, f"{golden_path}[{i}] (fresh pool)")
     Path(golden_path).write_text(
         json.dumps(raw, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

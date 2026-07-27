@@ -17,6 +17,7 @@ from unittest import mock
 
 from kinozal_scraper.kinozal_pipeline import _TRAILER_ERROR_MARKER
 from kinozal_scraper.tmdb_trailer import TmdbVideo
+from kinozal_scraper.trailer_strategy import Candidate
 from scripts.eval_trailers import (
     GoldenSetError,
     classify,
@@ -218,6 +219,40 @@ class TestRecordMode(unittest.TestCase):
             os.environ.pop("API_KEY", None)
             with self.assertRaises(SystemExit):
                 main(["--record", "--golden", str(GOLDEN_PATH)])
+
+    def test_record_fails_before_write_when_pinned_id_gone(self) -> None:
+        """Свежий пул без пришпиленного id роняет запись, а не фикстуру (#380).
+
+        Пулы дрейфуют: повторная запись «Крайних мер» через час уже не вернула
+        `qpMTP6obUeo`. Если такой пул записать, файл сохранится, а упадёт следующая
+        ЗАГРУЗКА — у всех, кто просто запустил `pytest`, и без единого намёка на
+        причину. Проверка до `write_text` называет уехавшие id на месте (§IV/§V).
+        """
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        self.addCleanup(os.unlink, path)
+        before = json.dumps(
+            [
+                {
+                    "film": {"ru_title": "Леший", "original_title": "", "year": 2026},
+                    "correct": ["keep"],
+                    "candidates": [{"video_id": "keep", "title": "Леший 2026 трейлер"}],
+                    "note": "",
+                }
+            ],
+            ensure_ascii=False,
+        )
+        Path(path).write_text(before, encoding="utf-8")
+        drifted = [Candidate(video_id="fresh", title="Леший 2026 трейлер")]
+        with (
+            mock.patch.dict(os.environ, {"API_KEY": "test-key"}),  # pragma: allowlist secret
+            mock.patch("googleapiclient.discovery.build", return_value=object()),
+            mock.patch("kinozal_scraper.youtube.search_candidates", return_value=drifted),
+            self.assertRaises(GoldenSetError) as ctx,
+        ):
+            main(["--record", "--golden", path])
+        self.assertIn("keep", str(ctx.exception))
+        self.assertEqual(Path(path).read_text(encoding="utf-8"), before)
 
 
 # ── #329: TMDB videos-снимок + evaluate_tmdb ──────────────────────────────────
@@ -477,6 +512,73 @@ class TestDeliveryEval(unittest.TestCase):
         _, pick_total = evaluate(default_strategy(), cases)
         _, delivery_total = evaluate_delivery(cases)
         self.assertEqual(delivery_total, pick_total)
+
+
+# ── #380: разметка `trap` — верифицированный ЧУЖОЙ кандидат в пуле ────────────
+
+
+class TestTrapField(unittest.TestCase):
+    """`trap` отвечает на вопрос, которого accept-set задать не может: «этот
+    кандидат — другая работа», а не «недозаписанный дубляж той же». Поэтому он —
+    ground truth про ПУЛ, а не про исход, и переживает улучшение стратегии."""
+
+    def _write(self, data: Any) -> str:
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        self.addCleanup(os.unlink, path)
+        return path
+
+    def _case(self, **over: Any) -> dict[str, Any]:
+        case: dict[str, Any] = {
+            "film": {"ru_title": "Леший", "original_title": "", "year": 2026},
+            "correct": ["ours"],
+            "candidates": [
+                {"video_id": "ours", "title": "Леший 2026 трейлер сериала"},
+                {"video_id": "alien", "title": "Леший трейлер 2026"},
+            ],
+            "trap": ["alien"],
+            "note": "",
+        }
+        case.update(over)
+        return case
+
+    def test_trap_loads_and_marks_pool_members(self) -> None:
+        cases = load_golden_set(self._write([self._case()]))
+        self.assertEqual(cases[0].trap, ["alien"])
+
+    def test_absent_trap_defaults_to_empty(self) -> None:
+        # Backward-compat по образцу `tmdb_videos` (#329): 28 записей до #380
+        # грузятся без правок.
+        case = self._case()
+        del case["trap"]
+        cases = load_golden_set(self._write([case]))
+        self.assertEqual(cases[0].trap, [])
+
+    def test_trap_id_outside_candidate_pool_errors(self) -> None:
+        # Сверка идёт с пулом КАНДИДАТОВ, а не с union'ом candidates|tmdb (в
+        # отличие от `correct`): ловушка осмысленна только среди того, что
+        # стратегия реально ранжирует. Опечатка в id иначе тихо разоружила бы
+        # разметку — кейс выглядел бы размеченным, не будучи им (§IV).
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([self._case(trap=["typo"])]))
+
+    def test_trap_intersecting_accept_set_errors(self) -> None:
+        # Кандидат не может быть одновременно эталоном и чужой работой — это
+        # противоречие в ground truth, а не «уточнение».
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([self._case(trap=["ours"])]))
+
+    def test_trap_must_be_a_list(self) -> None:
+        # Строка — не «список из одного id»: `"alien"` итерируется по символам и
+        # проверка вхождения в пул сошлась бы на пустом множестве.
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([self._case(trap="alien")]))
+
+    def test_trap_elements_must_be_str(self) -> None:
+        with self.assertRaises(GoldenSetError):
+            load_golden_set(self._write([self._case(trap=[1])]))
 
 
 # ── #138 red baseline: known-gap guard ────────────────────────────────────────

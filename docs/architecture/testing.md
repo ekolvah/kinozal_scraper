@@ -137,9 +137,47 @@ grounded in reality, not self-fulfilling (#327).
     counterfactual policy lives in the test file, never in `src`.
   - **Where the gate stops.** It covers `select_trailer`. Profile derivation from the kinozal title
     (clean-title / `original_title` / year-regex / the game branch — where #385 and #393 lived) is
-    outside the measurement and rests on `TestEnrichWithTrailer` unit tests. And with `wrong=0`
-    (#380) the metric can only catch recall regressions, not "the wrong film's trailer started
-    arriving". Both limits are load-bearing: a change written in either blind spot passes green.
+    outside the measurement and rests on `TestEnrichWithTrailer` unit tests. This limit is
+    load-bearing: a change written in that blind spot passes green.
+
+- **Отрицательный полюс метрики: разметка `trap` (#380).** Шкала `Hit +1 / Miss 0 / Wrong −2`
+  объявляла, что чужой трейлер вдвое хуже честного маркера, но на наборе #327 `wrong` не
+  встречался **ни разу**: все кейсы строились как «правильный ответ существует, найди его».
+  Половина шкалы была мертва — набор мог только наказать за осторожность (#359: −10 hit), а
+  «сколько wrong предотвращено» показать был не в состоянии.
+  - **Что добавлено.** Три кейса с живьём записанными пулами и полем `trap` — id кандидатов, про
+    которых **верифицировано** (через `videos.list` → канал + описание, основание в `note`), что
+    это *другая работа*: фанатский Minecraft-продакшен под названием сериала, хоррор-фильм-тёзка,
+    сериал `The Rookie` под названием фильма `The Amateur`. Один из них стратегия сегодня и
+    выбирает → скоркарта перестала быть `wrong=0`.
+  - **Почему отдельное поле, а не только accept-set.** `correct` отвечает «этот id — правильный»;
+    он не умеет отличить «чужая работа» от «валидный дубляж той же работы, который мы не
+    дозаписали». `trap` — ground truth про **пул**, а не про исход, поэтому переживает улучшение
+    стратегии. Загрузчик fail-loud наравне с остальным набором: не-список / не-str / id вне пула
+    **кандидатов** (не union'а с TMDB — ловушка осмысленна только среди того, что стратегия
+    ранжирует) / пересечение с accept-set → `GoldenSetError`. Опечатка в id иначе тихо разоружила
+    бы разметку: кейс выглядел бы размеченным, не будучи им.
+  - **Гейт — инвариант фикстуры, а не утверждение о стратегии.**
+    `TestWrongPole::test_golden_set_keeps_verified_traps` требует ≥3 кейсов с непустым `trap`.
+    Проверять «ловушка всё ещё выбираема стратегией» было бы соблазнительно и **неверно**: такой
+    гейт краснел бы ровно на том изменении, ради вознаграждения которого набор и правился, требуя
+    от контрибьютора собрать новый живой кейс в самый неудачный момент — предсказуемый исход тут
+    не «набор стал лучше», а «в `trap` дописали наугад, чтобы позеленело». Наблюдение «полюс стал
+    слишком лёгким» приходит из диффа baseline (`wrong→hit`) и заводится как issue, а не как
+    красный CI у того, кто починил прод.
+  - **Что полюс сразу показал.** Откаченная политика #359 (давить `confidence < 0.5`), прогнанная
+    по обновлённому набору, даёт 26 → 14 и **не трогает `wrong` вообще** (как был 1, так и
+    остался): реальный чужой pick идёт с `confidence=0.9`. То есть порог по уверенности
+    ортогонален наблюдаемому классу ошибок — вывод, который на наборе без полюса был непроверяем
+    (канон — [pipeline.md](pipeline.md#trailer-retrieval-and-selection-140-141-144)).
+  - **Дрейф пулов — не теория.** Повторная запись пула «Крайних мер» через час уже не вернула
+    пришпиленный `trap`-id. Поэтому `_record` перевалидирует свежий payload **до** `write_text`:
+    иначе файл сохранился бы, а упала бы следующая *загрузка* — у всех, кто просто запустил
+    `pytest`, и без намёка на причину. И поэтому же новые кейсы записывались через
+    `--record --golden <scratch>.json` на однокейсовом файле, а не переписыванием фикстуры целиком.
+  - **Вне TMDB-колонки (сознательно).** У новых кейсов `tmdb_videos: []` — единственный способ
+    записать снимок сейчас — `--record-tmdb` по всем 28, то есть та самая разморозка, от которой
+    фикстуры и защищены; `evaluate_tmdb` их пропускает.
 
 - **TMDB dual-source measure (#329).** Beside the `TrailerStrategy` (YouTube-retrieval) column the
   harness prints a second scorecard: `evaluate_tmdb` replays a frozen per-film `tmdb_videos`
@@ -344,9 +382,14 @@ work-for-work (goal-function priority (2)).
   №2), ровно то, что и моделируют accept-set'ы. Прод-ничьи частые, но безвредные; #377 (каст как
   разрыватель ничьих) закрыт как wontfix. Golden-запись по «Суете» не добавлена: верифицируемо-
   неверного кандидата в захваченном пуле нет (все 5 — трейлеры того же сериала), а догадка в
-  эталоне отравила бы eval. **Остаточный пробел метрики:** в наборе ноль `wrong`-кейсов, поэтому
-  он структурно не может вознаградить изменение, защищающее от неверных ссылок, — только наказать
-  за осторожность (отдельный issue). #359 в итоге сузился до диагностики: `video_id` в breadcrumb.
+  эталоне отравила бы eval. #359 в итоге сузился до диагностики: `video_id` в breadcrumb.
+  **Остаточный пробел закрыт (#380, 2026-07-27):** в наборе появились кейсы с верифицированным
+  чужим кандидатом (`trap`, блок «Отрицательный полюс метрики» выше), `wrong` больше не 0. Замер
+  #359 по обновлённому набору вывод не изменил, а усилил: политика не трогает `wrong` вовсе
+  (реальный чужой pick идёт с `confidence=0.9`), то есть порог по уверенности ортогонален
+  наблюдаемому классу ошибок. **Что осталось открытым:** wrong-кейсов найдено 3 на ~150
+  проверенных живых пиков — класс редкий (~1%), и набор его представляет тонко; пополнять из
+  реальных инцидентов (прод-лог несёт `video_id` → `videos.list` → верификация вручную).
 
 - **O. Request-side Gemini API-contract drift — caught by runtime visibility, not a unit test (#340).** When Google changes what the API accepts (e.g. 3.x models reject `thinking_budget=0`, #338), a unit test with a `_FakeClient` **cannot** catch it: the fake encodes our assumption about the request contract and can only confirm it. A live-E2E against real Gemini is a scope-skip (credentials/flake/quota). So the standing safety net is **runtime visibility, not a test**: a `400 INVALID_ARGUMENT` is classified as `ModelConfigRejected` → ERROR log + operator Telegram alert + red job (`config_rejected_models`), instead of a silent `TryNextModel` that green rotation hides. The one unit-testable guard is a **contract test on a real `google.genai.errors.ClientError`** (`test_real_client_error_invalid_argument_routes_to_config_rejected`) — it fails loudly if our `.status` detection drifts from the SDK's actual error shape (which would otherwise ship the whole fix as a green-tested no-op). Recorded so the live-E2E isn't re-opened as work-for-work.
 - **P. Prompt-injection resistance of the *real model* — offline structural tests only, no live eval (#308).**
