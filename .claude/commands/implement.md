@@ -9,7 +9,8 @@ argument-hint: <issue-number>
 
 1. **Pre-flight**: `python scripts/validate_issue_sections.py $ARGUMENTS`. exit ≠ 0 → abort, попроси user'а запустить `/plan #$ARGUMENTS`.
 2. **Branch**: `python scripts/issue_branch.py $ARGUMENTS` (slug из title, ветка от свежего origin/main).
-3. **RED**: напиши тесты по `## Test plan` issue body. Только тестовый код, без production-изменений. Затем `python scripts/check_red.py <test paths>`. exit ≠ 0 → abort: либо тесты уже зелёные (плохой test plan), либо тесты не собрались. Когда RED — commit: `test: failing tests for #$ARGUMENTS`.
+3. **RED**: напиши тесты по `## Test plan` issue body. Затем `python scripts/check_red.py <test paths>`. exit ≠ 0 → abort: либо тесты уже зелёные (плохой test plan), либо **не выполнились** — гейт не засчитывает RED набору, который не собрался или упал на фикстуре (#402: такой «красный» не доказывает ничего, кроме того что файл не импортируется). Когда RED — commit: `test: failing tests for #$ARGUMENTS`.
+   Production-код в RED-коммите — **только заглушка-сигнатура** (`def y(...): raise NotImplementedError`), и только если иначе тест не импортируется. Она нужна не ради гейта, а ради доказательства: `<failure>` в теле теста значит «тест выполнился и упал на утверждении», `ImportError` на сборе — лишь «символа нет». Логику в этот коммит не писать.
 4. **GREEN**: реализуй `## Implementation outline`. Запускай `python -m pytest <files>` инкрементально, пока RED-тесты не позеленеют и существующая suite не сломалась.
 5. **Docs**: обнови `.md` из `## Docs to update`. Если сознательно отклонил покрытие (scope-/cost-skip, live-E2E как negative-ROI) — запиши это в ledger `docs/architecture/testing.md#consciously-accepted-coverage-gaps` руками; автогенерации инвентаря тестов нет.
 6. **Gate**: `python scripts/ci_check.py`. Red → root cause, не workaround. `.githooks/pre-push` всё равно повторит этот gate.
