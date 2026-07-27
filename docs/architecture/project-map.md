@@ -160,7 +160,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `pipeline.md` | Слои, контракты `extract_from_*`, `NormalizedItem` | ✅ |
 | `storage.md` | Storage Protocol, DI, row-schema, инварианты колонок | ✅ |
 | `testing.md` | Как гарантируем качество: уровни тестов, что мокать (ссылается на `principles.md §II`, не дублирует) + ledger сознательно-принятых дыр покрытия | ✅ |
-| `ci.md` | Микс: local/CI-гейты (dev-process) + production env-vars (runtime) | ❌ |
+| `ci.md` | Гейты качества на пути изменения (local pre-commit, `ci.yml`, cloud `claude-review`, prod-workflow) + **единственный дом политики модельного пиннинга агентного тулинга** (§Model pinning: обе поверхности — `claude-review.yml` и `.claude/agents/*.md`, границы пина, два гарда). Остаётся миксом: §Environment variables отвечает на runtime-вопрос, не на «какие гейты» | ❌ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts / call-observability (token+latency `llm_call`-лог + Phoenix dev-recipe, #145) | ✅ |
 | `llm-security.md` | LLM-угрозы enricher'а (OWASP LLM Top 10 → защиты/residual): prompt-injection fence, output-escaping, honest blast radius (#308) | ✅ |
 

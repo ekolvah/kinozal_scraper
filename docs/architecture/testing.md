@@ -488,6 +488,23 @@ work-for-work (goal-function priority (2)).
   не заводит. Записано, чтобы «а где проверка YAML?» не переоткрыли как пробел покрытия: это
   осознанный не-скоуп, отдельная единица (workflow #4).
 
+- **W. Промпты ревьюеров: форма стережётся, семантика — нет (#374, #392).** Оба
+  ревьюера — cloud (`.github/workflows/claude-review.yml`) и локальный
+  (`.claude/agents/architect-reviewer.md`) — раньше несли severity-фильтр *на стадии
+  поиска*, и модель исполняла его буквально: находка молча не доходила до PR. Гарды
+  (`tests/test_claude_review_workflow.py`, `tests/test_agent_frontmatter.py`) ловят
+  **известные формы**: императив подавления в начале строки, снятые формулировки,
+  отсутствие требования `severity`/`confidence`, gag-строку сводки. **Сознательно НЕ
+  покрыта семантическая перефразировка** («будь избирателен», «only report what
+  matters»): проверка смысла промпта — это LLM-вызов на каждый прогон suite, то есть
+  дороже и менее детерминированно, чем предмет проверки; а регексп по открытому
+  множеству формулировок даёт change-detector, скроенный под текущий текст (первая
+  версия гарда #374 именно так и выглядела — с карв-аутом «разрешено, если рядом
+  слово ruff» — и была забракована на architect-review). Остаточная защита —
+  проза [`ci.md`](ci.md#coverage-first-prompt-no-filtering-at-the-search-stage-374) и
+  сам plan-ревьюер. Записано, чтобы «а почему нет теста на промпт» не переоткрыли:
+  тест есть, отклонена именно семантическая его половина.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

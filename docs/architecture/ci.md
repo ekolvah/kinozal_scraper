@@ -8,6 +8,11 @@
 cloud-ревью. Модельная поверхность агентного тулинга (обе половины) описана в
 §«Model pinning» — это её единственный дом.
 
+**Известный долг IA:** §«Environment variables» отвечает не на этот вопрос, а на
+runtime-вопрос (прод-переменные пайплайна) — файл остаётся смесью, помеченной ❌ в
+[`project-map.md`](project-map.md). Формулировка выше описывает **основную** ось, а
+не утверждает, что расщепления не требуется.
+
 ## Local pre-commit
 
 ```bash
@@ -483,29 +488,39 @@ as issue #392 originally assumed. Unpinned, the same plan review is
 stricter or laxer depending on whose session ran it; pinning makes the
 gate's rigor a repo decision.
 
-**Loud-failure parity holds here too, with two documented exceptions.**
-A retired or mistyped id surfaces as a visible error (`There's an issue
-with the selected model (…)` / `Agent terminated early due to an API
-error`) — Claude Code does **not** silently fall back to the session
-model. But the pin does not defend against two paths, both outside the
-repo and invisible to the guard:
+**Loud-failure parity holds here too, with three documented
+exceptions.** A retired or mistyped id surfaces as a visible error
+(`There's an issue with the selected model (…)` / `Agent terminated
+early due to an API error`) — Claude Code does **not** silently fall
+back to the session model. But upstream model resolution is four deep,
+and the frontmatter sits only third, so the pin does not defend against:
 
-- `CLAUDE_CODE_SUBAGENT_MODEL` takes priority **over** the frontmatter
-  in model resolution, so an env var in the operator's shell wins;
-- when an organisation's `availableModels` allowlist excludes the pinned
-  value, Claude Code **skips it silently** and runs the subagent on the
-  inherited model.
+- **`CLAUDE_CODE_SUBAGENT_MODEL`** (priority 1) — an env var in the
+  operator's shell wins over the file;
+- **the per-invocation `model` parameter** (priority 2) — and this one
+  is reachable **from inside this repo**: `.claude/commands/plan.md`
+  spawns `architect-reviewer` via the Agent tool, whose `model`
+  argument takes precedence over the frontmatter. Nothing stops a
+  `/plan` run from passing one and silently defeating the pin. The same
+  applies to `effort`;
+- **an organisation's `availableModels` allowlist** — when it excludes
+  the pinned value, Claude Code **skips it silently** and runs the
+  subagent on the inherited model.
 
-Neither is fixable in-repo; they are recorded so that "pinned" is not
-read as a stronger guarantee than it is.
+Only the second is in-repo, and even that one is a call-site
+convention, not something the static guard can see. They are recorded
+so that "pinned" is not read as a stronger guarantee than it is.
 
-**Two guards, one policy.** `tests/test_claude_review_workflow.py`
+**Two guards, one denylist.** `tests/test_claude_review_workflow.py`
 checks the workflow, `tests/test_agent_frontmatter.py` checks the agent
-frontmatter, and their alias sets are deliberately **not** shared: the
-first rejects CLI aliases of the `--model` flag, the second rejects
-frontmatter values, which have their own vocabulary (`inherit`,
-`fable`). A merged allowlist would have to be a superset and would pass
-a value that is invalid on the other surface.
+frontmatter, and both import the same set from
+`tests/_model_pin_policy.py`. The first version kept a copy per file
+"because the surfaces have different vocabularies" — wrong twice over:
+these are **denylists**, so a union is strictly more conservative (it
+can only reject more, never pass more), and the copies had already
+drifted — `fable` was listed for the frontmatter and missing for the
+CLI flag, so `--model fable` passed the cloud guard even though the
+action's docs say the flag takes the same values.
 
 **Verifying a prompt change**: a PR that edits `claude-review.yml`
 itself gets a green review job **with no comment** — the action skips

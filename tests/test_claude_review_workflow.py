@@ -32,13 +32,10 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
+from _model_pin_policy import UNPINNED_MODEL_VALUES
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "claude-review.yml"
 _ACTION = "anthropics/claude-code-action"
-
-# Короткие CLI-алиасы: резолвятся апстримом, поэтому ревью молча переезжает на
-# другую модель — ровно тот дрейф, который пин обязан закрыть.
-_ALIASES = frozenset({"opus", "sonnet", "haiku", "default", "latest"})
 
 # Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
 # сужение (находку, которую уже ловит ruff/mypy, понижаем как дубль детерминированного
@@ -79,9 +76,11 @@ class TestReviewModelPinned:
             f"`claude_args: --model <id>`; got claude_args={args!r} (#374)"
         )
         model = found.group(1)
-        assert model.lower() not in _ALIASES, (
-            f"model {model!r} is a short alias — upstream resolves it, so the review "
-            "silently moves to another model when the alias is repointed (#374)"
+        assert model.lower() not in UNPINNED_MODEL_VALUES, (
+            f"model {model!r} resolves outside the repo (alias / floating pointer), so "
+            "the review silently moves to another model when it is repointed (#374). "
+            "The denylist is shared with the agent-frontmatter guard — see "
+            "tests/_model_pin_policy.py"
         )
 
 

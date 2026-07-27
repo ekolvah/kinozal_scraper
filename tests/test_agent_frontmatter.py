@@ -13,20 +13,19 @@
 plan-гейта зависит от того, в какой сессии его вызвали — невоспроизводимо между
 контрибьюторами.
 
-**Почему набор алиасов здесь другой, чем в `test_claude_review_workflow.py`.** Там
-CLI-алиасы флага `--model` внутри `claude_args`; здесь — значения frontmatter, у
-которых своя лексика (`inherit`, `fable`). Наборы **легитимно** разные, поэтому не
-сведены в общую константу: общий allowlist пришлось бы держать надмножеством и он
-пропускал бы валидное-там-но-не-здесь. Политика одна (дом — `docs/architecture/ci.md`),
-формы её проверки две.
+**Denylist общий с cloud-гардом** — `tests/_model_pin_policy.py`. Держать копии в
+двух файлах было ошибкой первой версии: наборы уже разошлись (`fable` был здесь и
+отсутствовал там). Это denylist, поэтому объединение строго консервативнее — может
+только отвергнуть лишнее, но не пропустить.
 
-**Границы гарда, честно.** Он ловит дрейф frontmatter. Он НЕ ловит возврат скрытого
-severity-фильтра в тело промпта (acceptance #4 issue #392): регексп по русским
-императивам («не раздувай», «будь беспощаден») был бы карв-аут-детектором, скроенным
-под текущий текст — ровно то, что architect-review забраковал в #374 — и всё равно
-пропускал бы перефразировку. Семантика промпта держится прозой доки и ревью.
-Ledger `docs/architecture/testing.md#consciously-accepted-coverage-gaps` не
-пополняется: ограничена глубина покрытия, а не отклонено покрытие.
+**Границы гарда, честно.** Frontmatter стережётся полностью; тело промпта — по той
+же форме, что и cloud-половина (`TestCoverageFirstPrompt` ниже): наличие
+coverage-first контракта + отсутствие снятых формулировок подавления. Что НЕ
+ловится — **семантическая перефразировка** фильтра («будь избирателен», «пиши
+только про важное»): её exit-code не проверяет ни здесь, ни в #374. Эта остаточная
+дыра записана в ledger
+[`testing.md#consciously-accepted-coverage-gaps`](../docs/architecture/testing.md#consciously-accepted-coverage-gaps),
+чтобы отказ не переоткрыли как work-for-work.
 
 Инвариант **производный от glob** и сегодня профилактический: агент в репо ровно
 один. Смысл производности — чтобы следующий агент попал под правило автоматически,
@@ -40,13 +39,16 @@ from typing import Any, cast
 
 import pytest
 import yaml
+from _model_pin_policy import UNPINNED_MODEL_VALUES
 
 _AGENTS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "agents"
 
-# Значения, которые резолвит НЕ репозиторий: алиасы уезжают на новое поколение
-# вместе с апстримом, `inherit` — вместе с моделью сессии. И то и другое означает,
-# что качество plan-гейта меняется без строчки в диффе.
-_UNPINNED = frozenset({"sonnet", "opus", "haiku", "fable", "inherit"})
+# Формулировки, снятые в #392 как скрытый severity-фильтр. Гард на ИЗВЕСТНУЮ форму
+# дефекта — тот же жанр, что проверка gag-строки `no blocking issues` в
+# `test_claude_review_workflow.py`. Регексп «любой императив в начале строки» здесь
+# не годится: промпт русскоязычный, и легитимные инструкции тоже начинаются с «Не»
+# («Не дублируй работу cloud claude-review» — это разграничение зон, не подавление).
+_REMOVED_SUPPRESSION = ("не раздувай", "беспощаден", "краткость по умолчанию")
 
 # Набор апстримный (дока Claude Code, таблица frontmatter-полей). Это копия, то есть
 # потенциальный дрейф — держим осознанно, потому что опечатка в значении
@@ -56,7 +58,11 @@ _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
 def _agent_files() -> list[Path]:
-    return sorted(_AGENTS_DIR.glob("*.md"))
+    # rglob, не glob: Claude Code сканирует `.claude/agents/` рекурсивно, поэтому
+    # агент в подпапке был бы вне инварианта — и `test_agent_files_are_actually_scanned`
+    # остался бы зелёным за счёт файла верхнего уровня, то есть тот самый тихий
+    # вакуум, против которого он и написан, просто одной директорией глубже.
+    return sorted(_AGENTS_DIR.rglob("*.md"))
 
 
 def _frontmatter(path: Path) -> dict[str, Any]:
@@ -84,7 +90,7 @@ class TestAgentModelPinned:
             f"{path.name}: no `model` in frontmatter — the subagent silently inherits "
             "the session model, so the review's rigor is not a repo decision (#392)"
         )
-        assert model.lower() not in _UNPINNED, (
+        assert model.lower() not in UNPINNED_MODEL_VALUES, (
             f"{path.name}: `model: {model}` is an alias or `inherit` — it resolves "
             "outside the repo, so the agent moves to another model with no line in "
             "any diff; pin a full id such as `claude-opus-5` (#392)"
@@ -102,4 +108,43 @@ class TestAgentModelPinned:
             f"{path.name}: `effort: {effort}` is not one of {sorted(_EFFORT_LEVELS)}; "
             "an unrecognised value is ignored silently. If the upstream set changed, "
             "check the Claude Code docs and update the set here — do not relax the test"
+        )
+
+
+class TestCoverageFirstPrompt:
+    """Тело промпта: контракт «градация вместо фильтрации» (#392, acceptance #4).
+
+    Зеркало `TestCoverageFirstPrompt` из `tests/test_claude_review_workflow.py`:
+    там cloud-ревьюер, здесь локальный plan-ревьюер, дефект один и тот же —
+    инструкция «покороче» конвертирует слабую находку в отсутствие находки, а не в
+    низкую severity (подтверждено самим ревьюером на прямой вопрос, #392).
+
+    **Substance-гард, а не косметика:** пин модели — одна строка, а содержание
+    правки — именно переписанный промпт; без этих тестов поведенческое изменение
+    ехало бы вообще без покрытия."""
+
+    @staticmethod
+    def _body(path: Path) -> str:
+        text = path.read_text(encoding="utf-8")
+        return text.partition("---")[2].partition("\n---")[2]
+
+    @pytest.mark.parametrize("path", _agent_files(), ids=lambda p: p.name)
+    def test_removed_suppression_phrases_stay_out(self, path: Path) -> None:
+        body = self._body(path).lower()
+        present = [phrase for phrase in _REMOVED_SUPPRESSION if phrase in body]
+        assert not present, (
+            f"{path.name}: suppression phrasing is back in the agent prompt {present} — "
+            "it converts a weak finding into no finding at all instead of a low "
+            "severity, and a filtered finding is indistinguishable from a review that "
+            "never ran (§IV, #392)"
+        )
+
+    @pytest.mark.parametrize("path", _agent_files(), ids=lambda p: p.name)
+    def test_findings_are_graded_not_filtered(self, path: Path) -> None:
+        body = self._body(path).lower()
+        missing = [word for word in ("confidence", "blocking") if word not in body]
+        assert not missing, (
+            f"{path.name}: the grading contract is incomplete, missing {missing}; "
+            "every finding must be reported with a severity bucket and a confidence, "
+            "so that filtering happens at the reporting stage, not the search stage (#392)"
         )
