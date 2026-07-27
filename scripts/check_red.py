@@ -28,42 +28,57 @@ from pathlib import Path
 # `skipped` здесь же: пропущенный тест ничего не проверил, засчитывать его как
 # зелёный — значит блокировать RED-шаг по несуществующему покрытию.
 _NOT_GREEN = frozenset({"failure", "error", "skipped"})
-# Подмножество, означающее «тест реально упал». `skipped` в него не входит: набор
-# из одних пропусков — не RED, иначе `/implement` уйдёт в GREEN, ничего не проверив.
-_FAILED = frozenset({"failure", "error"})
 
 
 def evaluate_report(xml_text: str) -> tuple[bool, str]:
     """Вердикт RED-шага по junit-отчёту. Чистая функция: ни I/O, ни exit.
 
-    RED := зелёных тестов нет И хотя бы один упал. При `not RED` вердикт называет
-    зелёные тесты поимённо — иначе «not RED: 1 passed» не подсказывает, какой
-    именно тест написан так, что уже проходит (§IV).
+    RED := зелёных тестов нет, ни один не сломался И хотя бы один упал. При
+    `not RED` вердикт называет виновные тесты поимённо — иначе «not RED: 1 passed»
+    не подсказывает, какой именно тест уже проходит или не выполнился (§IV).
+
+    **`error` — не RED (#402).** Ошибка сбора/фикстуры значит «тест не выполнялся»,
+    а RED-шаг обязан доказать, что тест ЛОВИТ поведение; засчитать её красной значит
+    пустить `/implement` в GREEN по непроверенному тесту. Побочно это чинит ложный
+    RED на **зелёном** тесте со сломанным teardown (он тоже даёт `<error>`).
+
+    **`error` перевешивает `failure` внутри одного теста.** pytest пишет запись НА
+    ФАЗУ, поэтому «упал + сломался teardown» приезжает двумя `<testcase>` с одним
+    `classname`/`name`; они группируются в один тест, и сломанная обвязка важнее —
+    её надо чинить, а не считать подтверждённым RED. Не «упрощать» обратно.
     """
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as exc:
         raise ValueError(f"junit report is not parsable XML: {exc}") from exc
-    green: list[str] = []
-    failed = 0
-    skipped = 0
-    total = 0
+    # Группировка по (classname, name): без неё запись на фазу считается отдельным
+    # тестом — счётчик врёт, а классификация «error перевешивает» не работает вовсе.
+    tags_by_test: dict[tuple[str, str], set[str]] = {}
     for case in root.iter("testcase"):
-        total += 1
-        tags = {child.tag for child in case}
-        if tags & _FAILED:
-            failed += 1
-        elif "skipped" in tags:
-            skipped += 1
-        if not tags & _NOT_GREEN:
-            green.append(f"{case.get('classname', '')}::{case.get('name', '')}".lstrip(":"))
-    if total == 0:
+        key = (case.get("classname", ""), case.get("name", ""))
+        tags_by_test.setdefault(key, set()).update(child.tag for child in case)
+    if not tags_by_test:
         return False, "no tests collected (0 testcases in the junit report)"
-    if not green and failed >= 1:
-        return True, f"RED: {failed} failed, 0 green (of {total} testcases)"
-    if not green:
-        return False, f"not RED: 0 green, but nothing failed either ({skipped} skipped)"
-    return False, f"not RED: {len(green)} green test(s) of {total}: {', '.join(green)}"
+
+    def name_of(key: tuple[str, str]) -> str:
+        return f"{key[0]}::{key[1]}".lstrip(":")
+
+    errored = [name_of(k) for k, t in tags_by_test.items() if "error" in t]
+    failed = [name_of(k) for k, t in tags_by_test.items() if "error" not in t and "failure" in t]
+    green = [name_of(k) for k, t in tags_by_test.items() if not t & _NOT_GREEN]
+    total = len(tags_by_test)
+    if errored:
+        also = f"; зелёные рядом: {', '.join(green)}" if green else ""
+        return False, (
+            f"not RED: {len(errored)} тест(ов) не выполнились (ошибка сбора/фикстуры) "
+            f"of {total}: {', '.join(errored)}{also} — почини их, RED по ним не засчитан"
+        )
+    if green:
+        return False, f"not RED: {len(green)} green test(s) of {total}: {', '.join(green)}"
+    if failed:
+        return True, f"RED: {len(failed)} failed, 0 green (of {total} tests)"
+    skipped = sum(1 for t in tags_by_test.values() if "skipped" in t)
+    return False, f"not RED: 0 green, but nothing failed either ({skipped} skipped of {total})"
 
 
 def main() -> None:
