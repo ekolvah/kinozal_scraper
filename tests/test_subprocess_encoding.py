@@ -1,4 +1,4 @@
-"""Гард: ни один call-site не декодит чужой вывод кодировкой ОС (#364).
+"""Гард на вывод subprocess: два правила — кодировка (#364) и дефолты (#410).
 
 `subprocess.run(..., text=True, capture_output=True)` **без** `encoding` под Windows
 декодит вывод дочернего процесса ANSI-кодовой страницей (cp1252). На кириллице это
@@ -6,8 +6,10 @@
 буфер остаётся пустым, а `Popen._communicate` возвращает `stdout[0] if stdout else
 None`, то есть **`stdout is None`**. Отсюда грабля #109 («может вернуть `stdout=None`
 несмотря на `text=True`») — она не отдельное явление Windows+git-bash, а симптом
-этого дефекта, а рассыпанные по `scripts/` `(result.stdout or "")` — маскировавшие
-его workaround'ы.
+этого дефекта; рассыпанные по репозиторию `(result.stdout or "")` были
+маскировавшими его workaround'ами и **сняты в #410** — теперь их запрещает второе
+правило этого файла (`find_output_defaults`), а проверка на `None` живёт в
+`_run`-seam'е каждого скрипта.
 
 Живой случай 28.07.2026: PostToolUse-хук отрапортовал «ruff found issues», но **текст
 находки потерялся вместе с умершим потоком**. Инструмент видимости ослеп — §IV внутри
@@ -60,7 +62,20 @@ _OUTPUT_ATTRS = frozenset({"stdout", "stderr"})
 
 
 def find_output_defaults(source: str, label: str) -> list[str]:
-    raise NotImplementedError
+    """`<что-то>.stdout or <дефолт>` — подмена отказа захвата пустым значением.
+
+    Правило намеренно узкое: смотрит на **атрибут** `.stdout`/`.stderr` слева от
+    `or`, а не на `or` вообще. Широкое правило флагало бы легитимные дефолты
+    (`os.environ.get(...) or ""`), и его пришлось бы ослаблять — а глушить
+    ассерт нечем, `noqa` у него нет."""
+    violations: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)):
+            continue
+        head = node.values[0]
+        if isinstance(head, ast.Attribute) and head.attr in _OUTPUT_ATTRS:
+            violations.append(f"{label}:{node.lineno}: `.{head.attr} or ...` default")
+    return violations
 
 
 def _kwargs(call: ast.Call) -> dict[str, ast.expr]:

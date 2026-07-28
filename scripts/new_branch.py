@@ -27,12 +27,15 @@ def is_valid_branch_name(name: str) -> bool:
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, check=True, text=True, capture_output=capture, encoding="utf-8")
-    # Under some Windows + git-bash + pipe-handle combinations, subprocess.run
-    # has been observed returning CompletedProcess(stdout=None) despite
-    # capture_output=True. Normalize so callers can call `.splitlines()` /
-    # `.strip()` without an `if x is None` dance (see #109).
+    # Раньше здесь `stdout=None` нормализовался в `""` — как причуда Windows (#109).
+    # #364 показал, что это симптом умершего на декодировании потока-читателя, и
+    # причину закрыл. Теперь `None` при запрошенном захвате означает настоящий отказ
+    # захвата, и нормализация подменяла бы его пустотой: `_prune_gone_branches`
+    # рапортовал бы «pruned: 0 merged branches» — неотличимо от честного «нечего
+    # удалять», хотя список веток не был получен вовсе (#410).
+    # Без `capture` `None` штатен: вывод идёт в консоль, декодировать нечего.
     if capture and result.stdout is None:
-        result.stdout = ""
+        raise RuntimeError(f"capture failed for `{' '.join(cmd)}` (rc={result.returncode})")
     return result
 
 

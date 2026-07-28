@@ -84,12 +84,23 @@ def has_closing_reference(view_json: str) -> bool:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
+    result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
+    # `None` при запрошенном захвате = захват сломался (#364: поток-читатель умер).
+    # Раньше здесь стоял `or ""` по каждому call-site — он подменял отказ пустотой,
+    # то есть «gh ничего не ответил», и скрипт шёл дальше по фантомным данным.
+    # Ненулевой returncode исключением НЕ является: вызывающий сам решает, и путь
+    # печати ошибки обязан доехать (#410).
+    if result.stdout is None or result.stderr is None:
+        raise RuntimeError(
+            f"capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    return result
 
 
 def _current_branch() -> str:
     result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    return (result.stdout or "").strip()
+    return result.stdout.strip()
 
 
 def _existing_pr(branch: str) -> dict[str, Any] | None:
@@ -104,16 +115,19 @@ def _existing_pr(branch: str) -> dict[str, Any] | None:
     result = _run(["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url,body"])
     if result.returncode != 0:
         return None
-    loaded: list[dict[str, Any]] = json.loads(result.stdout or "[]")
+    loaded: list[dict[str, Any]] = json.loads(result.stdout)
     return loaded[0] if loaded else None
 
 
 def _create_pr(title: str, body: str) -> str:
     result = _run(["gh", "pr", "create", "--base", "main", "--title", title, "--body", body])
     if result.returncode != 0:
-        print((result.stderr or "").strip() or "error: gh pr create failed", file=sys.stderr)
+        # `or "error: …"` здесь остаётся: это обработка ЛЕГИТИМНО пустого stderr
+        # (команда упала молча), а не воркэраунд отказа захвата — тот теперь
+        # ловится в `_run` (#410).
+        print(result.stderr.strip() or "error: gh pr create failed", file=sys.stderr)
         sys.exit(1)
-    lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
     return lines[-1] if lines else ""
 
 
@@ -123,7 +137,17 @@ def _edit_pr_body(url: str, body: str) -> None:
 
 def _closing_refs_json(url: str) -> str:
     result = _run(["gh", "pr", "view", url, "--json", "closingIssuesReferences"])
-    return result.stdout or "{}"
+    if result.returncode != 0:
+        # Раньше проверки не было, и упавший `gh pr view` возвращал `"{}"` —
+        # неотличимо от «PR не залинкован». Скрипт поллил до фейкового вердикта
+        # «NOT linked», а причина (сбой gh) не доходила до оператора вовсе (#410).
+        print(
+            f"error: `gh pr view {url}` failed (rc={result.returncode}): "
+            f"{result.stderr.strip()} — linkage is unknown, not absent.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return result.stdout
 
 
 def _linkage_confirmed(url: str) -> bool:

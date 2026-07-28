@@ -69,16 +69,26 @@ def item_id_from_add_json(output: str | None) -> str:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
+    result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
+    # `None` = захват сломался (#364), а не «gh промолчал». Дефолт на этом месте
+    # подменял бы отказ пустотой — ровно то, что чинит #410.
+    if result.stdout is None or result.stderr is None:
+        raise RuntimeError(
+            f"capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        )
+    return result
 
 
 def _checked(cmd: list[str], what: str) -> str:
     """Run `cmd`; on non-zero exit print stderr and exit 1 (§IV visible failure)."""
     result = _run(cmd)
     if result.returncode != 0:
-        print((result.stderr or "").strip() or f"error: {what} failed", file=sys.stderr)
+        # `or f"error: …"` — обработка легитимно пустого stderr, не воркэраунд:
+        # отказ захвата теперь ловится в `_run` (#410).
+        print(result.stderr.strip() or f"error: {what} failed", file=sys.stderr)
         sys.exit(1)
-    return result.stdout or ""
+    return result.stdout
 
 
 def _issue_url(n: int) -> str:

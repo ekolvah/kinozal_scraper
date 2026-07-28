@@ -49,7 +49,12 @@ def _ignore_source(path: str) -> str:
         text=True,
         encoding="utf-8",
     )
-    return (result.stdout or "").strip()
+    # Без дефолта (#410): `None` означал бы сломанный захват, а не «git промолчал».
+    # Тест остаётся на stdlib и НЕ тянет хелпер из `scripts/` — это регресс на
+    # состояние репо, и связывать его с dev-скриптами значит расширять поверхность
+    # его отказа. Пустой stdout при rc=1 («путь не игнорируется») штатен.
+    assert result.stdout is not None, f"capture failed for `git check-ignore -v {path}`"
+    return result.stdout.strip()
 
 
 @pytest.mark.parametrize(
@@ -88,7 +93,8 @@ def test_no_session_credential_is_tracked() -> None:
         encoding="utf-8",
         check=True,
     )
-    sessions = [name for name in (tracked.stdout or "").split("\0") if ".session" in name]
+    assert tracked.stdout is not None, "capture failed for `git ls-files -z`"
+    sessions = [name for name in tracked.stdout.split("\0") if ".session" in name]
 
     assert not sessions, f"Telethon session credential(s) tracked in the repo: {sessions}"
 

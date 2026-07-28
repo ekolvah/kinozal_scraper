@@ -160,6 +160,31 @@ class TestMainVerification:
         assert "999" in err  # PR URL в сообщении
         assert "#320" in err  # remediation указывает issue
 
+    def test_failed_refs_read_is_visible_not_reported_as_missing_link(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Упавший `gh pr view` — «линковка неизвестна», а не «линковки нет» (#410).
+
+        Раньше `_closing_refs_json` не проверял returncode и возвращал `"{}"`, что
+        неотличимо от честного «ссылок нет»: скрипт поллил и выносил вердикт
+        `NOT linked`, а настоящая причина (сбой `gh`) не доходила до оператора."""
+
+        def failing_refs_read(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if cmd[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in cmd:
+                return subprocess.CompletedProcess(
+                    args=cmd, returncode=1, stdout="", stderr="gh: rate limit exceeded"
+                )
+            return _GhDispatcher(branch="issue-320-x", existing_pr=None)(cmd, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", failing_refs_read)
+        monkeypatch.setattr("time.sleep", lambda *_: None)
+        with pytest.raises(SystemExit) as exc:
+            main(["--title", "T"])
+        assert exc.value.code == 1
+        err = capsys.readouterr().err
+        assert "rate limit" in err, "the real cause must reach the operator"
+        assert "linkage is unknown" in err, "must not be reported as a missing link"
+
     def test_retries_linkage_until_populated(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Регресс на dogfood PR #321: GitHub считает closingIssuesReferences
         # асинхронно после create — первое чтение пусто, но линковка КОРРЕКТНА.

@@ -62,14 +62,24 @@ def _refs_json(pr: str) -> str:
         capture_output=True,
         encoding="utf-8",
     )
-    if result.returncode != 0:
+    if result.stdout is None or result.stderr is None:
+        # Захват сломался (#364) — это инфра-сбой, тот же класс, что ненулевой rc
+        # ниже, и он обязан прийти под кодом 2, а не превратиться в пустой `"{}"`
+        # (то есть в ложный вердикт «линковки нет») (#410).
         print(
-            f"error: `gh pr view {pr}` failed (rc={result.returncode}): "
-            f"{(result.stderr or '').strip()} — cannot verify PR→issue link.",
+            f"error: capture failed for `gh pr view {pr}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
             file=sys.stderr,
         )
         sys.exit(2)
-    return result.stdout or "{}"
+    if result.returncode != 0:
+        print(
+            f"error: `gh pr view {pr}` failed (rc={result.returncode}): "
+            f"{result.stderr.strip()} — cannot verify PR→issue link.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return result.stdout
 
 
 def _link_missing_after_poll(branch: str, pr: str) -> bool:

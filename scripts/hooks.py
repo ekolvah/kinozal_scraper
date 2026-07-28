@@ -197,10 +197,17 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
             )
         except FileNotFoundError as exc:  # ruff/python missing → visible, not silent
             return _RUFF_EXEC_ERROR, str(exc)
-        # `or ""`: `stdout=None` — симптом умершего на декодировании потока-читателя
-        # (#109 объясняется #364). С `encoding`+`errors` выше этот путь закрыт, но
-        # нормализация остаётся до чистки всех семи call-site (Out of scope #364).
-        combined_out += (completed.stdout or "") + (completed.stderr or "")
+        if completed.stdout is None or completed.stderr is None:
+            # Сломанный захват — это «сетап сломан», тот же класс, что отсутствующий
+            # ruff выше, поэтому и код тот же. Исключение отсюда бросать нельзя:
+            # непойманное дало бы exit 1, а stderr хука с кодом 1 уходит
+            # пользователю, но НЕ агенту — понижение видимости в инструменте,
+            # который ради видимости и существует (#410).
+            return _RUFF_EXEC_ERROR, (
+                f"capture failed for `{' '.join(cmd)}` (rc={completed.returncode}): "
+                f"stdout={completed.stdout!r} stderr={completed.stderr!r}"
+            )
+        combined_out += completed.stdout + completed.stderr
         worst_rc = max(worst_rc, completed.returncode)
     return worst_rc, combined_out
 
