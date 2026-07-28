@@ -27,9 +27,18 @@ coverage-first контракта + отсутствие снятых форму
 [`testing.md#consciously-accepted-coverage-gaps`](../docs/architecture/testing.md#consciously-accepted-coverage-gaps),
 чтобы отказ не переоткрыли как work-for-work.
 
-Инвариант **производный от glob** и сегодня профилактический: агент в репо ровно
-один. Смысл производности — чтобы следующий агент попал под правило автоматически,
-а не через ручной список, который забудут дополнить.
+**Два разных скоупа — это не небрежность (#407).** Инварианты frontmatter
+(`model`, `effort`) применяются к **каждому** агенту: пин обязателен всем, и
+производность от glob нужна ровно затем, чтобы следующий агент попал под правило
+автоматически, а не через ручной список, который забудут дополнить.
+Промпт-контракт (`TestCoverageFirstPrompt`) — наоборот, только к тем, кто
+**возвращает findings**: требовать `confidence`/`blocking` от агента, который их не
+возвращает, значит гарантировать, что контрибьютор ослабит тест, а не добавит
+осмысленный контракт. Зачисление идёт по свойству файла, а не по имени: #372
+планирует `code-critic`, и суффикс `*-reviewer` молча НЕ зачислил бы настоящего
+ревьюера — обмен видимой ловушки на тихую.
+
+Сегодня агент в репо ровно один, так что оба скоупа профилактические.
 """
 
 from __future__ import annotations
@@ -57,8 +66,15 @@ _REMOVED_SUPPRESSION = ("не раздувай", "беспощаден", "кра
 _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
+# Секция, которой агент объявляет, что возвращает findings по корзинам severity.
+# Именно её наличие делает coverage-first контракт осмысленным — поэтому зачисление
+# идёт по ней, а не по имени файла (см. `TestFindingsContractScope`).
+_FINDINGS_SECTION = "## Формат ответа"
+
+
 def declares_findings_contract(body: str) -> bool:
-    raise NotImplementedError
+    """Декларирует ли агент, что возвращает findings (и значит связан контрактом)."""
+    return _FINDINGS_SECTION in body
 
 
 def _agent_files() -> list[Path]:
@@ -67,6 +83,15 @@ def _agent_files() -> list[Path]:
     # остался бы зелёным за счёт файла верхнего уровня, то есть тот самый тихий
     # вакуум, против которого он и написан, просто одной директорией глубже.
     return sorted(_AGENTS_DIR.rglob("*.md"))
+
+
+def _body(path: Path) -> str:
+    return path.read_text(encoding="utf-8").partition("---")[2].partition("\n---")[2]
+
+
+def _findings_agents() -> list[Path]:
+    """Агенты, связанные промпт-контрактом, — подмножество, не все (#407)."""
+    return [path for path in _agent_files() if declares_findings_contract(_body(path))]
 
 
 def _frontmatter(path: Path) -> dict[str, Any]:
@@ -142,16 +167,24 @@ class TestCoverageFirstPrompt:
 
     **Substance-гард, а не косметика:** пин модели — одна строка, а содержание
     правки — именно переписанный промпт; без этих тестов поведенческое изменение
-    ехало бы вообще без покрытия."""
+    ехало бы вообще без покрытия.
 
-    @staticmethod
-    def _body(path: Path) -> str:
-        text = path.read_text(encoding="utf-8")
-        return text.partition("---")[2].partition("\n---")[2]
+    **Скоуп — подмножество агентов** (`_findings_agents`, #407), в отличие от
+    frontmatter-инвариантов выше: требовать `confidence`/`blocking` от агента,
+    который findings не возвращает, значит заставить контрибьютора ослабить тест."""
 
-    @pytest.mark.parametrize("path", _agent_files(), ids=lambda p: p.name)
+    def test_scope_is_not_empty(self) -> None:
+        """§IV на суженном списке: сузить — не значит позволить ему тихо схлопнуться
+        в ноль. Без этого переименование секции формата обнуляет весь класс, и
+        «никого не проверяем» становится неотличимо от «все прошли»."""
+        assert _findings_agents(), (
+            "no agent declares a findings contract — either the section header "
+            f"({_FINDINGS_SECTION!r}) drifted or the scope collapsed silently (#407)"
+        )
+
+    @pytest.mark.parametrize("path", _findings_agents(), ids=lambda p: p.name)
     def test_removed_suppression_phrases_stay_out(self, path: Path) -> None:
-        body = self._body(path).lower()
+        body = _body(path).lower()
         present = [phrase for phrase in _REMOVED_SUPPRESSION if phrase in body]
         assert not present, (
             f"{path.name}: suppression phrasing is back in the agent prompt {present} — "
@@ -160,9 +193,9 @@ class TestCoverageFirstPrompt:
             "never ran (§IV, #392)"
         )
 
-    @pytest.mark.parametrize("path", _agent_files(), ids=lambda p: p.name)
+    @pytest.mark.parametrize("path", _findings_agents(), ids=lambda p: p.name)
     def test_findings_are_graded_not_filtered(self, path: Path) -> None:
-        body = self._body(path).lower()
+        body = _body(path).lower()
         missing = [word for word in ("confidence", "blocking") if word not in body]
         assert not missing, (
             f"{path.name}: the grading contract is incomplete, missing {missing}; "
