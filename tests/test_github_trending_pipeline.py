@@ -221,6 +221,12 @@ class TestUS3Visibility(unittest.TestCase):
                 "PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src"),
                 "GITHUB_TRENDING_SOURCES_PATH": str(sources_path),
                 "GITHUB_TRENDING_DRY_RUN": "1",
+                # BOTH halves of the decoding contract (#364). `encoding` below fixes
+                # the parent; this fixes the child, which would otherwise write to the
+                # pipe in the OS code page. Without it a Cyrillic byte in the child's
+                # traceback kills the reader thread — and `proc.stderr`, the assertion
+                # message on the line below, is exactly what would be lost.
+                "PYTHONUTF8": "1",
             }
             # `-m` runs the package entry point; PYTHONPATH=src (set in env above)
             # puts the package on sys.path without depending on an editable install.
@@ -230,6 +236,7 @@ class TestUS3Visibility(unittest.TestCase):
                 env=env,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 timeout=30,
             )
         self.assertEqual(proc.returncode, 1, proc.stderr)

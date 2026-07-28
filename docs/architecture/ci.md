@@ -265,6 +265,37 @@ tracked in #251 (§V documented-mitigation, not a silent assumption). `RUF100`
 unused-noqa across the repo — a separate cleanup, not this gate (#233 Out of
 scope).
 
+### Subprocess decoding guard (`tests/test_subprocess_encoding.py`, #364)
+
+An AST guard over `scripts/**`, `src/**` and `tests/**`: a `subprocess` call
+that **captures** the child's output in **text mode** must pass an explicit
+`encoding`. Without it Windows decodes with the OS code page, the reader thread
+dies on the first Cyrillic byte, and the captured text is lost — which is also
+where the `stdout=None` gotcha of #109 comes from (an empty buffer becomes
+`None`), making the `(result.stdout or "")` idioms scattered through `scripts/`
+workarounds for *this* defect rather than a separate Windows quirk.
+
+Why a guard rather than two missing kwargs: 7 of 9 call sites remembered the
+flag and 2 did not, and this is the third pass over the same class
+(#109 → #125 → #364). Correctness resting on the author's memory is what
+`mindset.md` ("скрипты > инструкции") says to pin with an exit code.
+
+Two limits, both deliberate and recorded in the
+[accepted-gaps ledger](testing.md#consciously-accepted-coverage-gaps):
+
+- the guard checks the **parent** side only — a child Python still writes in
+  the OS code page unless it gets `PYTHONUTF8=1` / `-X utf8` (as `ci_check`
+  already does for detect-secrets, and as `test_github_trending_pipeline.py`
+  now does for its own child);
+- **no standard rule covers this** — ruff, bandit and pylint have nothing for
+  `subprocess` encoding (ruff's `PLW1514` is about `open()` only). Recorded so
+  the "стандартные тулы > велосипеды" precedent (#237) is not re-litigated
+  against this guard.
+
+`scripts/hooks.py` additionally passes `errors="replace"`: a tool whose entire
+job is visibility must not be able to die while decoding. That is a per-call-site
+decision, not a repo-wide policy — the guard does not require `errors` anywhere.
+
 ### Dead-code ratchet (lint, #235)
 
 The `lint` check also enforces ruff `ERA001` (commented-out code) as a

@@ -181,10 +181,25 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
         [sys.executable, "-m", "ruff", "check", file_path],
     ):
         try:
-            completed = subprocess.run(cmd, text=True, capture_output=True)
+            # `encoding` обязателен (#364): без него Windows декодит вывод ruff
+            # кодовой страницей ОС, поток-читатель умирает на первом кириллическом
+            # байте — и текст находки теряется, хотя хук рапортует «ruff found
+            # issues». `errors="replace"` тут же и намеренно: инструмент, вся работа
+            # которого — видимость, не должен уметь умереть на декодировании
+            # (не-UTF-8 байт от стороннего тула). Мохряк в одном символе честнее
+            # молчания обо всей находке (§IV).
+            # Дочерней половины контракта (`PYTHONUTF8`) здесь нет намеренно: пишет
+            # в pipe сам ruff — Rust-бинарь, выдающий UTF-8, а не Python-процесс,
+            # чью кодировку задаёт интерпретатор. Если бы шим всё же отдал не-UTF-8,
+            # `errors="replace"` деградирует символ, а не теряет находку.
+            completed = subprocess.run(
+                cmd, text=True, capture_output=True, encoding="utf-8", errors="replace"
+            )
         except FileNotFoundError as exc:  # ruff/python missing → visible, not silent
             return _RUFF_EXEC_ERROR, str(exc)
-        # Windows + git-bash can hand back None despite text=True (see #109).
+        # `or ""`: `stdout=None` — симптом умершего на декодировании потока-читателя
+        # (#109 объясняется #364). С `encoding`+`errors` выше этот путь закрыт, но
+        # нормализация остаётся до чистки всех семи call-site (Out of scope #364).
         combined_out += (completed.stdout or "") + (completed.stderr or "")
         worst_rc = max(worst_rc, completed.returncode)
     return worst_rc, combined_out

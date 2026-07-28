@@ -73,13 +73,20 @@ def check_secrets() -> None:
 
 
 def _tracked_files() -> list[str]:
-    proc = subprocess.run(["git", "ls-files", "-z"], capture_output=True, text=True)
+    # Binary mode on purpose (#364): `-z` exists to make the stream newline-safe,
+    # and text mode would undo that by translating universal newlines inside a path.
+    # Decoding here also keeps a non-UTF-8 path from killing the reader thread —
+    # that would empty the list and make the secret gate exit with "no files to
+    # scan", pointing the operator at the wrong cause.
+    proc = subprocess.run(["git", "ls-files", "-z"], capture_output=True)
     if proc.returncode != 0:
         print("git ls-files failed — the file set to scan is unknown")
         sys.exit(1)
     # -z: git otherwise quotes paths with spaces/non-ASCII, yielding names that
-    # don't exist on disk. `stdout or ""` — #109 (stdout=None on Windows+git-bash).
-    return [name for name in (proc.stdout or "").split("\0") if name]
+    # don't exist on disk. `surrogateescape`: an undecodable path stays addressable
+    # (round-trips back to the same bytes) instead of vanishing from the scan.
+    listing = (proc.stdout or b"").decode("utf-8", "surrogateescape")
+    return [name for name in listing.split("\0") if name]
 
 
 def _secrets_targets(files: Iterable[str]) -> list[str]:
