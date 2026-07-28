@@ -1,0 +1,144 @@
+"""Гард: ни один call-site не декодит чужой вывод кодировкой ОС (#364).
+
+`subprocess.run(..., text=True, capture_output=True)` **без** `encoding` под Windows
+декодит вывод дочернего процесса ANSI-кодовой страницей (cp1252). На кириллице это
+`UnicodeDecodeError` в потоке-читателе — и дальше самое неприятное: поток умирает,
+буфер остаётся пустым, а `Popen._communicate` возвращает `stdout[0] if stdout else
+None`, то есть **`stdout is None`**. Отсюда грабля #109 («может вернуть `stdout=None`
+несмотря на `text=True`») — она не отдельное явление Windows+git-bash, а симптом
+этого дефекта, а рассыпанные по `scripts/` `(result.stdout or "")` — маскировавшие
+его workaround'ы.
+
+Живой случай 28.07.2026: PostToolUse-хук отрапортовал «ruff found issues», но **текст
+находки потерялся вместе с умершим потоком**. Инструмент видимости ослеп — §IV внутри
+того, что §IV и обеспечивает.
+
+**Почему гард, а не «дописать аргумент».** 7 call-site из 9 про флаг вспомнили, 2 —
+нет; это третий заход на тот же класс (#109 → #125 → #364). Корректность, держащаяся
+на памяти автора, по канону `mindset.md` («скрипты > инструкции») крепится exit-code'ом.
+
+**Границы гарда — реальные, не отговорки** (полный разбор с причинами — ledger
+`docs/architecture/testing.md#consciously-accepted-coverage-gaps`):
+
+- **Половина ребёнка не покрывается.** `encoding` у родителя — только половина
+  контракта: дочерний Python пишет в pipe своей ANSI-кодировкой, если не запущен с
+  `-X utf8`/`PYTHONUTF8` (репо это знает — `ci_check.py` так зовёт detect-secrets).
+  Такой call-site гард пометит зелёным, хотя он сломан.
+- **Стандартного правила нет.** Ни ruff, ни bandit, ни pylint не имеют правила на
+  encoding у `subprocess` (ruff `PLW1514` — только про `open()`). Записано, чтобы
+  прецедент #237 («стандартные тулы > велосипеды») не ре-литигировали заново.
+- **Алиас-импорт закрыт, а не задокументирован**: `test_subprocess_helpers_are_not_imported_by_name`
+  запрещает `from subprocess import run`, иначе анализ по имени обходится тремя буквами.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+_REPO = Path(__file__).resolve().parent.parent
+_SCANNED_DIRS = ("scripts", "src", "tests")
+
+# Функции subprocess, которые запускают процесс и умеют захватывать его вывод.
+_SPAWNERS = frozenset({"run", "check_output", "Popen"})
+
+# kwarg'и, любой из которых переводит поток в ТЕКСТОВЫЙ режим, то есть включает
+# декодирование на стороне родителя. `errors` — тоже: по докам subprocess он
+# подразумевает текстовый режим, и без `encoding` там локальная кодировка.
+_TEXT_MODE_KWARGS = frozenset({"text", "universal_newlines", "encoding", "errors"})
+
+
+def find_violations(source: str, label: str) -> list[str]:
+    raise NotImplementedError
+
+
+def _scanned_files() -> list[Path]:
+    return sorted(
+        path
+        for directory in _SCANNED_DIRS
+        for path in (_REPO / directory).rglob("*.py")
+        if "__pycache__" not in path.parts
+    )
+
+
+def _imports_subprocess_by_name(source: str) -> list[str]:
+    raise NotImplementedError
+
+
+class TestAnalyzer:
+    """Unit'ы анализатора на inline-исходниках.
+
+    Без них гард ложно-зелёный по построению: анализатор, безусловно возвращающий
+    `[]`, прошёл бы и repo-скан (после фикса нарушений нет), и проверку отсутствия
+    ложных срабатываний. Тогда тест-набор не отличал бы рабочий гард от заглушки."""
+
+    def test_capturing_call_without_encoding_is_flagged(self) -> None:
+        source = "import subprocess\nsubprocess.run(cmd, text=True, capture_output=True)\n"
+        violations = find_violations(source, "sample.py")
+        assert violations, "a capturing text-mode call without `encoding` must be flagged"
+        assert "sample.py:2" in violations[0], (
+            f"the violation must name file:line so it is actionable, got {violations[0]!r}"
+        )
+
+    def test_non_capturing_call_is_not_flagged(self) -> None:
+        # `scripts/ci_check.py:24` — вывод идёт в консоль, родитель его не декодит.
+        # Ложное срабатывание здесь особенно дорого: у pytest-ассерта нет `noqa`,
+        # глушить нечем — гард обязан быть точным, а не глушимым.
+        source = "import subprocess\nsubprocess.run(cmd)\n"
+        assert find_violations(source, "sample.py") == []
+
+    def test_non_literal_capture_flag_counts_as_capturing(self) -> None:
+        # Форма существует сегодня: `scripts/new_branch.py:29` передаёт переменную.
+        # Считать захватом всё, кроме литерального False.
+        source = "import subprocess\nsubprocess.run(cmd, text=True, capture_output=capture)\n"
+        assert find_violations(source, "sample.py")
+
+    def test_errors_kwarg_alone_counts_as_text_mode(self) -> None:
+        source = "import subprocess\nsubprocess.run(cmd, errors='replace', capture_output=True)\n"
+        assert find_violations(source, "sample.py")
+
+    def test_pipe_stdout_counts_as_capturing(self) -> None:
+        source = (
+            "import subprocess\n"
+            "subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)\n"
+        )
+        assert find_violations(source, "sample.py")
+
+    def test_explicit_encoding_is_clean(self) -> None:
+        source = (
+            "import subprocess\n"
+            "subprocess.run(cmd, text=True, capture_output=True, encoding='utf-8')\n"
+        )
+        assert find_violations(source, "sample.py") == []
+
+
+class TestRepoIsClean:
+    def test_scan_covers_known_files(self) -> None:
+        """§IV: «набор не пуст» прошёл бы и при схлопывании glob'а до одного файла.
+        Поэтому ассертим конкретные файлы — оба несли нарушение на момент #364."""
+        scanned = {path.relative_to(_REPO).as_posix() for path in _scanned_files()}
+        for expected in ("scripts/hooks.py", "tests/test_github_trending_pipeline.py"):
+            assert expected in scanned, f"{expected} dropped out of the scanned set"
+
+    def test_every_capturing_call_declares_utf8(self) -> None:
+        violations = [
+            violation
+            for path in _scanned_files()
+            for violation in find_violations(
+                path.read_text(encoding="utf-8"), path.relative_to(_REPO).as_posix()
+            )
+        ]
+        assert not violations, (
+            "subprocess call(s) decode the child's output with the OS code page — on "
+            "Windows that loses the text on any Cyrillic byte (#364):\n  " + "\n  ".join(violations)
+        )
+
+    def test_subprocess_helpers_are_not_imported_by_name(self) -> None:
+        offenders = [
+            f"{path.relative_to(_REPO).as_posix()}: {name}"
+            for path in _scanned_files()
+            for name in _imports_subprocess_by_name(path.read_text(encoding="utf-8"))
+        ]
+        assert not offenders, (
+            "importing subprocess helpers by name hides the call from this guard — "
+            f"use `subprocess.run(...)` instead: {offenders}"
+        )
