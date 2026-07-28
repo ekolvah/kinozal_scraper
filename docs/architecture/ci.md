@@ -1,5 +1,18 @@
 # CI and deployment
 
+**На какой вопрос отвечает этот файл:** какие автоматические гейты качества стоят
+на пути изменения и на чём они работают. Ось — «гейт», а не «GitHub Actions»:
+поэтому сюда же заезжает **локальный** plan-стадийный `architect-reviewer`
+(`.claude/agents/`), который в CI не запускается, но по
+[`principles.md §VII`](principles.md#vii-simplicity-first) стоит гейтом наравне с
+cloud-ревью. Модельная поверхность агентного тулинга (обе половины) описана в
+§«Model pinning» — это её единственный дом.
+
+**Известный долг IA:** §«Environment variables» отвечает не на этот вопрос, а на
+runtime-вопрос (прод-переменные пайплайна) — файл остаётся смесью, помеченной ❌ в
+[`project-map.md`](project-map.md). Формулировка выше описывает **основную** ось, а
+не утверждает, что расщепления не требуется.
+
 ## Local pre-commit
 
 ```bash
@@ -418,6 +431,15 @@ by review, not by an exit code.
 
 ### Model pinning and what a stale pin looks like
 
+**Single home for the whole model surface (#374 + #392).** Two review
+surfaces run on a Claude model: this cloud workflow and the local
+plan-stage `architect-reviewer` (`.claude/agents/*.md`). The policy is
+one — pin explicitly, never run on an alias — and it lives here. The
+*canon* is the files themselves (the workflow's `claude_args`, the
+agent's frontmatter); there is deliberately **no registry document
+listing which agent runs on which model**, because a copy of the config
+is exactly the thing that drifts away from it.
+
 The action runs on whatever model the upstream default points at unless
 we say otherwise, so a default change would move the review quality
 without a line in any diff. The model is therefore pinned explicitly:
@@ -443,8 +465,62 @@ error. That is the forcing function, not a flake: bump the id in
 `claude-review.yml` (the guard test only rejects short aliases like
 `opus`/`sonnet`, so any full id passes). There is **no notification when
 a newer model ships** — revision happens when the job goes red, not on a
-calendar. Local agents (`.claude/agents/*.md`) are a separate, still
-unpinned surface — that is #392, not this file.
+calendar.
+
+#### The local half: `.claude/agents/*.md` (#392)
+
+The agent frontmatter carries the same policy:
+
+```yaml
+model: claude-opus-5
+effort: high
+```
+
+`model: opus` — the previous value — is an **alias**, not an id: per the
+[subagent docs](https://code.claude.com/docs/en/sub-agents) the field
+takes an alias (`sonnet`/`opus`/`haiku`/`fable`), a full id, or
+`inherit` (the default when the field is absent). When Opus 5 shipped on
+2026-07-24, the plan-stage reviewer moved to a different model with no
+line in any diff.
+
+`effort` defaults to **inheriting the session level** — not to `high`,
+as issue #392 originally assumed. Unpinned, the same plan review is
+stricter or laxer depending on whose session ran it; pinning makes the
+gate's rigor a repo decision.
+
+**Loud-failure parity holds here too, with three documented
+exceptions.** A retired or mistyped id surfaces as a visible error
+(`There's an issue with the selected model (…)` / `Agent terminated
+early due to an API error`) — Claude Code does **not** silently fall
+back to the session model. But upstream model resolution is four deep,
+and the frontmatter sits only third, so the pin does not defend against:
+
+- **`CLAUDE_CODE_SUBAGENT_MODEL`** (priority 1) — an env var in the
+  operator's shell wins over the file;
+- **the per-invocation `model` parameter** (priority 2) — and this one
+  is reachable **from inside this repo**: `.claude/commands/plan.md`
+  spawns `architect-reviewer` via the Agent tool, whose `model`
+  argument takes precedence over the frontmatter. Nothing stops a
+  `/plan` run from passing one and silently defeating the pin. The same
+  applies to `effort`;
+- **an organisation's `availableModels` allowlist** — when it excludes
+  the pinned value, Claude Code **skips it silently** and runs the
+  subagent on the inherited model.
+
+Only the second is in-repo, and even that one is a call-site
+convention, not something the static guard can see. They are recorded
+so that "pinned" is not read as a stronger guarantee than it is.
+
+**Two guards, one denylist.** `tests/test_claude_review_workflow.py`
+checks the workflow, `tests/test_agent_frontmatter.py` checks the agent
+frontmatter, and both import the same set from
+`tests/_model_pin_policy.py`. The first version kept a copy per file
+"because the surfaces have different vocabularies" — wrong twice over:
+these are **denylists**, so a union is strictly more conservative (it
+can only reject more, never pass more), and the copies had already
+drifted — `fable` was listed for the frontmatter and missing for the
+CLI flag, so `--model fable` passed the cloud guard even though the
+action's docs say the flag takes the same values.
 
 **Verifying a prompt change**: a PR that edits `claude-review.yml`
 itself gets a green review job **with no comment** — the action skips
