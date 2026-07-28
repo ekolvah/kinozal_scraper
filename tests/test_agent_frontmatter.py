@@ -57,6 +57,10 @@ _REMOVED_SUPPRESSION = ("не раздувай", "беспощаден", "кра
 _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
+def declares_findings_contract(body: str) -> bool:
+    raise NotImplementedError
+
+
 def _agent_files() -> list[Path]:
     # rglob, не glob: Claude Code сканирует `.claude/agents/` рекурсивно, поэтому
     # агент в подпапке был бы вне инварианта — и `test_agent_files_are_actually_scanned`
@@ -109,6 +113,23 @@ class TestAgentModelPinned:
             "an unrecognised value is ignored silently. If the upstream set changed, "
             "check the Claude Code docs and update the set here — do not relax the test"
         )
+
+
+class TestFindingsContractScope:
+    """Зачисление под промпт-контракт — по свойству файла, не по имени (#407).
+
+    Имя (`*-reviewer`) было бы худшим признаком: #372 планирует агента `code-critic`,
+    то есть настоящий ревьюер НЕ попал бы под контракт и остался бы молча
+    незащищённым. Свойство «декларирует секцию формата findings» тянется за тем
+    самым, что делает контракт осмысленным."""
+
+    def test_body_without_findings_section_is_not_enrolled(self) -> None:
+        body = "Ты ищешь файлы по репозиторию и возвращаешь пути.\n\n## Когда вызван\n\nВсегда.\n"
+        assert not declares_findings_contract(body)
+
+    def test_body_with_findings_section_is_enrolled(self) -> None:
+        body = "Ты ревьюишь план.\n\n## Формат ответа\n\n- **BLOCKING** — …\n"
+        assert declares_findings_contract(body)
 
 
 class TestCoverageFirstPrompt:
