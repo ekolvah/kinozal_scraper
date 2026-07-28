@@ -37,6 +37,10 @@ import ast
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
+# Три директории — сознательный скоуп, а не недосмотр: сегодня весь трекаемый
+# Python лежит в них (проверено), а сканировать от корня опасно — рядом живут
+# sibling-venv'ы (`.venv-phoenix` и т.п.), на которые уже наступали в #345.
+# Расширять — когда появится трекаемый `.py` вне их, и тогда явным списком.
 _SCANNED_DIRS = ("scripts", "src", "tests")
 
 # Функции subprocess, которые запускают процесс и умеют захватывать его вывод.
@@ -64,17 +68,35 @@ def _is_pipe(node: ast.expr) -> bool:
     )
 
 
-def _captures_output(kwargs: dict[str, ast.expr]) -> bool:
+def _is_explicit_no_capture(node: ast.expr) -> bool:
+    """`stdout=None` / `stdout=subprocess.DEVNULL` — явный отказ от захвата."""
+    if isinstance(node, ast.Constant) and node.value is None:
+        return True
+    return isinstance(node, ast.Attribute) and node.attr == "DEVNULL"
+
+
+def _captures_output(func_name: str, kwargs: dict[str, ast.expr]) -> bool:
     """Захватывает ли вызов вывод ребёнка (и значит будет его декодировать).
 
-    `capture_output` считаем истинным всегда, кроме литерального `False`: форма
-    `capture_output=capture` (переменная) существует в репо сегодня, и трактовать
-    неизвестное значение как «не захватывает» значило бы пропускать сломанный
-    call-site — ложно-зелёный гард хуже отсутствующего."""
+    Везде **fail-closed**: неизвестное (не-литеральное) значение считаем захватом.
+    Форма `capture_output=capture` живёт в репо сегодня (`new_branch.py:29`), а
+    трактовать переменную как «не захватывает» значило бы пропускать сломанный
+    call-site — ложно-зелёный гард хуже отсутствующего.
+
+    `check_output` захватывает stdout **по определению** (он его и возвращает) и
+    `capture_output` не принимает вовсе — без этой ветки он числился бы в
+    `_SPAWNERS`, но не мог быть помечен никогда: ложно-зелёный ровно той формы,
+    против которой гард и написан."""
+    if func_name == "check_output":
+        return True
     capture = kwargs.get("capture_output")
     if capture is not None and not _is_literal_false(capture):
         return True
-    return any(_is_pipe(kwargs[stream]) for stream in ("stdout", "stderr") if stream in kwargs)
+    return any(
+        _is_pipe(kwargs[stream]) or not _is_explicit_no_capture(kwargs[stream])
+        for stream in ("stdout", "stderr")
+        if stream in kwargs
+    )
 
 
 def find_violations(source: str, label: str) -> list[str]:
@@ -89,12 +111,22 @@ def find_violations(source: str, label: str) -> list[str]:
         if not isinstance(node, ast.Call):
             continue
         func = node.func
+        # Сверяем только имя атрибута, не получателя: `runner.run(...)` тоже будет
+        # помечен. Это осознанно — направление ошибки безопасное (fail-closed), а
+        # разбор получателя потребовал бы трассировки имён. Ложных срабатываний в
+        # репо сегодня нет; появится — глушить нечем (у ассерта нет `noqa`), и это
+        # тоже осознанно: гард правится, а не затыкается.
         if not (isinstance(func, ast.Attribute) and func.attr in _SPAWNERS):
             continue
         kwargs = _kwargs(node)
-        if not _captures_output(kwargs):
+        if not _captures_output(func.attr, kwargs):
             continue
-        if not _TEXT_MODE_KWARGS & kwargs.keys():
+        text_mode = [
+            name
+            for name in _TEXT_MODE_KWARGS & kwargs.keys()
+            if not _is_literal_false(kwargs[name])
+        ]
+        if not text_mode:
             continue
         if "encoding" in kwargs:
             continue
@@ -164,6 +196,28 @@ class TestAnalyzer:
         )
         assert find_violations(source, "sample.py")
 
+    def test_check_output_captures_implicitly(self) -> None:
+        # `check_output` не принимает `capture_output` — он возвращает stdout. Без
+        # отдельной ветки он числился бы в списке отслеживаемых, но не мог быть
+        # помечен никогда.
+        source = "import subprocess\nsubprocess.check_output(cmd, text=True)\n"
+        assert find_violations(source, "sample.py")
+
+    def test_unknown_stdout_value_counts_as_capturing(self) -> None:
+        # Fail-closed симметрично `capture_output=<переменная>`: про неизвестное
+        # значение нельзя утверждать, что захвата нет.
+        source = "import subprocess\nsubprocess.run(cmd, stdout=sink, text=True)\n"
+        assert find_violations(source, "sample.py")
+
+    def test_explicit_devnull_is_not_capturing(self) -> None:
+        source = "import subprocess\nsubprocess.run(cmd, stdout=subprocess.DEVNULL, text=True)\n"
+        assert find_violations(source, "sample.py") == []
+
+    def test_explicit_binary_mode_is_clean(self) -> None:
+        # `text=False` — явный бинарный режим: декодирует уже вызывающий, сознательно.
+        source = "import subprocess\nsubprocess.run(cmd, capture_output=True, text=False)\n"
+        assert find_violations(source, "sample.py") == []
+
     def test_explicit_encoding_is_clean(self) -> None:
         source = (
             "import subprocess\n"
@@ -177,7 +231,11 @@ class TestRepoIsClean:
         """§IV: «набор не пуст» прошёл бы и при схлопывании glob'а до одного файла.
         Поэтому ассертим конкретные файлы — оба несли нарушение на момент #364."""
         scanned = {path.relative_to(_REPO).as_posix() for path in _scanned_files()}
-        for expected in ("scripts/hooks.py", "tests/test_github_trending_pipeline.py"):
+        for expected in (
+            "scripts/hooks.py",
+            "tests/test_github_trending_pipeline.py",
+            "src/kinozal_scraper/alerting.py",
+        ):
             assert expected in scanned, f"{expected} dropped out of the scanned set"
 
     def test_every_capturing_call_declares_utf8(self) -> None:
