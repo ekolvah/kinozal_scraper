@@ -15,7 +15,13 @@ it is not (a silent setup degradation).
 
 from __future__ import annotations
 
+import subprocess
+
+import pytest
+
 from scripts.hooks import (
+    _RUFF_EXEC_ERROR,
+    _run_ruff,
     classify_ruff_result,
     exit_code,
     memory_write_signal,
@@ -152,3 +158,23 @@ class TestMemoryWriteGuard:
 
 def _never_called(_file: str) -> tuple[int, str]:
     raise AssertionError("ruff_runner must not run when nothing is planned")
+
+
+class TestCaptureFailureIsSetupBroken:
+    """Сломанный захват вывода ruff — сигнал «сетап сломан», не исключение (#410).
+
+    Пин на **различающее** решение: непойманное исключение дало бы хуку exit 1,
+    а stderr хука с кодом 1 уходит пользователю, но НЕ агенту (агент видит код 2).
+    То есть инструмент, вся работа которого — видимость, потерял бы её ровно в тот
+    момент, когда сломался. Тот же код, что у отсутствующего ruff: класс один —
+    «проверка не выполнилась», а не «нашлись замечания».
+    """
+
+    def test_none_stdout_returns_setup_broken_marker(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=None, stderr=None)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        returncode, output = _run_ruff("some_file.py")
+        assert returncode == _RUFF_EXEC_ERROR
+        assert "capture failed" in output

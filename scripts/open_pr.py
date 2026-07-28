@@ -91,10 +91,16 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     # Ненулевой returncode исключением НЕ является: вызывающий сам решает, и путь
     # печати ошибки обязан доехать (#410).
     if result.stdout is None or result.stderr is None:
-        raise RuntimeError(
-            f"capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
-            f"stdout={result.stdout!r} stderr={result.stderr!r}"
+        # Код 2, как в сиблинге `verify_pr_link.py`: инфра-сбой обязан отличаться
+        # от вердикта. Код 1 здесь занят легитимными исходами («PR NOT linked»,
+        # «gh pr create failed»), и слить с ними сломанный захват значило бы
+        # повторить ту же ошибку в другой форме (#410).
+        print(
+            f"error: capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            file=sys.stderr,
         )
+        sys.exit(2)
     return result
 
 
@@ -135,18 +141,23 @@ def _edit_pr_body(url: str, body: str) -> None:
     _run(["gh", "pr", "edit", url, "--body", body])
 
 
-def _closing_refs_json(url: str) -> str:
+def _closing_refs_json(url: str) -> str | None:
+    """JSON со ссылками закрытия, либо `None` — если прочитать не удалось.
+
+    Раньше проверки `returncode` не было и упавший `gh pr view` возвращал `"{}"` —
+    неотличимо от «PR не залинкован», из-за чего скрипт доходил до фейкового
+    вердикта `NOT linked`, а причина (сбой gh) не доходила до оператора вовсе.
+    Возврат `None`, а не `sys.exit`: этот вызов живёт **внутри retry-цикла**, и
+    транзиентный rate-limit не должен убивать прогон после того, как PR уже создан
+    — он должен стоить одной неуспешной попытки (#410)."""
     result = _run(["gh", "pr", "view", url, "--json", "closingIssuesReferences"])
     if result.returncode != 0:
-        # Раньше проверки не было, и упавший `gh pr view` возвращал `"{}"` —
-        # неотличимо от «PR не залинкован». Скрипт поллил до фейкового вердикта
-        # «NOT linked», а причина (сбой gh) не доходила до оператора вовсе (#410).
         print(
-            f"error: `gh pr view {url}` failed (rc={result.returncode}): "
-            f"{result.stderr.strip()} — linkage is unknown, not absent.",
+            f"warn: `gh pr view {url}` failed (rc={result.returncode}): "
+            f"{result.stderr.strip()} — linkage unread, retrying.",
             file=sys.stderr,
         )
-        sys.exit(1)
+        return None
     return result.stdout
 
 
@@ -154,11 +165,24 @@ def _linkage_confirmed(url: str) -> bool:
     """Poll `closingIssuesReferences` until it reports a link (or attempts run out).
 
     Tolerates GitHub's async computation of the link after PR creation."""
+    read_failures = 0
     for attempt in range(LINKAGE_ATTEMPTS):
-        if has_closing_reference(_closing_refs_json(url)):
+        refs = _closing_refs_json(url)
+        if refs is None:
+            read_failures += 1
+        elif has_closing_reference(refs):
             return True
         if attempt < LINKAGE_ATTEMPTS - 1:
             time.sleep(LINKAGE_DELAY_S)
+    if read_failures == LINKAGE_ATTEMPTS:
+        # Ни одного успешного чтения: линковка НЕИЗВЕСТНА, а не отсутствует.
+        # Вернуть False значило бы вынести вердикт по данным, которых не было.
+        print(
+            f"error: every linkage read for {url} failed ({read_failures} attempts) — "
+            "linkage is unknown, not absent.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return False
 
 

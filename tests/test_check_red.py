@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import pytest
 
-from scripts.check_red import evaluate_report
+from scripts.check_red import evaluate_report, main
 
 
 def _report(*cases: str) -> str:
@@ -108,3 +111,25 @@ class TestEvaluateReport:
         # Неспособность посчитать не должна открывать дорогу в GREEN (§IV/§VI).
         with pytest.raises(ValueError):
             evaluate_report("not xml at all")
+
+
+class TestCaptureFailureExitCode:
+    """Сломанный захват вывода pytest — код 2 («гейт сломан»), не 1 (#410).
+
+    Пин на **различающее** решение, а не на факт проверки: `sys.exit(2)` сегодня
+    отличим от `sys.exit(1)` ничем, кроме прозы, а `/implement` шаг 3 трактует их
+    по-разному — 1 значит «тесты не красные, чини план», 2 значит «гейт не смог
+    посчитать». Спутать их значит отправить исполнителя чинить не то."""
+
+    def test_none_stdout_exits_with_gate_broken_code(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args=cmd, returncode=1, stdout=None, stderr=None)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        monkeypatch.setattr(sys, "argv", ["check_red.py", "tests/whatever.py"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2, "capture failure must not read as 'tests are not red'"
+        assert "capture failed" in capsys.readouterr().err

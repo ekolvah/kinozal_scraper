@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 import yaml
 
-from scripts.ci_check import CHECKS, _find_modules, _run, run_selected
+from scripts.ci_check import CHECKS, _find_modules, _run, _tracked_files, run_selected
 
 _CI_YML = Path(".github/workflows/ci.yml")
 _ONLY_RE = re.compile(r"scripts/ci_check\.py\s+--only\s+(\S+)")
@@ -63,3 +63,27 @@ class TestRunner:
         with pytest.raises(SystemExit) as exc:
             _run(["any-command"])
         assert exc.value.code != 0
+
+
+class TestTrackedFilesCaptureFailure:
+    """Сломанный захват `git ls-files` — «file set is unknown», не пустой список (#410).
+
+    Пин на **различающее** решение, а не на факт проверки: пустой список тихо
+    доезжает до секрет-гейта, и тот печатает «no files to scan — refusing to
+    report a vacuous pass». Сообщение верное по форме и **ложное по причине** —
+    оператор идёт искать, почему репозиторий пуст, вместо того чтобы чинить захват.
+    """
+
+    def test_none_stdout_names_the_real_cause(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=None, stderr=None)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        with pytest.raises(SystemExit) as exc:
+            _tracked_files()
+        assert exc.value.code == 1
+        out = capsys.readouterr().out
+        assert "file set is unknown" in out
+        assert "no files to scan" not in out, "must not read as an empty repository"

@@ -69,8 +69,13 @@ def _prune_gone_branches() -> None:
         if result.returncode == 0:
             pruned += 1
         else:
+            # Проверка на месте, а не в `_run`: этот вызов идёт мимо seam'а
+            # намеренно — там прибит `check=True`, а `git branch -d` имеет право
+            # падать (непомерженная ветка). Без неё сломанный захват дал бы
+            # `AttributeError` вместо диагностики (#410).
+            detail = "capture failed" if result.stderr is None else result.stderr.strip()
             skipped += 1
-            print(f"warn: kept {branch} ({result.stderr.strip()})", file=sys.stderr)
+            print(f"warn: kept {branch} ({detail})", file=sys.stderr)
     print(f"pruned: {pruned} merged branches (skipped {skipped} unmerged)")
 
 
