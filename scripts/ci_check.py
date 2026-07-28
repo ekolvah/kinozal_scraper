@@ -73,7 +73,9 @@ def check_secrets() -> None:
 
 
 def _tracked_files() -> list[str]:
-    proc = subprocess.run(["git", "ls-files", "-z"], capture_output=True, text=True)
+    proc = subprocess.run(
+        ["git", "ls-files", "-z"], capture_output=True, text=True, encoding="utf-8"
+    )
     if proc.returncode != 0:
         print("git ls-files failed — the file set to scan is unknown")
         sys.exit(1)

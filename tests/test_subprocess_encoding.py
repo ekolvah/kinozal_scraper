@@ -33,6 +33,7 @@ None`, то есть **`stdout is None`**. Отсюда грабля #109 («м�
 
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -47,8 +48,58 @@ _SPAWNERS = frozenset({"run", "check_output", "Popen"})
 _TEXT_MODE_KWARGS = frozenset({"text", "universal_newlines", "encoding", "errors"})
 
 
+def _kwargs(call: ast.Call) -> dict[str, ast.expr]:
+    return {kw.arg: kw.value for kw in call.keywords if kw.arg is not None}
+
+
+def _is_literal_false(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value is False
+
+
+def _is_pipe(node: ast.expr) -> bool:
+    # `subprocess.PIPE` или голое `PIPE` — второе живо только вместе с
+    # алиас-импортом, который отдельно запрещён ниже.
+    return (isinstance(node, ast.Attribute) and node.attr == "PIPE") or (
+        isinstance(node, ast.Name) and node.id == "PIPE"
+    )
+
+
+def _captures_output(kwargs: dict[str, ast.expr]) -> bool:
+    """Захватывает ли вызов вывод ребёнка (и значит будет его декодировать).
+
+    `capture_output` считаем истинным всегда, кроме литерального `False`: форма
+    `capture_output=capture` (переменная) существует в репо сегодня, и трактовать
+    неизвестное значение как «не захватывает» значило бы пропускать сломанный
+    call-site — ложно-зелёный гард хуже отсутствующего."""
+    capture = kwargs.get("capture_output")
+    if capture is not None and not _is_literal_false(capture):
+        return True
+    return any(_is_pipe(kwargs[stream]) for stream in ("stdout", "stderr") if stream in kwargs)
+
+
 def find_violations(source: str, label: str) -> list[str]:
-    raise NotImplementedError
+    """Вызовы `subprocess`, которые декодят вывод ребёнка без явного encoding.
+
+    Нарушение := захватывает вывод И в текстовом режиме И без `encoding`. Бинарный
+    режим (никаких текстовых kwarg'ов) не нарушение: там декодирует уже вызывающий,
+    сознательно."""
+    tree = ast.parse(source)
+    violations: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not (isinstance(func, ast.Attribute) and func.attr in _SPAWNERS):
+            continue
+        kwargs = _kwargs(node)
+        if not _captures_output(kwargs):
+            continue
+        if not _TEXT_MODE_KWARGS & kwargs.keys():
+            continue
+        if "encoding" in kwargs:
+            continue
+        violations.append(f"{label}:{node.lineno}: {func.attr}(...) without encoding")
+    return violations
 
 
 def _scanned_files() -> list[Path]:
@@ -61,7 +112,17 @@ def _scanned_files() -> list[Path]:
 
 
 def _imports_subprocess_by_name(source: str) -> list[str]:
-    raise NotImplementedError
+    """Имена, импортированные из `subprocess` напрямую — они прячут вызов от анализа.
+
+    Закрываем импорт, а не трассируем алиасы: граница, снимаемая тремя строками,
+    не заслуживает того, чтобы быть записанной прозой (`mindset.md`)."""
+    return [
+        alias.name
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.ImportFrom) and node.module == "subprocess"
+        for alias in node.names
+        if alias.name in _SPAWNERS
+    ]
 
 
 class TestAnalyzer:
