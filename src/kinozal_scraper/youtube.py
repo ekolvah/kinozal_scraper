@@ -128,8 +128,16 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
     failed = 0
     last_exc: Exception | None = None
     quota_seen = False
-    for title in titles:
-        query = f"{title} {year} trailer" if year else f"{title} trailer"
+    queries = [f"{t} {year} trailer" if year else f"{t} trailer" for t in titles]
+    # §IV-видимость грамматики (#412 review): запросы — единственное место, где
+    # видно, ЧТО пайплайн счёл названием. По ним же нашли #385 (`x64 2024 trailer`
+    # 27 раз), но тогда они попали в лог случайно — как текст упавших по квоте
+    # веток. Раньше это дополняла per-run строка классификации листингов, ушедшая
+    # вместе с `_is_game_url`; без лога новый служебный литерал во 2-м сегменте
+    # (`RUS`, `Multi`, `Update 5`) уехал бы в запрос как «оригинальное название», а
+    # исход был бы неотличим от честного «трейлера не существует».
+    logger.info("trailer retrieval queries for %r: %s", profile.ru_title, queries)
+    for query in queries:
         try:
             candidates = _search_one(client, query)
         except Exception as exc:  # noqa: BLE001 — best-effort breadth: one union branch failing must not sink the whole pool (§IV); всеобщий отказ ловится счётчиком ниже

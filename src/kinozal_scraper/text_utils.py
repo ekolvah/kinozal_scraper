@@ -20,7 +20,10 @@ YEAR_SEGMENT_RE = re.compile(r"(?:19|20)\d{2}")
 # выгрузке не встретились, но названы грамматикой #385 — держим, чтобы первая же
 # такая раздача не поехала мусорным запросом. Эвристика «короткий → служебный»
 # запрещена тем же замером: `Silo`, `From`, `Halo`, `Apex` — настоящие названия.
-_SERVICE_SEGMENT_RE = re.compile(r"x(?:64|86|32)|RU|EN", re.IGNORECASE)
+# Альтернация обёрнута в группу намеренно: вызывающий сверяет `fullmatch`, но без
+# скобок первое же переиспользование через `.search()` начало бы матчить `RUS`,
+# `ENGLISH`, `Renaissance` (review #412).
+_SERVICE_SEGMENT_RE = re.compile(r"(?:x(?:64|86|32)|RU|EN)", re.IGNORECASE)
 
 
 def title_year_matches(title: str, film_year: int) -> bool:
