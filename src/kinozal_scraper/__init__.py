@@ -7,5 +7,5 @@ supporting libraries. Entry points run as `python -m kinozal_scraper.<module>`.
 
 The docstring is load-bearing: ruff `D100`/`D104`/`D419` require every module
 under the package (this `__init__.py` included) to carry a non-empty top-level
-docstring (§ module-docstring gate, #253).
+docstring (§ Lint gates and ratchets, #253).
 """
