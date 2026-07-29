@@ -161,7 +161,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `storage.md` | Storage Protocol, DI, row-schema, инварианты колонок | ✅ |
 | `testing.md` | Как гарантируем качество: уровни тестов, что мокать (ссылается на `principles.md §II`, не дублирует) + ledger сознательно-принятых дыр покрытия | ✅ |
 | `ci.md` | Гейты качества на пути изменения (local pre-commit, `ci.yml`, cloud `claude-review`) + **единственный дом политики модельного пиннинга агентного тулинга** (§Model pinning: обе поверхности — `claude-review.yml` и `.claude/agents/*.md`, границы пина, два гарда). Runtime-половина (env vars, прод-воркфлоу, пробник) выселена в `operations.md` (#418); от прод-крона остался только гейт-фасет (E2E-smoke по `principles.md` §Quality Gates) | ✅ |
-| `operations.md` | Как прод-прогон эксплуатируется: расписание и порядок шагов, env-переменные и секреты, изоляция падений (#245) и алертинг (#310), runbook'и оператора (ротация `TELETHON_SESSION`, матрица пробника #396). Принял runtime-половину `ci.md` (#418) | ✅ |
+| `operations.md` | Как прод-прогон эксплуатируется: расписание и порядок шагов, env-переменные и секреты, изоляция падений (#245) и алертинг (#310), runbook'и оператора (ротация `TELETHON_SESSION`). Принял runtime-половину `ci.md` (#418) | ✅ с оговоркой: временный жилец — пробник #396 (измерительный инструмент, не эксплуатация); уедет вместе с решением по нему, `_EXPIRES` в `scripts/probe.py` не даст забыть |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts / call-observability (token+latency `llm_call`-лог + Phoenix dev-recipe, #145) | ✅ |
 | `llm-security.md` | LLM-угрозы enricher'а (OWASP LLM Top 10 → защиты/residual): prompt-injection fence, output-escaping, honest blast radius (#308) | ✅ |
 

@@ -1,4 +1,4 @@
-# CI and deployment
+# CI and quality gates
 
 **На какой вопрос отвечает этот файл:** какие автоматические гейты качества стоят
 на пути изменения и на чём они работают. Ось — «гейт», а не «GitHub Actions»:
@@ -602,12 +602,11 @@ The workflow also needs `id-token: write` in `permissions:` — `anthropics/clau
 
 No separate Anthropic API billing — usage counts against the Pro/Max subscription quota.
 
-## Production workflow (`run-script.yml`) — гейт-фасет
+## Production workflow (`run-script.yml`)
 
-Прод-крон засчитан как **E2E-smoke гейт** в [`principles.md`](principles.md) §Quality Gates, и
-шаг 1 самого воркфлоу — `pytest` smoke-gate (`id: tests`), красный которого пропускает все
-пайплайны ниже. Это единственная сторона прод-воркфлоу, отвечающая на вопрос этого файла;
-расписание, порядок шагов, изоляция падений и алертинг →
+Прод-крон засчитан как **E2E-smoke гейт** в [`principles.md`](principles.md) §Quality Gates — это
+единственная сторона прод-воркфлоу, отвечающая на вопрос этого файла. Расписание, порядок шагов,
+собственный `pytest` smoke-gate воркфлоу, изоляция падений и алертинг — один дом,
 [`operations.md` § Production workflow](operations.md#production-workflow-run-scriptyml).
 
 ## Setup

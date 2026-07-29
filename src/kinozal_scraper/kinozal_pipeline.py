@@ -271,9 +271,9 @@ class Kinozal:
         But when kinozal.tv is down the listing falls back to the authenticated
         kinozal.guru mirror (#247), so `url` is a *mirror* link. kinozal.guru gates
         all HTML behind login (302 → login.php, `docs/architecture/pipeline.md`
-        § Kinozal mirror fallback), so an
-        anonymous GET of a mirror details page returns HTTP 200 — a login page with
-        no `Жанр:` block. That is a *false success*: it raises no exception, so
+        § Kinozal mirror fallback), so an anonymous GET of a mirror details page
+        returns HTTP 200 — a login page with no `Жанр:` block. That is a *false
+        success*: it raises no exception, so
         `fetch_listing`'s except-triggered mirror failover never fires, and the
         genre filter silently goes blind (every item parses to "" → fail-open →
         notified, #317). So any mirror-host URL is fetched AUTHENTICATED here.
