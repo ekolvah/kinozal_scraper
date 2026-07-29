@@ -7,6 +7,7 @@ argument-hint: <issue-number>
 
 `$ARGUMENTS` = номер issue.
 
+0. Если сессия тянется с прошлой задачи (issue/PR уже доведён до hand-off) — попроси user'а запустить `/compact` до старта. Сам вызвать не можешь, это built-in CLI.
 1. `python scripts/validate_issue_sections.py $ARGUMENTS` — exit 0 значит план уже полный, отчитайся пользователю и выйди.
 2. Если exit 1 — script напечатал список дыр. Закрой их короткими вопросами (≤3 на сессию), черпая контекст из репо (`Read`/`Grep`), а не из user'а.
 3. **Architect review** — прогони собранный план через субагента `architect-reviewer` (персона в `.claude/agents/architect-reviewer.md`). Его сводку findings (BLOCKING/SHOULD-FIX/NICE/OK) положи в секцию `## Architect review`, а BLOCKING-замечания вплети в остальные секции до записи. Для тривиальной правки (опечатка/однострочник) ревью не нужно — впиши в секцию `skipped: <причина>`. Один проход, не зацикливаться.

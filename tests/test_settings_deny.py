@@ -1,8 +1,13 @@
 """Anti-drift guard for the git-operation prohibitions (#154).
 
-The prohibitions are *declared* in prose in `.claude/commands/implement.md` and
-*enforced* in `.claude/settings.json` `permissions.deny`. These tests assert the
+The git/gh prohibitions are *declared* in prose in `.claude/commands/implement.md`
+and *enforced* in `.claude/settings.json` `permissions.deny`. These tests assert the
 enforcement covers every declared prohibition, so the two cannot silently drift.
+
+Not every deny entry is declared there: the wait-loop `sleep` ban (#416) lives in
+`.claude/rules/mindset.md` §(2) and is pinned by its own explicit test below. The
+`Запреты` line in `implement.md` is therefore a self-check of the *git/gh* set
+only — the direction enforced→declared is not, and cannot cheaply be, guarded.
 
 NOTE: a local deny-list is defense-in-depth for the *typical* command forms only
 — Claude Code matches deny by parsing the command, which can be bypassed (shell
@@ -67,4 +72,31 @@ class TestDenyList:
         # Push-to-main is declared in prose ("push в main"), not as inline code.
         assert any("origin main" in pat for pat in patterns), (
             "push-to-main must be enforced in settings.json deny"
+        )
+
+    def test_polling_sleep_denied(self) -> None:
+        """`sleep` as a wait-loop primitive must be denied (#416).
+
+        Deliberately an explicit assert rather than a line in the `Запреты`
+        prose: `_declared_prohibitions()` keeps only tokens starting with
+        `git `/`gh `/`--`, so a `sleep` entry there would be dropped and this
+        guard would stay vacuously green. Same shape as the push-to-main
+        assert above — prose-declared rule, explicitly enforced here.
+
+        Scope is honest: this pins the *lexeme*. The harness already blocks a
+        foreground `sleep`, and `run_in_background` is a parameter of the same
+        `Bash` tool — there is no separate "background" deny form — so the
+        entry closes both. It does not stop a poll loop built from repeated
+        `Read`, `python -c "time.sleep()"` or `timeout 60`; that part is prose
+        in `.claude/rules/mindset.md` §(2).
+
+        The `:*` suffix is load-bearing, not decoration: `Bash(sleep)` is an
+        *exact-command* pattern and would deny only a bare `sleep`, letting
+        `sleep 2` through — so the assert pins the wildcard form, not a `sleep`
+        prefix (which `Bash(sleeper)` would also satisfy).
+        """
+        args = [_bash_arg(p) for p in _deny_patterns()]
+        assert any(a.startswith("sleep:") for a in args), (
+            "wait-loop `sleep` must be enforced in settings.json deny as `Bash(sleep:*)` "
+            "— a bare `Bash(sleep)` matches the exact command only"
         )
