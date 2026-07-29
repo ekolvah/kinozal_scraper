@@ -13,7 +13,6 @@ from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_MISS_MARKER,
     _TRAILER_QUOTA_MARKER,
     _dedupe_key,
-    _is_game_url,
     _kinozal_title,
     _kinozal_urls,
     enrich_with_trailer,
@@ -841,12 +840,17 @@ def _config_for(n: int) -> dict[str, Any]:
     return {"version": 1, "sources": [{**_KINOZAL_SOURCE, "limit": n}]}
 
 
-class TestGameListingClassification(unittest.TestCase):
-    """#385: игровые раздачи приходят из `t=7`-листинга и разобраны фильмовой
-    грамматикой `RU / Original / Year / Format`. У игр форма другая —
-    `Название / x64 / RU / Жанр / Год / Формат / PC (Windows)` — поэтому вторым
-    сегментом оказывается архитектура, и она уходила в YouTube как «оригинальное
-    название»: 27 запросов вида `x64 2024 trailer` в прогоне 30143534431."""
+class TestGameTitleGrammar(unittest.TestCase):
+    """#385 → #412: у игровой раздачи второй ` / `-сегмент может быть и служебным
+    токеном (`x64`, `RU`), и настоящим оригинальным названием.
+
+    #385 отличал их по категории листинга (`t=7` → оригинала нет) — это чинило
+    `x64 2024 trailer`, но у локализованных игр отбрасывало реальное английское
+    название, и запрос уходил только по русскому, которого на YouTube нет
+    (#412: `no trailer found for 'Marvel Человек-Паук 2' (pool=5 candidates)` при
+    пяти официальных трейлерах). Дискриминатор переехал в грамматику заголовка,
+    поэтому работает независимо от источника — категория листинга больше не нужна.
+    """
 
     _GAME_HTML = (
         "<html><body>"
@@ -856,34 +860,59 @@ class TestGameListingClassification(unittest.TestCase):
         "</body></html>"
     )
 
-    def test_is_game_url(self) -> None:
-        cases = [
-            ("https://kinozal.tv/top.php?j=&t=7&d=14", True),
-            ("https://kinozal.tv/top.php?j=&t=0&d=14", False),
-            ("https://kinozal.tv/top.php?t=32", False),
-            # `t=71` — почему матч через parse_qs, а не подстрокой "t=7".
-            ("https://kinozal.tv/top.php?t=71", False),
-            ("https://kinozal.tv/top.php", False),
-            ("not a url at all", False),
-        ]
-        for url, expected in cases:
-            with self.subTest(url=url):
-                self.assertIs(_is_game_url(url), expected)
+    _LANG_SEGMENT_HTML = (
+        "<html><body>"
+        '<a href="/details.php?id=2" '
+        'title="Fallout 2 / RU / RPG / 2006 / RePack / PC (Windows)">'
+        '<img src="/img/g2.jpg"></a>'
+        "</body></html>"
+    )
 
-    def test_game_listing_item_has_no_original_title(self) -> None:
-        # Сквозь настоящий пайплайн: url → классификатор → raw → профиль. Юнит с
-        # руками выставленным `raw` зеленел бы даже при неподключённом
-        # протаскивании — ровно тот ложный RED, что поймало ревью #383.
+    _LOCALISED_GAME_HTML = (
+        "<html><body>"
+        '<a href="/details.php?id=3" '
+        "title=\"Marvel Человек-Паук 2 / Marvel's Spider-Man 2 (Digital Deluxe Edition)"
+        ' / x64 / RU / Action / 2025 / Portable / PC (Windows)">'
+        '<img src="/img/g3.jpg"></a>'
+        "</body></html>"
+    )
+
+    def test_localised_game_profile_carries_original(self) -> None:
+        # #412: раздача с игрового URL, но с настоящим оригиналом во 2-м сегменте
+        # — он обязан доехать до профиля, иначе union остаётся одноветочным по
+        # русскому названию и трейлер не находится.
         youtube = _PoolYoutube([])
         _run(
-            html=self._GAME_HTML,
+            html=self._LOCALISED_GAME_HTML,
             youtube=youtube,
             urls="игры|https://kinozal.tv/top.php?j=&t=7&d=14",
         )
         assert youtube.last_profile is not None
-        self.assertEqual(youtube.last_profile.original_title, "")
-        self.assertEqual(youtube.last_profile.ru_title, "S.T.A.L.K.E.R. 2")
-        self.assertEqual(youtube.last_profile.year, 2024)
+        self.assertEqual(youtube.last_profile.ru_title, "Marvel Человек-Паук 2")
+        self.assertEqual(
+            youtube.last_profile.original_title, "Marvel's Spider-Man 2 (Digital Deluxe Edition)"
+        )
+        self.assertEqual(youtube.last_profile.year, 2025)
+
+    def test_service_segment_has_no_original_on_non_game_url(self) -> None:
+        # #412: гард живёт в грамматике, а не в категории — те же заголовки с
+        # НЕ игрового URL тоже не должны отдавать `x64`/`RU` как название.
+        # По замеру Sheets класс `RU`-сегмента — 139 раздач; после снятия
+        # `kinozal_is_game` только этот гард удерживает их от `RU 2006 trailer`.
+        for html, expected_ru in (
+            (self._GAME_HTML, "S.T.A.L.K.E.R. 2"),
+            (self._LANG_SEGMENT_HTML, "Fallout 2"),
+        ):
+            with self.subTest(ru_title=expected_ru):
+                youtube = _PoolYoutube([])
+                _run(
+                    html=html,
+                    youtube=youtube,
+                    urls="фильмы|https://kinozal.tv/top.php?j=&t=0&d=14",
+                )
+                assert youtube.last_profile is not None
+                self.assertEqual(youtube.last_profile.ru_title, expected_ru)
+                self.assertEqual(youtube.last_profile.original_title, "")
 
 
 class TestQuotaStop(unittest.TestCase):
@@ -1556,6 +1585,14 @@ class TestBuildFilmProfile(unittest.TestCase):
         self.assertEqual(profile.genre, "")
         self.assertEqual(profile.description, "")
         self.assertEqual(cm.records[-1].levelno, logging.WARNING)
+
+    def test_service_segment_falls_back_to_clean_title(self) -> None:
+        # #412: второй call-site `original_title`, до которого #385 не дошёл —
+        # он не читает `kinozal_is_game` вовсе, поэтому для игровой раздачи
+        # отдавал `original_title="x64"`. Грамматический гард чинит и его.
+        item = self._item("S.T.A.L.K.E.R. 2 / x64 / RU / Action / 2024 / Portable / PC (Windows)")
+        profile = kp.build_film_profile(item, _StubFetcher(html=_details_html("боевик")))
+        self.assertEqual(profile.original_title, "S.T.A.L.K.E.R. 2")
 
     def test_warns_when_fetch_ok_but_all_metadata_empty(self) -> None:
         # §IV-tripwire (AC #3a): фетч ОК, но 0 полей (дрейф селектора) → видимый

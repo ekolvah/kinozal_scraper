@@ -6,6 +6,7 @@ Selection (выбор одного) — не здесь, а в `trailer_strategy
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 from typing import Any
@@ -73,7 +74,14 @@ def _is_quota_error(exc: BaseException) -> bool:
 def _search_one(client: Any, query: str) -> list[Candidate]:
     """Один YouTube-запрос → кандидаты (только `youtube#video`), snippet-поля
     отображены в `Candidate`. БЕЗ year/title-фильтра — это чистый retrieval, год
-    отсеивает selection (`FirstResultStrategy`), не retrieval."""
+    отсеивает selection (`FirstResultStrategy`), не retrieval.
+
+    Текстовые поля snippet'а приходят HTML-escaped (`Marvel&#39;s`, `Deadpool
+    &amp; Wolverine`) и декодируются здесь, на границе протокола, а не в
+    `normalize_title` (§II — чинить форму данных на входе, а не в каждом
+    потребителе). Иначе entity доезжает до токенизации названия: `&#39;` даёт
+    токен `39`, `&amp;` — `amp`, и фраза рвётся ровно там, где должна была
+    совпасть (#412)."""
     response = (
         client.search()
         .list(q=query, part="id,snippet", maxResults=5, type="video", videoDuration="short")
@@ -87,9 +95,9 @@ def _search_one(client: Any, query: str) -> list[Candidate]:
         out.append(
             Candidate(
                 video_id=item["id"]["videoId"],
-                title=snippet.get("title", ""),
-                channel=snippet.get("channelTitle", ""),
-                description=snippet.get("description", ""),
+                title=html.unescape(snippet.get("title", "")),
+                channel=html.unescape(snippet.get("channelTitle", "")),
+                description=html.unescape(snippet.get("description", "")),
                 published_at=snippet.get("publishedAt", ""),
             )
         )
@@ -120,8 +128,16 @@ def search_candidates(client: Any, profile: FilmProfile) -> list[Candidate]:
     failed = 0
     last_exc: Exception | None = None
     quota_seen = False
-    for title in titles:
-        query = f"{title} {year} trailer" if year else f"{title} trailer"
+    queries = [f"{t} {year} trailer" if year else f"{t} trailer" for t in titles]
+    # §IV-видимость грамматики (#412 review): запросы — единственное место, где
+    # видно, ЧТО пайплайн счёл названием. По ним же нашли #385 (`x64 2024 trailer`
+    # 27 раз), но тогда они попали в лог случайно — как текст упавших по квоте
+    # веток. Раньше это дополняла per-run строка классификации листингов, ушедшая
+    # вместе с `_is_game_url`; без лога новый служебный литерал во 2-м сегменте
+    # (`RUS`, `Multi`, `Update 5`) уехал бы в запрос как «оригинальное название», а
+    # исход был бы неотличим от честного «трейлера не существует».
+    logger.info("trailer retrieval queries for %r: %s", profile.ru_title, queries)
+    for query in queries:
         try:
             candidates = _search_one(client, query)
         except Exception as exc:  # noqa: BLE001 — best-effort breadth: one union branch failing must not sink the whole pool (§IV); всеобщий отказ ловится счётчиком ниже

@@ -14,6 +14,7 @@ retrieval — best-effort (§IV), но падение ВСЕХ веток = от
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import pytest
@@ -101,6 +102,45 @@ class TestSearchCandidates:
                 published_at="2024-01-10T00:00:00Z",
             )
         ]
+
+    def test_html_entities_decoded(self) -> None:
+        # #412: YouTube отдаёт snippet HTML-escaped, а матчинг названия работает
+        # по токенам — `&#39;` превращается в токен `39`, `&amp;` в `amp`, и
+        # фраза рвётся (`Deadpool & Wolverine` не находит `Deadpool &amp;
+        # Wolverine`). Декодируем на границе протокола, а не в normalize_title.
+        client = _FakeClient(
+            [
+                (
+                    "Marvel",
+                    [
+                        _video_item(
+                            "v1",
+                            "Marvel&#39;s Spider-Man 2 &quot;Launch&quot; Trailer",
+                            description="Deadpool &amp; Wolverine",
+                            channelTitle="PlayStation &amp; Insomniac",
+                        )
+                    ],
+                )
+            ]
+        )
+        profile = FilmProfile(ru_title="Marvel Человек-Паук 2", original_title="", year=2025)
+        (candidate,) = search_candidates(client, profile)
+        assert candidate.title == 'Marvel\'s Spider-Man 2 "Launch" Trailer'
+        assert candidate.description == "Deadpool & Wolverine"
+        assert candidate.channel == "PlayStation & Insomniac"
+
+    def test_logs_actual_queries(self, caplog: Any) -> None:
+        # §IV (#412 review): запрос — единственное место, где видно, что пайплайн
+        # счёл названием. По таким строкам нашли #385; после удаления per-run
+        # классификации листингов новый служебный литерал во 2-м сегменте иначе
+        # уехал бы в YouTube молча, а исход был бы неотличим от честного промаха.
+        client = _FakeClient([("Волк", [_video_item("v1", "Волк 2025 трейлер")])])
+        profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
+        with caplog.at_level(logging.INFO, logger="kinozal_scraper.youtube"):
+            search_candidates(client, profile)
+        logged = " ".join(r.getMessage() for r in caplog.records)
+        assert "Волк 2025 trailer" in logged
+        assert "The Wolf 2025 trailer" in logged
 
     def test_pool_unions_ru_and_original_queries(self) -> None:
         # Ядро #315: RU-трейлер обязан оказаться в пуле рядом с англ., когда он есть.

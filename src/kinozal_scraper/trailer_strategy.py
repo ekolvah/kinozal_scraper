@@ -165,9 +165,44 @@ class HeuristicStrategy:
     _TEASER_WORDS = ("тизер", "teaser")
 
     def _relevant(self, profile: FilmProfile, candidate: Candidate) -> bool:
+        """Матч названия+года. Кроме двух названий профиля пробуется `original_title`
+        БЕЗ скобочного хвоста (`Marvel's Spider-Man 2 (Digital Deluxe Edition)` →
+        `Marvel's Spider-Man 2`) — иначе издание, которого в заголовке трейлера не
+        бывает, отсекает все настоящие трейлеры игры.
+
+        Числа ниже — из одного замера 3764 raw-заголовков (Sheets, 2026-07-29), но
+        считают РАЗНОЕ, поэтому названы явно: 238 заголовков имеют скобку во втором
+        сегменте вообще; из них 78 — игровые с суффиксом издания (это класс, который
+        чинится здесь), 160 — не-игровые, где в скобке альтернативное название
+        (`Ojingeo geim (Squid Game)`). Отдельная метрика — 96 игровых раздач, у
+        которых второй сегмент вообще является названием, а не служебным токеном
+        (класс, который чинит гард в `text_utils.original_title`); со скобкой из них
+        как раз 78.
+
+        **Только `original_title`, не `ru_title`.** Во втором сегменте скобка несёт
+        издание (игры) или альтернативное название — в обоих случаях база остаётся
+        валидным названием (маркер части/сезона там встретился 1 раз из 238, и там
+        номер уже в самом названии: `Heroes of Might and Magic IV (4) (Complete)`).
+        В русском
+        же скобка бывает уточнением части/сезона, и срез схлопнул бы `Дюна (Часть
+        вторая)` до франшизы `Дюна`, которую `_title_tokens_in` со своим
+        numeric-skip пропустил бы в «Дюна 2» (год не спасает: в заголовках
+        трейлеров его обычно нет). В проде `ru_title` и так обрезан по `(`
+        (`enrich_with_trailer`), так что срез здесь ничего бы не добавил, кроме
+        этого риска.
+
+        **Базовый вариант равноправен, а не fallback «при пустом relevant».** Тот
+        вариант был в плане и отвергнут замером: у `Marvel's Spider-Man 2` полное
+        название с изданием подряд входит в «All Marvel's Spider-Man 2 Digital
+        Deluxe Edition Suits» (нарезка костюмов), то есть первый проход давал
+        непустой relevant из ОДНОГО мусорного ролика и до трейлеров не доходил.
+        Отличать трейлер от не-трейлера — работа `_trailer_signal` в `_rank`, а не
+        relevance. Срез делается по сырой строке: `normalize_title` скобку съедает.
+        """
         cand_tokens = normalize_title(candidate.title).split()
-        film_titles = (normalize_title(profile.ru_title), normalize_title(profile.original_title))
-        if not any(_title_tokens_in(t.split(), cand_tokens) for t in film_titles):
+        titles = [profile.ru_title, profile.original_title, profile.original_title.split("(")[0]]
+        film_titles = [normalize_title(t) for t in titles]
+        if not any(t and _title_tokens_in(t.split(), cand_tokens) for t in film_titles):
             return False
         return not profile.year or title_year_matches(candidate.title, profile.year)
 

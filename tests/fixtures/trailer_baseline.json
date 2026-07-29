@@ -153,5 +153,10 @@
     "i": 30,
     "film": "Новичок",
     "outcome": "hit"
+  },
+  {
+    "i": 31,
+    "film": "Marvel Человек-Паук 2",
+    "outcome": "hit"
   }
 ]

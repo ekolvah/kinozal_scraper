@@ -11,6 +11,20 @@ import re
 # pre-2000 films.
 YEAR_SEGMENT_RE = re.compile(r"(?:19|20)\d{2}")
 
+# Служебные формы второго ` / `-сегмента: архитектура сборки и языковой код. Оба
+# стоят на месте оригинального названия у части раздач, поэтому дискриминатор
+# «есть ли у раздачи оригинал» — это форма сегмента, а не категория листинга
+# (#412; #385 отличал их по `t=7` и терял оригинал у локализованных игр).
+# Набор закрыт замером всех 3764 raw-заголовков из Sheets: `x64` — 888, `RU` —
+# 139, `EN` — 1, ничего иного служебного во второй позиции нет. `x86`/`x32` в
+# выгрузке не встретились, но названы грамматикой #385 — держим, чтобы первая же
+# такая раздача не поехала мусорным запросом. Эвристика «короткий → служебный»
+# запрещена тем же замером: `Silo`, `From`, `Halo`, `Apex` — настоящие названия.
+# Альтернация обёрнута в группу намеренно: вызывающий сверяет `fullmatch`, но без
+# скобок первое же переиспользование через `.search()` начало бы матчить `RUS`,
+# `ENGLISH`, `Renaissance` (review #412).
+_SERVICE_SEGMENT_RE = re.compile(r"(?:x(?:64|86|32)|RU|EN)", re.IGNORECASE)
+
 
 def title_year_matches(title: str, film_year: int) -> bool:
     """Return False if the video title explicitly mentions a year other than film_year."""
@@ -41,17 +55,30 @@ def original_title(raw: str) -> str:
     is the second ` / `-segment when present. It yields far better YouTube trailer
     matches than the transliterated/localised RU title, so the caller prefers it.
 
-    Returns '' when there is no distinct original segment — either the raw has no
-    ` / ` separator (`Дюна`) or the second segment is just the year
-    (`Film One / 2024 / BDRip`, i.e. `Title / Year / Format`) — so the caller
-    falls back to the clean RU title. The year guard uses the same `(?:19|20)\\d{2}`
-    shape as `title_year_matches`; a numeric-only original (e.g. `2001`) is
-    consciously swallowed as a year (rare edge, see #138 Out of scope).
+    Returns '' when there is no distinct original segment — the raw has no ` / `
+    separator (`Дюна`), or the second segment is a **service** one rather than a
+    title, so the caller falls back to the clean RU title:
+
+    * the year (`Film One / 2024 / BDRip`, i.e. `Title / Year / Format`) — same
+      `(?:19|20)\\d{2}` shape as `title_year_matches`; a numeric-only original
+      (e.g. `2001`) is consciously swallowed as a year (#138 Out of scope);
+    * build architecture or a language code (`S.T.A.L.K.E.R. 2 / x64 / …`,
+      `Fallout 2 / RU / RPG / …`) — the game grammar
+      `Название / x64 / RU / Жанр / Год / Формат / PC (Windows)`, where the
+      original title simply does not exist (#385/#412).
+
+    Игровая раздача, у которой русское название есть, кладёт настоящий оригинал
+    ровно туда же, куда фильм (`Marvel Человек-Паук 2 / Marvel's Spider-Man 2
+    (Digital Deluxe Edition) / x64 / …`) — поэтому дискриминатор здесь, в форме
+    сегмента, а не в категории листинга: #385 гасил оригинал по признаку `t=7`
+    и у таких раздач оставлял в запросе только русское название, которого на
+    YouTube нет (#412). Побочно гард действует для всех источников сразу, включая
+    `build_film_profile`, куда `kinozal_is_game` не был проброшен вовсе.
     """
     parts = [p.strip() for p in raw.split(" / ")]
     if len(parts) < 2:
         return ""
     candidate = parts[1]
-    if YEAR_SEGMENT_RE.fullmatch(candidate):
+    if YEAR_SEGMENT_RE.fullmatch(candidate) or _SERVICE_SEGMENT_RE.fullmatch(candidate):
         return ""
     return candidate
