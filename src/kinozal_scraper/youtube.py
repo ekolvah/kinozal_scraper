@@ -6,6 +6,7 @@ Selection (выбор одного) — не здесь, а в `trailer_strategy
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 from typing import Any
@@ -73,7 +74,14 @@ def _is_quota_error(exc: BaseException) -> bool:
 def _search_one(client: Any, query: str) -> list[Candidate]:
     """Один YouTube-запрос → кандидаты (только `youtube#video`), snippet-поля
     отображены в `Candidate`. БЕЗ year/title-фильтра — это чистый retrieval, год
-    отсеивает selection (`FirstResultStrategy`), не retrieval."""
+    отсеивает selection (`FirstResultStrategy`), не retrieval.
+
+    Текстовые поля snippet'а приходят HTML-escaped (`Marvel&#39;s`, `Deadpool
+    &amp; Wolverine`) и декодируются здесь, на границе протокола, а не в
+    `normalize_title` (§II — чинить форму данных на входе, а не в каждом
+    потребителе). Иначе entity доезжает до токенизации названия: `&#39;` даёт
+    токен `39`, `&amp;` — `amp`, и фраза рвётся ровно там, где должна была
+    совпасть (#412)."""
     response = (
         client.search()
         .list(q=query, part="id,snippet", maxResults=5, type="video", videoDuration="short")
@@ -87,9 +95,9 @@ def _search_one(client: Any, query: str) -> list[Candidate]:
         out.append(
             Candidate(
                 video_id=item["id"]["videoId"],
-                title=snippet.get("title", ""),
-                channel=snippet.get("channelTitle", ""),
-                description=snippet.get("description", ""),
+                title=html.unescape(snippet.get("title", "")),
+                channel=html.unescape(snippet.get("channelTitle", "")),
+                description=html.unescape(snippet.get("description", "")),
                 published_at=snippet.get("publishedAt", ""),
             )
         )

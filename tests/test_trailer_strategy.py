@@ -244,13 +244,13 @@ class TestHeuristicStrategy(unittest.TestCase):
         ]
         self.assertEqual(self._pick(film, cands).video_id, "ps5")
 
-    def test_base_variant_not_tried_when_full_title_matched(self) -> None:
-        # Гард на форму фикса (architect-review B3): базовая часть до скобки —
-        # НЕ дополнительный вариант матчинга, а fallback при пустом relevant.
-        # Иначе `Дюна (Часть вторая)` схлопывается до франшизы `Дюна`, а
-        # one-numeric-skip в `_title_tokens_in` пропускает её в «Дюна 2» — год не
-        # спасает (в заголовках трейлеров года обычно нет), и вместо честного
-        # маркера уходит чужая ссылка с confidence 0.9.
+    def test_bracket_in_ru_title_not_collapsed_to_franchise(self) -> None:
+        # Гард на форму фикса (architect-review B3): срез скобочного хвоста
+        # применяется к `original_title`, но НЕ к русскому названию. Иначе
+        # `Дюна (Часть вторая)` схлопывается до франшизы `Дюна`, а one-numeric-skip
+        # в `_title_tokens_in` пропускает её в «Дюна 2» — год не спасает (в
+        # заголовках трейлеров его обычно нет), и вместо честного §IV-маркера
+        # ушла бы чужая ссылка с confidence 0.9.
         film = FilmProfile(
             ru_title="Дюна (Часть вторая)", original_title="Dune: Part Two", year=None
         )
@@ -259,6 +259,26 @@ class TestHeuristicStrategy(unittest.TestCase):
             Candidate(video_id="wrong", title="Дюна 2 — русский трейлер"),
         ]
         self.assertEqual(self._pick(film, cands).video_id, "right")
+
+    def test_edition_in_candidate_title_does_not_win_over_trailer(self) -> None:
+        # Замер #412 на живом пуле: у игры полное название С изданием подряд входит
+        # в заголовок нарезки костюмов («All Marvel's Spider-Man 2 Digital Deluxe
+        # Edition Suits»), поэтому «базовый вариант только при пустом relevant»
+        # (первоначальный план) отдавал бы пользователю эту нарезку и до настоящих
+        # трейлеров не доходил. Базовый вариант равноправен, а трейлер от
+        # не-трейлера отделяет `_trailer_signal`.
+        film = FilmProfile(
+            ru_title="Marvel Человек-Паук 2",
+            original_title="Marvel's Spider-Man 2 (Digital Deluxe Edition)",
+            year=2025,
+        )
+        cands = [
+            Candidate(
+                video_id="suits", title="All Marvel's Spider-Man 2 Digital Deluxe Edition Suits"
+            ),
+            Candidate(video_id="real", title="Marvel's Spider-Man 2 - Launch Trailer | PC Games"),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "real")
 
 
 if __name__ == "__main__":

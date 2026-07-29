@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from typing import Any
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 from curl_cffi.requests import Session as _MirrorSession
@@ -43,28 +43,6 @@ def _kinozal_urls() -> list[str]:
         return [pair.split("|")[1] for pair in urls_env.split(";") if "|" in pair]
     fallback = os.environ.get("KINOZAL_TOP_URL", "")
     return [fallback] if fallback else []
-
-
-# kinozal-категория листинга: `t=7` — игры (`t=0` фильмы, `t=32` сериалы).
-_GAME_CATEGORY_T = "7"
-
-
-def _is_game_url(url: str) -> bool:
-    """Игровой ли это листинг (#385).
-
-    Матч через `parse_qs`, а НЕ подстрокой `"t=7"`: подстрока ложно сработала бы
-    на `t=71`. Нет параметра `t` / незнакомое значение / мусор вместо URL →
-    `False`, то есть сегодняшнее фильмовое поведение — классификатор ничего не
-    ломает там, где не уверен.
-
-    Категория живёт только в URL листинга: ниже по течению её уже не достать —
-    у item'а `url` это `details.php?id=N`, где `t` нет.
-    """
-    try:
-        query = urlsplit(url).query
-    except ValueError:
-        return False
-    return parse_qs(query).get("t", []) == [_GAME_CATEGORY_T]
 
 
 def _excluded_genres() -> set[str]:
@@ -427,15 +405,9 @@ def _dedupe_key(raw: str) -> str:
 
 
 def _extract_kinozal_items(
-    html: str, source: dict[str, Any], base_url: str | None = None, is_game: bool = False
+    html: str, source: dict[str, Any], base_url: str | None = None
 ) -> PipelineResult:
     """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
-
-    `is_game` records which listing category the row came from (#385). It rides in
-    `item.raw` because the листинг URL is the only place that knows: an item's own
-    `url` is `details.php?id=N`, category-free. Set here rather than in a second
-    loop upstream — this function already walks the items to attach
-    `kinozal_raw_title`.
 
     `base_url`, when given, overrides `source["base_url"]` for this one fetch so
     relative links AND posters resolve against the host that actually served the
@@ -467,7 +439,6 @@ def _extract_kinozal_items(
                 item.title,
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
-        item.raw["kinozal_is_game"] = is_game
         item.title = _kinozal_title(item.title)
     return result
 
@@ -598,14 +569,11 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
     year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
     year = int(year_match.group(1)) if year_match else None
-    # У игровой раздачи грамматика заголовка другая — `Название / x64 / RU / Жанр /
-    # Год / Формат / PC (Windows)`, — поэтому вторым сегментом стоит архитектура, а
-    # не оригинальное название: `original_title` отдавал бы `x64`, и в YouTube
-    # уходило `x64 2024 trailer` (27 таких запросов в прогоне 30143534431). У игр
-    # русского названия нет вообще, так что отдельного «оригинала» у них не
-    # существует и пустая строка здесь — не заглушка, а верное значение (#385).
-    # Побочно: пустой original_title схлопывает union в один запрос (#384-квота).
-    orig = "" if item.raw.get("kinozal_is_game") else original_title(raw_for_year)
+    # Служебный второй сегмент (`x64`, `RU`) гасит сам `original_title` — гард
+    # живёт в грамматике заголовка, а не здесь (#412). Прежняя развилка по
+    # `kinozal_is_game` (#385) гасила оригинал у ВСЕХ раздач с игрового URL и
+    # тем ломала локализованные игры, у которых оригинал есть на общем месте.
+    orig = original_title(raw_for_year)
     return select_trailer(FilmProfile(ru_title=clean, original_title=orig, year=year), youtube)
 
 
@@ -684,9 +652,7 @@ def _fetch_and_extract(
                 continue
             # Resolve this listing's links/posters against the origin that served
             # it (.tv on primary, .guru on mirror fallback) — not a fixed host (#247).
-            extracted = _extract_kinozal_items(
-                html_text, source, base_url=effective_base_url, is_game=_is_game_url(url)
-            )
+            extracted = _extract_kinozal_items(html_text, source, base_url=effective_base_url)
             if not extracted.ok:
                 result.errors.extend(extracted.errors)
                 continue
@@ -881,17 +847,6 @@ def run_kinozal_pipeline(
     # injects the same object it wires into the notifier, so the listing and its
     # posters share one origin-vs-mirror decision (#241).
     fetcher = kinozal or Kinozal.from_env()
-
-    # Одна строка на прогон (не на item): по ней видно, что классификация вообще
-    # сработала. Молчание здесь означало бы, что добавленный игровой URL разбирается
-    # фильмовой грамматикой, и заметить это можно было бы только по мусорным
-    # YouTube-запросам (#385).
-    logger.info(
-        "kinozal pipeline: %d of %d configured URLs classified as game listings (t=%s)",
-        sum(1 for u in urls if _is_game_url(u)),
-        len(urls),
-        _GAME_CATEGORY_T,
-    )
 
     all_items, results = _fetch_and_extract(kinozal_sources, urls, fetcher)
     if not all_items:

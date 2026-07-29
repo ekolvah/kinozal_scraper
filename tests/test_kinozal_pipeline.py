@@ -13,7 +13,6 @@ from kinozal_scraper.kinozal_pipeline import (
     _TRAILER_MISS_MARKER,
     _TRAILER_QUOTA_MARKER,
     _dedupe_key,
-    _is_game_url,
     _kinozal_title,
     _kinozal_urls,
     enrich_with_trailer,
@@ -914,35 +913,6 @@ class TestGameTitleGrammar(unittest.TestCase):
                 assert youtube.last_profile is not None
                 self.assertEqual(youtube.last_profile.ru_title, expected_ru)
                 self.assertEqual(youtube.last_profile.original_title, "")
-
-    def test_is_game_url(self) -> None:
-        cases = [
-            ("https://kinozal.tv/top.php?j=&t=7&d=14", True),
-            ("https://kinozal.tv/top.php?j=&t=0&d=14", False),
-            ("https://kinozal.tv/top.php?t=32", False),
-            # `t=71` — почему матч через parse_qs, а не подстрокой "t=7".
-            ("https://kinozal.tv/top.php?t=71", False),
-            ("https://kinozal.tv/top.php", False),
-            ("not a url at all", False),
-        ]
-        for url, expected in cases:
-            with self.subTest(url=url):
-                self.assertIs(_is_game_url(url), expected)
-
-    def test_game_listing_item_has_no_original_title(self) -> None:
-        # Сквозь настоящий пайплайн: url → классификатор → raw → профиль. Юнит с
-        # руками выставленным `raw` зеленел бы даже при неподключённом
-        # протаскивании — ровно тот ложный RED, что поймало ревью #383.
-        youtube = _PoolYoutube([])
-        _run(
-            html=self._GAME_HTML,
-            youtube=youtube,
-            urls="игры|https://kinozal.tv/top.php?j=&t=7&d=14",
-        )
-        assert youtube.last_profile is not None
-        self.assertEqual(youtube.last_profile.original_title, "")
-        self.assertEqual(youtube.last_profile.ru_title, "S.T.A.L.K.E.R. 2")
-        self.assertEqual(youtube.last_profile.year, 2024)
 
 
 class TestQuotaStop(unittest.TestCase):
