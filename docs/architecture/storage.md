@@ -1,5 +1,15 @@
 # Storage architecture
 
+**Question this document answers:** how persistence is shaped and what must stay true about the
+stored rows — the `Storage` Protocol and its implementations, how they are injected, how a
+worksheet is created and its schema validated, how the dedupe key is located, and the row
+schema's column semantics, invariants and write ordering.
+
+**Not here.** Which pipelines write through this Protocol → [`runtime.md`](runtime.md); what a
+`NormalizedItem` carries before it becomes a row → [`pipeline.md`](pipeline.md); the Google
+credentials and the spreadsheet id → [`operations.md`](operations.md); what is and isn't covered
+by tests here → [`testing.md`](testing.md).
+
 ## Pattern: Protocol + implementations
 
 ```python

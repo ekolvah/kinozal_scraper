@@ -1,9 +1,16 @@
 # kinozal_scraper architectural principles
 
-Source of truth on principles, workflow rules, and quality gates for this
-repo. `CLAUDE.md` and the other `docs/architecture/*.md` files are runtime
-guidance and reference implementation detail — where they conflict with
-this document, this document wins.
+**Question this document answers:** which principles, workflow rules and quality
+gates are binding in this repo, and what wins when two documents disagree. This is
+the **source of truth**: `CLAUDE.md` and the other `docs/architecture/*.md` files are
+runtime guidance and reference implementation detail — where they conflict with this
+document, this document wins.
+
+**Not here.** The *procedural* half of the workflow (branch creation, PR discipline,
+labels, `/plan` → `/implement`, the architect-review gate) is delegated to
+[`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) — see §Governance. How
+each gate is implemented and configured → [`ci.md`](ci.md). Which coverage gaps are
+consciously accepted → [`testing.md`](testing.md).
 
 Originally authored as a Spec Kit constitution (v1.0.0, ratified
 2026-05-17). Migrated to `docs/architecture/principles.md` on 2026-05-21

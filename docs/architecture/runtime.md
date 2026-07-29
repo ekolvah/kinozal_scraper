@@ -1,5 +1,18 @@
 # Runtime architecture
 
+**Question this document answers:** what exists at runtime and how the pieces are wired —
+which pipelines there are (entry point, sources, kind), which Protocol boundaries isolate the
+external services, how data flows through a generic pipeline run, and which modules
+deliberately bypass that pattern. This is the **system-level map**: breadth over depth.
+
+**Not here.** How one pipeline is built inside — extraction layers, `extract_from_*` contracts,
+`NormalizedItem`, notification templates, fetch behaviour → [`pipeline.md`](pipeline.md). The
+storage Protocol's own invariants (row schema, column semantics, write ordering) →
+[`storage.md`](storage.md). The Gemini side (rotation, quota, retry, prompts) →
+[`gemini.md`](gemini.md). How the daily run is *operated* — cron expression, env vars and
+secrets, failure isolation, alerting → [`operations.md`](operations.md); the `Schedule` column
+below is a coarse label, not the canon.
+
 ## Pipelines
 
 | Entry point | Sources | Type | Schedule |
