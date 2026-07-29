@@ -594,6 +594,17 @@ work-for-work (goal-function priority (2)).
   дефолт нельзя, не покраснив `test_no_output_defaults`. Записано, чтобы пропуск
   был решением, а не забывчивостью.
 
+- **Y. Always-load статус `mindset.md` гардом не стережётся (#416).** Правка §(2)
+  добавляет тактики в файл, который обязан грузиться в каждой сессии — то есть
+  появление `paths:` во frontmatter молча выключило бы их. Гарда на это **нет**:
+  `test_repo_layout.py` про раскладку `src/`, `test_agent_frontmatter.py` про пины
+  моделей у сабагентов, и **у `mindset.md` frontmatter-блока вообще нет** — гард
+  сторожил бы отсутствие того, чего не существует, и покраснел бы не от потери
+  always-load, а от любого добавления метаданных. Изобретать его под эту задачу
+  отвергнуто; если always-load когда-нибудь станет опциональным для правил
+  (`.claude/rules/*`), гард имеет смысл писать сразу на весь каталог, а не на один
+  файл. Записано, чтобы «а почему нет теста на always-load» не переоткрыли.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

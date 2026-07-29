@@ -31,7 +31,10 @@ other slow one; the rest are seconds. Measured 2026-07-29 on the maintainer's
 Windows box: **~8 minutes end-to-end**. The absolute figure drifts with the
 dependency set — the shape (minutes, network-bound tail) is the durable part.
 Operational consequence for agents (output going quiet after `pytest` is
-`pip-audit` working, not a hang) is in `CLAUDE.md` §Среда.
+`pip-audit` working, not a hang) is in `CLAUDE.md` §Среда. If the measurement
+ever crosses the Bash tool's 10-minute ceiling, the derived constant
+`timeout: 600000` in `.claude/commands/implement.md` step 6 stops working and
+needs revisiting together with this number.
 
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
