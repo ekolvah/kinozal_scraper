@@ -235,7 +235,7 @@ class TelethonReader:
                 raise RuntimeError(
                     "Telethon session is not authorized — it was revoked or the "
                     "TELETHON_SESSION secret is stale. Mint a new session string "
-                    "(see docs/architecture/ci.md) and update the secret."
+                    "(see docs/architecture/operations.md) and update the secret."
                 )
         except BaseException:
             await client.disconnect()

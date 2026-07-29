@@ -215,6 +215,51 @@ TMDB(#329) остаются eval-стратегиями (осознанно вн
 HTML sources require `row_selector` in source config (not in `fields`).
 Field selectors use `css@attr` syntax to extract attributes.
 
+## Kinozal mirror fallback (#227, #247, #317)
+
+Включается парой секретов `KINOZAL_USERNAME` + `KINOZAL_PASSWORD` — их описание в
+[`operations.md` § kinozal_pipeline](operations.md#kinozal_pipeline).
+
+**Fallback на зеркало при недоступности `kinozal.tv` (#227):** primary —
+анонимный `kinozal.tv` (`KINOZAL_URLS` остаётся `.tv`, **переключать не нужно**). Если fetch какого-то
+URL падает (напр. 522), пайплайн автоматически повторяет тот же топ на зеркале **`kinozal.guru`**
+через авторизованную сессию. Логин **ленивый** — выполняется максимум раз за прогон и только при
+первом срабатывании fallback, поэтому здоровый `.tv`-прогон не платит за логин и не требует кредов.
+
+⚠️ **Анонимный свап домена на `.guru` не работает** (проверено 2026-06-30): `kinozal.guru` гейтит
+весь контент за логином — `/top.php`, `/browse.php`, даже `/` → `302 .../login.php?m=5`. Поэтому
+fallback идёт через `kinozal_auth.py` (`POST /takelogin.php`, обычного не-VIP аккаунта достаточно —
+подтверждено живым прогоном).
+
+**Включение fallback:** задай оба секрета `KINOZAL_USERNAME` + `KINOZAL_PASSWORD`. Без них (или при
+partial) fallback отключён, и сбой `.tv` доходит видимой ошибкой `fetch failed ... (mirror
+fallback disabled)` + exit 1 (§IV) — как было до #227. Провал логина / both-failed тоже видимы:
+`mirror login failed` / `primary failed (...); mirror ... also failed (...)`.
+`sources.json` `base_url` остаётся `https://kinozal.tv` (дефолтный origin, когда primary жив) —
+зеркало туда не прописывать.
+
+**Ссылки следуют за фактическим origin (#247):** `Kinozal.fetch_listing` возвращает
+`(html, effective_base_url)` — `kinozal.tv` при успехе primary, `kinozal.guru` при mirror-fallback.
+Пайплайн резолвит относительные `url`/`image_url` листинга против этого базового хоста (per-fetch
+override статичного `base_url`), поэтому mirror-прогон даёт **`.guru`-ссылки** — живые для
+залогиненного получателя, а не мёртвые `.tv`. Это осознанный разворот исходного #227/#241 решения
+«`base_url` всегда `.tv` — canonical origin для ссылок» (основание: получатель залогинен на `.guru`,
+login-wall для него неактуален). Смешанный прогон (часть топов с `.tv`, часть с зеркала) даёт
+корректный хост у каждого item; dedupe стабилен (ключ — чистый title, host в него не входит →
+миграция старых `.tv`-строк в Sheet не нужна).
+
+**Details-fetch genre-фильтра на mirror-прогонах (#317):** т.к. #247 даёт `.guru`-ссылки, на
+mirror-днях `item.url` = `kinozal.guru/details.php?...`. `Kinozal.fetch_details` для mirror-host
+URL идёт через **авторизованную** сессию (как listing), а не анонимным primary: `.guru` гейтит и
+`details.php` за логином (см. ⚠️ выше), поэтому анонимный GET вернул бы `200` login-страницу без
+блока `Жанр:` — ложный успех, который except-triggered failover `fetch_listing` не ловит, и
+genre-фильтр тихо слепнет (`_parse_genre`=="" для всех → fail-open → всё уведомляется). Постеры
+`/i/poster/` зеркало отдаёт анонимно (verified), поэтому `fetch_poster` этот путь не затрагивает.
+
+Сейчас потребитель — production-cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
+`tests/test_e2e_kinozal_titles.py` станет вторым потребителем после #136 (тест безусловно
+skip'нут, пока `kinozal.tv` отдаёт 522).
+
 ## Macro expansion
 
 Handled by `pipeline_config.py` before the pipeline runs.

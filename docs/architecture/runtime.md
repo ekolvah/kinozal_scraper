@@ -62,7 +62,7 @@ run failures instead of being collapsed into "no news." Details in
 
 - `sources.json` — declarative: URLs, CSS selectors, limits, templates, enrich prompts
 - `pipeline_config.py` — loads config, expands macros (`{{TODAY}}`, `{{GITHUB_TOP_LIMIT}}`), validates
-- Env vars override runtime behavior — full list in [ci.md](ci.md)
+- Env vars override runtime behavior — full list in [operations.md](operations.md#environment-variables)
 
 ## Telethon-direct modules
 
