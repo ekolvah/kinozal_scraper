@@ -203,7 +203,10 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
             # непойманное дало бы exit 1, а stderr хука с кодом 1 уходит
             # пользователю, но НЕ агенту — понижение видимости в инструменте,
             # который ради видимости и существует (#410).
-            return _RUFF_EXEC_ERROR, (
+            # `combined_out +`, а не голая диагностика: если первая команда
+            # (`ruff format --check`) уже нашла замечания, ранний return выбросил бы
+            # их — потеря находки внутри инструмента, чья работа быть видимым.
+            return _RUFF_EXEC_ERROR, combined_out + (
                 f"capture failed for `{' '.join(cmd)}` (rc={completed.returncode}): "
                 f"stdout={completed.stdout!r} stderr={completed.stderr!r}"
             )

@@ -165,21 +165,23 @@ def _linkage_confirmed(url: str) -> bool:
     """Poll `closingIssuesReferences` until it reports a link (or attempts run out).
 
     Tolerates GitHub's async computation of the link after PR creation."""
-    read_failures = 0
+    last_read_ok = False
     for attempt in range(LINKAGE_ATTEMPTS):
         refs = _closing_refs_json(url)
-        if refs is None:
-            read_failures += 1
-        elif has_closing_reference(refs):
+        last_read_ok = refs is not None
+        if refs is not None and has_closing_reference(refs):
             return True
         if attempt < LINKAGE_ATTEMPTS - 1:
             time.sleep(LINKAGE_DELAY_S)
-    if read_failures == LINKAGE_ATTEMPTS:
-        # Ни одного успешного чтения: линковка НЕИЗВЕСТНА, а не отсутствует.
-        # Вернуть False значило бы вынести вердикт по данным, которых не было.
+    if not last_read_ok:
+        # Вердикт «ссылок нет» правомерен, только если ПОСЛЕДНЕЕ чтение удалось.
+        # Считать достаточным любое успешное чтение нельзя: первое штатно пустое —
+        # GitHub считает `closingIssuesReferences` асинхронно (#321), — поэтому
+        # «одно раннее успешное + серия сбоев» означает, что мы не наблюдали
+        # финального состояния вовсе, и `False` был бы вердиктом по данным,
+        # которых нет (#410).
         print(
-            f"error: every linkage read for {url} failed ({read_failures} attempts) — "
-            "linkage is unknown, not absent.",
+            f"error: the final linkage read for {url} failed — linkage is unknown, not absent.",
             file=sys.stderr,
         )
         sys.exit(2)

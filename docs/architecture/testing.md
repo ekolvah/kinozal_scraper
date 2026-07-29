@@ -550,6 +550,19 @@ work-for-work (goal-function priority (2)).
   («любой `or ""`») флагало бы легитимные дефолты (`os.environ.get(...) or ""`),
   и его пришлось бы ослаблять — а глушить pytest-ассерт нечем, `noqa` у него нет.
 
+  **Покрыты не все новые ветки — осознанно (#410).** Тестами закреплены три
+  **различающих** решения, где перепутать исходы дорого: `check_red` → код 2
+  («гейт сломан»), а не 1 («тесты не красные») — `/implement` шаг 3 трактует их
+  по-разному; `hooks._run_ruff` → сигнал `setup_broken`, а не исключение (иначе
+  stderr уходит пользователю, но не агенту); `ci_check._tracked_files` →
+  «file set is unknown», а не вводящее в заблуждение «no files to scan». Ветки в
+  `open_pr`/`set_issue_priority`/`issue_branch`/`validate_issue_sections`/
+  `verify_pr_link` остались **без отдельных тестов**: у них один и тот же исход
+  («видимая ошибка вместо пустоты»), различающего решения там нет, и пять копий
+  одного теста были бы change-detector'ами. Их защищает правило гарда: вернуть
+  дефолт нельзя, не покраснив `test_no_output_defaults`. Записано, чтобы пропуск
+  был решением, а не забывчивостью.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

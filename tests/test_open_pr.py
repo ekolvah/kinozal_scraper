@@ -192,6 +192,38 @@ class TestMainVerification:
         assert "rate limit" in err, "the real cause must reach the operator"
         assert "linkage is unknown, not absent" in err, "must not read as a missing link"
 
+    def test_early_success_then_read_failures_is_unknown_not_absent(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Смешанный случай: одно раннее успешное чтение + серия сбоев (#410).
+
+        Первое чтение штатно пустое — GitHub считает `closingIssuesReferences`
+        асинхронно (#321). Значит «успешных чтений было хотя бы одно» НЕ даёт права
+        выносить вердикт «ссылок нет»: финального состояния мы не наблюдали.
+        Раньше условие требовало провала ВСЕХ попыток, и этот сценарий давал ложный
+        `NOT linked` с бесполезной ремедиацией «добавь Closes #N» — при том что
+        `ensure_closes_line` его уже вшила."""
+        state = {"reads": 0}
+        base = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=99)
+
+        def flaky(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+            if cmd[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in cmd:
+                state["reads"] += 1
+                if state["reads"] > 1:  # первое чтение удачное, остальные падают
+                    return subprocess.CompletedProcess(
+                        args=cmd, returncode=1, stdout="", stderr="gh: rate limit exceeded"
+                    )
+            return base(cmd, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", flaky)
+        monkeypatch.setattr("time.sleep", lambda *_: None)
+        with pytest.raises(SystemExit) as exc:
+            main(["--title", "T"])
+        assert exc.value.code == 2, "an unobserved final state is not a verdict"
+        err = capsys.readouterr().err
+        assert "linkage is unknown, not absent" in err
+        assert "NOT linked" not in err
+
     def test_retries_linkage_until_populated(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Регресс на dogfood PR #321: GitHub считает closingIssuesReferences
         # асинхронно после create — первое чтение пусто, но линковка КОРРЕКТНА.
