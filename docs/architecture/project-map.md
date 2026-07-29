@@ -143,7 +143,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
 | `.claude/rules/workflow.md` | Процедурные правила workflow (ветка/PR-дисциплина/labels/plan→implement/гейты) — канон, always-load | ✅ |
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
-| `.claude/rules/mindset.md` | Операционный mindset main-сессии: **канон цель-функции** (3 приоритета) + токен-тактики (чтение/spawn/TodoWrite) + указатели на §I,§IV,§V/workflow — always-load | ✅ |
+| `.claude/rules/mindset.md` | Операционный mindset main-сессии: **канон цель-функции** (3 приоритета) + операционные токен-тактики main-сессии + указатели на §I,§IV,§V/workflow — always-load | ✅ |
 | `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings (coverage-first: градация, не фильтрация — #392); цель-функцию **читает из канона** `mindset.md §Цель-функция` (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |

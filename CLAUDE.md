@@ -13,6 +13,8 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 - **PowerShell ≠ bash**: `$null` (не `/dev/null`), `$env:VAR` (не `$VAR`), backtick для line continuation. Для POSIX-скриптов вызывай Bash tool явно.
 - **`subprocess.run`, захватывающий вывод**: всегда `encoding="utf-8"`, и **никаких `or ""` на `stdout`/`stderr`** — `None` означает сломанный захват (поток-читатель умер на декодировании), и дефолт подменяет отказ пустотой. Оба правила энфорсит `tests/test_subprocess_encoding.py` (#364, #410). Если ребёнок — Python, ему нужен ещё `PYTHONUTF8=1`/`-X utf8`; это гард не ловит.
 - **Спорадические file-lock / AV-сканер** на длинных `git`/`pytest`: перед root-cause hunt — 1 retry. Если воспроизводится — тогда копай.
+- **`ci_check.py` / `git push` с pre-push хуком идут минуты** (тайминг — канон в [CI doc](docs/architecture/ci.md#local-pre-commit)): вывод замирает после `pytest` на шаге `pip-audit` — это **сетевой шаг, а не hang**. Не убивать процесс, не поллить — один foreground-вызов с `timeout: 600000` ([mindset §(2)](.claude/rules/mindset.md)).
+- **`tasklist` в этой песочнице возвращает пустой вывод** (0 строк даже без фильтра). Делать по нему вывод «процесс умер» нельзя — прецедент: так был ошибочно запущен второй экземпляр `ci_check`.
 
 ## Debugging
 - Сначала root cause, потом fix. Никаких workarounds/shims, пока корень не понятен.
