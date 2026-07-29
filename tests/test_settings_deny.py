@@ -68,3 +68,24 @@ class TestDenyList:
         assert any("origin main" in pat for pat in patterns), (
             "push-to-main must be enforced in settings.json deny"
         )
+
+    def test_polling_sleep_denied(self) -> None:
+        """`sleep` as a wait-loop primitive must be denied (#416).
+
+        Deliberately an explicit assert rather than a line in the `Запреты`
+        prose: `_declared_prohibitions()` keeps only tokens starting with
+        `git `/`gh `/`--`, so a `sleep` entry there would be dropped and this
+        guard would stay vacuously green. Same shape as the push-to-main
+        assert above — prose-declared rule, explicitly enforced here.
+
+        Scope is honest: this pins the *lexeme*. The harness already blocks a
+        foreground `sleep`, and `run_in_background` is a parameter of the same
+        `Bash` tool — there is no separate "background" deny form — so the
+        entry closes both. It does not stop a poll loop built from repeated
+        `Read`, `python -c "time.sleep()"` or `timeout 60`; that part is prose
+        in `.claude/rules/mindset.md` §(2).
+        """
+        args = [_bash_arg(p) for p in _deny_patterns()]
+        assert any(a.startswith("sleep") for a in args), (
+            "wait-loop `sleep` must be enforced in settings.json deny"
+        )
