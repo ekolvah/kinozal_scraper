@@ -128,14 +128,16 @@ Triggers: `pull_request` (covers every PR branch) + `push` to `main` only
 in isolation). `issue-*` is deliberately **not** a push trigger: a PR branch
 push would otherwise fire the `quality` job twice (once per event) for the
 same commit. The required status check is the bare context `quality`
-(event-agnostic), so the `pull_request` run satisfies branch protection on its
-own and dropping `issue-*` orphans nothing (#206). Do not re-add `issue-*` to
+(event-agnostic — verified once against `…/required_status_checks` →
+`contexts: ["quality"]`; re-verifying needs repo-admin scope, hence the note),
+so the `pull_request` run satisfies branch protection on its own and dropping
+`issue-*` orphans nothing (#206). Do not re-add `issue-*` to
 `push` to "get CI on a branch" — the `.githooks/pre-push` hook already runs the
 identical `ci_check.py` locally before every push.
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,
-lint, pytest, pip-audit, pip-audit-dev, requirements, mypy, imports).
+lint, secrets, pytest, pip-audit, pip-audit-dev, requirements, mypy, imports).
 The per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 
@@ -192,7 +194,7 @@ lives here and in `runtime.md`, not in the constitution.
 |---|---|---|---|
 | `C901`, `PLR0912`, `PLR0915` (#233) | ратчет | разрастание метода (цикломатика / ветки / стейтменты) | `max-complexity = 12` — **выровнен с дефолтным порогом веток PLR0912**, а не подогнан под сегодняшний код (защита от Goodhart/байкшеддинга); PLR0912/PLR0915 на дефолтах ruff (12 / 50). **Дыра:** blanket `# noqa` позволяет grandfathered-функции расти дальше незамеченной — ратчет защищает новый код и новые функции, не замороженную шестёрку. Настоящий фикс — распил, #251 (§V documented-mitigation) |
 | `ERA001` (#235) | ратчет | закомментированный код | Репо намерено **чистым**. `tests/**` **не** исключены: мёртвый код мёртв независимо от роли файла |
-| `ARG001`, `ARG002`, `SLF001` (#236) | ратчет | неиспользуемый аргумент функции/метода, доступ к приватному члену чужого объекта | 110 существующих хитов триажированы поштучно, реальных мёртвых параметров в `src/` — ноль. `SLF001` в `src/` **нулевой**: единственный хит (`RotatingGeminiEnricher` лез в `GeminiEnricher._model_name`) был настоящей §II-утечкой и снят публичным свойством `model_name`, а не noqa. **Не выбраны** `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) — сознательный defer, #236 Out of scope |
+| `ARG001`, `ARG002`, `SLF001` (#236) | ратчет | неиспользуемый аргумент функции/метода, доступ к приватному члену чужого объекта | 110 существующих хитов триажированы поштучно, реальных мёртвых параметров в `src/` — ноль. `SLF001` в `src/` **нулевой**: два хита (`RotatingGeminiEnricher` лез в `GeminiEnricher._model_name` из двух мест) были одной настоящей §II-утечкой и сняты публичным свойством `model_name`, а не noqa. **Не выбраны** `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) — сознательный defer, #236 Out of scope |
 | `D100`, `D104`, `D419` (#253) | **presence-гейт** (порога нет) | отсутствующий / пустой module- и package-docstring | Репо чисто, скоуп репо-широкий (`src/` **и** `scripts/`/root). `D101`/`D103` (класс/функция) сознательно **не** выбраны — гейт только уровня модуля. **Дыра:** `D100`/`D104` флагают только *публичные* модули, поэтому будущий `src/kinozal_scraper/_internal.py` проскочит (сегодня такого модуля нет) |
 
 **Конвенция глушения — одна на все четыре, и именно её пинят гарды:**
@@ -209,8 +211,11 @@ lives here and in `runtime.md`, not in the constitution.
 - **`tests/**` исключаются категорически только там, где роль файла меняет смысл правила.**
   Для ARG/SLF — да (`per-file-ignores` `"tests/**"`): white-box-тесты по §II законно зовут
   приватные хелперы напрямую, а сигнатуры моков диктует мокируемый вызываемый объект, не
-  использование. Для `ERA001` — **нет**. Поверхностный паттерн «тестам всегда дают
-  per-file-ignore» отсюда **не** карго-культить.
+  использование. Для `D100`/`D104`/`D419` — тоже да, но **по другой причине**: тесты никогда и
+  не были docstring-checked, старый `check_headers.py` сканировал только `src/`, и гейт этого не
+  требовал ни дня. Для `ERA001` — **нет**. То есть в `per-file-ignores` для `tests/**` лежат
+  шесть кодов из трёх наборов, и у каждого набора своё основание; поверхностный паттерн «тестам
+  всегда дают per-file-ignore» отсюда **не** карго-культить.
 - **У каждого правила — anti-drift-гард**, пинящий код в *effective select*, вне глобального
   `ignore` и не нейтрализованным через `per-file-ignores` ни для одного пути `src`/`scripts`:
   `tests/test_complexity_ratchet.py`, `test_ruff_dead_code_rule.py`, `test_ruff_arg_slf_rules.py`,
