@@ -49,8 +49,12 @@ class TestItemIdFromAddJson:
 
     @pytest.mark.parametrize("bad", ["{}", "", "not json", None])
     def test_raises_on_missing_id(self, bad: str | None) -> None:
-        # Грабля #109: Windows+git-bash даёт stdout=None даже при text=True —
-        # None/пусто/битый JSON → видимая ошибка, не непонятный TypeError позже.
+        # Пусто / битый JSON → видимая ошибка, не непонятный TypeError позже.
+        # `None` в параметрах остаётся как контрактная тотальность самой pure-функции:
+        # через `_run` он теперь недостижим (сломанный захват ловится там и выходит
+        # кодом 2, #410), но функция обязана оставаться тотальной по своему типу
+        # `str | None` — а не полагаться на то, что её единственный сегодняшний
+        # вызывающий отсеял этот вход.
         with pytest.raises(ValueError):
             item_id_from_add_json(bad)
 

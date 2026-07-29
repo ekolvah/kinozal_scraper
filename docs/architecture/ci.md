@@ -265,15 +265,36 @@ tracked in #251 (§V documented-mitigation, not a silent assumption). `RUF100`
 unused-noqa across the repo — a separate cleanup, not this gate (#233 Out of
 scope).
 
-### Subprocess decoding guard (`tests/test_subprocess_encoding.py`, #364)
+### Subprocess output guard (`tests/test_subprocess_encoding.py`, #364 + #410)
 
-An AST guard over `scripts/**`, `src/**` and `tests/**`: a `subprocess` call
-that **captures** the child's output in **text mode** must pass an explicit
-`encoding`. Without it Windows decodes with the OS code page, the reader thread
+An AST guard over `scripts/**`, `src/**` and `tests/**`, enforcing **two**
+rules that are two ends of the same defect:
+
+1. **`encoding` is mandatory** on a call that captures output in text mode
+   (#364, below).
+2. **No default on captured output** — `result.stdout or ""` and friends are
+   banned (#410). While the cause was unknown the default looked like
+   insurance; once #364 closed it, `None` means *the capture itself failed*,
+   so a default silently replaces a real failure with emptiness — inside
+   scripts that are themselves gates (`check_red` would accept an empty junit
+   report, `validate_issue_sections` an empty issue body, the secret scan an
+   empty file list). The check for `None` sits wherever the capture is read:
+   in the file's `_run` seam where one exists, at the call site where the
+   script makes a single call, and inline for the two calls that deliberately
+   bypass their seam (`new_branch`'s `git branch -d`, which is allowed to fail
+   and so cannot go through a `check=True` seam). Only the *invariant* is
+   centralised — here, in this guard — because a shared helper module is
+   impossible (see the accepted-gaps ledger: the repo root is never on
+   `sys.path` for `python scripts/foo.py`).
+
+Rule 1 in detail: a `subprocess` call that **captures** the child's output in
+**text mode** must pass an explicit `encoding`. Without it Windows decodes with the OS code page, the reader thread
 dies on the first Cyrillic byte, and the captured text is lost — which is also
 where the `stdout=None` gotcha of #109 comes from (an empty buffer becomes
-`None`), making the `(result.stdout or "")` idioms scattered through `scripts/`
-workarounds for *this* defect rather than a separate Windows quirk.
+`None`), which made the `(result.stdout or "")` idioms that used to be
+scattered through `scripts/` workarounds for *this* defect rather than a
+separate Windows quirk. They were removed in #410 — rule 2 above now keeps
+them out.
 
 Why a guard rather than two missing kwargs: 7 of 9 call sites remembered the
 flag and 2 did not, and this is the third pass over the same class

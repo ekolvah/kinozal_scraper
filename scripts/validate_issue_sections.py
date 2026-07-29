@@ -68,8 +68,12 @@ def _fetch_body(issue_number: int) -> str:
         capture_output=True,
         encoding="utf-8",
     )
-    stdout = result.stdout or ""
-    data = json.loads(stdout)
+    if result.stdout is None:
+        # `check=True` уже отсеял ненулевой rc → `None` = сломанный захват (#364).
+        # Раньше становился `""`: гейт секций читал бы пустой body и рапортовал
+        # «нет ни одной секции» вместо «не смог прочитать issue» (#410).
+        raise RuntimeError(f"capture failed for `gh issue view {issue_number}`")
+    data = json.loads(result.stdout)
     if data.get("state") != "OPEN":
         print(
             f"error: issue #{issue_number} is not OPEN (state={data.get('state')})", file=sys.stderr

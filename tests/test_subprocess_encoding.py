@@ -1,4 +1,4 @@
-"""Гард: ни один call-site не декодит чужой вывод кодировкой ОС (#364).
+"""Гард на вывод subprocess: два правила — кодировка (#364) и дефолты (#410).
 
 `subprocess.run(..., text=True, capture_output=True)` **без** `encoding` под Windows
 декодит вывод дочернего процесса ANSI-кодовой страницей (cp1252). На кириллице это
@@ -6,8 +6,11 @@
 буфер остаётся пустым, а `Popen._communicate` возвращает `stdout[0] if stdout else
 None`, то есть **`stdout is None`**. Отсюда грабля #109 («может вернуть `stdout=None`
 несмотря на `text=True`») — она не отдельное явление Windows+git-bash, а симптом
-этого дефекта, а рассыпанные по `scripts/` `(result.stdout or "")` — маскировавшие
-его workaround'ы.
+этого дефекта; рассыпанные по репозиторию `(result.stdout or "")` были
+маскировавшими его workaround'ами и **сняты в #410** — теперь их запрещает второе
+правило этого файла (`find_output_defaults`). Сама проверка на `None` живёт там,
+где вывод читается: в `_run`-seam'е, если он есть, иначе на месте вызова —
+централизовать её нельзя (см. ledger), централизован только инвариант.
 
 Живой случай 28.07.2026: PostToolUse-хук отрапортовал «ruff found issues», но **текст
 находки потерялся вместе с умершим потоком**. Инструмент видимости ослеп — §IV внутри
@@ -50,6 +53,30 @@ _SPAWNERS = frozenset({"run", "check_output", "Popen"})
 # декодирование на стороне родителя. `errors` — тоже: по докам subprocess он
 # подразумевает текстовый режим, и без `encoding` там локальная кодировка.
 _TEXT_MODE_KWARGS = frozenset({"text", "universal_newlines", "encoding", "errors"})
+
+# Атрибуты `CompletedProcess`, дефолт на которых подменяет отказ захвата пустым
+# значением (#410). Дом инварианта — здесь: общий seam-хелпер построить нельзя
+# (репо-корень не на `sys.path` при `python scripts/foo.py` — см.
+# `scripts/issue_branch.py`), а правило гарда, в отличие от хелпера, ещё и мешает
+# написать дефолт заново.
+_OUTPUT_ATTRS = frozenset({"stdout", "stderr"})
+
+
+def find_output_defaults(source: str, label: str) -> list[str]:
+    """`<что-то>.stdout or <дефолт>` — подмена отказа захвата пустым значением.
+
+    Правило намеренно узкое: смотрит на **атрибут** `.stdout`/`.stderr` слева от
+    `or`, а не на `or` вообще. Широкое правило флагало бы легитимные дефолты
+    (`os.environ.get(...) or ""`), и его пришлось бы ослаблять — а глушить
+    ассерт нечем, `noqa` у него нет."""
+    violations: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.BoolOp) and isinstance(node.op, ast.Or)):
+            continue
+        head = node.values[0]
+        if isinstance(head, ast.Attribute) and head.attr in _OUTPUT_ATTRS:
+            violations.append(f"{label}:{node.lineno}: `.{head.attr} or ...` default")
+    return violations
 
 
 def _kwargs(call: ast.Call) -> dict[str, ast.expr]:
@@ -226,6 +253,40 @@ class TestAnalyzer:
         assert find_violations(source, "sample.py") == []
 
 
+class TestOutputDefaultAnalyzer:
+    """Unit'ы правила «дефолт на выводе subprocess запрещён» (#410).
+
+    Пока причина `stdout=None` была неизвестна (#109), `or ""` выглядел
+    страховкой. #364 показал, что это симптом умершего на декодировании
+    потока-читателя, и причину закрыл — после чего дефолт стал подменять
+    **реальный отказ захвата** пустым значением, причём в скриптах, которые сами
+    являются гейтами (`check_red`, `validate_issue_sections`, секрет-скан)."""
+
+    def test_output_default_is_flagged(self) -> None:
+        source = 'x = result.stdout or ""\n'
+        violations = find_output_defaults(source, "sample.py")
+        assert violations, "a default on captured output must be flagged"
+        assert "sample.py:1" in violations[0], (
+            f"the violation must name file:line so it is actionable, got {violations[0]!r}"
+        )
+
+    def test_non_empty_literal_default_is_flagged(self) -> None:
+        # Форма, которую первая версия инвентаря пропустила целиком: греп искал
+        # `or ""`, а `or "{}"` / `or "[]"` живут в open_pr и verify_pr_link.
+        source = 'data = json.loads(result.stdout or "[]")\n'
+        assert find_output_defaults(source, "sample.py")
+
+    def test_stderr_default_is_flagged(self) -> None:
+        source = "msg = (proc.stderr or '').strip()\n"
+        assert find_output_defaults(source, "sample.py")
+
+    def test_unrelated_or_default_is_not_flagged(self) -> None:
+        # Правило про вывод subprocess, а не про `or` вообще — иначе гард начнёт
+        # флагать легитимные дефолты и его придётся ослаблять (глушить нечем).
+        source = 'name = os.environ.get("X") or ""\nvalue = payload.title or "n/a"\n'
+        assert find_output_defaults(source, "sample.py") == []
+
+
 class TestRepoIsClean:
     def test_scan_covers_known_files(self) -> None:
         """§IV: «набор не пуст» прошёл бы и при схлопывании glob'а до одного файла.
@@ -249,6 +310,20 @@ class TestRepoIsClean:
         assert not violations, (
             "subprocess call(s) decode the child's output with the OS code page — on "
             "Windows that loses the text on any Cyrillic byte (#364):\n  " + "\n  ".join(violations)
+        )
+
+    def test_no_output_defaults(self) -> None:
+        violations = [
+            violation
+            for path in _scanned_files()
+            for violation in find_output_defaults(
+                path.read_text(encoding="utf-8"), path.relative_to(_REPO).as_posix()
+            )
+        ]
+        assert not violations, (
+            "default on captured subprocess output — since #364 closed the cause, "
+            "`None` means the capture itself failed, so a default silently replaces a "
+            "real failure with emptiness (#410):\n  " + "\n  ".join(violations)
         )
 
     def test_subprocess_helpers_are_not_imported_by_name(self) -> None:

@@ -84,12 +84,29 @@ def has_closing_reference(view_json: str) -> bool:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
+    result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
+    # `None` при запрошенном захвате = захват сломался (#364: поток-читатель умер).
+    # Раньше здесь стоял `or ""` по каждому call-site — он подменял отказ пустотой,
+    # то есть «gh ничего не ответил», и скрипт шёл дальше по фантомным данным.
+    # Ненулевой returncode исключением НЕ является: вызывающий сам решает, и путь
+    # печати ошибки обязан доехать (#410).
+    if result.stdout is None or result.stderr is None:
+        # Код 2, как в сиблинге `verify_pr_link.py`: инфра-сбой обязан отличаться
+        # от вердикта. Код 1 здесь занят легитимными исходами («PR NOT linked»,
+        # «gh pr create failed»), и слить с ними сломанный захват значило бы
+        # повторить ту же ошибку в другой форме (#410).
+        print(
+            f"error: capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return result
 
 
 def _current_branch() -> str:
     result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
-    return (result.stdout or "").strip()
+    return result.stdout.strip()
 
 
 def _existing_pr(branch: str) -> dict[str, Any] | None:
@@ -104,16 +121,19 @@ def _existing_pr(branch: str) -> dict[str, Any] | None:
     result = _run(["gh", "pr", "list", "--head", branch, "--state", "open", "--json", "url,body"])
     if result.returncode != 0:
         return None
-    loaded: list[dict[str, Any]] = json.loads(result.stdout or "[]")
+    loaded: list[dict[str, Any]] = json.loads(result.stdout)
     return loaded[0] if loaded else None
 
 
 def _create_pr(title: str, body: str) -> str:
     result = _run(["gh", "pr", "create", "--base", "main", "--title", title, "--body", body])
     if result.returncode != 0:
-        print((result.stderr or "").strip() or "error: gh pr create failed", file=sys.stderr)
+        # `or "error: …"` здесь остаётся: это обработка ЛЕГИТИМНО пустого stderr
+        # (команда упала молча), а не воркэраунд отказа захвата — тот теперь
+        # ловится в `_run` (#410).
+        print(result.stderr.strip() or "error: gh pr create failed", file=sys.stderr)
         sys.exit(1)
-    lines = [ln for ln in (result.stdout or "").splitlines() if ln.strip()]
+    lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
     return lines[-1] if lines else ""
 
 
@@ -121,20 +141,50 @@ def _edit_pr_body(url: str, body: str) -> None:
     _run(["gh", "pr", "edit", url, "--body", body])
 
 
-def _closing_refs_json(url: str) -> str:
+def _closing_refs_json(url: str) -> str | None:
+    """JSON со ссылками закрытия, либо `None` — если прочитать не удалось.
+
+    Раньше проверки `returncode` не было и упавший `gh pr view` возвращал `"{}"` —
+    неотличимо от «PR не залинкован», из-за чего скрипт доходил до фейкового
+    вердикта `NOT linked`, а причина (сбой gh) не доходила до оператора вовсе.
+    Возврат `None`, а не `sys.exit`: этот вызов живёт **внутри retry-цикла**, и
+    транзиентный rate-limit не должен убивать прогон после того, как PR уже создан
+    — он должен стоить одной неуспешной попытки (#410)."""
     result = _run(["gh", "pr", "view", url, "--json", "closingIssuesReferences"])
-    return result.stdout or "{}"
+    if result.returncode != 0:
+        print(
+            f"warn: `gh pr view {url}` failed (rc={result.returncode}): "
+            f"{result.stderr.strip()} — linkage unread, retrying.",
+            file=sys.stderr,
+        )
+        return None
+    return result.stdout
 
 
 def _linkage_confirmed(url: str) -> bool:
     """Poll `closingIssuesReferences` until it reports a link (or attempts run out).
 
     Tolerates GitHub's async computation of the link after PR creation."""
+    last_read_ok = False
     for attempt in range(LINKAGE_ATTEMPTS):
-        if has_closing_reference(_closing_refs_json(url)):
+        refs = _closing_refs_json(url)
+        last_read_ok = refs is not None
+        if refs is not None and has_closing_reference(refs):
             return True
         if attempt < LINKAGE_ATTEMPTS - 1:
             time.sleep(LINKAGE_DELAY_S)
+    if not last_read_ok:
+        # Вердикт «ссылок нет» правомерен, только если ПОСЛЕДНЕЕ чтение удалось.
+        # Считать достаточным любое успешное чтение нельзя: первое штатно пустое —
+        # GitHub считает `closingIssuesReferences` асинхронно (#321), — поэтому
+        # «одно раннее успешное + серия сбоев» означает, что мы не наблюдали
+        # финального состояния вовсе, и `False` был бы вердиктом по данным,
+        # которых нет (#410).
+        print(
+            f"error: the final linkage read for {url} failed — linkage is unknown, not absent.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     return False
 
 

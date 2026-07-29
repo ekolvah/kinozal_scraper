@@ -27,24 +27,38 @@ def _load_new_branch_module() -> Any:
 
 
 class TestRunReturnsString(unittest.TestCase):
-    """`_run` must guarantee `.stdout` is a `str` whenever `capture=True`.
+    """`stdout is None` при запрошенном захвате — видимая аномалия, не пустая строка.
 
-    Pin-test for #109: under some Windows + git-bash + pipe-handle
-    combinations `subprocess.run(..., text=True, capture_output=True)` was
-    observed to return a CompletedProcess with `stdout=None` despite the
-    docs saying otherwise. The wrapper should normalize so callers can
-    rely on `.splitlines()` without an `if x is None` dance.
+    **Инверсия пин-теста #109 (#410).** Раньше `_run` нормализовал `None` в `""`,
+    потому что причина была неизвестна и `None` считался причудой платформы. #364
+    показал, что это симптом: поток-читатель умирал на `UnicodeDecodeError`,
+    оставляя буфер пустым. Причина закрыта явным `encoding` + гардом, поэтому
+    `None` теперь означает настоящий отказ захвата — и нормализация превратилась в
+    подмену отказа пустой строкой (§IV) в скрипте, который сам является гейтом.
     """
 
-    def test_stdout_normalized_when_subprocess_returns_none(self) -> None:
+    def test_none_stdout_raises_with_command_in_message(self) -> None:
+        new_branch = _load_new_branch_module()
+        fake_proc: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
+            args=["git"], returncode=0, stdout=None, stderr=None
+        )
+        with (
+            unittest.mock.patch("subprocess.run", return_value=fake_proc),
+            self.assertRaises(RuntimeError) as caught,
+        ):
+            new_branch._run(["git", "branch", "-vv"], capture=True)
+        self.assertIn("git branch -vv", str(caught.exception))
+
+    def test_none_stdout_is_legitimate_without_capture(self) -> None:
+        # `capture=False` — вывод идёт в консоль, `stdout is None` штатный исход.
+        # Падение здесь означало бы fail-fast-перекос: аномалии нет.
         new_branch = _load_new_branch_module()
         fake_proc: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
             args=["git"], returncode=0, stdout=None, stderr=None
         )
         with unittest.mock.patch("subprocess.run", return_value=fake_proc):
-            result = new_branch._run(["git", "branch", "-vv"], capture=True)
-        self.assertIsInstance(result.stdout, str)
-        self.assertEqual(result.stdout, "")
+            result = new_branch._run(["git", "fetch", "--prune"], capture=False)
+        self.assertIsNone(result.stdout)
 
     def test_stdout_unchanged_when_subprocess_returns_string(self) -> None:
         new_branch = _load_new_branch_module()
@@ -56,25 +70,30 @@ class TestRunReturnsString(unittest.TestCase):
         self.assertEqual(result.stdout, "  feature/x\n* main\n")
 
 
-class TestPruneGoneBranchesDoesNotCrashOnNoneStdout(unittest.TestCase):
-    """Reproduces the exact #109 crash: `_prune_gone_branches` reading
-    `output.splitlines()` after `_run(..., capture=True).stdout` came back
-    as `None`. After the fix it must finish without raising and report
-    `pruned: 0 merged branches`.
+class TestPruneGoneBranchesSurfacesNoneStdout(unittest.TestCase):
+    """Инверсия #109-пин-теста (#410): молчаливое продолжение → видимая аномалия.
+
+    Раньше тест требовал «must not raise» и отчёт `pruned: 0 merged branches`.
+    Проблема ровно в этом отчёте: он неотличим от честного «нечего удалять»,
+    хотя на деле список веток не был получен вообще. После #364 `None` при
+    запрошенном захвате означает сломанный захват — оператор должен это увидеть,
+    а не прочитать успокаивающую цифру.
     """
 
-    def test_no_crash_when_git_branch_stdout_is_none(self) -> None:
+    def test_none_stdout_from_git_branch_is_visible(self) -> None:
         new_branch = _load_new_branch_module()
 
         # First call: `git fetch --prune` (capture=False) → stdout None is
-        # expected and irrelevant.
-        # Second call: `git branch -vv` (capture=True) → stdout=None
-        # simulates the pathological pipe-handle case from #109.
+        # expected and irrelevant. Second call: `git branch -vv` (capture=True)
+        # → stdout=None now means the capture itself failed.
         def fake_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=None, stderr=None)
 
-        with unittest.mock.patch("subprocess.run", side_effect=fake_run):
-            new_branch._prune_gone_branches()  # must not raise
+        with (
+            unittest.mock.patch("subprocess.run", side_effect=fake_run),
+            self.assertRaises(RuntimeError),
+        ):
+            new_branch._prune_gone_branches()
 
 
 class TestPruneGoneBranchesParsesGoneEntries(unittest.TestCase):

@@ -11,7 +11,7 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 - **Утилиты**: нет `jq`/`sed`/`awk`. Парсить JSON/текст — pure-Python скриптами в `scripts/`.
 - **Пути**: `~/` не резолвится надёжно в shell-hook'ах и settings.json. Используй абсолютные (`C:/Users/<username>/...` или `$HOME/...` в bash).
 - **PowerShell ≠ bash**: `$null` (не `/dev/null`), `$env:VAR` (не `$VAR`), backtick для line continuation. Для POSIX-скриптов вызывай Bash tool явно.
-- **`subprocess.run`, захватывающий вывод**: всегда `encoding="utf-8"` — иначе Windows декодит вывод ребёнка кодовой страницей ОС, поток-читатель умирает на кириллице, и вывод теряется целиком (так `stdout=None` из #109 и получается). Энфорсится `tests/test_subprocess_encoding.py`; если ребёнок — Python, ему нужен ещё `PYTHONUTF8=1`/`-X utf8`, это гард не ловит (#364).
+- **`subprocess.run`, захватывающий вывод**: всегда `encoding="utf-8"`, и **никаких `or ""` на `stdout`/`stderr`** — `None` означает сломанный захват (поток-читатель умер на декодировании), и дефолт подменяет отказ пустотой. Оба правила энфорсит `tests/test_subprocess_encoding.py` (#364, #410). Если ребёнок — Python, ему нужен ещё `PYTHONUTF8=1`/`-X utf8`; это гард не ловит.
 - **Спорадические file-lock / AV-сканер** на длинных `git`/`pytest`: перед root-cause hunt — 1 retry. Если воспроизводится — тогда копай.
 
 ## Debugging

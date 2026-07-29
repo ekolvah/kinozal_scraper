@@ -90,7 +90,17 @@ def main() -> None:
         report = Path(tmp) / "red.xml"
         cmd = [sys.executable, "-m", "pytest", "--tb=no", "-q", f"--junitxml={report}", *paths]
         completed = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
-        stdout = (completed.stdout or "") + (completed.stderr or "")
+        if completed.stdout is None or completed.stderr is None:
+            # Захват сломался (#364). Код 2 — «гейт сломан», не 1: подменить это
+            # пустой строкой значило бы уйти в разбор отчёта без вывода pytest,
+            # и при провале печатать пустую диагностику (#410).
+            print(
+                f"check_red: capture failed for pytest (rc={completed.returncode}): "
+                f"stdout={completed.stdout!r} stderr={completed.stderr!r}",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        stdout = completed.stdout + completed.stderr
         try:
             ok, msg = evaluate_report(report.read_text(encoding="utf-8"))
         except (OSError, ValueError) as exc:
