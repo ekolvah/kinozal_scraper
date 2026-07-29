@@ -605,6 +605,18 @@ work-for-work (goal-function priority (2)).
   (`.claude/rules/*`), гард имеет смысл писать сразу на весь каталог, а не на один
   файл. Записано, чтобы «а почему нет теста на always-load» не переоткрыли.
 
+- **Z. Целостность relative-ссылок между `.md` гейтом не стережётся (#418).** Переезд
+  runtime-половины `ci.md` в `operations.md` перецелил 8 входящих указателей, половина
+  из которых — проза и комментарии в коде, а не markdown-ссылки. Гейта на «файл
+  существует + якорь резолвится» **нет**, и он сознательно не заведён здесь: это
+  отдельная логическая единица (запись в `CHECKS` + parity-строка в `ci.yml` + тесты +
+  цена на каждом прогоне), а не довесок к docs-PR. Важнее — **найденный инцидент им бы
+  и не ловился**: комментарий в `test_kinozal_pipeline.py` ссылался на `ci.md:435`, то
+  есть **по номеру строки**; файл существовал, якоря не было вовсе, и ссылка протухла
+  молча. Root cause того класса — сами line-number-ссылки, он снят заменой обеих таких
+  ссылок на якоря секций. Записано, чтобы будущий link-checker не обосновывали этим
+  инцидентом — он про другой класс.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no
@@ -622,5 +634,5 @@ work-for-work (goal-function priority (2)).
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
 | `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
 | Package import-resolution & repo layout | A module failing to resolve as `kinozal_scraper.X`, or source drifting back to a flat `src/*.py` layout | `test_package_importable.py::TestPackage` (all modules import as `kinozal_scraper.X`); `test_repo_layout.py::TestLayout`. (The #237 B1 empty-/nested-scan guard moved off the retired `test_check_headers.py` — [#253](https://github.com/ekolvah/kinozal_scraper/issues/253) replaced `check_headers.py` with ruff `D100`/`D104`/`D419`; the "mis-pointed/empty `src/` scanned nothing" failure mode is now subsumed by these two guards, which fire strictly harder — 17 hard-coded imports + layout-drift — than the old zero-file check) |
-| Telethon session rotation (mint a `StringSession`, set the secret, revoke the old session in the Telegram app) | Interactive login against live Telegram, performed by an operator roughly once per incident | **Scope-skip** (#386, replaces the `crypto.py` glue entry that left with the module): there is no automatable surface — the code side *is* covered (`require_env` rejects an empty secret, `TestTelethonReaderAuth` pins StringSession-only auth and a fail-fast on a revoked session). The recipe lives in [ci.md](ci.md); deliberately a doc snippet, not a script — a once-a-year human interactive is not the deterministic pipeline step "скрипты > инструкции" targets |
+| Telethon session rotation (mint a `StringSession`, set the secret, revoke the old session in the Telegram app) | Interactive login against live Telegram, performed by an operator roughly once per incident | **Scope-skip** (#386, replaces the `crypto.py` glue entry that left with the module): there is no automatable surface — the code side *is* covered (`require_env` rejects an empty secret, `TestTelethonReaderAuth` pins StringSession-only auth and a fail-fast on a revoked session). The recipe lives in [operations.md](operations.md#minting-a-new-telethon_session); deliberately a doc snippet, not a script — a once-a-year human interactive is not the deterministic pipeline step "скрипты > инструкции" targets |
 | `scripts/probe.py` — живой запрос к soldoutticketbox.com | Замер вероятности блокировки требует настоящего датацентрового IP и настоящего Cloudflare | **Scope-skip** (#396): живой запрос из теста и есть работа самого пробника в CI — дублировать его в pytest значило бы гонять сеть на каждом прогоне ради того, что и так меряется каждые 3 часа. Покрыты именно границы, где замер может тихо испортиться: одна попытка на замер (не 4), те же request-kwargs что у прода (`TestSharedRequestKwargs`), строка на **каждый** исход включая 200, разделение «HTTP-исход → 0» / «сбой инструмента → ≠0», expiry и оба пути (HTML + постер) |

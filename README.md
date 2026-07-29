@@ -29,7 +29,9 @@ The runnable pipelines live under `src/kinozal_scraper/` and are launched as
 `python -m kinozal_scraper.<module>` (e.g. `python -m kinozal_scraper.github_popular_pipeline`);
 the production schedule wires them in `.github/workflows/run-script.yml`.
 
-Configuration (env vars, secrets, CI workflows) is documented in [docs/architecture/ci.md](docs/architecture/ci.md).
+Env vars and secrets are documented in
+[docs/architecture/operations.md](docs/architecture/operations.md); the CI workflows and
+quality gates in [docs/architecture/ci.md](docs/architecture/ci.md).
 
 ## Architecture
 

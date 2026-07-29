@@ -1835,7 +1835,8 @@ class TestKinozalFacade(unittest.TestCase):
     def test_fetch_details_mirror_url_authenticates(self) -> None:
         # #317: a mirror-host (kinozal.guru) details URL fetched anonymously returns
         # HTTP 200 with the `Жанр:` block stripped (kinozal.guru gates HTML behind
-        # login → 302 login.php, ci.md:435) — a false success that fetch_listing's
+        # login → 302 login.php, pipeline.md § Kinozal mirror fallback) — a false
+        # success that fetch_listing's
         # exception-triggered failover never corrects, silently blinding the genre
         # filter. fetch_details MUST authenticate for mirror-host URLs.
         from kinozal_scraper.kinozal_pipeline import Kinozal
