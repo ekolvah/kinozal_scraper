@@ -322,6 +322,10 @@ only drifts). What `grep` *can't* tell you is where we **deliberately don't test
 that ledger lives here so a rejected-as-negative-ROI decision isn't silently re-opened as
 work-for-work (goal-function priority (2)).
 
+**Boundary with the other ledger:** "we didn't cover X with a test" → here. "We didn't adopt
+tool/rule Y" → [`ci.md`](ci.md#consciously-not-adopted) — as a line at its own gate's section
+when it has one, otherwise in that file's §Consciously not adopted (#419).
+
 **Rejected as negative-ROI (a test would only ever guard CI minutes, not correctness):**
 
 - **A. Structure drift — no *live* E2E for GitHub `new_popular` / Steam JSON.** Integration
@@ -616,6 +620,18 @@ work-for-work (goal-function priority (2)).
   молча. Root cause того класса — сами line-number-ссылки, он снят заменой обеих таких
   ссылок на якоря секций. Записано, чтобы будущий link-checker не обосновывали этим
   инцидентом — он про другой класс.
+
+- **AA. «Док не должен снова разрастись» гейтом не стережётся (#419).** Свёртка `ci.md`
+  (618 → ~410 строк) убрала накопленную археологию решений, у которой уже есть дом —
+  тела issue #255/#235/#396. Напрашивающийся анти-рецидив-гейт «файл не длиннее N строк»
+  отвергнут как **Goodhart**: под порогом ужимается формулировка, а не археология, то есть
+  гейт зелен ровно тогда, когда дефект замаскирован. Семантическое суждение «сколько здесь
+  прозы-обоснования, а сколько правила» — тот же класс, что детектор семантических дублей,
+  который репо сознательно не строит (`project-map.md`); детектор дал бы ложное покрытие
+  (§IV). **Настоящий анти-рецидив здесь — формат, а не правило:** в строку таблицы или
+  ledger'а пост-мортем физически не влезает, в свободную секцию — влезает. Формат > проза >
+  гейт. Записано, чтобы «а почему нет гейта на объём доков» не переоткрыли как
+  work-for-work.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](#what-does-not-get-tested-in-this-repo):**
 
