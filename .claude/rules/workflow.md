@@ -2,11 +2,10 @@
 
 **На какой вопрос отвечает этот файл:** какие процедурные правила обязательны при разработке
 (создание ветки, PR-дисциплина, labels, plan→implement, гейты, зависимости, architect-review).
-Это **канонический дом** операционных процедурных правил проекта (делегирован из
-[`docs/architecture/principles.md §Governance`](../../docs/architecture/principles.md); IA-policy —
-[`docs/architecture/project-map.md`](../../docs/architecture/project-map.md)). **Не добавляй сюда
-контент, не отвечающий на этот вопрос** (формулировки принципов §I–VII — в `principles.md`;
-git-запреты — в `.claude/settings.json` `permissions.deny`).
+**Канонический дом** этих правил (делегирован из
+[`principles.md §Governance`](../../docs/architecture/principles.md)). **Не добавляй сюда контент,
+не отвечающий на этот вопрос**: принципы §I–VII — в `principles.md`, git-запреты — в
+`.claude/settings.json` `permissions.deny`.
 
 Эти процедурные правила дополняют принципы §I–VII и связывают **наравне** с ними:
 
@@ -27,10 +26,9 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    merge+rebase round-trip). Permanent changes are still split.
 5. **Issues carry exactly one type-label** — the *type* of change lives in a
    label, **not** in the title (the title is a plain description). `gh issue
-   create` sets exactly one label off the **type axis** (a *closed* semantic
-   set of nine — spelling it out here is a spec of the axis, not a hard-coded
-   drifting list). The type-label is the creator's call; `/plan` never touches
-   labels (`commands/plan.md`). Pick it by this **first-match** tree:
+   create` sets exactly one label off the **type axis** below. The type-label is
+   the creator's call; `/plan` never touches labels (`commands/plan.md`). Pick it
+   by this **first-match** tree:
      1. Something is broken / current behaviour is wrong → **`bug`**.
      2. Changes user-visible behaviour or value: speed-only → **`perf`**;
         closes a vulnerability / hardening → **`security`**; otherwise →
@@ -42,10 +40,9 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
         (non-CI dev scripts, dep bumps, repo config) → **`chore`**.
    Example: `gh issue create --label refactor` (one, off the tree). Git *commit*
    messages keep their conventional prefixes (`feat(ci): …` — changelog/history
-   is a separate axis from the issue title). The full set of **non-type** labels
-   (`wontfix`, `duplicate`, `help wanted`, future area-labels) still lives in
-   `gh label list` (don't hard-code *those* here — they drift); the type axis
-   above is closed and canonical.
+   is a separate axis from the issue title). The type axis above is **closed and
+   canonical**; **non-type** labels (`wontfix`, `duplicate`, …) live in
+   `gh label list` — don't hard-code *those* here, they drift.
 6. **Pre-commit gate** — `python scripts/ci_check.py` runs ruff format +
    lint + pytest + mypy + pip-audit + lockfile drift. The `.githooks/pre-push`
    hook runs it automatically; do not bypass with `--no-verify`.
@@ -68,13 +65,11 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
    goal function is: minimise future bugfix/support → dev+runtime tokens →
    predictability. Trivial issues record an explicit `skipped: <reason>` —
    the gate guarantees the review is a *consciously-decided step*, not a
-   silently-forgotten one. **Rationale:** a plan-stage architect review on
-   2026-05-29 caught defects the first plan missed — a §IV silent-skip
-   (`try/except: return ""`), a §II mock-of-internal-logic in a golden test,
-   and runtime-token overspend (LLM per item vs. a cheap pre-filter). The
-   reviewer persona used to live in out-of-repo Claude memory and was
-   re-typed by hand and easily forgotten; codifying it in-repo + gating it
-   makes the review reproducible for any contributor (#150).
+   silently-forgotten one. **Rationale:** at plan stage the review catches
+   §IV silent-skips, §II mocks-of-internal-logic and runtime-token overspend
+   that the first draft of a plan misses; keeping the persona in-repo rather
+   than in out-of-repo agent memory makes it reproducible for any
+   contributor (#150).
 10. **Dedup check before issue creation** — before `gh issue create`, run
     `git fetch` and scan recently-merged PRs / recently-closed issues for the
     same topic (`git log --oneline origin/main -10`, `gh issue list --state
@@ -85,20 +80,15 @@ git-запреты — в `.claude/settings.json` `permissions.deny`).
     build (`docs/architecture/project-map.md`) — so a script wouldn't remove
     the human step and a gate doesn't pay off. `scripts/new_branch.py` only
     pulls fresh main at branch time, too late to catch the duplicate.
-    **Precedent:** #125 re-filed the `validate_issue_sections.py` UTF-8/cp1252
-    bug already fixed in merged PR #123 (`e1548385`, closing #122); the
-    duplicate had to be closed by hand.
+    **Precedent:** #125 — a re-file of an already-fixed bug, closed by hand.
 11. **Priority on issue creation** — an issue's priority is the **Priority**
     single-select field of GitHub Project #1 ("kinozal_scraper — backlog &
     priority") — **not** a label and **not** a roadmap emoji. When creating an
     issue the agent MUST **explicitly ask the user which priority** (High /
     Medium / Low), never guessing, then apply it with
     `python scripts/set_issue_priority.py <N> <High|Medium|Low>` (`N` = the bare
-    issue number, e.g. `351` — not an `issue-N` prefix) (the
-    Project/field/option IDs are hardcoded there, unit-tested — "Скрипты >
-    инструкции"; the mechanics used to live only in private agent memory, a
-    Memory↔repo violation). **Prose for the *ask*, script for the *apply*:**
-    the priority itself is a human judgement call (like #10's dedup topic
-    overlap) so it stays an interactive question; only the deterministic
-    Project-mutation is scripted. A gate on "issue filed without a priority"
-    is a possible follow-up, not built here.
+    issue number, e.g. `351` — not an `issue-N` prefix). The Project/field/option
+    IDs are hardcoded there and unit-tested: this mechanics belongs in a script,
+    never in prose or agent memory (#354). **Prose for the *ask*, script for the
+    *apply*:** the priority is a human judgement call, so it stays an interactive
+    question; only the Project-mutation is scripted.
