@@ -1,5 +1,19 @@
 # Gemini enrichment and quota strategy
 
+**Question this document answers:** how this project spends a **free-tier** LLM quota without
+going dark — the `Enricher` Protocol, model rotation and discovery, retry/backoff behaviour,
+where enrichment prompts live, what the `llm_call` observability record carries (tokens and
+latency), the `summary_ru` invariant, and how enrichment is plumbed into the pipelines. Quota is
+the axis: most decisions here exist because the budget is finite and a spent quota must degrade
+visibly, not silently (§IV).
+
+**Not here.** Which pipelines enrich and where enrichment sits in a run →
+[`runtime.md`](runtime.md) / [`pipeline.md`](pipeline.md). Prompt-injection and other
+LLM-specific threats → [`llm-security.md`](llm-security.md). API keys and their rotation →
+[`operations.md`](operations.md). Trailer picking — the eval-only LLM/embedding pickers are
+**not** in the prod hot path and live in
+[`pipeline.md`](pipeline.md#trailer-retrieval-and-selection-140-141-144).
+
 ## Enricher Protocol
 
 Defined in `gemini_enricher.py`:

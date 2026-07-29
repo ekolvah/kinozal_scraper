@@ -1,5 +1,18 @@
 # Pipeline architecture
 
+**Question this document answers:** how a single pipeline run is built and behaves — the
+extraction layers, the `extract_from_*` contracts and the `NormalizedItem` they produce, how a
+new source is added by config rather than code, the error policy, notification templates, macro
+expansion, trailer retrieval/selection, and **how fetching behaves** (HTML source config,
+kinozal's mirror fallback). Depth on one run, where [`runtime.md`](runtime.md) gives breadth
+over all of them.
+
+**Not here.** Which pipelines exist and which Protocols they share →
+[`runtime.md`](runtime.md). Sheets row schema and column invariants →
+[`storage.md`](storage.md). Gemini rotation/quota/prompts → [`gemini.md`](gemini.md). The
+credentials that switch the mirror fallback on, and everything else about operating the run →
+[`operations.md`](operations.md).
+
 ## Layers
 
 ```
