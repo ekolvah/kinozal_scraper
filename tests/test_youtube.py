@@ -102,6 +102,32 @@ class TestSearchCandidates:
             )
         ]
 
+    def test_html_entities_decoded(self) -> None:
+        # #412: YouTube отдаёт snippet HTML-escaped, а матчинг названия работает
+        # по токенам — `&#39;` превращается в токен `39`, `&amp;` в `amp`, и
+        # фраза рвётся (`Deadpool & Wolverine` не находит `Deadpool &amp;
+        # Wolverine`). Декодируем на границе протокола, а не в normalize_title.
+        client = _FakeClient(
+            [
+                (
+                    "Marvel",
+                    [
+                        _video_item(
+                            "v1",
+                            "Marvel&#39;s Spider-Man 2 &quot;Launch&quot; Trailer",
+                            description="Deadpool &amp; Wolverine",
+                            channelTitle="PlayStation &amp; Insomniac",
+                        )
+                    ],
+                )
+            ]
+        )
+        profile = FilmProfile(ru_title="Marvel Человек-Паук 2", original_title="", year=2025)
+        (candidate,) = search_candidates(client, profile)
+        assert candidate.title == 'Marvel\'s Spider-Man 2 "Launch" Trailer'
+        assert candidate.description == "Deadpool & Wolverine"
+        assert candidate.channel == "PlayStation & Insomniac"
+
     def test_pool_unions_ru_and_original_queries(self) -> None:
         # Ядро #315: RU-трейлер обязан оказаться в пуле рядом с англ., когда он есть.
         client = _FakeClient(

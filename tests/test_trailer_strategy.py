@@ -228,6 +228,38 @@ class TestHeuristicStrategy(unittest.TestCase):
         cands = [Candidate(video_id="d", title="Dune Official Trailer")]
         self.assertEqual(self._pick(film, cands).video_id, "d")
 
+    def test_edition_suffix_does_not_block_match(self) -> None:
+        # #412: у игровой раздачи оригинал несёт издание — `Marvel's Spider-Man 2
+        # (Digital Deluxe Edition)`. Токены `digital deluxe edition` в заголовке
+        # трейлера не встречаются никогда, поэтому полное название не матчится ни
+        # с одним из пяти официальных трейлеров, и пользователь получал §IV-маркер
+        # при непустом пуле (прогон 30421569845, pool=5).
+        film = FilmProfile(
+            ru_title="Marvel Человек-Паук 2",
+            original_title="Marvel's Spider-Man 2 (Digital Deluxe Edition)",
+            year=2025,
+        )
+        cands = [
+            Candidate(video_id="ps5", title="Marvel's Spider-Man 2 - Launch Trailer | PC Games")
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "ps5")
+
+    def test_base_variant_not_tried_when_full_title_matched(self) -> None:
+        # Гард на форму фикса (architect-review B3): базовая часть до скобки —
+        # НЕ дополнительный вариант матчинга, а fallback при пустом relevant.
+        # Иначе `Дюна (Часть вторая)` схлопывается до франшизы `Дюна`, а
+        # one-numeric-skip в `_title_tokens_in` пропускает её в «Дюна 2» — год не
+        # спасает (в заголовках трейлеров года обычно нет), и вместо честного
+        # маркера уходит чужая ссылка с confidence 0.9.
+        film = FilmProfile(
+            ru_title="Дюна (Часть вторая)", original_title="Dune: Part Two", year=None
+        )
+        cands = [
+            Candidate(video_id="right", title="Dune: Part Two | Official Trailer"),
+            Candidate(video_id="wrong", title="Дюна 2 — русский трейлер"),
+        ]
+        self.assertEqual(self._pick(film, cands).video_id, "right")
+
 
 if __name__ == "__main__":
     unittest.main()
