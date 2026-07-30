@@ -81,7 +81,7 @@
     the human step and a gate doesn't pay off. `scripts/new_branch.py` only
     pulls fresh main at branch time, too late to catch the duplicate.
     **Precedent:** #125 — a re-file of an already-fixed bug, closed by hand.
-11. **Priority on issue creation** — an issue's priority is the **Priority**
+11. **Priority** — an issue's priority is the **Priority**
     single-select field of GitHub Project #1 ("kinozal_scraper — backlog &
     priority") — **not** a label and **not** a roadmap emoji. When creating an
     issue the agent MUST **explicitly ask the user which priority** (High /
@@ -92,3 +92,16 @@
     never in prose or agent memory (#354). **Prose for the *ask*, script for the
     *apply*:** the priority is a human judgement call, so it stays an interactive
     question; only the Project-mutation is scripted.
+    **Which level to propose** (at creation or revision) — the agent proposes, the human
+    still decides. **First match wins:**
+      1. A bug that stops the pipeline or visibly hurts the user, or anything that fixes
+         **or improves** the agentic dev process (workflow, gates, slash-commands, dev
+         tooling) → **High**. Process ranks on a level with bugs because deferred process
+         work never happens: the project ends first.
+      2. Grows agentic-development competence off the roadmap without touching the dev
+         process → **Medium** (these carry the `agentic-skill` label today — a hint, not
+         the rule).
+      3. Everything else → **Low**: planned, not now. Includes a feature that fixes no
+         defect, and a small latent bug that blocks nobody.
+    Name the proposed level **and** the branch that matched; if two are genuinely
+    arguable, say so rather than pick silently.
