@@ -87,7 +87,10 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
   выражается append-only-дисциплина); **принятая запись не переписывается** — правятся опечатки и
   битые ссылки, а смена решения выражается новой записью, на которую старая ссылается вперёд;
   ориентир объёма — до ~200 строк, длинный файл вытесняет из контекста то, ради чего его открыли.
-  Структуру держит `tests/test_adr_records.py`.
+  Структуру держит `tests/test_adr_records.py`. **Что запись вообще завели — гейтит секция `## ADR`
+  в issue** (`REQUIRED_SECTIONS`): ссылка либо явное `none: <причина>`. Гейт не судит, достойно ли
+  решение записи — это cost-of-change суждение; он гарантирует, что вопрос **задан**, ровно как
+  `## Architect review` гарантирует не качество ревью, а его сознательность (#150).
 - **Формулировки принципов §I–VII** → канон в [`principles.md`](principles.md), ссылка по номеру
   (`architect-reviewer.md`, `implement.md`); **нумерацию не трогать**.
 - **Энфорс-факты** (git-запреты) → канон = `.claude/settings.json` `permissions.deny` (+ синхрон-тест
@@ -222,7 +225,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `.claude/rules/workflow.md` | Процедурные правила workflow (ветка/PR-дисциплина/labels/plan→implement/гейты) — канон, always-load | ✅ |
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
 | `.claude/rules/mindset.md` | Операционный mindset main-сессии: **канон цель-функции** (3 приоритета) + операционные токен-тактики main-сессии + указатели на §I,§IV,§V/workflow — always-load | ✅ |
-| `.claude/commands/plan.md` | Как структурировать issue-body под 7 required секций (вкл. architect-review) | ✅ |
+| `.claude/commands/plan.md` | Как структурировать issue-body под 8 required секций (вкл. architect-review и ADR) | ✅ |
 | `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings (coverage-first: градация, не фильтрация — #392); цель-функцию **читает из канона** `mindset.md §Цель-функция` (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |
 | `.claude/settings.json` | Что запрещено агенту (`permissions.deny`) — источник истины запретов, трекается | ✅ |
@@ -254,7 +257,7 @@ false-positive-by-design, для редких memory-записей цена п�
 
 | Файл | На какой вопрос отвечает |
 |---|---|
-| `scripts/validate_issue_sections.py` | Содержит ли issue все 7 required секций (gate `/plan` и `/implement`) |
+| `scripts/validate_issue_sections.py` | Содержит ли issue все 8 required секций (gate `/plan` и `/implement`); в т.ч. `ADR` — ссылка на запись либо явное `none: <причина>` |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
 | `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project #1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; вызывается агентом по правилу `workflow.md` #11 (спросил приоритет → скрипт). Механика переехала memory→repo (#351) |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |

@@ -28,6 +28,12 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     # (#150). Persona lives in `.claude/agents/architect-reviewer.md`; criteria in
     # `docs/architecture/principles.md`.
     "Architect review",
+    # Link to the MADR record this issue's decision lands in, or an explicit
+    # `none: <reason>`. Same shape and same rationale as `Architect review`: whether
+    # a decision *deserves* a record is a cost-of-change judgement no script can make,
+    # so the gate enforces that the question was **answered**, not that the answer is
+    # right (#426). Route and entry filter: `project-map.md` §Canonical-home.
+    "ADR",
 )
 MIN_CONTENT_CHARS = 5
 
