@@ -15,6 +15,8 @@ argument-hint: <issue-number>
 5. Повтори шаг 1. Если снова exit 1 — итерируй. Лимит 3 итерации, потом hand-off.
 6. На выходе: ссылка на issue + предложение `/implement #$ARGUMENTS`.
 
+Если план принимает решение с **высокой ценой разворота**, задевающее несколько модулей или доков, — его обоснование идёт записью MADR в `docs/adr/` (шаблон `docs/adr/template.md`, маршрут и cost-of-change фильтр — `project-map.md` §Canonical-home), и запись попадает в `## Docs to update`. Планка узкая намеренно: не каждое решение архитектурное.
+
 `## Test plan` должен содержать конкретные `tests/<file>.py::<Class>::<test>` — это контракт RED-шага.
 `## Docs to update` — список `.md` или явное «нет — behaviour не меняется».
 `## Architect review` — findings `architect-reviewer` либо `skipped: <причина>`; гейт не даёт `/implement` стартовать с пустой секцией.

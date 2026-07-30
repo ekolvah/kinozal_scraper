@@ -14,6 +14,7 @@ import json
 import re
 import subprocess
 import sys
+from collections.abc import Sequence
 
 REQUIRED_SECTIONS: tuple[str, ...] = (
     "Context / Why",
@@ -30,19 +31,33 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 )
 MIN_CONTENT_CHARS = 5
 
+# Открытие/закрытие fenced code block (CommonMark допускает и ``` и ~~~, и отступ).
+_FENCE = re.compile(r"^\s*(```|~~~)")
+
 
 def _split_by_h2(body: str) -> dict[str, str]:
+    """Секции по `## `, **вне** fenced code blocks.
+
+    Заголовок внутри ``` — часть примера, а не структура документа. Цена ошибки не
+    косметическая: фантомная секция с именем настоящей перезаписывает её содержимое
+    остатком кодового блока, и заполненная секция рапортуется пустой (#426, повод —
+    MADR-записи, где примеры разметки штатны).
+    """
     sections: dict[str, str] = {}
     current: str | None = None
     buf: list[str] = []
+    fenced = False
     for line in body.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
-        if match:
-            if current is not None:
-                sections[current.lower()] = "\n".join(buf).strip()
-            current = match.group(1)
-            buf = []
-            continue
+        if _FENCE.match(line):
+            fenced = not fenced
+        elif not fenced:
+            match = re.match(r"^##\s+(.+?)\s*$", line)
+            if match:
+                if current is not None:
+                    sections[current.lower()] = "\n".join(buf).strip()
+                current = match.group(1)
+                buf = []
+                continue
         if current is not None:
             buf.append(line)
     if current is not None:
@@ -50,10 +65,16 @@ def _split_by_h2(body: str) -> dict[str, str]:
     return sections
 
 
-def find_gaps(body: str) -> list[str]:
+def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
+    """Пустые/отсутствующие секции из `required`.
+
+    Набор — параметр, а не константа модуля: второй потребитель того же парсера —
+    гард MADR-записей (`tests/test_adr_records.py`) со своим списком h2. Форк парсера
+    завёл бы вторую реализацию «что такое пустая секция» (#426).
+    """
     sections = _split_by_h2(body)
     gaps: list[str] = []
-    for name in REQUIRED_SECTIONS:
+    for name in required:
         content = sections.get(name.lower())
         if content is None or len(content) < MIN_CONTENT_CHARS:
             gaps.append(name)

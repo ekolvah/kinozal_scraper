@@ -27,10 +27,14 @@ state-док может сослаться на решение, а не пере
 from __future__ import annotations
 
 import re
+from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
+import yaml
+
+from scripts.validate_issue_sections import find_gaps
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ADR_DIR = _REPO_ROOT / "docs" / "adr"
@@ -59,33 +63,78 @@ def _record_files() -> list[Path]:
 
 
 def _frontmatter_status(text: str) -> str | None:
-    """Значение `status` из YAML-frontmatter записи, либо `None`."""
-    raise NotImplementedError
+    """Значение `status` из YAML-frontmatter записи, либо `None`.
+
+    Парсер — `yaml`, как в `test_agent_frontmatter.py`: третью реализацию разбора
+    frontmatter в репо не заводим.
+    """
+    if not text.startswith("---\n"):
+        return None
+    end = text.find("\n---", 4)
+    if end == -1:
+        return None
+    data = yaml.safe_load(text[4:end])
+    if not isinstance(data, dict):
+        return None
+    status = data.get("status")
+    return status if isinstance(status, str) else None
 
 
 def _filename_problem(name: str) -> str | None:
     """Описание нарушения конвенции имени, либо `None`."""
-    raise NotImplementedError
+    if _RECORD_NAME.match(name):
+        return None
+    return (
+        f"имя '{name}' не по конвенции MADR `NNNN-slug-in-kebab-case.md`: номер — это адрес "
+        f"записи, по нему на неё ссылаются state-доки"
+    )
 
 
 def _status_problem(status: str | None) -> str | None:
     """Описание нарушения формы статуса, либо `None`. Резолв цели — не здесь."""
-    raise NotImplementedError
+    if status is None:
+        return (
+            "нет строкового `status` в YAML-frontmatter — по записи нельзя понять, действует "
+            "решение или отменено, а без этого ссылка на неё ничего не гарантирует"
+        )
+    if status in _STATIC_STATUSES or _SUPERSEDED_BY.match(status):
+        return None
+    return (
+        f"статус '{status}' вне закрытого набора {sorted(_STATIC_STATUSES)} и не имеет формы "
+        f"`superseded by ADR-NNNN` (канон набора — запись 0001)"
+    )
 
 
 def _superseded_target(status: str | None) -> str | None:
     """Номер записи, на которую указывает `superseded by`, либо `None`."""
-    raise NotImplementedError
+    if status is None:
+        return None
+    match = _SUPERSEDED_BY.match(status)
+    return match.group(1) if match else None
+
+
+def _dangling_superseded(status: str | None, known_numbers: frozenset[str]) -> str | None:
+    """Номер цели `superseded by`, которой нет среди записей, либо `None`.
+
+    Отдельной функцией, а не проверкой в теле теста: пока ни одна запись не отменена,
+    тест на реальном каталоге скипается, и без синтетики логика резолва не была бы
+    проверена **вовсе** — зелёный гейт по пустому множеству.
+    """
+    target = _superseded_target(status)
+    if target is None or target in known_numbers:
+        return None
+    return target
 
 
 def _missing_sections(text: str) -> list[str]:
     """Обязательные MADR-секции, которых в записи нет или которые пусты."""
-    raise NotImplementedError
+    return find_gaps(text, required=_REQUIRED_SECTIONS)
 
 
 def _duplicate_numbers(names: Sequence[str]) -> list[str]:
     """Номера, встретившиеся больше одного раза."""
-    raise NotImplementedError
+    numbers = [match.group(1) for name in names if (match := _RECORD_NAME.match(name))]
+    return sorted(number for number, count in Counter(numbers).items() if count > 1)
 
 
 class TestAdrCatalogue:
@@ -138,12 +187,11 @@ class TestAdrRecord:
 
     @pytest.mark.parametrize("path", _record_files(), ids=lambda p: p.name)
     def test_superseded_by_resolves_to_existing_record(self, path: Path) -> None:
-        target = _superseded_target(_frontmatter_status(path.read_text(encoding="utf-8")))
-        if target is None:
-            pytest.skip("запись не помечена superseded")
-        numbers = {p.name[:4] for p in _record_files()}
-        assert target in numbers, (
-            f"{path.name}: `superseded by ADR-{target}`, но записи с таким номером нет. "
+        known = frozenset(p.name[:4] for p in _record_files())
+        status = _frontmatter_status(path.read_text(encoding="utf-8"))
+        dangling = _dangling_superseded(status, known)
+        assert dangling is None, (
+            f"{path.name}: `superseded by ADR-{dangling}`, но записи с таким номером нет. "
             f"Висячая ссылка вперёд хуже отсутствия статуса: читатель считает решение "
             f"отменённым и не находит, чем"
         )
@@ -189,6 +237,12 @@ class TestRecordPredicates:
     def test_superseded_target_extracted(self) -> None:
         assert _superseded_target("superseded by ADR-0007") == "0007"
         assert _superseded_target("accepted") is None
+
+    def test_dangling_superseded_reported(self) -> None:
+        known = frozenset({"0001"})
+        assert _dangling_superseded("superseded by ADR-0007", known) == "0007"
+        assert _dangling_superseded("superseded by ADR-0001", known) is None
+        assert _dangling_superseded("accepted", known) is None
 
     def test_frontmatter_status_read(self) -> None:
         text = '---\nstatus: "accepted"\ndate: 2026-07-30\n---\n\n# Title\n'
