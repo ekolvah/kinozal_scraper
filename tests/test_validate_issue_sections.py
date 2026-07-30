@@ -69,6 +69,32 @@ class TestFindGaps:
         body = _full_body() + "\n## Extra\n\nNot required.\n"
         assert find_gaps(body) == []
 
+    def test_custom_required_set(self) -> None:
+        """Набор секций — параметр, а не константа модуля (#426).
+
+        Второй потребитель — гард MADR-записей (`tests/test_adr_records.py`): у него
+        свой список h2, но тот же парсер. Форкнуть парсер значило бы завести вторую
+        реализацию «что такое пустая секция» и разойтись с ней (§VII).
+        """
+        required = ("Context and Problem Statement", "Considered Options", "Decision Outcome")
+        body = _body_with(required[:2])
+        assert find_gaps(body, required=required) == ["Decision Outcome"]
+        assert find_gaps(_body_with(required), required=required) == []
+
+    def test_heading_inside_fenced_block_is_not_a_section(self) -> None:
+        """`## ` внутри ``` — часть примера, а не заголовок.
+
+        На issue-body не стреляло, но в MADR-записях примеры разметки вероятнее.
+        Цена ошибки не косметическая: фантомная секция с именем **настоящей**
+        перезаписывает её содержимое остатком кодового блока — заполненная секция
+        рапортуется пустой, и гейт врёт в обе стороны.
+        """
+        body = _full_body().replace(
+            "## Out of scope\n\nReal content для Out of scope which is long enough.\n",
+            "## Out of scope\n\nЦитата шаблона:\n\n```md\n## Context / Why\n```\n",
+        )
+        assert find_gaps(body) == []
+
 
 class TestArchitectReviewSection:
     """The `Architect review` gate (#150): every issue must carry the section,
