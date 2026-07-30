@@ -10,8 +10,9 @@ state-док может сослаться на решение, а не пере
 **Закрытый набор статусов — наша политика, а не MADR.** Апстрим отдаёт `status`
 свободной строкой («These are optional metadata elements»); без закрытого набора не
 выражается append-only-дисциплина (смена решения = новая запись со ссылкой вперёд,
-а не правка старой). Канон набора и правило входа в каталог — запись
-`docs/adr/0001-record-architecture-decisions.md`; здесь константа, которая ей подчинена.
+а не правка старой). Канон набора и правило входа в каталог — `project-map.md`
+§Canonical-home (**не** запись `0001`: политика меняется, а принятая запись — нет);
+здесь константа, которая канону подчинена.
 
 **Границы гарда, честно.** Проверки структурные: запись-заготовку с незаполненными
 `{placeholder}` из шаблона гард **не отличит** от настоящей — секции на месте, статус
@@ -80,6 +81,12 @@ def _frontmatter_status(text: str) -> str | None:
     return status if isinstance(status, str) else None
 
 
+def _record_number(name: str) -> str | None:
+    """Номер записи по имени файла, либо `None`, если имя не по конвенции."""
+    match = _RECORD_NAME.match(name)
+    return match.group(1) if match else None
+
+
 def _filename_problem(name: str) -> str | None:
     """Описание нарушения конвенции имени, либо `None`."""
     if _RECORD_NAME.match(name):
@@ -101,7 +108,7 @@ def _status_problem(status: str | None) -> str | None:
         return None
     return (
         f"статус '{status}' вне закрытого набора {sorted(_STATIC_STATUSES)} и не имеет формы "
-        f"`superseded by ADR-NNNN` (канон набора — запись 0001)"
+        f"`superseded by ADR-NNNN` (канон набора — `project-map.md` §Canonical-home)"
     )
 
 
@@ -133,7 +140,7 @@ def _missing_sections(text: str) -> list[str]:
 
 def _duplicate_numbers(names: Sequence[str]) -> list[str]:
     """Номера, встретившиеся больше одного раза."""
-    numbers = [match.group(1) for name in names if (match := _RECORD_NAME.match(name))]
+    numbers = [number for name in names if (number := _record_number(name))]
     return sorted(number for number, count in Counter(numbers).items() if count > 1)
 
 
@@ -187,7 +194,7 @@ class TestAdrRecord:
 
     @pytest.mark.parametrize("path", _record_files(), ids=lambda p: p.name)
     def test_superseded_by_resolves_to_existing_record(self, path: Path) -> None:
-        known = frozenset(p.name[:4] for p in _record_files())
+        known = frozenset(n for p in _record_files() if (n := _record_number(p.name)))
         status = _frontmatter_status(path.read_text(encoding="utf-8"))
         dangling = _dangling_superseded(status, known)
         assert dangling is None, (
@@ -214,7 +221,7 @@ class TestRecordPredicates:
             "0001-Capital.md",
             "no-number.md",
             "0001-trailing-.md",
-            "0001-record.txt",
+            "00001-five-digits.md",
         ],
     )
     def test_bad_filename_reported(self, name: str) -> None:

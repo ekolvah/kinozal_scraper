@@ -31,26 +31,28 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 )
 MIN_CONTENT_CHARS = 5
 
-# Открытие/закрытие fenced code block (CommonMark допускает и ``` и ~~~, и отступ).
-_FENCE = re.compile(r"^\s*(```|~~~)")
+# Открытие/закрытие fenced code block. По CommonMark маркер — ≥3 backtick'а либо ≥3
+# тильды с отступом ≤3 пробелов; закрывает блок маркер **того же символа** и не короче
+# открывающего. Считать любые три символа парными нельзя: вложенный ```` ```` ```` вокруг
+# ``` инвертировал бы состояние на закрывающей строке внутреннего блока.
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 
 
-def _split_by_h2(body: str) -> dict[str, str]:
-    """Секции по `## `, **вне** fenced code blocks.
-
-    Заголовок внутри ``` — часть примера, а не структура документа. Цена ошибки не
-    косметическая: фантомная секция с именем настоящей перезаписывает её содержимое
-    остатком кодового блока, и заполненная секция рапортуется пустой (#426, повод —
-    MADR-записи, где примеры разметки штатны).
-    """
+def _scan_sections(body: str, *, honor_fences: bool) -> tuple[dict[str, str], bool]:
+    """Секции по `## ` + флаг «остался незакрытый fence»."""
     sections: dict[str, str] = {}
     current: str | None = None
     buf: list[str] = []
-    fenced = False
+    fence: str | None = None
     for line in body.splitlines():
-        if _FENCE.match(line):
-            fenced = not fenced
-        elif not fenced:
+        marker = _FENCE.match(line) if honor_fences else None
+        if marker:
+            token = marker.group(1)
+            if fence is None:
+                fence = token
+            elif token[0] == fence[0] and len(token) >= len(fence):
+                fence = None
+        elif fence is None:
             match = re.match(r"^##\s+(.+?)\s*$", line)
             if match:
                 if current is not None:
@@ -62,6 +64,24 @@ def _split_by_h2(body: str) -> dict[str, str]:
             buf.append(line)
     if current is not None:
         sections[current.lower()] = "\n".join(buf).strip()
+    return sections, fence is not None
+
+
+def _split_by_h2(body: str) -> dict[str, str]:
+    """Секции по `## `, **вне** fenced code blocks.
+
+    Заголовок внутри ``` — часть примера, а не структура документа. Цена ошибки не
+    косметическая: фантомная секция с именем настоящей перезаписывает её содержимое
+    остатком кодового блока, и заполненная секция рапортуется пустой (#426).
+
+    **Незакрытый fence → откат к разбору без fence-логики.** Иначе одна непарная строка
+    с ``` съедала бы все секции ниже, и гейт рапортовал бы отсутствующими секции,
+    которые автор видит в body глазами. Из двух неточностей выбрана прежняя: она хотя бы
+    не режет то, что раньше проходило (§IV — врать в сторону «нет секции» дороже всего).
+    """
+    sections, unterminated = _scan_sections(body, honor_fences=True)
+    if unterminated:
+        return _scan_sections(body, honor_fences=False)[0]
     return sections
 
 

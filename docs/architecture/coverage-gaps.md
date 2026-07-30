@@ -10,17 +10,11 @@
 
 Every bug category in the [taxonomy](testing.md#bug-taxonomy) is covered by tests today (navigate to
 them with `grep` by module/feature name — there is no hand-curated per-category index, it
-only drifts). What `grep` *can't* tell you is where we **deliberately don't test** and why —
-that ledger lives here so a rejected-as-negative-ROI decision isn't silently re-opened as
-work-for-work (goal-function priority (2)).
+only drifts).
 
-**Which home a decision goes to — first match wins** (canon: `project-map.md` §Canonical-home):
-
-1. "we didn't cover X with a test" → **here**;
-2. "we didn't adopt tool/rule Y" → [`ci.md` §Consciously not adopted](ci.md#consciously-not-adopted);
-3. "an architectural decision with a high cost of reversal, spanning several modules or docs" →
-   a record in [`docs/adr/`](../adr/0001-record-architecture-decisions.md);
-4. anything else → no record at all: the issue/PR body stays its home.
+**What belongs here:** "we didn't cover X with a test". The other branches of the "which home a
+decision goes to" route — and the rule itself — live in
+[`project-map.md`](project-map.md) §Canonical-home.
 
 **Rejected as negative-ROI (a test would only ever guard CI minutes, not correctness):**
 
