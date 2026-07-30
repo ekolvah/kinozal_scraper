@@ -42,7 +42,7 @@ _EXPECTED_ALWAYS_LOAD = (
     _RULES_DIR / "workflow.md",
 )
 
-# Порог = достигнутое резом #375 + ~1 КБ запаса. Это **не** «сколько можно потратить»:
+# Порог = достигнутое резом #375 (19 703 B) + ~800 B запаса. Это **не** «сколько можно потратить»:
 # запас нужен, чтобы законная новая тактика не краснила CI с первой же строки, иначе
 # «осознанный бамп» выродится в рутинный штамп. Revisit-триггер: бамп ради текста, который
 # при чтении диффа оказывается нарративом «как мы к этому пришли», а не правилом, — такой
@@ -64,10 +64,20 @@ def _is_path_scoped(path: Path) -> bool:
     return bool(_FRONTMATTER_PATHS_KEY.search(_frontmatter(path.read_text(encoding="utf-8"))))
 
 
+def _rule_files() -> list[Path]:
+    """`rglob`, а не плоский `glob`, — как в `test_doc_headers.py` (#421).
+
+    Спека (`project-map.md` tier-таблица) пишет скоуп как `.claude/rules/*.md`, так что
+    плоский glob формально ей не противоречит. Но тогда два гейта на одном каталоге отвечали
+    бы на «что такое rules-файл» по-разному: будущий `.claude/rules/<sub>/x.md` попал бы под
+    header-гард и **не** попал бы под бюджет — то есть уехал бы из-под платы молча.
+    """
+    return sorted(_RULES_DIR.rglob("*.md"))
+
+
 def _always_load_files() -> list[Path]:
     """Набор **выводится**, а не перечисляется: новый always-load rule попадёт под бюджет сам."""
-    rules = [p for p in sorted(_RULES_DIR.glob("*.md")) if not _is_path_scoped(p)]
-    return [_ROOT_MEMORY, *rules]
+    return [_ROOT_MEMORY, *(p for p in _rule_files() if not _is_path_scoped(p))]
 
 
 def _normalized_size(path: Path) -> int:
@@ -117,7 +127,7 @@ class TestAlwaysLoadBudget:
         переедет или сменит скоуп, красный тест означает «фильтр больше нечем проверить»,
         а не «сломался бюджет».
         """
-        path_scoped = [p for p in sorted(_RULES_DIR.glob("*.md")) if _is_path_scoped(p)]
+        path_scoped = [p for p in _rule_files() if _is_path_scoped(p)]
         assert path_scoped, (
             "в `.claude/rules/` не осталось ни одного path-scoped файла — фильтр `paths:` "
             "больше ничем не проверяется, и его поломка прошла бы незаметно"
