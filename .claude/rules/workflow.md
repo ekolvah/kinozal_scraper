@@ -52,7 +52,7 @@
    authored via the project's local workflow: `/plan #N` writes a
    structured plan into the issue body (Context / Acceptance / Test plan /
    Implementation outline / Docs to update / Out of scope / Architect
-   review — canon набора секций: `REQUIRED_SECTIONS` в
+   review / ADR — canon набора секций: `REQUIRED_SECTIONS` в
    `scripts/validate_issue_sections.py`, эта проза ему подчинена), then
    `/implement #N` executes it with TDD red-green discipline.
    Trivial fixes (typos, single-line non-behavioural tweaks) may skip the

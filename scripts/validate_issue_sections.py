@@ -11,9 +11,11 @@ prints the list of gaps to stderr and exits 1. Consumed by `/plan` and
 from __future__ import annotations
 
 import json
-import re
 import subprocess
 import sys
+from collections.abc import Sequence
+
+from markdown_it import MarkdownIt
 
 REQUIRED_SECTIONS: tuple[str, ...] = (
     "Context / Why",
@@ -27,33 +29,58 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     # (#150). Persona lives in `.claude/agents/architect-reviewer.md`; criteria in
     # `docs/architecture/principles.md`.
     "Architect review",
+    # Link to the MADR record this issue's decision lands in, or an explicit
+    # `none: <reason>`. Same shape and same rationale as `Architect review`: whether
+    # a decision *deserves* a record is a cost-of-change judgement no script can make,
+    # so the gate enforces that the question was **answered**, not that the answer is
+    # right (#426). Route and entry filter: `project-map.md` §Canonical-home.
+    "ADR",
 )
 MIN_CONTENT_CHARS = 5
 
+_MD = MarkdownIt("commonmark")
+
 
 def _split_by_h2(body: str) -> dict[str, str]:
+    """Секции по `## `, разобранные CommonMark-парсером.
+
+    **Почему не regexp.** Markdown не регулярен: заголовок ли строка `## X`, зависит
+    от контекста — fenced code block, indented block, HTML-блок. Свой построчный
+    разбор здесь уже дал дефект: `## <имя обязательной секции>` внутри ``` создавал
+    вторую секцию с тем же ключом и перезаписывал настоящую остатком блока, после чего
+    заполненная секция рапортовалась пустой и `/implement` абортил на несуществующей
+    проблеме (#426). Догонять это заплатками — лестница без конца (первая заплата
+    сама внесла регресс на непарном fence), поэтому разбор отдан
+    [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — CommonMark-
+    реализации, уже присутствовавшей в дереве транзитивно. Побочная выгода: парсер
+    видит документ ровно так, как его отрендерит GitHub, — и `Текст` + `---` он тоже
+    считает h2, потому что GitHub считает.
+    """
+    lines = body.splitlines()
+    tokens = _MD.parse(body)
+    # (заголовок, строка начала самого заголовка, строка начала его содержимого)
+    heads: list[tuple[str, int, int]] = [
+        (tokens[i + 1].content.strip(), token.map[0], token.map[1])
+        for i, token in enumerate(tokens)
+        if token.type == "heading_open" and token.tag == "h2" and token.map
+    ]
     sections: dict[str, str] = {}
-    current: str | None = None
-    buf: list[str] = []
-    for line in body.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
-        if match:
-            if current is not None:
-                sections[current.lower()] = "\n".join(buf).strip()
-            current = match.group(1)
-            buf = []
-            continue
-        if current is not None:
-            buf.append(line)
-    if current is not None:
-        sections[current.lower()] = "\n".join(buf).strip()
+    for index, (title, _, content_start) in enumerate(heads):
+        content_end = heads[index + 1][1] if index + 1 < len(heads) else len(lines)
+        sections[title.lower()] = "\n".join(lines[content_start:content_end]).strip()
     return sections
 
 
-def find_gaps(body: str) -> list[str]:
+def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
+    """Пустые/отсутствующие секции из `required`.
+
+    Набор — параметр, а не константа модуля: второй потребитель того же парсера —
+    гард MADR-записей (`tests/test_adr_records.py`) со своим списком h2. Форк парсера
+    завёл бы вторую реализацию «что такое пустая секция» (#426).
+    """
     sections = _split_by_h2(body)
     gaps: list[str] = []
-    for name in REQUIRED_SECTIONS:
+    for name in required:
         content = sections.get(name.lower())
         if content is None or len(content) < MIN_CONTENT_CHARS:
             gaps.append(name)
@@ -99,6 +126,14 @@ def main() -> None:
     print(f"error: issue #{n} missing/empty sections:", file=sys.stderr)
     for g in gaps:
         print(f"  - {g}", file=sys.stderr)
+    # Самый частый способ «потерять» разом много секций — незакрытый ```: по CommonMark
+    # он поглощает остаток документа, и GitHub рендерит их серым кодом. Подсказка вместо
+    # эвристики-детектора: искать её самим значило бы снова угадывать намерение автора.
+    print(
+        "hint: если секции в body видны глазами — проверь незакрытый ``` выше них: "
+        "остаток документа становится кодовым блоком и на GitHub тоже",
+        file=sys.stderr,
+    )
     print("run `/plan #" + str(n) + "` to fill them", file=sys.stderr)
     sys.exit(1)
 

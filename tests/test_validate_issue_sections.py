@@ -8,6 +8,7 @@ import pytest
 from scripts.validate_issue_sections import (
     REQUIRED_SECTIONS,
     _fetch_body,
+    _split_by_h2,
     find_gaps,
 )
 
@@ -69,6 +70,63 @@ class TestFindGaps:
         body = _full_body() + "\n## Extra\n\nNot required.\n"
         assert find_gaps(body) == []
 
+    def test_custom_required_set(self) -> None:
+        """Набор секций — параметр, а не константа модуля (#426).
+
+        Второй потребитель — гард MADR-записей (`tests/test_adr_records.py`): у него
+        свой список h2, но тот же парсер. Форкнуть парсер значило бы завести вторую
+        реализацию «что такое пустая секция» и разойтись с ней (§VII).
+        """
+        required = ("Context and Problem Statement", "Considered Options", "Decision Outcome")
+        body = _body_with(required[:2])
+        assert find_gaps(body, required=required) == ["Decision Outcome"]
+        assert find_gaps(_body_with(required), required=required) == []
+
+    def test_heading_inside_fenced_block_is_not_a_section(self) -> None:
+        """`## ` внутри ``` — часть примера, а не заголовок.
+
+        На issue-body не стреляло, но в MADR-записях примеры разметки вероятнее.
+        Цена ошибки не косметическая: фантомная секция с именем **настоящей**
+        перезаписывает её содержимое остатком кодового блока — заполненная секция
+        рапортуется пустой, и гейт врёт в обе стороны.
+        """
+        body = _full_body().replace(
+            "## Out of scope\n\nReal content для Out of scope which is long enough.\n",
+            "## Out of scope\n\nЦитата шаблона:\n\n```md\n## Context / Why\n```\n",
+        )
+        assert find_gaps(body) == []
+        # Строки блока обязаны остаться в своей секции, а не потеряться по дороге.
+        assert "## Context / Why" in _split_by_h2(body)["out of scope"]
+
+    def test_unterminated_fence_swallows_the_rest_as_github_renders_it(self) -> None:
+        """Незакрытый ``` поглощает остаток документа — и это **верно**.
+
+        По CommonMark незакрытый блок идёт до конца, и GitHub отрендерит все секции
+        ниже серым кодом: их там действительно нет. Гейт, сообщающий «секций нет»,
+        поэтому не врёт, а называет реальную поломку body — в отличие от догадки,
+        которую пришлось бы городить, реши мы «восстановить» намерение автора.
+        Подсказку про незакрытый fence несёт сообщение об ошибке (`main`).
+        """
+        body = _full_body().replace(
+            "## Context / Why\n\nReal content для Context / Why which is long enough.\n",
+            "## Context / Why\n\nЗабыли закрыть:\n\n```md\n",
+        )
+        gaps = find_gaps(body)
+        assert "Context / Why" not in gaps  # сама секция открылась до fence
+        assert "Acceptance criteria" in gaps  # всё, что ниже, — содержимое блока
+
+    def test_setext_heading_counts_as_section(self) -> None:
+        """`Текст` + `---` — тоже h2: парсер видит документ как GitHub.
+
+        Regexp-версия такой заголовок не замечала, то есть заполненная через setext
+        секция считалась отсутствующей. Тест фиксирует не каприз markdown-it, а
+        совпадение гейта с тем, что видит человек в отрендеренной issue.
+        """
+        body = "\n".join(
+            f"{s}\n---\n\nReal content для {s} which is long enough.\n" for s in REQUIRED_SECTIONS
+        )
+        assert find_gaps(body) == []
+
 
 class TestArchitectReviewSection:
     """The `Architect review` gate (#150): every issue must carry the section,
@@ -85,6 +143,28 @@ class TestArchitectReviewSection:
         # an 8th section is later added (would not fail for the wrong reason).
         body = _body_with((*_LEGACY_SECTIONS, "Architect review"))
         assert "Architect review" not in find_gaps(body)
+
+
+class TestAdrSection:
+    """Гейт `## ADR` (#426): каждая issue несёт секцию — либо ссылку на запись
+    в `docs/adr/`, либо явное `none: <причина>`.
+
+    Точно тот же приём, что и с `Architect review` (#150), и по той же причине:
+    «нужна ли здесь запись» — суждение cost-of-change, скриптом не вычисляемое,
+    поэтому гейтится **наличие решения**, а не его правильность. Без секции шаг
+    оставался прозой в `plan.md`, а проза в длинном pipeline пропускается —
+    то, что «не забыть сделать X», обязано становиться exit-code'ом
+    (`mindset.md` §«Скрипты > инструкции»).
+    """
+
+    def test_adr_section_required(self) -> None:
+        # Все семь прежних секций заполнены, `ADR` нет → обязан быть gap.
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review"))
+        assert "ADR" in find_gaps(body)
+
+    def test_adr_section_filled_passes(self) -> None:
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review", "ADR"))
+        assert "ADR" not in find_gaps(body)
 
 
 class TestFetchBodyEncoding:

@@ -261,14 +261,14 @@ rules that are two ends of the same defect:
 **намеренно** обходят (`new_branch`'s `git branch -d`, которому позволено падать и потому нельзя
 через `check=True`-шов). Централизован только *инвариант* — здесь, в гарде: общий helper-модуль
 невозможен, корень репо никогда не на `sys.path` при `python scripts/foo.py`
-(см. [ledger](testing.md#consciously-accepted-coverage-gaps)).
+(см. [ledger](coverage-gaps.md)).
 
 **Ни ruff, ни bandit, ни pylint это не покрывают** — стандартного правила на `subprocess`-encoding
 нет ни у одного (ruff'ов `PLW1514` — про `open()`). Записано, чтобы прецедент «стандартные тулы >
 велосипеды» (#237) не переоткрывали против этого гарда. Второй предел — гард проверяет только
 **родительскую** сторону: дочерний Python всё равно пишет в кодовой странице ОС без
 `PYTHONUTF8=1` / `-X utf8`. Оба предела в
-[ledger'е принятых дыр](testing.md#consciously-accepted-coverage-gaps); само правило — канон в
+[ledger'е принятых дыр](coverage-gaps.md); само правило — канон в
 `CLAUDE.md` §Среда.
 
 `scripts/hooks.py` additionally passes `errors="replace"` — per-call-site decision for a tool
@@ -395,10 +395,9 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 
 ## Consciously not adopted
 
-**Что попадает сюда, а что — в ledger `testing.md`.** «Не взяли инструмент или правило» → сюда
-(либо строкой по месту своего гейта, если у него есть секция выше). «Не покрыли тестом X» →
-[`testing.md` § Consciously-accepted coverage gaps](testing.md#consciously-accepted-coverage-gaps).
-Эта секция — **только** для инструмента целиком, у которого своей секции-гейта нет.
+**Что попадает сюда:** «не взяли инструмент или правило Y» — и только инструмент целиком,
+у которого нет своей секции-гейта выше (иначе строкой по месту гейта). Остальные ветки маршрута
+«куда идёт решение» — [`project-map.md`](project-map.md) §Canonical-home, там его канон.
 
 - **`pre-commit` (#255) — no-go.** **Root reason:** каждый хук пинит версию тула через `rev:` и
   запускает его в **изолированном venv** — это второй источник версии тула помимо

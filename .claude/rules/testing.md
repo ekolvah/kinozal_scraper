@@ -31,6 +31,6 @@ paths:
 4. **Прогон** — `python -m pytest` инкрементально; перед коммитом `python scripts/ci_check.py`.
 5. **Сознательно отклонил покрытие** (новый scope-/cost-skip, live-E2E признан negative-ROI,
    parallel-режим — non-target) — запиши решение в ledger
-   [`testing.md#consciously-accepted-coverage-gaps`](../../docs/architecture/testing.md#consciously-accepted-coverage-gaps),
+   [`coverage-gaps.md`](../../docs/architecture/coverage-gaps.md),
    чтобы его не переоткрыли как work-for-work. Инвентаря «какой тест какой баг ловит» нет —
    навигация к тестам через `grep` по модулю, не через ручную таблицу.
