@@ -94,9 +94,9 @@
     question; only the Project-mutation is scripted.
     **Which level to propose** (at creation or revision) — the agent proposes, the human
     still decides. **First match wins:**
-      1. Blocks work now — a bug that stops the pipeline or visibly hurts the user, or a
-         defect/gap in the agentic dev process (workflow, gates, slash-commands, dev
-         scripts) → **High**. Process ranks level with bugs because deferred process work
+      1. A bug that stops the pipeline or visibly hurts the user, or anything that fixes
+         **or improves** the agentic dev process (workflow, gates, slash-commands, dev
+         tooling) → **High**. Process ranks level with bugs because deferred process work
          never happens: the project ends first.
       2. Grows agentic-development competence off the roadmap without changing the dev
          process, or unblocks such work → **Medium** (these carry the `agentic-skill`
