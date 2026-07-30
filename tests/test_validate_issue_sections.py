@@ -145,6 +145,28 @@ class TestArchitectReviewSection:
         assert "Architect review" not in find_gaps(body)
 
 
+class TestAdrSection:
+    """Гейт `## ADR` (#426): каждая issue несёт секцию — либо ссылку на запись
+    в `docs/adr/`, либо явное `none: <причина>`.
+
+    Точно тот же приём, что и с `Architect review` (#150), и по той же причине:
+    «нужна ли здесь запись» — суждение cost-of-change, скриптом не вычисляемое,
+    поэтому гейтится **наличие решения**, а не его правильность. Без секции шаг
+    оставался прозой в `plan.md`, а проза в длинном pipeline пропускается —
+    то, что «не забыть сделать X», обязано становиться exit-code'ом
+    (`mindset.md` §«Скрипты > инструкции»).
+    """
+
+    def test_adr_section_required(self) -> None:
+        # Все семь прежних секций заполнены, `ADR` нет → обязан быть gap.
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review"))
+        assert "ADR" in find_gaps(body)
+
+    def test_adr_section_filled_passes(self) -> None:
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review", "ADR"))
+        assert "ADR" not in find_gaps(body)
+
+
 class TestFetchBodyEncoding:
     def test_cyrillic_body_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cyrillic_body = "## Context / Why\n\nЭто кириллический контент с символом 0x81 в проблемной кодировке.\n"
