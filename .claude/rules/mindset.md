@@ -60,10 +60,6 @@ architect-review'ом на стадии плана, [`workflow.md`](workflow.md)
 - **Правки файлов — `Edit`/`Write`, не heredoc-скрипт** (`python - <<'PY'`): харнесс втягивает
   изменённый файл в контекст и держит его там до конца сессии.
 
-Длина и spawn откалиброваны по [migration guide 4.8 → Opus 5](https://platform.claude.com/docs/en/about-claude/models/migration-guide)
-(§«Re-tune length and verbosity prompts», §«Subagent spawning changed») — при смене модели
-перепроверять там же, не по памяти.
-
 **«Скрипты > инструкции»** — канон (дом здесь): детерминированный шаг любого multi-step workflow
 («проверь X», «убедись что Y», «извлеки Z») выноси в **скрипт с exit-code + unit-тесты на
 pure-функции**, а не в пункт прозы; запреты — через **deny-list / hook / branch protection**, не
