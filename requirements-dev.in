@@ -1,5 +1,9 @@
 detect-secrets
 import-linter
+# CommonMark parsing of issue bodies / ADR records in scripts/validate_issue_sections.py.
+# Was a transitive of rich; declared explicitly because we call its API directly (#426).
+# Keep this file ASCII: pip-compile reads it in the OS codepage and dies on Cyrillic.
+markdown-it-py
 mypy
 pip-audit
 pip-tools

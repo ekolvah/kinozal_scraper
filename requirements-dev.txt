@@ -186,6 +186,7 @@ license-expression==30.4.4
 markdown-it-py==4.2.0
     # via
     #   -c requirements.txt
+    #   -r requirements-dev.in
     #   rich
 mdurl==0.1.2
     # via

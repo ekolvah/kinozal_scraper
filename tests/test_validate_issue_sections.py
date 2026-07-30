@@ -98,32 +98,32 @@ class TestFindGaps:
         # Строки блока обязаны остаться в своей секции, а не потеряться по дороге.
         assert "## Context / Why" in _split_by_h2(body)["out of scope"]
 
-    def test_tilde_fence_also_hides_headings(self) -> None:
-        """`~~~` — равноправный маркер CommonMark, не декоративный вариант."""
-        body = _full_body().replace(
-            "## Out of scope\n\nReal content для Out of scope which is long enough.\n",
-            "## Out of scope\n\nЦитата:\n\n~~~md\n## Context / Why\n~~~\n",
-        )
-        assert find_gaps(body) == []
+    def test_unterminated_fence_swallows_the_rest_as_github_renders_it(self) -> None:
+        """Незакрытый ``` поглощает остаток документа — и это **верно**.
 
-    def test_mismatched_fence_marker_does_not_close_block(self) -> None:
-        """`~~~` не закрывает блок, открытый ```` ``` ````, и наоборот."""
-        body = _full_body().replace(
-            "## Out of scope\n\nReal content для Out of scope which is long enough.\n",
-            "## Out of scope\n\n```md\n~~~\n## Context / Why\n```\n",
-        )
-        assert find_gaps(body) == []
-
-    def test_unterminated_fence_falls_back_to_plain_split(self) -> None:
-        """Непарный ``` не должен «съедать» все секции ниже себя.
-
-        Одна забытая закрывающая строка иначе делает гейт лжецом в самую дорогую
-        сторону: он рапортует отсутствующими секции, которые автор видит в body
-        глазами, и `/implement` абортит без объяснимой причины (#426).
+        По CommonMark незакрытый блок идёт до конца, и GitHub отрендерит все секции
+        ниже серым кодом: их там действительно нет. Гейт, сообщающий «секций нет»,
+        поэтому не врёт, а называет реальную поломку body — в отличие от догадки,
+        которую пришлось бы городить, реши мы «восстановить» намерение автора.
+        Подсказку про незакрытый fence несёт сообщение об ошибке (`main`).
         """
         body = _full_body().replace(
             "## Context / Why\n\nReal content для Context / Why which is long enough.\n",
             "## Context / Why\n\nЗабыли закрыть:\n\n```md\n",
+        )
+        gaps = find_gaps(body)
+        assert "Context / Why" not in gaps  # сама секция открылась до fence
+        assert "Acceptance criteria" in gaps  # всё, что ниже, — содержимое блока
+
+    def test_setext_heading_counts_as_section(self) -> None:
+        """`Текст` + `---` — тоже h2: парсер видит документ как GitHub.
+
+        Regexp-версия такой заголовок не замечала, то есть заполненная через setext
+        секция считалась отсутствующей. Тест фиксирует не каприз markdown-it, а
+        совпадение гейта с тем, что видит человек в отрендеренной issue.
+        """
+        body = "\n".join(
+            f"{s}\n---\n\nReal content для {s} which is long enough.\n" for s in REQUIRED_SECTIONS
         )
         assert find_gaps(body) == []
 
