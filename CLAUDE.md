@@ -26,14 +26,13 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 
 ## PR Workflow
 
-Процедурные правила workflow (создание ветки `issue-N-*` через `scripts/new_branch.py`, PR-дисциплина, no-main-push / no-self-merge, one-PR-one-unit, labels, `/plan #N` → `/implement #N`, architect-review гейт) живут в **[`.claude/rules/workflow.md`](.claude/rules/workflow.md)** — это их канон (always-load). Здесь не дублируем.
+Процедурные правила workflow (ветка, PR-дисциплина, labels, `/plan #N` → `/implement #N`, гейты) — канон в **[`.claude/rules/workflow.md`](.claude/rules/workflow.md)** (always-load). Здесь не дублируем.
 
 ## Зависимости
 
-Канон правила — [`.claude/rules/workflow.md`](.claude/rules/workflow.md) #7 (pip-compile в том же
-коммите при изменении `requirements*.in`). **Правило сюда не дублировать.** Механика:
-`scripts/ci_check.py` ловит version-drift и пакеты в `.in` без pin в `.txt`; push без
-пересборки `.txt` = CI red.
+Канон — [`workflow.md`](.claude/rules/workflow.md) #7 (pip-compile в том же коммите при изменении
+`requirements*.in`). Механика: `scripts/ci_check.py` ловит version-drift и пакеты в `.in` без pin
+в `.txt`.
 
 ## Перед каждым коммитом
 
@@ -42,8 +41,6 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 
 ## Architecture decisions
 
-Key decisions recorded here; details in separate files to keep this file short.
-
-- **[Principles](docs/architecture/principles.md)** — source of truth: 6 core principles + quality gates + governance (operational workflow delegated to [`.claude/rules/workflow.md`](.claude/rules/workflow.md)). When this file conflicts with `principles.md`, `principles.md` wins.
-- [Project map](docs/architecture/project-map.md) — **полное оглавление навигации**: какой файл на какой вопрос отвечает (процесс + исходники + все deep-dive arch-доки `docs/architecture/*`) + где живёт какое знание (tier-модель + canonical-home). Отдельные доки сюда поштучно **не дублируем** — спускаемся через этот индекс.
+- **[Principles](docs/architecture/principles.md)** — source of truth: принципы §I–VII + quality gates + governance. При конфликте с этим файлом выигрывает `principles.md`.
+- [Project map](docs/architecture/project-map.md) — **полное оглавление навигации** (какой файл на какой вопрос отвечает) + IA-policy (tier-модель, canonical-home). Отдельные доки сюда поштучно **не дублируем** — спускаемся через этот индекс.
 - [Mindset](.claude/rules/mindset.md) — операционный режим агента (токен-тактики + указатели на цель-функцию/принципы/workflow), always-load
