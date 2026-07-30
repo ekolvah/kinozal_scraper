@@ -211,7 +211,7 @@ items) тоже выше квоты — сегодня спасает лишь �
 `scripts/eval_trailers.py` до мержа. **Gemini НЕ в hot path** — LLM(#142)/embeddings(#143)/
 TMDB(#329) остаются eval-стратегиями (осознанно вне прода: равный Hit при нулевой рантайм-
 стоимости vs Gemini-квота 04:00; coverage-следствие + open-world caveat —
-[`testing.md` gap-ledger N](testing.md#consciously-accepted-coverage-gaps)). Каст в прод-профиль не тянем
+[gap-ledger N](coverage-gaps.md)). Каст в прод-профиль не тянем
 (RU-приоритет на языке заголовка; per-item details-фетч ради каст-тай-брейка отложен — и #377
 закрыт как wontfix: замер #359 показал, что ничьи, которые каст должен был разрывать, безвредны).
 

@@ -199,7 +199,7 @@ A PR MAY merge only when:
   config rules get a unit test; new pipeline orchestration gets a
   Protocol-doubles test.
 - A newly *rejected* coverage decision (a consciously-accepted gap, a scope-/cost-skip)
-  is recorded in [testing.md](testing.md#consciously-accepted-coverage-gaps) so it isn't
+  is recorded in [coverage-gaps.md](coverage-gaps.md) so it isn't
   silently re-litigated — there is no auto-generated coverage inventory to update.
 - The `Claude code review` workflow has commented on the PR (status sticky
   comment present); a hard block on its verdict is not enforced, but

@@ -18,7 +18,7 @@
 confidence). Переформулировку фильтра другими словами («be selective», «only report
 what matters») exit-code не поймает — семантику промпта скриптом не проверить; её
 держат проза `docs/architecture/ci.md` и architect-review. Ledger
-`docs/architecture/testing.md#consciously-accepted-coverage-gaps` не пополняется:
+`docs/architecture/coverage-gaps.md` не пополняется:
 ограничена глубина покрытия, а не отклонено покрытие.
 
 Это **cloud-половина** модельного пиннинга. Локальные агенты

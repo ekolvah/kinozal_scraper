@@ -21,7 +21,7 @@ None`, то есть **`stdout is None`**. Отсюда грабля #109 («м�
 на памяти автора, по канону `mindset.md` («скрипты > инструкции») крепится exit-code'ом.
 
 **Границы гарда — реальные, не отговорки** (полный разбор с причинами — ledger
-`docs/architecture/testing.md#consciously-accepted-coverage-gaps`):
+`docs/architecture/coverage-gaps.md`):
 
 - **Половина ребёнка не покрывается.** `encoding` у родителя — только половина
   контракта: дочерний Python пишет в pipe своей ANSI-кодировкой, если не запущен с

@@ -24,7 +24,7 @@ coverage-first контракта + отсутствие снятых форму
 ловится — **семантическая перефразировка** фильтра («будь избирателен», «пиши
 только про важное»): её exit-code не проверяет ни здесь, ни в #374. Эта остаточная
 дыра записана в ledger
-[`testing.md#consciously-accepted-coverage-gaps`](../docs/architecture/testing.md#consciously-accepted-coverage-gaps),
+[`coverage-gaps.md`](../docs/architecture/coverage-gaps.md),
 чтобы отказ не переоткрыли как work-for-work.
 
 **Два разных скоупа — это не небрежность (#407).** Инварианты frontmatter
