@@ -92,3 +92,16 @@
     never in prose or agent memory (#354). **Prose for the *ask*, script for the
     *apply*:** the priority is a human judgement call, so it stays an interactive
     question; only the Project-mutation is scripted.
+    **Which level to propose** (at creation or revision) — the agent proposes, the human
+    still decides. **First match wins:**
+      1. Blocks work now — a bug that stops the pipeline or visibly hurts the user, or a
+         defect/gap in the agentic dev process (workflow, gates, slash-commands, dev
+         scripts) → **High**. Process ranks level with bugs because deferred process work
+         never happens: the project ends first.
+      2. Grows agentic-development competence off the roadmap without changing the dev
+         process, or unblocks such work → **Medium** (these carry the `agentic-skill`
+         label today — a hint, not the rule).
+      3. Everything else → **Low**: planned, not now. Includes a feature that fixes no
+         defect, and a small latent bug that blocks nobody.
+    Name the proposed level **and** the branch that matched; if two are genuinely
+    arguable, say so rather than pick silently.
