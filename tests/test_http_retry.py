@@ -25,6 +25,7 @@ import requests
 from _http_doubles import make_json_response, make_response
 from curl_cffi.requests.exceptions import HTTPError as CurlHTTPError
 from curl_cffi.requests.models import Response as CurlResponse
+
 from kinozal_scraper.http_retry import (
     ANTIBOT_TRANSIENT_CODES,
     API_TRANSIENT_CODES,
