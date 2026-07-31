@@ -25,9 +25,10 @@ backtick'ами (`` `file.md#anchor` `` — так её и держат `project
 **Скоуп — `git ls-files`, а не обход файловой системы.** `.claude/worktrees/` gitignored
 и содержит полные копии репо со старыми доками: `rglob` дал бы красный локально и зелёный
 в CI. Скоуп производен от индекса git, поэтому следующий `.md` попадает под инвариант
-автоматически. Существование цели тоже сверяется **с индексом**, а не с ФС: `Path.exists()`
-на Windows регистронезависим, и ссылка `Pipeline.md#…` прошла бы локально, чтобы упасть в
-CI на Linux, — тот же local-green/CI-red раскол, ради которого выбран `git ls-files`.
+автоматически. Существование цели тоже сверяется **с индексом** и **лексически** (см.
+`resolve_target`): любое обращение к ФС — `Path.exists()`, `Path.resolve()` — на Windows
+регистронезависимо, и ссылка `Pipeline.md#…` прошла бы локально, чтобы упасть в CI на
+Linux, — тот же local-green/CI-red раскол, ради которого выбран `git ls-files`.
 
 **Границы гарда, честно.** Ловятся *нерезолвящиеся* ссылки, но не
 *неверные-но-резолвящиеся*: указатель на существующий файл, переставший быть домом темы
@@ -40,6 +41,7 @@ CI на Linux, — тот же local-green/CI-red раскол, ради кот�
 
 from __future__ import annotations
 
+import posixpath
 import re
 import subprocess
 from collections.abc import Callable, Iterable
@@ -129,28 +131,43 @@ def link_targets(markdown: str) -> list[str]:
     return targets
 
 
+def resolve_target(target: str, source: str) -> tuple[str, str]:
+    """`(путь цели относительно корня репо, якорь)` — **чисто лексически**.
+
+    Ни `Path.resolve()`, ни `os.path.realpath`: на Windows они канонизируют регистр
+    существующего пути, и ссылка `Pipeline.md#…` сравнилась бы с `pipeline.md` как
+    равная — зелено локально, красно в CI на Linux. `posixpath.normpath` схлопывает
+    `..` не трогая ФС, и сравнение остаётся регистрозависимым на любой платформе.
+    """
+    path_part, _, anchor = target.partition("#")
+    if not path_part:
+        return source, anchor
+    return posixpath.normpath(posixpath.join(posixpath.dirname(source), path_part)), anchor
+
+
 def target_problem(
     target: str,
-    source: Path,
-    is_tracked: Callable[[Path], bool],
-    anchors_for: Callable[[Path], set[str]],
+    source: str,
+    is_tracked: Callable[[str], bool],
+    anchors_for: Callable[[str], set[str]],
 ) -> str | None:
     """Что не так с указателем `target` из файла `source`, или `None` если всё цело.
 
-    `is_tracked` / `anchors_for` — инъекции, чтобы предикат был проверяем на синтетике.
-    `is_tracked` принимает и каталоги, и не-`.md`: доки ссылаются на `docs/adr/` и на `.py`.
+    Пути — repo-relative posix-строки. `is_tracked` / `anchors_for` — инъекции, чтобы
+    предикат был проверяем на синтетике. `is_tracked` принимает и каталоги, и не-`.md`:
+    доки ссылаются на `docs/adr/` и на `.py`.
     """
-    path_part, _, anchor = target.partition("#")
-    dest = (source.parent / path_part).resolve() if path_part else source
+    dest, anchor = resolve_target(target, source)
     if not is_tracked(dest):
-        return f"нет такого файла: {path_part}"
-    if anchor and dest.suffix == ".md" and anchor not in anchors_for(dest):
-        return f"нет такого якоря: #{anchor} в {path_part or source.name}"
+        return f"нет такого файла: {dest}"
+    if anchor and dest.endswith(".md") and anchor not in anchors_for(dest):
+        return f"нет такого якоря: #{anchor} в {dest}"
     return None
 
 
-def _tracked_files() -> list[Path]:
-    """Все отслеживаемые пути. `-z`: git C-квотит нелатинские имена в обычном режиме."""
+@lru_cache(maxsize=1)
+def _tracked_files() -> tuple[str, ...]:
+    """Отслеживаемые пути (repo-relative posix). `-z`: иначе git C-квотит нелатиницу."""
     result = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=_REPO_ROOT,
@@ -159,47 +176,46 @@ def _tracked_files() -> list[Path]:
         encoding="utf-8",
         check=True,
     )
-    return [_REPO_ROOT / name for name in result.stdout.split("\0") if name]
+    return tuple(name for name in result.stdout.split("\0") if name)
 
 
 @lru_cache(maxsize=1)
-def _tracked_paths() -> frozenset[Path]:
+def _tracked_paths() -> frozenset[str]:
     """Файлы **и** их каталоги — цель ссылки бывает и тем, и другим."""
-    paths: set[Path] = set()
+    paths: set[str] = set()
     for file in _tracked_files():
-        paths.add(file.resolve())
-        paths.update(parent.resolve() for parent in file.parents if _REPO_ROOT in parent.parents)
+        paths.add(file)
+        directory = posixpath.dirname(file)
+        while directory:
+            paths.add(directory)
+            directory = posixpath.dirname(directory)
     return frozenset(paths)
 
 
-def _tracked_docs() -> list[Path]:
-    return [path for path in _tracked_files() if path.suffix == ".md"]
-
-
-def _is_tracked(path: Path) -> bool:
-    return path.resolve() in _tracked_paths()
+def _tracked_docs() -> list[str]:
+    return [name for name in _tracked_files() if name.endswith(".md")]
 
 
 @cache
-def _anchors_for(path: Path) -> set[str]:
-    return anchors_of(path.read_text(encoding="utf-8"))
+def _anchors_for(name: str) -> set[str]:
+    return anchors_of((_REPO_ROOT / name).read_text(encoding="utf-8"))
 
 
-def _problems(docs: Iterable[Path]) -> list[str]:
+def _problems(docs: Iterable[str]) -> list[str]:
     found: list[str] = []
     for doc in docs:
-        for target in link_targets(doc.read_text(encoding="utf-8")):
-            problem = target_problem(target, doc, _is_tracked, _anchors_for)
+        text = (_REPO_ROOT / doc).read_text(encoding="utf-8")
+        for target in link_targets(text):
+            problem = target_problem(target, doc, _tracked_paths().__contains__, _anchors_for)
             if problem:
-                found.append(f"{doc.relative_to(_REPO_ROOT).as_posix()} -> {target}: {problem}")
+                found.append(f"{doc} -> {target}: {problem}")
     return found
 
 
 class TestDocLinks:
     @pytest.mark.parametrize("directory", _EXPECTED_SCOPE_DIRS)
     def test_scope_covers_expected_dirs(self, directory: str) -> None:
-        docs = {doc.relative_to(_REPO_ROOT).as_posix() for doc in _tracked_docs()}
-        assert any(name.startswith(f"{directory}/") for name in docs), (
+        assert any(name.startswith(f"{directory}/") for name in _tracked_docs()), (
             f"в скоуп гарда не попал ни один `.md` из {directory} — либо каталог переехал, "
             f"либо `git ls-files` вернул не то. Пустой скоуп зелёный, и это ровно тот "
             f"вакуум, против которого гард написан (§IV)"
@@ -229,32 +245,41 @@ class TestLinkPredicates:
     def test_slug_matches_github_rules(self, heading: str, expected: str) -> None:
         assert slugify(_inline_text(_MD.parse(f"## {heading}")[1])) == expected
 
-    def test_missing_file_is_reported(self, tmp_path: Path) -> None:
-        source = tmp_path / "a.md"
-        tracked = {source}
-        assert target_problem("nope.md", source, tracked.__contains__, lambda _: set()) is not None
+    @pytest.mark.parametrize(
+        ("target", "source", "expected"),
+        [
+            ("../adr/0001.md", "docs/architecture/x.md", "docs/adr/0001.md"),
+            ("y.md#a", "docs/architecture/x.md", "docs/architecture/y.md"),
+            ("adr/", "docs/x.md", "docs/adr"),
+            ("#a", "docs/x.md", "docs/x.md"),
+        ],
+    )
+    def test_target_resolves_lexically(self, target: str, source: str, expected: str) -> None:
+        assert resolve_target(target, source)[0] == expected
 
-    def test_untracked_but_existing_file_is_reported(self, tmp_path: Path) -> None:
-        """Сверка идёт с индексом git, а не с ФС.
+    def test_missing_file_is_reported(self) -> None:
+        tracked = {"a.md"}.__contains__
+        assert target_problem("nope.md", "a.md", tracked, lambda _: set()) is not None
 
-        Файл на диске есть, в индексе — нет: так выглядит и gitignored-копия репо, и
-        ссылка `Pipeline.md#…`, которую регистронезависимый `Path.exists()` пропустил бы
-        локально, чтобы уронить CI на Linux.
+    def test_case_mismatch_is_reported(self) -> None:
+        """Регистр значим на любой платформе.
+
+        `Path.resolve()` на Windows подставил бы каноничный регистр существующего файла,
+        и `B.md` прошло бы локально, чтобы упасть в CI на Linux — тот самый раскол, ради
+        которого сверка идёт с индексом git и **лексически**.
         """
-        source = tmp_path / "a.md"
-        (tmp_path / "ghost.md").write_text("# G", encoding="utf-8")
-        assert target_problem("ghost.md", source, {source}.__contains__, lambda _: set())
+        tracked = {"a.md", "b.md"}.__contains__
+        assert target_problem("B.md", "a.md", tracked, lambda _: set()) is not None
+        assert target_problem("b.md", "a.md", tracked, lambda _: set()) is None
 
-    def test_missing_anchor_is_reported(self, tmp_path: Path) -> None:
-        source = tmp_path / "a.md"
-        tracked = {source, tmp_path / "b.md"}.__contains__
-        assert target_problem("b.md#gone", source, tracked, lambda _: {"real"}) is not None
-        assert target_problem("b.md#real", source, tracked, lambda _: {"real"}) is None
+    def test_missing_anchor_is_reported(self) -> None:
+        tracked = {"a.md", "b.md"}.__contains__
+        assert target_problem("b.md#gone", "a.md", tracked, lambda _: {"real"}) is not None
+        assert target_problem("b.md#real", "a.md", tracked, lambda _: {"real"}) is None
 
-    def test_directory_target_is_valid(self, tmp_path: Path) -> None:
-        source = tmp_path / "a.md"
-        tracked = {source, tmp_path / "adr"}.__contains__
-        assert target_problem("adr/", source, tracked, lambda _: set()) is None
+    def test_directory_target_is_valid(self) -> None:
+        tracked = {"docs/x.md", "docs/adr"}.__contains__
+        assert target_problem("adr/", "docs/x.md", tracked, lambda _: set()) is None
 
     def test_link_inside_code_fence_is_not_a_link(self) -> None:
         assert link_targets("```\n[x](ghost.md)\n```\n") == []
