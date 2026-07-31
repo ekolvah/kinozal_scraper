@@ -1,5 +1,4 @@
-"""Tests for the `github_trending` source, driven end-to-end through Protocol
-doubles.
+"""Tests for the `github_trending` source, driven end-to-end through doubles.
 
 Covers extraction, cross-source dedupe against the shared tab, the `metric`
 column semantics pinned by `storage.md`, and visibility when the Russian

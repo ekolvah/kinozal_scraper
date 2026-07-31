@@ -4,13 +4,17 @@ The bespoke `scripts/check_headers.py` (module-docstring presence gate) was
 replaced by ruff `D100` (missing-docstring-in-public-module), `D104`
 (missing-docstring-in-public-package — covers `__init__.py`, which D100 does
 NOT) and `D419` (empty-docstring — the `doc.strip()` half the script enforced).
-Together they reproduce the script's contract "every source .py under src,
-including `__init__.py`, carries a *non-empty* module docstring".
+Together they reproduce the script's contract "every public source .py carries a
+*non-empty* module docstring" — over `src/` and `scripts/`, and since #433 over
+`tests/` too.
 
 This guard asserts the rules stay *active*: present in the effective select,
 not globally ignored, and not neutralised via `per-file-ignores` under **any**
 pattern — the gate has no legitimate per-file exemption left (#433 revoked the
-`tests/**` one). Mirrors `test_ruff_silence_rules.py` (#231) /
+`tests/**` one). Every branch reads the `extend-` twin of its table
+(`extend-ignore`, `extend-per-file-ignores`), which ruff honours equally: after
+#433 a re-exemption through the twin is exactly the vector this guard exists to
+close. Mirrors `test_ruff_silence_rules.py` (#231) /
 `test_complexity_ratchet.py` (#233) / `test_ruff_dead_code_rule.py` (#235) — it
 pins *enforcement*, not mere declaration, so a future agent cannot quietly drop
 the gate through any disable vector. It deliberately does not re-run ruff green
@@ -40,6 +44,15 @@ def _lint_config() -> dict[str, Any]:
     return cast("dict[str, Any]", data["tool"]["ruff"]["lint"])
 
 
+def _merged_per_file_ignores(lint: dict[str, Any]) -> dict[str, list[str]]:
+    """`per-file-ignores` plus its `extend-` twin — ruff honours both."""
+    merged: dict[str, list[str]] = {}
+    for table in ("per-file-ignores", "extend-per-file-ignores"):
+        for path, codes in lint.get(table, {}).items():
+            merged.setdefault(path, []).extend(codes)
+    return merged
+
+
 class TestRuffDocstringRule:
     def test_docstring_rule_active(self) -> None:
         lint = _lint_config()
@@ -52,7 +65,7 @@ class TestRuffDocstringRule:
         )
 
         # (b) not neutralised via global ignore.
-        ignored = set(lint.get("ignore", []))
+        ignored = set(lint.get("ignore", [])) | set(lint.get("extend-ignore", []))
         assert not (_DISABLE_TOKENS & ignored), (
             "module-docstring codes must not appear in ruff `ignore` (silently "
             f"disables the #253 gate): {_DISABLE_TOKENS & ignored}"
@@ -62,7 +75,7 @@ class TestRuffDocstringRule:
         # path-coverage probe against sentinel paths (#433): a narrow
         # re-exemption like "tests/test_x.py" = ["D100"] would slip past one,
         # and no legitimate per-file exemption is left to carve room for.
-        per_file = lint.get("per-file-ignores", {})
+        per_file: dict[str, list[str]] = _merged_per_file_ignores(lint)
         leaked = {
             path: sorted(_DISABLE_TOKENS & set(codes))
             for path, codes in per_file.items()
