@@ -24,9 +24,9 @@ Steps, in order:
 6. **kinozal_pipeline.py** — Kinozal movies
 7. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
 
-### Pipeline-step isolation (#245)
+### Pipeline-step isolation
 
-**Root cause it fixes:** GitHub Actions steps carry an *implicit* `if: success()`. So a
+**Root cause it fixes (#245):** GitHub Actions steps carry an *implicit* `if: success()`. So a
 single step's `exit 1` used to cascade into **skipping every later step** — a transient
 third-party 403 in `soldout_pipeline` skipped `kinozal_pipeline` and suppressed movie
 delivery for that run ([run 28493805028](https://github.com/ekolvah/kinozal_scraper/actions/runs/28493805028)).
@@ -70,7 +70,7 @@ fails after an earlier one already set the marker, the backstop is the **red run
 scope). `telegram_summarizer` keeps its own richer `deliver_results` alert path; `report_failures`
 and the marker helpers share one canonical home in `alerting.py`.
 
-## Soldout probe workflow (`soldout-probe.yml`, #396) — ВРЕМЕННЫЙ
+## Soldout probe workflow (`soldout-probe.yml`) — ВРЕМЕННЫЙ
 
 Измеритель доступности `soldoutticketbox.com` из датацентра GitHub Actions.
 **Не гейт и не источник данных** — только замер, на который опирается решение по обходу
@@ -150,7 +150,7 @@ gh run list --workflow=soldout-probe.yml --limit 60 --json databaseId -q '.[].da
 | `API_KEY` | secret | Kinozal API key |
 | `KINOZAL_URLS` | var | Kinozal page URLs to scrape, формат `label\|url;...`; local fallback — env `KINOZAL_TOP_URL` (plain url). Если не задано ни то ни другое — pipeline логирует ошибку `no URLs configured`. Легаси-имя `URLS` **больше не читается** (clean rename, #263). `sources.json` `url`/`base_url` для скрейпинга **не читается** (только schema-placeholder), см. `kinozal_pipeline.py::_kinozal_urls` |
 | `KINOZAL_EXCLUDED_GENRES` | var | **Опционально.** `;`-разделённый denylist жанров (case-insensitive), напр. `Hidden objects`. Новый элемент, чей жанр (с details-страницы) в списке, **не** уведомляется, но сохраняется в Sheets (dedup). Пусто/не задано → фильтр выключен, details-страницы не запрашиваются (0 оверхеда). См. `kinozal_pipeline.py::_split_by_excluded_genre` (#263) |
-| `KINOZAL_USERNAME` | secret | **Опционально.** Логин аккаунта на зеркале `kinozal.guru` — включает автоматический fallback на зеркало при сбое `kinozal.tv`. Что именно включается и как меняются ссылки — [`pipeline.md` § Kinozal mirror fallback](pipeline.md#kinozal-mirror-fallback-227-247-317). Парный к `KINOZAL_PASSWORD`; **partial** (только один из двух) → WARNING + fallback отключён (не fail) |
+| `KINOZAL_USERNAME` | secret | **Опционально.** Логин аккаунта на зеркале `kinozal.guru` — включает автоматический fallback на зеркало при сбое `kinozal.tv`. Что именно включается и как меняются ссылки — [`pipeline.md` § Kinozal mirror fallback](pipeline.md#kinozal-mirror-fallback). Парный к `KINOZAL_PASSWORD`; **partial** (только один из двух) → WARNING + fallback отключён (не fail) |
 | `KINOZAL_PASSWORD` | secret | **Опционально.** Пароль аккаунта `kinozal.guru`. Парный к `KINOZAL_USERNAME` |
 
 ### telegram_summarizer

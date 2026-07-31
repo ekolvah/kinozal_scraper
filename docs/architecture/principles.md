@@ -10,12 +10,7 @@ document, this document wins.
 labels, `/plan` → `/implement`, the architect-review gate) is delegated to
 [`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) — see §Governance. How
 each gate is implemented and configured → [`ci.md`](ci.md). Which coverage gaps are
-consciously accepted → [`testing.md`](testing.md).
-
-Originally authored as a Spec Kit constitution (v1.0.0, ratified
-2026-05-17). Migrated to `docs/architecture/principles.md` on 2026-05-21
-when Spec Kit was removed; references to `/speckit-*` commands replaced
-with the project's local `/plan` → `/implement` workflow (see #114).
+consciously accepted → [`coverage-gaps.md`](coverage-gaps.md).
 
 ## Core Principles
 
@@ -242,4 +237,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 2.3.0 | **Ratified**: 2026-05-17 | **Migrated**: 2026-05-21 | **Amended**: 2026-07-18
+**Version**: 2.3.1

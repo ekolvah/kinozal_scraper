@@ -12,7 +12,7 @@ visibly, not silently (§IV).
 LLM-specific threats → [`llm-security.md`](llm-security.md). API keys and their rotation →
 [`operations.md`](operations.md). Trailer picking — the eval-only LLM/embedding pickers are
 **not** in the prod hot path and live in
-[`pipeline.md`](pipeline.md#trailer-retrieval-and-selection-140-141-144).
+[`pipeline.md`](pipeline.md#trailer-retrieval-and-selection).
 
 ## Enricher Protocol
 
@@ -144,7 +144,7 @@ replaced `thinking_budget` with `thinking_level`, and newer 3.x models (e.g.
 Sending `thinking_budget=0` to a 3.x model was a per-item 400 that the rotator
 absorbed (→ `TryNextModel`) but burned two round-trips before the first success.
 
-## Call observability — tokens & latency (#145)
+## Call observability — tokens & latency
 
 Both live Gemini call sites — `GeminiEnricher._generate` (item enrichment) and
 `GeminiSummarizer.summarize` (Telegram channel summaries) — emit one structured
@@ -239,11 +239,11 @@ parameter and apply the same loop semantics:
   (`enrich.on_error` if non-empty, otherwise `FALLBACK_MARKER`), but every
   notification still goes out (Principle IV; #128).
 
-### Steam-specific fallback (issue #124)
+### Steam-specific fallback
 
 `run_steam_pipeline` deviates from GitHub sources on one point: the original
 English `short_description` is itself informative, so a failed translation
 (empty result, `FALLBACK_MARKER` from `TruncatedResponse`, `QuotaExhausted`,
 or `enricher is None`) falls back to `item.description`, not to the marker.
 The notification ships in English, with a WARNING in cron logs marking the
-degradation. Implemented in `steam_pipeline._apply_translation`.
+degradation. Implemented in `steam_pipeline._apply_translation` (#124).

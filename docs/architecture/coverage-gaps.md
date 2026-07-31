@@ -61,29 +61,29 @@ decision goes to" route — and the rule itself — live in
   hot path (#144/#315).** Прод `enrich_with_trailer` отбирает детерминированным `HeuristicStrategy`
   (#141); `LLMTrailerStrategy` (#142), `EmbeddingTrailerStrategy` (#143) и `tmdb_trailer.pick_trailer`
   (#329) остаются eval-only. **Обоснование выбора (negative-ROI, wrong=0 на golden-set) — канон в
-  [pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection-140-141-144)**,
+  [pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection)**,
   здесь не дублируем. Coverage-следствие (дом здесь): чистые selection-слои этих стратегий **покрыты**
   unit-тестами; без покрытия только живые Gemini-движки (строки ниже). Записано, чтобы «почему
-  LLM-picker не в проде?» не переоткрывали. **Open-world caveat:** wrong=0 доказан на 28
-  curated-кейсах; success-path breadcrumb (`reason`/`confidence` INFO-лог в `enrich_with_trailer`)
-  вскроет прод-ambiguity — пересмотреть, если в проде всплывут ничьи, которых нет в golden-set.
-  **Ревизит состоялся (#359, 2026-07-24) и дал обратный результат — записано, чтобы вывод не
-  переоткрывали.** Breadcrumb сработал: в run `30066249488` 5 из 6 picks оказались
-  `ambiguous (conf=0.3)`. Гипотеза «ничья → произвольный выбор → чужая ссылка» была реализована
-  (подавление picks с `confidence < 0.5` в miss-маркер) и **откачена по замеру**: на 28 golden-
-  кейсах 26 hit → 16, 2 miss → 12, wrong 0 → 0. Все 10 подавленных picks были **попаданиями** —
-  `confidence=0.3` означает «несколько одинаково хороших трейлеров одного фильма» (дубляж №1 vs
-  №2), ровно то, что и моделируют accept-set'ы. Прод-ничьи частые, но безвредные; #377 (каст как
-  разрыватель ничьих) закрыт как wontfix. Golden-запись по «Суете» не добавлена: верифицируемо-
-  неверного кандидата в захваченном пуле нет (все 5 — трейлеры того же сериала), а догадка в
-  эталоне отравила бы eval. #359 в итоге сузился до диагностики: `video_id` в breadcrumb.
-  **Остаточный пробел закрыт (#380, 2026-07-27):** в наборе появились кейсы с верифицированным
-  чужим кандидатом (`trap`, блок «Отрицательный полюс метрики» выше), `wrong` больше не 0. Замер
-  #359 по обновлённому набору вывод не изменил, а усилил: политика не трогает `wrong` вовсе
-  (реальный чужой pick идёт с `confidence=0.9`), то есть порог по уверенности ортогонален
-  наблюдаемому классу ошибок. **Что осталось открытым:** wrong-кейсов найдено 3 на ~150
-  проверенных живых пиков — класс редкий (~1%), и набор его представляет тонко; пополнять из
-  реальных инцидентов (прод-лог несёт `video_id` → `videos.list` → верификация вручную).
+  LLM-picker не в проде?» не переоткрывали.
+
+  **Смежный вывод, зафиксированный тут же: отбор по `confidence` не добавляется — гипотеза
+  проверена дважды, обе проверки против.** Прод-ничьи частые (в run `30066249488` 5 из 6 picks —
+  `ambiguous (conf=0.3)`), и гипотеза «ничья → произвольный выбор → чужая ссылка» реализуема:
+  подавление picks с `confidence < 0.5` в miss-маркер. Замер её опровергает (#359): на 28
+  golden-кейсах 26 hit → 16, 2 miss → 12, wrong 0 → 0 — все 10 подавленных picks были
+  **попаданиями**, потому что `confidence=0.3` означает «несколько одинаково хороших трейлеров
+  одного фильма» (дубляж №1 vs №2), ровно то, что моделируют accept-set'ы. Тот набор не содержал
+  ни одного `wrong`, поэтому выигрыш политики показать физически не мог; на наборе с
+  верифицированным чужим кандидатом (`trap`, #380) она даёт 26 → 14 и **не трогает `wrong` вовсе**
+  — реальный чужой pick идёт с `confidence=0.9`, уникальным топ-рангом. Порог по уверенности
+  ортогонален наблюдаемому классу ошибок. Вместо политики — диагностика: `video_id` в
+  success-breadcrumb. Каст как разрыватель ничьих — wontfix (#377). Golden-запись по «Суете» не
+  добавлена: верифицируемо неверного кандидата в захваченном пуле нет (все 5 — трейлеры того же
+  сериала), а догадка в эталоне отравляет eval.
+
+  **Open-world caveat:** `wrong`-кейсов найдено 3 на ~150 проверенных живых пиков — класс редкий
+  (~1%), и набор представляет его тонко; пополняется из реальных инцидентов (прод-лог несёт
+  `video_id` → `videos.list` → верификация вручную).
 
 - **O. Request-side Gemini API-contract drift — caught by runtime visibility, not a unit test (#340).** When Google changes what the API accepts (e.g. 3.x models reject `thinking_budget=0`, #338), a unit test with a `_FakeClient` **cannot** catch it: the fake encodes our assumption about the request contract and can only confirm it. A live-E2E against real Gemini is a scope-skip (credentials/flake/quota). So the standing safety net is **runtime visibility, not a test**: a `400 INVALID_ARGUMENT` is classified as `ModelConfigRejected` → ERROR log + operator Telegram alert + red job (`config_rejected_models`), instead of a silent `TryNextModel` that green rotation hides. The one unit-testable guard is a **contract test on a real `google.genai.errors.ClientError`** (`test_real_client_error_invalid_argument_routes_to_config_rejected`) — it fails loudly if our `.status` detection drifts from the SDK's actual error shape (which would otherwise ship the whole fix as a green-tested no-op). Recorded so the live-E2E isn't re-opened as work-for-work.
 - **P. Prompt-injection resistance of the *real model* — offline structural tests only, no live eval (#308).**
@@ -103,7 +103,7 @@ decision goes to" route — and the rule itself — live in
   `_evaluate_dataset` boundary, so the **baseline number** (mean faithfulness over the golden-set) is
   produced by a **dev run with the judge wired**, not by CI — no API key/quota/cost in the pipeline,
   same class as the trailer `--record`. Accepted, not silent: the harness prints the score and
-  `--threshold` gates it; the [harness section](testing.md#eval-harness--summarizer-faithfulness-347) documents
+  `--threshold` gates it; the [harness section](testing.md#eval-harness--summarizer-faithfulness) documents
   the seam split. Recorded so «why isn't the RAGAS score in CI?» isn't re-opened as a mock-the-judge
   work-for-work test.
 - **R. Dedupe-key edges where the year anchor can't disambiguate (#363).** The kinozal dedupe key is
@@ -137,41 +137,36 @@ decision goes to" route — and the rule itself — live in
   — первые ~200 символов настоящей страницы это `<!DOCTYPE html> <!--[if lt IE 7]>…`.
 
 - **T. YouTube throttle/retry: механизм отвергнут замером, поэтому тестов на него нет и не будет (#384).**
-  План #384 предполагал `tenacity` (`wait_exponential`, 3 попытки, глобальный give-up) и test plan
-  под него. Замер 2026-07-26 (Service Usage API): `search.list` — **100 запросов в сутки**, квота
+  Напрашивающийся `tenacity` (`wait_exponential`, 3 попытки, глобальный give-up) отвергнут
+  замером 2026-07-26 (Service Usage API): `search.list` — **100 запросов в сутки**, квота
   дефолтная и поднятой быть не может (billing выключен), а прогон на 170 фильмов просит 340. Лимит
   считается **в запросах за сутки**, поэтому паузами не лечится: пейсинг раздаёт те же 100 ровнее,
   retry отбирает квоту у следующего фильма. Вместо него — остановка обогащения по первому квотному
   отказу (`YoutubeQuotaExhausted`, покрыто `TestQuotaStop` + `TestQuotaDetection`); rationale — в
-  [`pipeline.md`](pipeline.md#trailer-retrieval-and-selection-140-141-144). Записано сюда, чтобы
+  [`pipeline.md`](pipeline.md#trailer-retrieval-and-selection). Записано сюда, чтобы
   `tenacity`+`sleep` не переоткрыли как «очевидно недостающий retry»: это не пробел покрытия, а
   отсутствующий по замеру код. Единственный путь к полному охвату — смена источника (TMDB), не retry.
   **Что покрыто, а не пропущено:** предикат квотных ошибок нужен и существует — `_is_quota_error`
   пинится reality-anchor'ом на настоящем `googleapiclient.errors.HttpError` (429 legacy `errors[]`,
   403 `quotaExceeded`, ErrorInfo `details[]` в SCREAMING_SNAKE), потому что `.reason` — человеческий
-  текст, а машинный код живёт в `error_details`. Промежуточный вариант с фиксированным бюджетом
-  (`_TRAILER_RUN_BUDGET = 45`) отвергнут до мержа: угаданное число, ломается на втором прогоне в
-  сутки и занижает охват на одноветочных items — в коде не осталось.
+  текст, а машинный код живёт в `error_details`. Фиксированный бюджет запросов на прогон
+  (`_TRAILER_RUN_BUDGET = 45`) отвергнут по той же причине: угаданное число, ломается на втором
+  прогоне в сутки и занижает охват на одноветочных items.
 
-- **U. Качество подбора трейлера для игр измеряется ОДНИМ кейсом (#385 → #412).**
-  #385 чинил **классификацию** (игровой листинг `t=7` → профиль без `original_title`, чтобы в
-  YouTube не уходило `x64 2024 trailer`) и игровых кейсов в golden-set не оставил вовсе — поэтому
-  `scripts/eval_trailers.py` по играм не двигался, и регрессию #412 (у локализованной игры гасился
-  настоящий оригинал) гейт увидеть не мог. #412 добавил **живой** кейс `Marvel Человек-Паук 2`
+- **U. Качество подбора трейлера для игр измеряется ОДНИМ кейсом (#385, #412).**
+  Игровой класс представлен в golden-set одним **живым** кейсом `Marvel Человек-Паук 2`
   (пул записан 2026-07-29 через прод-`search_candidates`, accept-set — четыре официальных трейлера
-  PlayStation/Marvel Entertainment, trap — четыре трейлера одноимённого фильма 2026). Синтетику
-  по-прежнему не добавляем — прецедент #359: догадка в эталоне отравляет eval. Один кейс — это
-  полюс, а не метрика класса: §III всё ещё запрещает обещать «трейлеры для игр подбираются
-  хорошо», он лишь фиксирует, что этот конкретный класс промаха больше не проходит молча.
-  **Кейс сразу окупился:** первоначальный дизайн #412 («базовая часть названия — fallback при
-  пустом relevant») сел в скоркарту как `WRONG` — полное название с изданием подряд входит в
-  заголовок нарезки костюмов, и до настоящих трейлеров отбор не доходил. Без этого кейса правка
-  уехала бы в прод зелёной.
-  **Что ушло вместе с классификацией (#412):** `item.raw["kinozal_is_game"]` был единственной
-  per-item ground-truth меткой «это игра». Дискриминатор переехал в грамматику заголовка, метка
-  стала мёртвой и удалена; будущая игровая под-метрика восстановит её из формы raw-заголовка
-  (`x64`/`RU` во 2-м сегменте + хвост `PC (Windows)`), а не из категории листинга.
-  **Три границы этого фикса, сознательно оставленные открытыми (review #412):**
+  PlayStation/Marvel Entertainment, `trap` — четыре трейлера одноимённого фильма 2026). Синтетику
+  не добавляем: догадка в эталоне отравляет eval (#359). Один кейс — это
+  полюс, а не метрика класса: §III запрещает обещать «трейлеры для игр подбираются
+  хорошо», кейс лишь фиксирует, что этот конкретный класс промаха не проходит молча.
+  **Чем он окупается:** дизайн «базовая часть названия — fallback при пустом relevant» садится в
+  скоркарту как `WRONG` — полное название с изданием подряд входит в заголовок нарезки костюмов,
+  и до настоящих трейлеров отбор не доходит; без кейса такая правка уехала бы в прод зелёной.
+  **Per-item ground-truth метки «это игра» нет:** дискриминатор живёт в грамматике заголовка, а не
+  в категории листинга, поэтому будущая игровая под-метрика восстановит метку из формы
+  raw-заголовка (`x64`/`RU` во 2-м сегменте + хвост `PC (Windows)`), а не из категории (#412).
+  **Четыре границы, сознательно оставленные открытыми (#412):**
   1. **Скобка-часть во 2-м сегменте** (`… / Dune (Part Two) / …`) схлопнула бы базу до франшизы,
      и `_title_tokens_in` со своим numeric-skip пропустил бы чужой ролик. Класс замерен и почти
      пуст: 1 заголовок из 238 со скобкой во 2-м сегменте (`Heroes of Might and Magic IV (4)
@@ -186,18 +181,18 @@ decision goes to" route — and the rule itself — live in
      `_search_one` оставит скоркарту зелёной. Регрессию ловит только
      `tests/test_youtube.py::TestSearchCandidates::test_html_entities_decoded`.
   4. **Год у игр — год репака, а не релиза.** Профиль игры несёт год kinozal-раздачи (2025 у
-     PC-порта), а официальные трейлеры сняты в 2023–2024. Кейс #412 проходит год-фильтр лишь
+     PC-порта), а официальные трейлеры сняты в 2023–2024. Кейс проходит год-фильтр лишь
      потому, что в заголовках этих трейлеров года нет вообще; заголовок вида `… (2023) Launch
-     Trailer` был бы отброшен `title_year_matches`. Эффект предсуществующий, но **достижимым**
-     стал только сейчас — до #412 игры не доходили до retrieval с настоящим названием.
+     Trailer` был бы отброшен `title_year_matches`. Эффект предсуществующий, а **достижим** он
+     ровно с тех пор, как игры доходят до retrieval с настоящим названием (#412).
   **Известное смещение, которое это скрывает:** `HeuristicStrategy._rank` (`trailer_strategy.py`)
   первично ранжирует по кириллице в заголовке кандидата — правило, выведенное для фильмов с русским
   дубляжом (#141/#315). У игры название латиницей и русского дубляжа не бывает, поэтому русский
-  лец-плей может обойти официальный трейлер. Эффект **предсуществующий** (был и до #385, просто
-  запрос тогда уходил с мусорным `x64`), не регрессия — записан здесь, чтобы его не открыли как
-  новый баг #385 и не «починили» правку ранжирования без метрики, которой пока нет. На кейсе #412
-  смещение не выстрелило: русские кандидаты в пуле — трейлеры одноимённого фильма 2026, их
-  отсекает год. То есть один кейс его не опровергает и не подтверждает.
+  лец-плей может обойти официальный трейлер. Эффект **предсуществующий**, не регрессия — записан
+  здесь, чтобы его не открыли как новый баг и не «починили» правку ранжирования без метрики,
+  которой пока нет (#385). На единственном игровом кейсе смещение не выстреливает: русские
+  кандидаты в пуле — трейлеры одноимённого фильма 2026, их отсекает год. То есть один кейс его не
+  опровергает и не подтверждает.
 
 - **V. Секрет-гейт: захваченные HTML-фикстуры вне скана, а ушедшие с `pre-commit` хуки не
   заменяются (#389).** `ci_check` шаг `secrets` покрыт `tests/test_secrets_gate.py` (подсадной ключ →
@@ -205,7 +200,7 @@ decision goes to" route — and the rule itself — live in
   сознательно:** `tests/fixtures/**/*.html` — захваченная чужая разметка, где хеши ассетов дают
   high-entropy FP по построению (15 находок на две фикстуры). Исключение файлом, а не baseline'ом:
   baseline при совпадении переписывает себя и возвращает rc=3, а перегенерация — это кнопка «сделать
-  гейт зелёным» для настоящего утёкшего ключа (rationale — [`ci.md`](ci.md#secret-scan-secrets-389)).
+  гейт зелёным» для настоящего утёкшего ключа (rationale — [`ci.md`](ci.md#secret-scan-secrets)).
   Цена: ключ, вписанный **внутрь** такой фикстуры, гейтом не ловится — остаётся серверный слой
   (GitHub push protection). **Второе — не пробел, а отсутствующий код:** вместе с `.pre-commit-config.yaml`
   ушли `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer`; они не
@@ -215,8 +210,8 @@ decision goes to" route — and the rule itself — live in
 
 - **W. Промпты ревьюеров: форма стережётся, семантика — нет (#374, #392).** Оба
   ревьюера — cloud (`.github/workflows/claude-review.yml`) и локальный
-  (`.claude/agents/architect-reviewer.md`) — раньше несли severity-фильтр *на стадии
-  поиска*, и модель исполняла его буквально: находка молча не доходила до PR. Гарды
+  (`.claude/agents/architect-reviewer.md`) — не несут severity-фильтра *на стадии
+  поиска*: модель исполняет такой фильтр буквально, и находка молча не доходит до PR. Гарды
   ловят **известные формы**, и каждый — свои, потому что промпты разные:
   `tests/test_claude_review_workflow.py` (англоязычный промпт) — императив
   подавления в начале строки, наличие `severity` **и** `confidence`, отсутствие
@@ -229,10 +224,10 @@ decision goes to" route — and the rule itself — live in
   покрыта семантическая перефразировка** («будь избирателен», «only report what
   matters»): проверка смысла промпта — это LLM-вызов на каждый прогон suite, то есть
   дороже и менее детерминированно, чем предмет проверки; а регексп по открытому
-  множеству формулировок даёт change-detector, скроенный под текущий текст (первая
-  версия гарда #374 именно так и выглядела — с карв-аутом «разрешено, если рядом
-  слово ruff» — и была забракована на architect-review). Остаточная защита —
-  проза [`ci.md`](ci.md#coverage-first-prompt-no-filtering-at-the-search-stage-374) и
+  множеству формулировок даёт change-detector, скроенный под текущий текст (карв-аут
+  «разрешено, если рядом слово ruff» — ровно такой детектор, забракованный на
+  architect-review, #374). Остаточная защита —
+  проза [`ci.md`](ci.md#coverage-first-prompt-no-filtering-at-the-search-stage) и
   сам plan-ревьюер. Записано, чтобы «а почему нет теста на промпт» не переоткрыли:
   тест есть, отклонена именно семантическая его половина.
 
@@ -246,9 +241,8 @@ decision goes to" route — and the rule itself — live in
   собирается в рантайме (`ci_check` передаёт `-X utf8` детект-секретам,
   `test_github_trending_pipeline` — `PYTHONUTF8` в собранном `env`), а требовать
   флаг у **каждого** запуска Python дало бы ложные срабатывания там, где вывод
-  заведомо ASCII. **Общий `run_text()`-хелпер ОТВЕРГНУТ окончательно (#410),** а не
-  отложен, как записывала первая версия этого пункта, и причина техническая:
-  репо-корень **никогда не на `sys.path`** при документированном CLI
+  заведомо ASCII. **Общий `run_text()`-хелпер отвергнут, а не отложен (#410),** и причина
+  техническая: репо-корень **никогда не на `sys.path`** при документированном CLI
   `python scripts/foo.py` (`sys.path[0]` = `scripts/`, editable-install добавляет
   только `src/`) — механика уже описана в `scripts/issue_branch.py`. Каждый
   скрипт получил бы importlib-бутстрап (~8 строк), то есть бойлерплейта больше,
@@ -336,7 +330,7 @@ decision goes to" route — and the rule itself — live in
 
 | Module | Reason | Mitigation |
 |---|---|---|
-| `youtube.py::Youtube` (live-client wrapper: `__init__` + `search_candidates` method) | Requires live YouTube API (`build()` + `API_KEY`) | Pure retrieval `search_candidates(client, profile)`/`_search_one` **is** directly tested (`test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140); only the thin live-`build()` wrapper is untested. `get_trailer_url`/`_search_youtube` удалены в #144 (прод перешёл на `search_candidates` + `HeuristicStrategy`) |
+| `youtube.py::Youtube` (live-client wrapper: `__init__` + `search_candidates` method) | Requires live YouTube API (`build()` + `API_KEY`) | Pure retrieval `search_candidates(client, profile)`/`_search_one` **is** directly tested (`test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140); only the thin live-`build()` wrapper is untested. Прод ходит через `search_candidates` + `HeuristicStrategy`, одиночного `get_trailer_url` в модуле нет (#144) |
 | `tmdb_trailer.py::TmdbClient` (`resolve`/`_get`/`_find_movie_id`) | Requires live `TMDB_TOKEN` + network — retrieval boundary (DI, mirror of `youtube.py`) | Pure selection `pick_trailer` **is** directly tested (`test_tmdb_trailer.py`, 7 cases); only the network boundary is untested, same §II precedent as `youtube.py`'s live-client wrapper (#329) |
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
 | `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
