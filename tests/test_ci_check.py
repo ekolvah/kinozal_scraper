@@ -1,3 +1,9 @@
+"""Tests for `scripts/ci_check.py` — the pre-commit gate runner.
+
+Covers `CHECKS` ↔ `ci.yml` step parity, module-discovery exclusions, runner exit
+codes, and the capture-failure path that must name its real cause.
+"""
+
 from __future__ import annotations
 
 import re

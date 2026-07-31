@@ -1,3 +1,10 @@
+"""Tests for the `github_new_popular` source, driven end-to-end through doubles.
+
+Covers extraction and sorting, dedupe, empty and null-field responses, source
+isolation, the exit-code surface, and enricher integration including the quota
+circuit breaker.
+"""
+
 from __future__ import annotations
 
 import json

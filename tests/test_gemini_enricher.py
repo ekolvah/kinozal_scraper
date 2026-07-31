@@ -1,3 +1,10 @@
+"""Tests for `gemini_enricher.py` — the Gemini enrichment boundary.
+
+Covers prompt building and injection sanitisation, response-format and
+finish-reason validation, error classification, quota handling with model
+rotation, and the observability hooks.
+"""
+
 from __future__ import annotations
 
 import unittest

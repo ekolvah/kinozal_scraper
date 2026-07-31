@@ -1,3 +1,10 @@
+"""Shared pytest fixtures for the whole suite.
+
+Today it holds one autouse fixture: ambient `KINOZAL_USERNAME`/`KINOZAL_PASSWORD`
+are cleared so a developer's local credentials can never turn a fetch-failure
+test into a real network login.
+"""
+
 import pytest
 
 

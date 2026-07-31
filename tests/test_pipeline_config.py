@@ -1,3 +1,10 @@
+"""Tests for `pipeline_config.py` — loading and validating `sources.json`.
+
+Covers macro expansion (dates, env, overrides), the closed set of supported
+source types, selector and limit validation on both the direct and the load
+path, and the Russian enrichment prompts shipped in the real config.
+"""
+
 import json
 import unittest
 from datetime import date

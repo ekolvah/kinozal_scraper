@@ -1,3 +1,10 @@
+"""Tests for the `steam_charts_mostplayed` source, driven through Protocol doubles.
+
+Covers extraction and the limit, the notification template, dedupe, app-details
+failure handling, source isolation, and the Russian description with its quota
+behaviour.
+"""
+
 from __future__ import annotations
 
 import unittest

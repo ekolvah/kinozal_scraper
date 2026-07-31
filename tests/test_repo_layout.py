@@ -1,3 +1,7 @@
+"""Structural guard for the repo layout: no tracked source `.py` in the repo root
+and none flat under `src/` — every module lives inside the package.
+"""
+
 from __future__ import annotations
 
 import subprocess

@@ -1,3 +1,10 @@
+"""Tests for `sheets_storage.py` — the `Storage` Protocol and its implementations.
+
+Covers row assembly and column order, `InMemoryStorage` semantics, worksheet
+schema validation, and which gspread errors are retried as transient versus
+surfaced immediately.
+"""
+
 import unittest
 from datetime import UTC, datetime
 from typing import Any

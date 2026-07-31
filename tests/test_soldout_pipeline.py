@@ -1,3 +1,9 @@
+"""Tests for the `soldout_events` source, driven through Protocol doubles.
+
+Covers extraction and its discriminator, the fetch transport, dedupe,
+notification content, delivery truthfulness and the exit-code surface.
+"""
+
 import unittest
 import unittest.mock
 from typing import Any

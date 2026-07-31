@@ -4,13 +4,17 @@ The bespoke `scripts/check_headers.py` (module-docstring presence gate) was
 replaced by ruff `D100` (missing-docstring-in-public-module), `D104`
 (missing-docstring-in-public-package — covers `__init__.py`, which D100 does
 NOT) and `D419` (empty-docstring — the `doc.strip()` half the script enforced).
-Together they reproduce the script's contract "every source .py under src,
-including `__init__.py`, carries a *non-empty* module docstring".
+Together they reproduce the script's contract "every public source .py carries a
+*non-empty* module docstring" — over `src/` and `scripts/`, and since #433 over
+`tests/` too.
 
 This guard asserts the rules stay *active*: present in the effective select,
-not globally ignored, and not neutralised for `src`/`scripts` via
-`per-file-ignores` (the `tests/**` ignore is legitimate — tests were never
-docstring-checked). Mirrors `test_ruff_silence_rules.py` (#231) /
+not globally ignored, and not neutralised via `per-file-ignores` under **any**
+pattern — the gate has no legitimate per-file exemption left (#433 revoked the
+`tests/**` one). Every branch reads the `extend-` twin of its table
+(`extend-ignore`, `extend-per-file-ignores`), which ruff honours equally: after
+#433 a re-exemption through the twin is exactly the vector this guard exists to
+close. Mirrors `test_ruff_silence_rules.py` (#231) /
 `test_complexity_ratchet.py` (#233) / `test_ruff_dead_code_rule.py` (#235) — it
 pins *enforcement*, not mere declaration, so a future agent cannot quietly drop
 the gate through any disable vector. It deliberately does not re-run ruff green
@@ -20,7 +24,6 @@ not worth writing").
 
 from __future__ import annotations
 
-import fnmatch
 import tomllib
 from pathlib import Path
 from typing import Any, cast
@@ -30,19 +33,24 @@ _PYPROJECT = _REPO / "pyproject.toml"
 
 # Codes that reproduce check_headers.py's contract.
 _DOCSTRING_CODES = {"D100", "D104", "D419"}
-# Representative source paths the gate MUST keep covering — a per-file-ignore
-# that silences a docstring code for any of these guts the gate (#253 threat).
-_PROTECTED_PATHS = (
-    "src/kinozal_scraper/__init__.py",
-    "src/kinozal_scraper/generic_pipeline.py",
-    "scripts/ci_check.py",
-    "scripts/__init__.py",
-)
+# ruff also accepts prefix selectors, so `"D"` or `"D1"` in an ignore list
+# disables the codes while leaving the exact strings absent — the same threat
+# model as the `ERA` prefix in test_ruff_dead_code_rule.py.
+_DISABLE_TOKENS = {c[:i] for c in _DOCSTRING_CODES for i in range(1, len(c) + 1)}
 
 
 def _lint_config() -> dict[str, Any]:
     data = tomllib.loads(_PYPROJECT.read_text(encoding="utf-8"))
     return cast("dict[str, Any]", data["tool"]["ruff"]["lint"])
+
+
+def _merged_per_file_ignores(lint: dict[str, Any]) -> dict[str, list[str]]:
+    """`per-file-ignores` plus its `extend-` twin — ruff honours both."""
+    merged: dict[str, list[str]] = {}
+    for table in ("per-file-ignores", "extend-per-file-ignores"):
+        for path, codes in lint.get(table, {}).items():
+            merged.setdefault(path, []).extend(codes)
+    return merged
 
 
 class TestRuffDocstringRule:
@@ -57,26 +65,23 @@ class TestRuffDocstringRule:
         )
 
         # (b) not neutralised via global ignore.
-        ignored = set(lint.get("ignore", []))
-        assert not (_DOCSTRING_CODES & ignored), (
+        ignored = set(lint.get("ignore", [])) | set(lint.get("extend-ignore", []))
+        assert not (_DISABLE_TOKENS & ignored), (
             "module-docstring codes must not appear in ruff `ignore` (silently "
-            f"disables the #253 gate): {_DOCSTRING_CODES & ignored}"
+            f"disables the #253 gate): {_DISABLE_TOKENS & ignored}"
         )
 
-        # (c) not neutralised for a protected src/scripts path via
-        # per-file-ignores. Matched by real path coverage (fnmatch), not a
-        # literal "tests/" check — the tests/** ignore is legitimate, but an
-        # ignore whose glob also catches a src/scripts file is a leak.
-        per_file: dict[str, list[str]] = lint.get("per-file-ignores", {})
-        leaks: dict[str, dict[str, list[str]]] = {}
-        for pattern, codes in per_file.items():
-            disabled = _DOCSTRING_CODES & set(codes)
-            if not disabled:
-                continue
-            hit = [p for p in _PROTECTED_PATHS if fnmatch.fnmatch(p, pattern)]
-            if hit:
-                leaks[pattern] = {"disables": sorted(disabled), "covers": hit}
-        assert not leaks, (
-            "per-file-ignores must not disable module-docstring codes for "
-            f"src/scripts paths (silently guts the #253 gate): {leaks}"
+        # (c) not neutralised via per-file-ignores under ANY pattern. Not a
+        # path-coverage probe against sentinel paths (#433): a narrow
+        # re-exemption like "tests/test_x.py" = ["D100"] would slip past one,
+        # and no legitimate per-file exemption is left to carve room for.
+        per_file: dict[str, list[str]] = _merged_per_file_ignores(lint)
+        leaked = {
+            path: sorted(_DISABLE_TOKENS & set(codes))
+            for path, codes in per_file.items()
+            if _DISABLE_TOKENS & set(codes)
+        }
+        assert not leaked, (
+            "module-docstring codes must not appear in `per-file-ignores` for "
+            f"any path (silently guts the #253 gate): {leaked}"
         )

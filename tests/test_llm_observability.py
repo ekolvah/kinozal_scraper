@@ -1,3 +1,9 @@
+"""Tests for `llm_observability.py` — the structured log line around an LLM call.
+
+Covers token extraction from absent or partial usage metadata and the degraded
+marker that must appear instead of silently missing counts (§IV).
+"""
+
 from __future__ import annotations
 
 import logging

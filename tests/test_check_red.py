@@ -1,3 +1,10 @@
+"""Tests for `scripts/check_red.py` — the RED gate of `/implement`.
+
+Covers the junit verdict rules (subtest failures redden the parent; a collection
+error, a skip-only run or an empty report is NOT red) and the exit code taken
+when the subprocess capture itself breaks.
+"""
+
 from __future__ import annotations
 
 import subprocess

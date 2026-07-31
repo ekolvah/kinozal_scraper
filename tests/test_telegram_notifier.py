@@ -1,3 +1,10 @@
+"""Tests for `telegram_notifier.py` — the Telegram boundary.
+
+Covers field formatting and notification assembly, retry, image upload with its
+fallback to a text message, message-length limits, and the `InMemoryNotifier`
+double.
+"""
+
 import unittest
 from typing import Any
 from unittest.mock import MagicMock, patch

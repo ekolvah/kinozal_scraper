@@ -1,3 +1,10 @@
+"""Tests for `scripts/issue_branch.py` — branch naming for `/implement`.
+
+Covers slugification (word cap, non-ASCII fallback, special chars), branch-name
+assembly, the Cyrillic title decode, and in-process delegation to
+`new_branch.py`.
+"""
+
 from __future__ import annotations
 
 import json

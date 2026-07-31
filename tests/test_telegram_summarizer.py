@@ -1,3 +1,10 @@
+"""Tests for `telegram_summarizer.py` — the channel-summarising pipeline.
+
+Covers orchestration over channels, the Telethon reader (auth, fetch/render,
+error swallowing), Gemini quota and observability, summary formatting, the
+technical alert and delivery.
+"""
+
 from __future__ import annotations
 
 import unittest

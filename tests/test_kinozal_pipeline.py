@@ -1,3 +1,11 @@
+"""Tests for the `kinozal` source — the largest set in the suite.
+
+Covers listing and detail parsing (titles, genres, labelled metadata, posters),
+dedupe keys, base-url/mirror resolution and auth, trailer enrichment with its
+quota stop, the genre filter, notification content and delivery truthfulness,
+and the exit-code surface.
+"""
+
 import logging
 import os
 import re

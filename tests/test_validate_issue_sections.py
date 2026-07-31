@@ -1,3 +1,10 @@
+"""Tests for `scripts/validate_issue_sections.py` — the plan-completeness gate.
+
+Covers gap detection (missing, empty, whitespace-only, setext headings, headings
+inside fenced blocks, an unterminated fence), the mandatory Architect review and
+ADR sections, and the Cyrillic body decode.
+"""
+
 from __future__ import annotations
 
 import subprocess
