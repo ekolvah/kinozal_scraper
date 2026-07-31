@@ -111,8 +111,8 @@ decision goes to" route — and the rule itself — live in
   segment (`text_utils.YEAR_SEGMENT_RE`) and dropping the format tail. Two edges are **consciously
   accepted**, characterized but not "fixed": (1) a film whose **RU title IS a bare year** (`2012`,
   `1917` → raw `2012 / 2012 / 2009 / …`) keys on that first-segment year → `"2012"` — a no-op vs. the
-  pre-#363 first-segment behaviour, same class as `original_title`'s numeric-original edge (#138 Out of
-  scope), pinned by `test_year_titled_film_collapses_to_year`. (2) a **yearless** raw title (no bare-year
+  plain first-segment behaviour the year anchor replaced, same class as `original_title`'s
+  numeric-original edge (#138 Out of scope), pinned by `test_year_titled_film_collapses_to_year`. (2) a **yearless** raw title (no bare-year
   segment at all) falls back to the clean first segment, so yearless namesakes could still collapse — but
   a top-page title without a year is anomalous, and any collapse is already visible in aggregate via the
   `_dedup_and_log_coverage` INFO line (`N extracted (M after dedup-collapse)`), so it isn't a silent §IV
@@ -206,7 +206,7 @@ decision goes to" route — and the rule itself — live in
   ушли `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer`; они не
   исполнялись **ни разу** (`core.hooksPath` = `.githooks`), поэтому регрессии нет и замену им этот PR
   не заводит. Записано, чтобы «а где проверка YAML?» не переоткрыли как пробел покрытия: это
-  осознанный не-скоуп, отдельная единица (workflow #4).
+  осознанный не-скоуп, отдельная единица (`workflow.md` §4).
 
 - **W. Промпты ревьюеров: форма стережётся, семантика — нет (#374, #392).** Оба
   ревьюера — cloud (`.github/workflows/claude-review.yml`) и локальный
@@ -295,8 +295,8 @@ decision goes to" route — and the rule itself — live in
   инцидентом — он про другой класс.
 
 - **AA. «Док не должен снова разрастись» гейтом не стережётся (#419).** Свёртка `ci.md`
-  (618 → 417 строк) убрала накопленную археологию решений, у которой уже есть дом —
-  тела issue #255/#235/#396. Напрашивающийся анти-рецидив-гейт «файл не длиннее N строк»
+  (618 → 417 строк) убрала накопленную археологию решений, у которой уже есть дом — тела
+  соответствующих issue (#235, #255, #396). Напрашивающийся анти-рецидив-гейт «файл не длиннее N строк»
   отвергнут как **Goodhart**: под порогом ужимается формулировка, а не археология, то есть
   гейт зелен ровно тогда, когда дефект замаскирован. Семантическое суждение «сколько здесь
   прозы-обоснования, а сколько правила» — тот же класс, что детектор семантических дублей,
@@ -317,6 +317,17 @@ decision goes to" route — and the rule itself — live in
   гейт сознательно не ловит** (равно как и перенос текста в `docs/architecture/*`, который агент
   всё равно читает по требованию). Прирост именно в agent/command-frontmatter — повод завести
   **второй** счётчик, а не расширять этот.
+
+- **AC. Дата в доке маркером датируемого не стережётся (#428).** Гард на форму ссылки
+  (`tests/test_doc_narrative.py`) взял две ветки из трёх, объявленных в issue; третья —
+  «`20\d\d-\d\d-\d\d` вне явного маркера замера» — **не взята**. Причина: нарушений ноль,
+  прецедента рецидива нет, и канон (`project-map.md` §«Что описывает документация») про
+  даты не говорит ничего — единственным определением правила стал бы сам предикат. Его
+  закрытый словарь маркеров (`замер`, `проверено`, `measured`, …) пришлось бы выводить из
+  семи живых строк, то есть подгонять под текст: первое же законное «по состоянию на
+  2026-08-01» дало бы красный CI на верном доке, а режим сопровождения свёлся бы к
+  «покраснело → дописал слово». Записано, чтобы ветку не переоткрыли как забытую: вернуться
+  — когда появится **измеренный** рецидив и правило о датах в каноне, а не наоборот.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 

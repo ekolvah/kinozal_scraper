@@ -33,7 +33,7 @@ test-first → [`§I`](../../docs/architecture/principles.md#i-test-first-non-ne
 (RED-шаг в [`/implement`](../commands/implement.md)),
 simplicity / minimal-diff → [`§VII`](../../docs/architecture/principles.md#vii-simplicity-first)
 (дефолт «минимальный дифф, ничего спекулятивного» — против переусложнения; гейтится
-architect-review'ом на стадии плана, [`workflow.md`](workflow.md) #9). Пишешь тесты — сверься с
+architect-review'ом на стадии плана, [`workflow.md`](workflow.md) §9). Пишешь тесты — сверься с
 [`.claude/rules/testing.md`](testing.md) **до выбора уровня теста** (bug-taxonomy): он path-scoped
 (`tests/**`) и может подгрузиться уже после того, как стратегия выбрана.
 

@@ -30,7 +30,7 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 
 ## Зависимости
 
-Канон — [`workflow.md`](.claude/rules/workflow.md) #7 (pip-compile в том же коммите при изменении
+Канон — [`workflow.md`](.claude/rules/workflow.md) §7 (pip-compile в том же коммите при изменении
 `requirements*.in`). Механика: `scripts/ci_check.py` ловит version-drift и пакеты в `.in` без pin
 в `.txt`.
 

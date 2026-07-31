@@ -106,7 +106,7 @@ which dispatches two cheap checks in one process right after each file edit:
   `--fix`/format mutation** — the harness tracks file contents, so rewriting
   behind its back breaks the next Edit's `old_string` match). Remaining lint →
   stderr + exit 2 (PostToolUse exit 2 feeds stderr back to the agent).
-- `requirements*.in` → a `pip-compile` reminder (workflow #7 is otherwise only
+- `requirements*.in` → a `pip-compile` reminder (`workflow.md` §7 is otherwise only
   prose — this makes forgetting it a *visible* marker, not a CI-time surprise).
 
 §IV split: a malformed/empty payload is a silent no-op, but a ruff *exec*
@@ -172,7 +172,7 @@ DI) into a deterministic gate. Two contracts, both green today — value is
 
 `check_imports()` calls import-linter's **Python API** (`importlinter.api`), not
 the `lint-imports` console script — the console entry point is unreliable-on-PATH
-on Windows and would reintroduce the #109 `subprocess stdout=None` pitfall. grimp
+on Windows and would reintroduce the `subprocess stdout=None` pitfall (#109). grimp
 builds the graph statically (AST), so the `__main__` wiring blocks never execute.
 `tests/test_import_contracts.py` is an anti-drift guard: it asserts the
 contracts' *load-bearing fields* (which modules are forbidden/layered), so an
@@ -192,9 +192,9 @@ lives here and in `runtime.md`, not in the constitution.
 
 | Правила (issue) | Тип | Что ловит | Порог / известная дыра |
 |---|---|---|---|
-| `C901`, `PLR0912`, `PLR0915` (#233) | ратчет | разрастание метода (цикломатика / ветки / стейтменты) | `max-complexity = 12` — **выровнен с дефолтным порогом веток PLR0912**, а не подогнан под сегодняшний код (защита от Goodhart/байкшеддинга); PLR0912/PLR0915 на дефолтах ruff (12 / 50). **Дыра:** blanket `# noqa` позволяет grandfathered-функции расти дальше незамеченной — ратчет защищает новый код и новые функции, не замороженную шестёрку. Настоящий фикс — распил, #251 (§V documented-mitigation) |
+| `C901`, `PLR0912`, `PLR0915` (#233) | ратчет | разрастание метода (цикломатика / ветки / стейтменты) | `max-complexity = 12` — **выровнен с дефолтным порогом веток PLR0912**, а не подогнан под сегодняшний код (защита от Goodhart/байкшеддинга); PLR0912/PLR0915 на дефолтах ruff (12 / 50). **Дыра:** blanket `# noqa` позволяет grandfathered-функции расти дальше незамеченной — ратчет защищает новый код и новые функции, не замороженную шестёрку. Настоящий фикс — распил (#251, §V documented-mitigation) |
 | `ERA001` (#235) | ратчет | закомментированный код | Репо намерено **чистым**. `tests/**` **не** исключены: мёртвый код мёртв независимо от роли файла |
-| `ARG001`, `ARG002`, `SLF001` (#236) | ратчет | неиспользуемый аргумент функции/метода, доступ к приватному члену чужого объекта | 110 существующих хитов триажированы поштучно, реальных мёртвых параметров в `src/` — ноль. `SLF001` в `src/` **нулевой**: два хита (`RotatingGeminiEnricher` лез в `GeminiEnricher._model_name` из двух мест) были одной настоящей §II-утечкой и сняты публичным свойством `model_name`, а не noqa. **Не выбраны** `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) — сознательный defer, #236 Out of scope |
+| `ARG001`, `ARG002`, `SLF001` (#236) | ратчет | неиспользуемый аргумент функции/метода, доступ к приватному члену чужого объекта | 110 существующих хитов триажированы поштучно, реальных мёртвых параметров в `src/` — ноль. `SLF001` в `src/` **нулевой**: два хита (`RotatingGeminiEnricher` лез в `GeminiEnricher._model_name` из двух мест) были одной настоящей §II-утечкой и сняты публичным свойством `model_name`, а не noqa. **Не выбраны** `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) — сознательный defer (#236 Out of scope) |
 | `D100`, `D104`, `D419` (#253) | **presence-гейт** (порога нет) | отсутствующий / пустой module- и package-docstring | Репо чисто, скоуп репо-широкий (`src/` **и** `scripts/`/root). `D101`/`D103` (класс/функция) сознательно **не** выбраны — гейт только уровня модуля. **Дыра:** `D100`/`D104` флагают только *публичные* модули, поэтому будущий `src/kinozal_scraper/_internal.py` проскочит (сегодня такого модуля нет) |
 
 **Конвенция глушения — одна на все четыре, и именно её пинят гарды:**
@@ -247,7 +247,7 @@ rules that are two ends of the same defect (#364, #410):
 1. **`encoding` is mandatory** on a call that captures output in text mode.
    Without it Windows decodes with the OS code page, the reader thread dies on
    the first Cyrillic byte, and the captured text is lost — which is also where
-   the `stdout=None` gotcha of #109 comes from (an empty buffer becomes `None`).
+   the `stdout=None` gotcha comes from (#109: an empty buffer becomes `None`).
 2. **No default on captured output** — `result.stdout or ""` and friends are
    banned. Once rule 1 closed the cause, `None` means *the capture itself
    failed*, so a default silently replaces a real failure with emptiness —
@@ -274,10 +274,13 @@ rules that are two ends of the same defect (#364, #410):
 `scripts/hooks.py` additionally passes `errors="replace"` — per-call-site decision for a tool
 whose entire job is visibility; the guard does not require `errors` anywhere.
 
-### Doc guards (`tests/test_doc_headers.py`, `tests/test_doc_links.py`)
+### Doc guards
 
-Два статических гарда над `.md`, оба в жанре выше — статическая проверка под `check_pytest`,
-без записи в реестр `CHECKS`:
+Три статических гарда над `.md` (`tests/test_doc_headers.py`, `tests/test_doc_links.py`,
+`tests/test_doc_narrative.py`), все в жанре выше — статическая проверка под `check_pytest`,
+без записи в реестр `CHECKS`. Заголовок этой секции намеренно не перечисляет файлы: якорь
+генерится из его текста, и привязка адреса к волатильному перечню — тот же дефект, что номер
+таски в заголовке.
 
 - **header'ы** — каждый картируемый `.md` несёт строку «на какой вопрос отвечает этот файл»
   (конвенция — `project-map.md`, #421).
@@ -288,8 +291,19 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
   gitignored-копии репо в `.claude/worktrees/` иначе краснели бы локально, а `Path.exists()` /
   `Path.resolve()` на Windows регистронезависимы и пропустили бы `` `Pipeline.md#…` `` локально, чтобы
   уронить CI на Linux. Разбор через `markdown-it-py`: ссылка внутри ```-блока не считается
-  ссылкой, а текст заголовка нужен отрендеренный. Оба гарда — presence/резолвимость, не
-  корректность: указатель на существующий, но переставший быть домом темы файл ловит человек.
+  ссылкой, а текст заголовка нужен отрендеренный.
+- **форма ссылки** — `#N` стоит скобочным указателем, а не членом предложения; в заголовке
+  секции запрещён и в скобках, потому что якорь генерится из текста заголовка (#428). Сигил `#`
+  зарезервирован за issue/PR: номер правила — `workflow.md §7`, доска — `Project 1`; конвенция
+  заменяет собой открытый словарь исключений в предикате. Разрешённая зона — только **сомкнутая**
+  пара `()`, иначе одна незакрытая скобка молча превращает хвост абзаца в белый список; парность
+  backtick'ов и границы ссылок отдаются парсеру, а `table` включён, чтобы скобка из одной ячейки
+  не смыкалась со скобкой из другой. Записи MADR (`docs/adr/`) вне скоупа по жанру: запись —
+  дом обоснования, датирована по конструкции и после принятия иммутабельна.
+
+Все три — presence / резолвимость / форма, **не** корректность: указатель на существующий, но
+переставший быть домом темы файл, как и хроника, аккуратно уложенная в скобки, ловится человеком
+на ревью. Границы каждого гарда названы в его docstring.
 
 ## Claude review workflow (`claude-review.yml`)
 
@@ -419,7 +433,7 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 - **`pre-commit` (#255) — no-go.** **Root reason:** каждый хук пинит версию тула через `rev:` и
   запускает его в **изолированном venv** — это второй источник версии тула помимо
   `requirements-dev.txt` (сегодня `python -m ruff`/`mypy` берут единственную залоченную версию),
-  то есть системный возврат drift-класса #153. Резкая иллюстрация — `mypy`: его изолированный
+  то есть системный возврат того же local↔CI drift-класса (#153). Резкая иллюстрация — `mypy`: его изолированный
   venv не видит зависимостей проекта, вынуждая держать `additional_dependencies:` —
   скопированный руками дубль набора зависимостей вне `requirements.txt`. **Ловушка частичной
   миграции:** file-линтеры в `pre-commit`, остальные гейты скриптами ⇒ две пересекающиеся

@@ -32,9 +32,9 @@ A test that pins a known production bug (`TestConfigValidationKnownGaps` style)
 is allowed only when an issue tracks the fix; when fixed, the test MUST be
 inverted to assert the correct behaviour.
 
-**Rationale:** historical inversion (code → tests post-hoc) hid drifts like
-issue #57 for months. Writing the test first makes the contract explicit and
-the divergence audible.
+**Rationale:** the inverted order (code → tests post-hoc) hides drift for
+months (#57). Writing the test first makes the contract explicit and the
+divergence audible.
 
 ### II. Protocol Boundaries with Dependency Injection
 
@@ -154,14 +154,14 @@ length, rewrite it; an abstraction with a single caller is inlined, not introduc
 **Surgical changes:** touch only what the task requires and match the surrounding style;
 do NOT "improve" or refactor adjacent unbroken code inside an unrelated diff. Removing
 dead code is a separate, deliberate unit (one-PR-one-unit,
-[`workflow.md`](../../.claude/rules/workflow.md) #4), not silently widened scope. New
+[`workflow.md`](../../.claude/rules/workflow.md) §4), not silently widened scope. New
 dependencies / packages / build steps are not added without asking first — prefer stdlib
 and existing repo packages.
 
 Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
 deliberately declines to script (see [`project-map.md`](project-map.md)). It is enforced at
 **plan stage** by the architect-review gate ([`workflow.md`](../../.claude/rules/workflow.md)
-#9), whose reviewer persona reads the goal function from
+§9), whose reviewer persona reads the goal function from
 [`.claude/rules/mindset.md`](../../.claude/rules/mindset.md); the cloud `Claude code review`
 workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
 
@@ -237,4 +237,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 2.3.1
+**Version**: 2.3.2

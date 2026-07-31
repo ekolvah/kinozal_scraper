@@ -76,10 +76,10 @@ falling back to `FALLBACK_MARKER` (#128, #130):
 
 **Why `ModelConfigRejected` is loud, not silent (#340).** A `400 INVALID_ARGUMENT`
 is *our request* being malformed — deterministic (every item 400s identically on
-that model), a code bug, unlike a transient per-item `TryNextModel`. Bug #338
-(3.x models rejecting `thinking_budget=0`) hid for a while precisely because the
-rotator absorbed it as a routine `TryNextModel`: it rotated down to a working
-model, notifications shipped, the cron stayed green, and no §IV alert fired.
+that model), a code bug, unlike a transient per-item `TryNextModel`. Absorbed as
+a routine `TryNextModel` such a bug is invisible: the rotator drops to a working
+model, notifications ship, the cron stays green, and no §IV alert fires — which
+is exactly how 3.x models rejecting `thinking_budget=0` stayed hidden (#338).
 `ModelConfigRejected` restores visibility: rotation still delivers data, but the
 config bug reaches the operator (Telegram alert + red job). It is deliberately
 **not** dead-marked (unlike 404): the alert forces a quick fix so the per-item
@@ -221,7 +221,7 @@ Both `github_new_popular` and `github_trending` write the enrich result to
 
 Pin-tests in `tests/test_pipeline_config.py::TestRussianEnrichPrompts`
 enforce that both sources' prompts contain the substrings `Для кого` and
-`Зачем` and that the template references `{summary_ru}`. Closed by #88.
+`Зачем` and that the template references `{summary_ru}` (#88).
 
 `summary_ru` is **never** written to the Sheets row — it lives only in
 `item.raw` so the notification template can read it. No `ROW_HEADERS`
