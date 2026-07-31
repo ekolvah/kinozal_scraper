@@ -1,3 +1,10 @@
+"""Tests for `generic_pipeline.py` — the declarative pipeline core.
+
+Covers JSON and HTML extraction with their quality failures, `PipelineResult.ok`,
+and notification rendering (raw-field fallbacks, newline collapse, escaped
+title/trailer links).
+"""
+
 import unittest
 
 from kinozal_scraper.generic_pipeline import (

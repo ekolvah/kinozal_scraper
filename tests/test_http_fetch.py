@@ -1,3 +1,10 @@
+"""Tests for `http_fetch.py` — the HTTP boundary shared by every scraper.
+
+Covers browser impersonation and shared request kwargs, image content-type
+rules, the transient-vs-permanent retry policy, and the single-line block
+diagnostics printed on a 403.
+"""
+
 import pathlib
 import unittest
 import unittest.mock

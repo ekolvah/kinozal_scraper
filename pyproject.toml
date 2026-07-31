@@ -61,12 +61,16 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests were never docstring-checked (check_headers scanned src/ only); keep
-# them out of the D100/D104/D419 gate (#253). ARG001/ARG002/SLF001 (#236) are a
-# categorical exemption too: white-box tests legitimately access private members
-# (§II) and carry mock signatures whose params are dictated by the interface,
-# not by usage — unlike ERA001, tests are NOT exempt there.
-"tests/**" = ["D100", "D104", "D419", "ARG001", "ARG002", "SLF001"]
+# ARG001/ARG002/SLF001 (#236) are a categorical exemption: white-box tests
+# legitimately access private members (§II) and carry mock signatures whose
+# params are dictated by the interface, not by usage — unlike ERA001, tests are
+# NOT exempt there.
+# D100/D104/D419 used to sit here too (#253, on the historical grounds that the
+# bespoke check_headers.py scanned src/ only). Revoked in #433: the module
+# docstring is the sole navigation into 25k lines of tests, and 41 of 60 files
+# were already writing one voluntarily. No per-file exemption is left for the
+# docstring codes — tests/test_ruff_docstring_rule.py pins that.
+"tests/**" = ["ARG001", "ARG002", "SLF001"]
 
 [tool.ruff.lint.mccabe]
 # Align C901 with PLR0912's default branch threshold (12) rather than tuning to

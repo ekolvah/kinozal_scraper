@@ -1,3 +1,10 @@
+"""Tests for the secrets gate in `scripts/ci_check.py` (`check_secrets`).
+
+Covers the scanned target set, that a planted secret exits non-zero in both
+ASCII and non-ASCII files, and the §IV no-op guards: outside a git repo or with
+an empty file set the gate must fail, never pass quietly.
+"""
+
 from __future__ import annotations
 
 import subprocess
