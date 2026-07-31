@@ -39,10 +39,10 @@ gitignored и держит копии репо со старыми доками 
 гард не имел бы легального фикса — остался бы exception-список.
 
 **Границы гарда, честно.** Гейтится **форма**, а не жанр: `Closed by #88.` → `Закрыто
-(#88).` пройдёт, не став лучше. Из 266 упоминаний в скоупе гейтится 23; остальные
-разрешены, и настоящий нарратив среди них есть (`.claude/commands/implement.md` держит два
-в скобках). Гард делает рецидив **видимым на ревью** в форме, в которой он дешевле всего, —
-не делает невозможным. Семантическое «норматив или археология» остаётся человеку, тот же
+(#88).` пройдёт, не став лучше. Замер на момент заведения гарда: из 266 упоминаний `#N`
+в скоупе под него попали 23, остальные разрешены — и настоящий нарратив среди разрешённых
+есть (`.claude/commands/implement.md` держит два в скобках). Гард делает рецидив **видимым
+на ревью** в форме, в которой он дешевле всего, — не делает невозможным. Семантическое «норматив или археология» остаётся человеку, тот же
 класс, что детектор семантических дублей (`project-map.md`).
 
 Ещё два предела, названных явно. **Label ссылки прозрачен целиком**, а не только когда он
@@ -124,14 +124,19 @@ def narrative_refs(markdown: str) -> list[tuple[int, str]]:
     """`(строка, фрагмент)` для каждого `#N`, стоящего не скобочным указателем."""
     found: list[tuple[int, str]] = []
     for token in _MD.parse(markdown):
-        if token.type != "inline" or token.map is None:
+        if token.type != "inline":
             continue
+        # `map or [0]`, а не `map is None → skip`: пропуск выбросил бы содержимое токена
+        # из проверки молча — ровно тот §IV-вакуум, против которого гард написан. Сегодня
+        # ветка недостижима (ячейки таблиц `.map` несут — это доказывает
+        # `test_table_cell_paren_does_not_leak`), но цена честного отчёта — ноль.
+        start_line = (token.map or [0])[0]
         stream = readable_stream(token)
         spans = paired_spans(stream)
         for match in _ISSUE_REF.finditer(stream):
             if any(start < match.start() < end for start, end in spans):
                 continue
-            line = token.map[0] + stream[: match.start()].count("\n") + 1
+            line = start_line + stream[: match.start()].count("\n") + 1
             around = stream[max(0, match.start() - 60) : match.start() + 60]
             found.append((line, around.replace(_OPAQUE, "·").replace("\n", " ").strip()))
     return found
