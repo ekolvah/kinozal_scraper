@@ -58,7 +58,7 @@ load_sources_config()
 non-zero when any result is not ok. Notification delivery failures are errors,
 not warnings, because users must receive either data or a failure signal — never silence.
 Future: `on_error: skip_item | fail_source` field in `sources.json` — deferred
-to issues #6/#7 when sources become real.
+until sources become real (#6, #7).
 
 ## NormalizedItem
 

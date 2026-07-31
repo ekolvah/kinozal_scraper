@@ -56,7 +56,7 @@
    `scripts/validate_issue_sections.py`, эта проза ему подчинена), then
    `/implement #N` executes it with TDD red-green discipline.
    Trivial fixes (typos, single-line non-behavioural tweaks) may skip the
-   workflow. See #114 for the rationale and exact contract.
+   workflow (#114 carries the rationale and the exact contract).
 9. **Architect review gate** — the issue body MUST carry a non-empty
    `## Architect review` section before `/implement` runs; the existing
    `scripts/validate_issue_sections.py` gate enforces it (no separate
@@ -80,9 +80,9 @@
     build (`docs/architecture/project-map.md`) — so a script wouldn't remove
     the human step and a gate doesn't pay off. `scripts/new_branch.py` only
     pulls fresh main at branch time, too late to catch the duplicate.
-    **Precedent:** #125 — a re-file of an already-fixed bug, closed by hand.
+    **Precedent:** a re-file of an already-fixed bug, closed by hand (#125).
 11. **Priority** — an issue's priority is the **Priority**
-    single-select field of GitHub Project #1 ("kinozal_scraper — backlog &
+    single-select field of GitHub Project 1 ("kinozal_scraper — backlog &
     priority") — **not** a label and **not** a roadmap emoji. When creating an
     issue the agent MUST **explicitly ask the user which priority** (High /
     Medium / Low), never guessing, then apply it with

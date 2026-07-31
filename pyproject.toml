@@ -8,7 +8,7 @@ version = "0.0.0"
 description = "Declarative scraping pipelines for kinozal.tv, Steam, GitHub trending and Telegram-channel summaries."
 requires-python = ">=3.12"
 # Runtime dependencies are deliberately NOT declared here. The canonical source
-# stays requirements*.in/.txt + pip-compile (workflow #7); install the package
+# stays requirements*.in/.txt + pip-compile (workflow.md §7); install the package
 # itself with `pip install -e . --no-deps` so it never shadows the lockfile.
 
 [tool.setuptools.packages.find]
