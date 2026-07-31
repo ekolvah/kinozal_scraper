@@ -89,7 +89,16 @@ _EXPECTED_SCOPE_DIRS = ("docs/architecture", ".claude/rules", ".claude/commands"
 # то условие, по которому ветка дат была отклонена (ledger **AC**), а эта взята. Живёт
 # не в скоупе `.md`: три коммита этого же PR понадобились, чтобы вычистить `.py`
 # и `.toml`, — прозы для второй половины конвенции не хватило.
-_NON_ISSUE_SIGIL = re.compile(r"(?:workflow|Project)\s+#\d")
+#
+# Хвост `(?:\.md)?[`)\]]*` не украшение: ссылка на правило пишется четырьмя способами —
+# `workflow #N`, `` `workflow.md` #N ``, `[`workflow.md`](path) #N`, `Project #N` — и
+# закрыть словарь по двум *написаниям* вместо двух *токенов* значило бы оставить
+# большинство `.md`-мест на прозе. `IGNORECASE` — ради `Workflow` в начале предложения.
+#
+# Отрицательный пример пишется через метапеременную `#N`, а не с цифрой: эта ветка —
+# построчный regexp по сырому файлу, code-span для неё не escape hatch (в отличие от двух
+# markdown-веток). За `#` не цифра — предикат молчит, и правило можно показать.
+_NON_ISSUE_SIGIL = re.compile(r"(?:workflow(?:\.md)?[`)\]]*|project)\s+#\d", re.IGNORECASE)
 
 # Каталог записей MADR — вне скоупа по жанру (докстринг §Скоуп). Пришпилено
 # `test_adr_records_are_out_of_scope`, чтобы carve-out остался осознанным.
@@ -326,6 +335,21 @@ class TestNarrativePredicates:
         # отслеживаемые файлы, включая этот, и литерал в тесте покраснел бы сам на себе.
         assert len(sigil_misuses(f"правило workflow #{7} и доска Project #{1}")) == 1
         assert sigil_misuses("правило `workflow.md` §7 и доска Project 1") == []
+
+    def test_all_four_spellings_of_a_rule_number_are_reported(self) -> None:
+        """Словарь закрыт по *токену*, а не по одному написанию.
+
+        Три из четырёх форм стоят в `.md` внутри сомкнутых скобок, то есть
+        `narrative_refs` их пропускает по построению — если бы regexp требовал
+        соседства, регресс `§N` → `#N` был бы невидим всем трём веткам.
+        """
+        for spelling in (
+            f"workflow #{9}",
+            f"`workflow.md` #{9}",
+            f"[`workflow.md`](../rules/workflow.md) #{9}",
+            f"Workflow #{9}",
+        ):
+            assert sigil_misuses(spelling), spelling
 
     def test_sigil_branch_reads_any_file_type(self) -> None:
         """Ветка построчная — работает и там, где markdown-структуры нет."""
