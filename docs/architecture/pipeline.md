@@ -162,9 +162,10 @@ INFO-breadcrumb `video_id`/`reason`/`confidence`; miss-ветка пишет р�
 **Почему композиция разрезана надвое (#379).** `select_trailer` — всё, что стоит между
 профилем и пользователем; `enrich_with_trailer` — только деривация профиля из
 kinozal-заголовка. Разрез не косметический: скоркарта на `pick` слепа к слою **над**
-стратегией — регресс в нём не меняет её ни на балл (доказательство — гейт
-`tests/test_eval_baseline.py::test_reverted_359_policy_fails_the_gate`, который краснеет
-на политике, для pick-скоркарты неразличимой). Поэтому замер заходит в `select_trailer`,
+стратегией — политика, меняющая доставку на 10 фильмов (замер 26→16, #359), не двигает её
+ни на балл. Гейт
+`tests/test_eval_baseline.py::TestBaselineGate::test_reverted_359_policy_fails_the_gate`
+краснеет на такой политике по **delivery**-колонке. Поэтому замер заходит в `select_trailer`,
 а его исход пришпилен
 `tests/fixtures/trailer_baseline.json` (см. [testing.md](testing.md#eval-harness--trailer-selection)).
 Шов проходит по `FilmProfile` — родной форме golden-set: будь входом `NormalizedItem`,
