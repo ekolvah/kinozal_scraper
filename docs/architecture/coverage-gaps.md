@@ -111,7 +111,7 @@ decision goes to" route — and the rule itself — live in
   segment (`text_utils.YEAR_SEGMENT_RE`) and dropping the format tail. Two edges are **consciously
   accepted**, characterized but not "fixed": (1) a film whose **RU title IS a bare year** (`2012`,
   `1917` → raw `2012 / 2012 / 2009 / …`) keys on that first-segment year → `"2012"` — a no-op vs. the
-  plain first-segment behaviour the year anchor replaced, same class as `original_title`'s
+  plain first-segment behaviour the year anchor replaced (#363), same class as `original_title`'s
   numeric-original edge (#138 Out of scope), pinned by `test_year_titled_film_collapses_to_year`. (2) a **yearless** raw title (no bare-year
   segment at all) falls back to the clean first segment, so yearless namesakes could still collapse — but
   a top-page title without a year is anomalous, and any collapse is already visible in aggregate via the

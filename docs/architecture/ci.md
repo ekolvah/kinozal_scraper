@@ -276,8 +276,7 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 
 ### Doc guards
 
-Три статических гарда над `.md` (`tests/test_doc_headers.py`, `tests/test_doc_links.py`,
-`tests/test_doc_narrative.py`), все в жанре выше — статическая проверка под `check_pytest`,
+Статические гарды над `.md`, все в жанре выше — статическая проверка под `check_pytest`,
 без записи в реестр `CHECKS`. Заголовок этой секции намеренно не перечисляет файлы: якорь
 генерится из его текста, и привязка адреса к волатильному перечню — тот же дефект, что номер
 таски в заголовке.

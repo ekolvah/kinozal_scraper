@@ -77,7 +77,7 @@ for `"dedupe_key"`. Never hardcode column A or index 0.
 
 For a given Sheets tab, all sources writing into that tab MUST agree on the
 meaning of each column. Mixing semantics within one column is a bug — it
-shipped once (#60, #85, #86) where `github_trending` wrote daily-delta
+shipped once (reported in #60, shipped by #85, fixed by #86) where `github_trending` wrote daily-delta
 ("172 stars today") into the same `github_projects.metric` column that
 `github_new_popular` filled with total stargazer count (`14113`), making the
 column unusable for cross-source analysis.

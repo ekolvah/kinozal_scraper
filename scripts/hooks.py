@@ -12,7 +12,7 @@ in ONE process (one python spawn per edit):
                        Edit's `old_string` match). Remaining lint → stderr,
                        exit 2 (PostToolUse exit 2 feeds stderr back to the agent
                        without blocking the already-applied edit).
-  - `requirements*.in` → a `pip-compile` reminder (workflow #7 is otherwise only
+  - `requirements*.in` → a `pip-compile` reminder (`workflow.md` §7 is otherwise only
                        prose — easy to forget; the reminder makes it visible).
   - a write under the agent's out-of-repo auto-memory dir
                        (`.claude/projects/<slug>/memory/`) → a Memory↔repo
@@ -143,7 +143,7 @@ def pipcompile_signal(path: str) -> Signal:
         kind="pipcompile",
         message=(
             f"{path} changed — run `pip-compile {path}` in the SAME commit "
-            "(workflow #7) or CI will red on lockfile drift."
+            "(`workflow.md` §7) or CI will red on lockfile drift."
         ),
     )
 

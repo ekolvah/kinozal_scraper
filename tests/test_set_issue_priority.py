@@ -1,6 +1,6 @@
-"""RED tests for #351: `set_issue_priority.py` — выставить Priority issue в Project #1.
+"""RED tests for #351: `set_issue_priority.py` — выставить Priority issue в Project 1.
 
-Приоритет issue живёт как single-select поле Priority в GitHub Project #1. Механика
+Приоритет issue живёт как single-select поле Priority в GitHub Project 1. Механика
 («добавь в проект + выставь поле») — детерминированный gh-вызов, который по канону
 `mindset.md` «Скрипты > инструкции» вынесен в скрипт с exit-code вместо прозы/памяти.
 

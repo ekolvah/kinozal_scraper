@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Set an issue's Priority field in GitHub Project #1, or fail visibly (#351).
+"""Set an issue's Priority field in GitHub Project 1, or fail visibly (#351).
 
 Usage: python scripts/set_issue_priority.py <N> <High|Medium|Low>  (N = bare issue number)
 
 Why a script and not prose: an issue's priority lives as the single-select
-**Priority** field of Project #1 ("kinozal_scraper — backlog & priority"), set via
+**Priority** field of Project 1 ("kinozal_scraper — backlog & priority"), set via
 two `gh project` calls (add the issue to the project, then edit the field). That
 deterministic multi-step gh sequence used to live only in private agent memory —
 a violation of the Memory↔repo policy (`docs/architecture/project-map.md`) and of
@@ -138,7 +138,7 @@ def _item_edit(item_id: str, option_id: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Set an issue's Priority in Project #1 (#351).")
+    parser = argparse.ArgumentParser(description="Set an issue's Priority in Project 1 (#351).")
     parser.add_argument("issue", type=int, help="issue number")
     parser.add_argument("level", help="priority level: High | Medium | Low")
     ns = parser.parse_args(argv)
