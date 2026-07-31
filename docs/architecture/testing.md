@@ -81,9 +81,9 @@ Choose the cheapest reliable test for each category.
   row construction, deduplication key lookups, schema validation.
 - Protocol contract: `InMemoryStorage` tests verify the `Storage` interface.
 
-## Eval harness — trailer selection (#139)
+## Eval harness — trailer selection
 
-`scripts/eval_trailers.py` measures trailer-pick quality against a **frozen golden-set**
+`scripts/eval_trailers.py` (#139) measures trailer-pick quality against a **frozen golden-set**
 (`tests/fixtures/trailer_golden.json`): each film carries a hand-annotated `correct` — a
 single video_id, an **accept-set** (`list[str]` of equally-valid RU dubs, since a real film
 often has several), or `null` (no trailer exists) — plus a recorded `candidates` snapshot. The
@@ -114,42 +114,42 @@ grounded in reality, not self-fulfilling (#327).
   reply back into a `video_id` — a §IV miss-marker → `None`, an **error**-marker → `GoldenSetError`
   (a broken harness must never look like "the strategy found nothing"). Markers are *imported*, not
   re-spelled, so a reword in prod can't silently turn a miss into an unparsable reply.
-  - **Why a second column at all.** #359 changed `enrich_with_trailer` — the layer *above*
-    `HeuristicStrategy.pick` — so the pick scorecard was identical before and after a 26→16 score
-    regression. Measuring `pick` alone is blind to exactly the class of change that motivated the
-    gate. Today both columns agree by construction (no policy sits between them); the point is that
-    they *can* diverge.
+  - **Why a second column at all.** A policy change in `enrich_with_trailer` — the layer *above*
+    `HeuristicStrategy.pick` — leaves the pick scorecard **bit-identical** while moving delivery by
+    10 films (measured: 26→16, #359). Measuring `pick` alone is blind to exactly the class of change
+    the gate exists for. Today both columns agree by construction (no policy sits between them); the
+    point is that they *can* diverge.
   - **The baseline is the gate.** `tests/fixtures/trailer_baseline.json` pins the **delivery**
     outcome per case (`{"i", "film", "outcome"}` — the index rides along because `ru_title` is not
     unique: "Гладиатор 2" appears twice, and swapping two same-named cases would slip past a
     name-only check). `compare_to_baseline` is a pure function; the red comes from
     `tests/test_eval_baseline.py::TestBaselineGate::test_committed_baseline_matches_main`.
-    **This reverses the earlier "deliberately not in `ci_check`" stance** — that decision waited for
-    a strategy good enough to pin an absolute threshold, which never arrived. A ratchet needs no
-    such thing: it pins the *current fact*, so any movement becomes a reviewable diff line.
+    **Why a ratchet and not an absolute threshold.** A threshold would need a strategy good enough
+    to declare "this score is acceptable" — a judgement nobody can make while the strategy is still
+    moving. A ratchet needs no such thing: it pins the *current fact*, so any movement becomes a
+    reviewable diff line.
   - **Any divergence is red, improvements included.** "Green with a warning" would rebuild the very
     defect being fixed — a signal nobody is obliged to read (§IV). Worse, once wrong-cases land
     (#380) a net-positive delta could hide a `hit→wrong` swap; per-case comparison cannot.
     `--update-baseline` regenerates the fixture, so a deliberate improvement lands in the PR diff.
-  - **Proof, not reasoning.** `TestBaselineGate::test_reverted_359_policy_fails_the_gate` runs the
-    reverted #359 policy (suppress `confidence < 0.5`) through the same two functions the real gate
-    uses and asserts the verdict is red with the moved films named — reproducing 26→16 exactly. The
-    counterfactual policy lives in the test file, never in `src`.
+  - **Proof, not reasoning.** `TestBaselineGate::test_reverted_359_policy_fails_the_gate` runs a
+    counterfactual policy (suppress `confidence < 0.5`, #359) through the same two functions the real
+    gate uses and asserts the verdict is red with the moved films named — reproducing 26→16 exactly.
+    The counterfactual policy lives in the test file, never in `src`.
   - **Where the gate stops.** It covers `select_trailer`. Profile derivation from the kinozal title
-    (clean-title / `original_title` / year-regex / the game branch — where #385 and #393 lived) is
+    (clean-title / `original_title` / year-regex / the game branch, #385, #393) is
     outside the measurement and rests on `TestEnrichWithTrailer` unit tests. This limit is
     load-bearing: a change written in that blind spot passes green.
 
 - **Отрицательный полюс метрики: разметка `trap` (#380).** Шкала `Hit +1 / Miss 0 / Wrong −2`
-  объявляла, что чужой трейлер вдвое хуже честного маркера, но на наборе #327 `wrong` не
-  встречался **ни разу**: все кейсы строились как «правильный ответ существует, найди его».
-  Половина шкалы была мертва — набор мог только наказать за осторожность (#359: −10 hit), а
-  «сколько wrong предотвращено» показать был не в состоянии.
-  - **Что добавлено.** Три кейса с живьём записанными пулами и полем `trap` — id кандидатов, про
+  объявляет, что чужой трейлер вдвое хуже честного маркера, — и половина шкалы мертва, если в
+  наборе нет ни одного `wrong`: такой набор наказывает за осторожность, но «сколько wrong
+  предотвращено» показать не в состоянии (#327, #359).
+  - **Что размечено.** Три кейса с живьём записанными пулами и полем `trap` — id кандидатов, про
     которых **верифицировано** (через `videos.list` → канал + описание, основание в `note`), что
     это *другая работа*: фанатский Minecraft-продакшен под названием сериала, хоррор-фильм-тёзка,
     сериал `The Rookie` под названием фильма `The Amateur`. Один из них стратегия сегодня и
-    выбирает → скоркарта перестала быть `wrong=0`.
+    выбирает, поэтому скоркарта не `wrong=0`.
   - **Почему отдельное поле, а не только accept-set.** `correct` отвечает «этот id — правильный»;
     он не умеет отличить «чужая работа» от «валидный дубляж той же работы, который мы не
     дозаписали». `trap` — ground truth про **пул**, а не про исход, поэтому переживает улучшение
@@ -165,17 +165,17 @@ grounded in reality, not self-fulfilling (#327).
     не «набор стал лучше», а «в `trap` дописали наугад, чтобы позеленело». Наблюдение «полюс стал
     слишком лёгким» приходит из диффа baseline (`wrong→hit`) и заводится как issue, а не как
     красный CI у того, кто починил прод.
-  - **Что полюс сразу показал.** Откаченная политика #359 (давить `confidence < 0.5`), прогнанная
-    по обновлённому набору, даёт 26 → 14 и **не трогает `wrong` вообще** (как был 1, так и
-    остался): реальный чужой pick идёт с `confidence=0.9`. То есть порог по уверенности
-    ортогонален наблюдаемому классу ошибок — вывод, который на наборе без полюса был непроверяем
-    (канон — [pipeline.md](pipeline.md#trailer-retrieval-and-selection-140-141-144)).
-  - **Дрейф пулов — не теория.** Повторная запись пула «Крайних мер» через час уже не вернула
+  - **Что метрика показывает.** Контрфактическая политика «давить `confidence < 0.5`» (#359) на
+    наборе с полюсом даёт 26 → 14 и **не трогает `wrong` вообще** (как был 1, так и остаётся):
+    реальный чужой pick идёт с `confidence=0.9`. Порог по уверенности ортогонален наблюдаемому
+    классу ошибок — вывод, который на наборе без полюса непроверяем
+    (канон — [pipeline.md](pipeline.md#trailer-retrieval-and-selection)).
+  - **Дрейф пулов — не теория.** Повторная запись пула «Крайних мер» через час уже не возвращает
     пришпиленный `trap`-id. Поэтому `_record` перевалидирует свежий payload **до** `write_text`:
     иначе файл сохранился бы, а упала бы следующая *загрузка* — у всех, кто просто запустил
-    `pytest`, и без намёка на причину. И поэтому же новые кейсы записывались через
+    `pytest`, и без намёка на причину. И поэтому же новый кейс записывается через
     `--record --golden <scratch>.json` на однокейсовом файле, а не переписыванием фикстуры целиком.
-  - **Вне TMDB-колонки (сознательно).** У новых кейсов `tmdb_videos: []` — единственный способ
+  - **Вне TMDB-колонки (сознательно).** У `trap`-кейсов `tmdb_videos: []` — единственный способ
     записать снимок сейчас — `--record-tmdb` по всем 28, то есть та самая разморозка, от которой
     фикстуры и защищены; `evaluate_tmdb` их пропускает.
 
@@ -189,17 +189,17 @@ grounded in reality, not self-fulfilling (#327).
   placeholder ids a real YouTube id can't hit) are blanked → out of TMDB scope, and `evaluate_tmdb`
   skips empty-snapshot cases. A real "TMDB found nothing" is a **non-empty** snapshot with no
   eligible Trailer/Teaser → `pick_trailer`→None→Miss (distinct from out-of-scope).
-  - **Honest accept-set expansion (B1, #329).** The #327 accept-sets are YouTube-retrieval-derived,
-    so TMDB's *valid* RU dubs (different video_id, same film) scored Wrong against them. Fix:
-    per-id **content-verified** additions (the video name identifies the correct film + RU dub),
+  - **Honest accept-set expansion (B1, #329).** Accept-sets seeded from YouTube retrieval (#327)
+    miss TMDB's *valid* RU dubs (different video_id, same film), which would score Wrong. Additions
+    are per-id **content-verified** (the video name identifies the correct film + RU dub) and
     hard-coded — never "trust TMDB output wholesale". The non-circular control is TMDB measured
-    against the **pre-expansion** #327 set (a conservative floor); expansion is only for ground-truth
+    against the **pre-expansion** set (a conservative floor); expansion is only for ground-truth
     completeness, symmetric — the set holds both the YouTube-surfaced and TMDB-surfaced valid dubs,
     so neither source is unfairly penalised.
 
-## Eval harness — summarizer faithfulness (#347)
+## Eval harness — summarizer faithfulness
 
-`scripts/eval_summarizer.py` measures `summary_ru` **meaning** (not just the `response_pattern`
+`scripts/eval_summarizer.py` (#347) measures `summary_ru` **meaning** (not just the `response_pattern`
 regex, which only checks the two-line *format*) against a **frozen golden-set**
 (`tests/fixtures/summary_golden.json`: GitHub-project input + a recorded summary-under-eval +
 `note`, ≥1 deliberately **unfaithful** case as an audible anchor). It builds RAGAS inputs

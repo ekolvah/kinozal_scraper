@@ -34,7 +34,7 @@ reader + Gemini summarizer behind Protocols) and the shared `TelegramNotifier`
 hot path нет** — eval-only LLM/embedding/TMDB-пикеры (#142/#143/#329) сознательно вне
 прода, так что трейлер стоит ноль Gemini-квоты. Композиция retrieval → selection и
 обоснование выбора — канон в
-[pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection-140-141-144).
+[pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection).
 
 ## Protocols
 
@@ -53,7 +53,7 @@ ready clients, not credentials" — are now machine-enforced by `import-linter`
 
 Both live-Gemini call sites (`GeminiEnricher._generate`, `GeminiSummarizer.summarize`)
 emit a structured `llm_call` breadcrumb with token usage (`usage_metadata`) and
-latency — see [gemini.md § Call observability](gemini.md#call-observability--tokens--latency-145) (#145).
+latency — see [gemini.md § Call observability](gemini.md#call-observability--tokens--latency) (#145).
 
 ## Data flow (generic pipelines)
 

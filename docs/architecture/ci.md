@@ -54,13 +54,13 @@ a check in the registry without updating `ci.yml` fails
 > [`pre-commit`](https://pre-commit.com) framework — which this repo
 > deliberately does **not** use ([§Consciously not adopted](#consciously-not-adopted)).
 
-### Secret scan (`secrets`, #389)
+### Secret scan (`secrets`)
 
 `detect_secrets.pre_commit_hook` over every tracked file, run as a registry check —
 the local barrier between "an agent or contributor pasted a key into a source file"
 and `origin/main`. It sits **right after `lint`**, before the slow gates: a leaked key
 must redden the run in seconds, not after the minutes-long pytest + pip-audit tail. Cost is
-~5 s for ~130 files.
+~5 s for ~130 files (#389).
 
 **`-X utf8` is load-bearing, not decoration.** `detect_secrets/core/scan.py:261` opens
 each file with the *platform default* encoding and silently swallows the resulting
@@ -95,10 +95,10 @@ semantics shift with the OS path separator. For a false positive **inside** our 
 code the escape hatch is an inline `# pragma: allowlist secret` at the site (see
 `tests/test_secrets_gate.py`), never a blanket exclusion.
 
-### Session hooks (`scripts/hooks.py`, #281)
+### Session hooks (`scripts/hooks.py`)
 
 A separate, *earlier* feedback layer that runs **during** an agent session, not
-at push. `.claude/settings.json` declares a single `PostToolUse` hook (matcher
+at push (#281). `.claude/settings.json` declares a single `PostToolUse` hook (matcher
 `Edit|Write`) invoking `python "$CLAUDE_PROJECT_DIR/scripts/hooks.py" on-edit`,
 which dispatches two cheap checks in one process right after each file edit:
 
@@ -239,10 +239,10 @@ import-linter.
   ради гипотетики. **Revisit (wait-for-pain):** появится реальный cross-module мёртвый код,
   который `ERA001` не ловит (#235 Out of scope).
 
-### Subprocess output guard (`tests/test_subprocess_encoding.py`, #364 + #410)
+### Subprocess output guard (`tests/test_subprocess_encoding.py`)
 
 An AST guard over `scripts/**`, `src/**` and `tests/**`, enforcing **two**
-rules that are two ends of the same defect:
+rules that are two ends of the same defect (#364, #410):
 
 1. **`encoding` is mandatory** on a call that captures output in text mode.
    Without it Windows decodes with the OS code page, the reader thread dies on
@@ -274,6 +274,20 @@ rules that are two ends of the same defect:
 `scripts/hooks.py` additionally passes `errors="replace"` — per-call-site decision for a tool
 whose entire job is visibility; the guard does not require `errors` anywhere.
 
+### Doc guards (`tests/test_doc_headers.py`, `tests/test_doc_links.py`)
+
+Два статических гарда над `.md`, оба в жанре выше — статическая проверка под `check_pytest`,
+без записи в реестр `CHECKS`:
+
+- **header'ы** — каждый картируемый `.md` несёт строку «на какой вопрос отвечает этот файл»
+  (конвенция — `project-map.md`, #421).
+- **ссылки** — каждая внутренняя ссылка и каждый code-span вида `` `file.md#anchor` `` резолвится:
+  файл существует, якорь совпадает со slug'ом заголовка по правилам github-slugger (#427). Скоуп —
+  `git ls-files "*.md"`, чтобы gitignored-копии репо в `.claude/worktrees/` не давали расхождения
+  локального и CI-вердикта. Разбор через `markdown-it-py`: ссылка внутри ```-блока не считается
+  ссылкой, а текст заголовка нужен отрендеренный. Оба гарда — presence/резолвимость, не
+  корректность: указатель на существующий, но переставший быть домом темы файл ловит человек.
+
 ## Claude review workflow (`claude-review.yml`)
 
 Triggers: every `pull_request: opened/synchronize`. Uses
@@ -296,7 +310,7 @@ Visibility is guaranteed by two independent layers:
 model-chatter. **Триггер снятия:** цикл ревью перестал требовать разбора транскрипта, то есть
 когда в последний раз транскрипт понадобился для диагностики — а не «когда-нибудь».
 
-### Coverage-first prompt: no filtering at the search stage (#374)
+### Coverage-first prompt: no filtering at the search stage
 
 **Механизм дефекта — причина существования контракта, а не археология.** Модель следует
 инструкции-фильтру (`Skip nitpicks — ruff handles formatting/lint`) **буквально**: находка
