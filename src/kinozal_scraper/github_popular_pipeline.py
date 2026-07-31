@@ -15,6 +15,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_json,
 )
+from kinozal_scraper.http_retry import retry_api_http
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier
@@ -27,8 +28,19 @@ logger = logging.getLogger(__name__)
 _SOURCE_TYPE = "github_popular"
 
 
+@retry_api_http
 def _fetch_json(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
+    """Single GET of the GitHub Search API, retrying transient 5xx (#365).
+
+    403/429 are NOT retried here — for this transport they are a rate limit, not
+    the anti-bot challenge `http_fetch` survives; see `http_retry` for the split.
+    """
     clean_headers = {k: v for k, v in headers.items() if v and not v.endswith(" ")}
+    # A blank GITHUB_TOKEN expands to "Bearer " and is dropped here — correct, but
+    # dropping it *silently* left the operator with an unauthenticated search (10
+    # req/min) and an unexplained 403 (§IV).
+    if dropped := sorted(set(headers) - set(clean_headers)):
+        logger.warning("dropping empty request header(s): %s", ", ".join(dropped))
     resp = requests.get(url, params=params, headers=clean_headers, timeout=30)
     resp.raise_for_status()
     return resp.json()

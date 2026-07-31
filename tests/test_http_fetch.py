@@ -363,22 +363,6 @@ class TestFetchRetry(unittest.TestCase):
         self.assertEqual(mget.call_count, 4)
         self.assertEqual(len(logs.output), 4)
 
-    def test_predicate_matches_real_curl_cffi_httperror(self) -> None:
-        # Reality-anchor (SHOULD-FIX #1, sibling of TestGspreadRetryIntegrationAnchor):
-        # the predicate must fire on a HTTPError produced by REAL curl_cffi
-        # raise_for_status, not a hand-built Mock — otherwise it can silently
-        # mis-read the attr path and 403 crashes prod again (the #298 class).
-        from curl_cffi.requests.models import Response
-
-        from kinozal_scraper.http_fetch import _is_transient_http_error
-
-        resp = Response()
-        resp.status_code = 403
-        resp.ok = False
-        with self.assertRaises(HTTPError) as ctx:
-            resp.raise_for_status()
-        self.assertTrue(_is_transient_http_error(ctx.exception))
-
 
 class TestSharedRequestKwargs(unittest.TestCase):
     """The request parameters live in one place so a second caller cannot drift

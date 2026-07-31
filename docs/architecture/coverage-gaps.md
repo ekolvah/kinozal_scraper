@@ -45,17 +45,24 @@ decision goes to" route — and the rule itself — live in
   header-echo endpoint; the standing gate is the daily cron E2E (a fingerprint regression → 403 on
   posters → §IV-visible next run), same «cron = E2E smoke» doctrine as **A**. Recorded so the
   live-only verification isn't re-opened as a mock-the-network work-for-work test.
-- **M. `http_fetch` retry deliberately scoped to HTTP-status errors only (#306).** The retry layer
-  (`_retry_transient_http`) fires on transient HTTP *responses* (403/429/5xx) but **not** on network
-  errors (`Timeout` / `ConnectionError` — curl_cffi `RequestException` subclasses that never reach
-  `raise_for_status`, so the `isinstance(HTTPError)` predicate skips them by construction). **Accepted**
-  — no reproduced incident (§V: don't retry what wasn't observed), symmetric with the `SheetsStorage`
-  sibling which covers `APIError` status only. The asymmetry «503 retries, a DNS blip crashes the source»
-  is real and conscious; a broadening waits for an actual network-error incident. Separately, the raw
-  `requests.get` calls in `github_popular_pipeline.py` (GitHub API) and `steam_pipeline.py` still have
-  **no** retry — a different transport (stdlib `requests`, not curl_cffi via `http_fetch`) — deferred to
-  a follow-up issue so `_retry_transient_http` can be reused there. Recorded so neither is re-opened as
-  work-for-work.
+- **M. HTTP retry deliberately scoped to HTTP-status errors only (#306).** The shared layer
+  (`http_retry`) fires on transient HTTP *responses* but **not** on network errors (`Timeout` /
+  `ConnectionError` — `RequestException` subclasses that never reach `raise_for_status`, so the
+  `isinstance(HTTPError)` predicate skips them by construction). **Accepted** — no reproduced
+  incident (§V: don't retry what wasn't observed), symmetric with the `SheetsStorage` sibling which
+  covers `APIError` status only. The asymmetry «503 retries, a DNS blip crashes the source» is real
+  and conscious; a broadening waits for an actual network-error incident.
+- **M2. 403/429 are NOT retried on the JSON-API transport (#365).** `github_popular_pipeline` and
+  `steam_pipeline` run on `API_TRANSIENT_CODES` (5xx only), unlike the Cloudflare-fronted HTML
+  transport whose 403 is a proven-transient anti-bot challenge. **Accepted** — for these hosts
+  403/429 is a rate limit with its own reset window that a 1/2/4 s backoff cannot close, and GitHub
+  documents that continuing to request while limited risks banning the integration. Honouring
+  `Retry-After` is the real fix and stays unbuilt while each source makes one-two calls per run.
+- **M3. `success: false` on a 200 from Steam appdetails is not covered by retry (#365).** It is a
+  second route to the same `⚠️ Game #` placeholder, and the predicate — keyed off `HTTPError` —
+  skips it by construction. **Accepted**: no measurement separates it from the 5xx route today, and
+  its cost comes from the placeholder being persisted as delivered and never re-resolving (#437),
+  not from the missing retry. Recorded so it isn't re-opened as «retry doesn't work».
 
 - **N. LLM / embedding / TMDB trailer-picker strategies built but deliberately NOT in the prod
   hot path (#144/#315).** Прод `enrich_with_trailer` отбирает детерминированным `HeuristicStrategy`
