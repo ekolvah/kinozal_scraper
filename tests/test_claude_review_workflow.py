@@ -193,9 +193,11 @@ class TestReviewOutcomeGate:
         verifier = _named_step("Verify Claude outcome marker")
 
         assert probe["continue-on-error"] is True
-        assert names.index("Probe Claude outcome marker") < names.index(
-            "Repair Claude outcome marker"
-        ) < names.index("Verify Claude outcome marker")
+        assert (
+            names.index("Probe Claude outcome marker")
+            < names.index("Repair Claude outcome marker")
+            < names.index("Verify Claude outcome marker")
+        )
         assert "--require-outcome-marker" in str(verifier["run"])
 
     def test_controller_pr_skips_marker_repair(self) -> None:
