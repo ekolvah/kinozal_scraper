@@ -16,7 +16,6 @@ from scripts.check_claude_review import (
     outcome_from_comments,
 )
 
-
 HEAD = "a" * 40
 
 

@@ -76,8 +76,9 @@ section stops and returns the issue to a planner rather than guessing it.
    the current-head
    reviewer outcome and all required checks. Fix every blocking and should-fix
    finding in a separate fixer commit, push it, then repeat. The implementer
-   reports the PR ready for human merge only after the current head has a `clean` reviewer outcome, no actionable review threads, and every
-   required check passes.
+   reports the PR ready for human merge only after the current head has a
+   `clean` reviewer outcome, no actionable review threads, and every required
+   check passes.
 
 One PR is one logical unit. Do not bypass hooks, push to `main`, force-push,
 reset hard, delete branches forcefully, self-merge, or replace these gates with
@@ -92,21 +93,28 @@ credential infrastructure.
 ## Review-controller bootstrap
 
 The Claude provider refuses to review a PR that changes its own workflow file;
-this is a deliberate supply-chain protection, never a `clean` result. A change
-to `.github/workflows/claude-review.yml` therefore needs a one-time human
-bootstrap procedure:
+this is a deliberate supply-chain protection, never a `clean` result. The
+trusted `agent-review-gate` therefore treats changes to the review-controller
+surface as an exceptional human decision:
 
-1. Keep the PR limited to the review controller, its deterministic verifier,
-   direct tests, and its documentation; do not mix application changes into it.
-2. A human reviews the complete diff and records the approved head SHA in the
-   PR conversation.
-3. A repository administrator temporarily removes only `agent-review-gate`
-   from branch protection, merges that reviewed controller PR, and restores the
-   requirement before any other PR is merged.
+1. Keep the PR limited to `.github/workflows/claude-review.yml`,
+   `.github/workflows/agent-review-gate.yml`, `scripts/check_claude_review.py`,
+   their direct tests, and documentation; do not mix application changes into it.
+2. A configured maintainer reviews the complete diff and posts exactly
+   `<!-- review-controller-bootstrap: sha=<current-head-sha> -->` in the PR
+   conversation. The SHA binds the exceptional decision to one head; any push
+   requires a new marker.
+3. The required gate runs from `main`, detects the protected paths through the
+   GitHub PR-files API, and accepts that marker only from a configured
+   maintainer. It otherwise remains red rather than treating the provider skip
+   as approval.
 
-No agent may treat the provider skip as an approval or perform that protection
-change autonomously. After the controller is on `main`, ordinary implementation
-PRs are reviewed normally; later controller changes use the same bootstrap.
+No agent may treat the provider skip as an approval or post the maintainer
+marker. The first PR that installs this trusted default-branch gate cannot use
+code that is not yet on `main`; it needs a one-time human bootstrap with the
+same narrow review and temporary protection change. After that installation,
+ordinary PRs use Claude outcomes and later controller changes use the marker
+path without changing branch protection.
 
 ## Governance conventions
 1. Create issue branches only with `python scripts/issue_branch.py <N>`; it

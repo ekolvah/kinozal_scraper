@@ -122,9 +122,18 @@ class TestCoverageFirstPrompt:
 class TestReviewOutcomeGate:
     def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
         prompt = _prompt()
-        assert "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking" in prompt
-        assert "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework" in prompt
-        assert "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean" in prompt
+        assert (
+            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking"
+            in prompt
+        )
+        assert (
+            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework"
+            in prompt
+        )
+        assert (
+            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean"
+            in prompt
+        )
 
     def test_trusted_target_workflow_is_the_only_required_gate(self) -> None:
         data = yaml.safe_load(_GATE_WORKFLOW.read_text(encoding="utf-8"))

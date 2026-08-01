@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 jobs:
-  agent-review-gate:
+  claude-review:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -84,21 +84,12 @@ jobs:
 
             - End that top-level comment with exactly one machine-readable
               marker, on its own line. Use
-              `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=blocking -->`
+              `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking -->`
               if any finding is blocking; use
-              `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=rework -->`
+              `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework -->`
               if there are should-fix findings but no blocking finding; otherwise
-              use `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=clean -->`.
-              The following check turns `blocking` and `rework` into a failed required
-              status; never omit or alter the marker.
+              use `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean -->`.
+              The trusted default-branch gate turns `blocking` and `rework` into a failed
+              required status; never omit or alter the marker.
 
             Do not approve or merge — those stay with the human reviewer.
-
-      - name: Verify Claude review outcome
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: >
-          python scripts/check_claude_review.py
-          --repo ${{ github.repository }}
-          --pr ${{ github.event.pull_request.number }}
-          --run-id ${{ github.run_id }}
