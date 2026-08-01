@@ -22,7 +22,7 @@ _DEFAULT_CATALOG = _REPO_ROOT / ".agents" / "orchestration" / "roles.yaml"
 _REQUIRED_ROLE_FIELDS = frozenset(
     {"adapter", "authority", "entry_evidence", "completion_evidence", "activation", "max_runs"}
 )
-_INITIAL_ROLES = frozenset(
+_REQUIRED_INITIAL_ROLES = frozenset(
     {"planner", "architect_reviewer", "implementer", "pr_reviewer", "fixer", "human_merge"}
 )
 
@@ -59,13 +59,14 @@ def load_catalog(path: Path | None = None) -> dict[str, Any]:
     catalog_path = path or _DEFAULT_CATALOG
     try:
         payload = yaml.safe_load(catalog_path.read_text(encoding="utf-8"))
-    except OSError as exc:
+    except (OSError, yaml.YAMLError) as exc:
         raise ValueError(f"cannot read role catalogue {catalog_path}: {exc}") from exc
     if not isinstance(payload, dict) or not isinstance(payload.get("roles"), dict):
         raise ValueError("role catalogue must contain a mapping named 'roles'")
     roles = payload["roles"]
-    if set(roles) != _INITIAL_ROLES:
-        raise ValueError(f"role catalogue must declare exactly {sorted(_INITIAL_ROLES)}")
+    missing_roles = _REQUIRED_INITIAL_ROLES - roles.keys()
+    if missing_roles:
+        raise ValueError(f"role catalogue is missing initial roles: {sorted(missing_roles)}")
     for name, role in roles.items():
         if not isinstance(role, dict) or not _REQUIRED_ROLE_FIELDS.issubset(role):
             raise ValueError(f"role {name!r} has an incomplete contract")
@@ -78,11 +79,15 @@ def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
     completed: list[str] = []
     if state.plan_completed:
         completed.append("planner")
-    if state.architect_completed or state.architect_skip_reason:
+    if state.architect_completed or (state.issue_kind == "trivial" and state.architect_skip_reason):
         completed.append("architect_reviewer")
     if state.implementation_completed:
         completed.append("implementer")
-    if state.head_sha and state.head_sha in state.reviewed_heads:
+    if (
+        state.head_sha
+        and state.head_sha in state.reviewed_heads
+        and state.review_outcome in {"clean", "rework", "blocking"}
+    ):
         completed.append("pr_reviewer")
     if state.fixer_revisions:
         completed.append("fixer")
@@ -177,6 +182,7 @@ def _implementation_decision(
             "deterministic_ci",
             catalogue,
             state,
+            status="blocked",
             action="python scripts/ci_check.py",
             missing=("ci_passed",),
         )

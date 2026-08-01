@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from scripts.agent_orchestrator import WorkflowState, decide, load_catalog, main
 
@@ -50,6 +51,23 @@ class TestRoleCatalogue:
                 "max_runs",
             }
 
+    def test_catalogue_reports_malformed_yaml_as_a_validation_error(self, tmp_path: Path) -> None:
+        broken_catalogue = tmp_path / "roles.yaml"
+        broken_catalogue.write_text("roles: [unterminated", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="cannot read role catalogue"):
+            load_catalog(broken_catalogue)
+
+    def test_catalogue_can_add_a_role_without_a_code_membership_change(
+        self, tmp_path: Path
+    ) -> None:
+        catalogue = load_catalog()
+        catalogue["roles"]["code_critic"] = dict(catalogue["roles"]["pr_reviewer"])
+        extended_catalogue = tmp_path / "roles.yaml"
+        extended_catalogue.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        assert "code_critic" in load_catalog(extended_catalogue)["roles"]
+
 
 class TestRouteResolution:
     def test_nontrivial_issue_routes_through_architect_then_implementer(self) -> None:
@@ -88,6 +106,27 @@ class TestRouteResolution:
 
 
 class TestBudgetLimits:
+    @pytest.mark.parametrize(
+        ("run_field", "state_overrides", "expected_action"),
+        [
+            ("planner_runs", {"plan_completed": False}, "human plan decision"),
+            ("architect_runs", {}, "human architecture decision"),
+            (
+                "implementer_runs",
+                {"architect_completed": True},
+                "human implementation decision",
+            ),
+        ],
+    )
+    def test_role_budget_caps_escalate_without_retrying(
+        self, run_field: str, state_overrides: dict[str, object], expected_action: str
+    ) -> None:
+        decision = decide(_state(**state_overrides, **{run_field: 1}), load_catalog())
+
+        assert decision.next_role == "human_merge"
+        assert decision.status == "escalate"
+        assert decision.next_action == expected_action
+
     def test_reviewer_budget_is_bound_to_head_sha(self) -> None:
         catalogue = load_catalog()
         common = {
@@ -104,6 +143,7 @@ class TestBudgetLimits:
         current_head = decide(_state(reviewed_heads=("b" * 40,), **common), catalogue)
         assert current_head.status == "blocked"
         assert "review_outcome" in current_head.missing_evidence
+        assert "pr_reviewer" not in current_head.completed_roles
 
     def test_fixer_limit_escalates_to_human_without_retrying(self) -> None:
         catalogue = load_catalog()
@@ -131,6 +171,56 @@ class TestEvidenceTruthfulness:
         assert decision.next_role == "architect_reviewer"
         assert decision.status == "next"
         assert decision.completed_roles == ("planner",)
+
+    def test_nontrivial_architect_skip_does_not_report_completion(self) -> None:
+        decision = decide(
+            _state(architect_skip_reason="one-line typo"),
+            load_catalog(),
+        )
+
+        assert decision.next_role == "architect_reviewer"
+        assert "architect_reviewer" not in decision.completed_roles
+
+
+class TestBlockedRoutes:
+    def test_invalid_issue_kind_has_a_blocked_shape(self) -> None:
+        decision = decide(_state(issue_kind="unknown"), load_catalog())
+
+        assert decision.status == "blocked"
+        assert decision.missing_evidence == ("issue_kind",)
+
+    def test_missing_ci_evidence_is_blocked_until_the_command_runs(self) -> None:
+        decision = decide(
+            _state(architect_completed=True, implementation_completed=True),
+            load_catalog(),
+        )
+
+        assert decision.next_role == "deterministic_ci"
+        assert decision.status == "blocked"
+        assert decision.missing_evidence == ("ci_passed",)
+
+    def test_missing_head_sha_and_invalid_review_outcome_are_blocked(self) -> None:
+        catalogue = load_catalog()
+        ready_for_review = {
+            "architect_completed": True,
+            "implementation_completed": True,
+            "ci_passed": True,
+        }
+        missing_head = decide(_state(**ready_for_review), catalogue)
+        invalid_outcome = decide(
+            _state(
+                **ready_for_review,
+                head_sha="c" * 40,
+                reviewed_heads=("c" * 40,),
+                review_outcome="maybe",
+            ),
+            catalogue,
+        )
+
+        assert missing_head.missing_evidence == ("head_sha",)
+        assert invalid_outcome.missing_evidence == ("valid_review_outcome",)
+        assert missing_head.status == invalid_outcome.status == "blocked"
+        assert "pr_reviewer" not in invalid_outcome.completed_roles
 
 
 class TestCli:
