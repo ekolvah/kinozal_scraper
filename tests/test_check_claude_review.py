@@ -20,8 +20,10 @@ from scripts.check_claude_review import (
 HEAD = "a" * 40
 
 
-def _comment(body: str, author: str = "claude") -> dict[str, Any]:
-    return {"user": {"login": author}, "body": body}
+def _comment(
+    body: str, author: str = "claude[bot]", author_type: str = "Bot"
+) -> dict[str, Any]:
+    return {"user": {"login": author, "type": author_type}, "body": body}
 
 
 def _outcome(outcome: str, sha: str = HEAD) -> dict[str, Any]:
@@ -29,11 +31,11 @@ def _outcome(outcome: str, sha: str = HEAD) -> dict[str, Any]:
 
 
 def _bootstrap(sha: str = HEAD, author: str = "ekolvah") -> dict[str, Any]:
-    return _comment(f"<!-- review-controller-bootstrap: sha={sha} -->", author)
+    return _comment(f"<!-- review-controller-bootstrap: sha={sha} -->", author, "User")
 
 
 class TestOutcomeParsing:
-    def test_clean_marker_from_claude_is_accepted_for_current_head(self) -> None:
+    def test_clean_marker_from_real_claude_bot_is_accepted_for_current_head(self) -> None:
         assert outcome_from_comments([_outcome("clean")], HEAD) == "clean"
 
     def test_outcome_from_old_head_is_not_accepted(self) -> None:
@@ -41,6 +43,10 @@ class TestOutcomeParsing:
 
     def test_marker_from_other_author_is_not_trusted(self) -> None:
         comments = [_comment(_outcome("clean")["body"], "contributor")]
+        assert outcome_from_comments(comments, HEAD) is None
+
+    def test_marker_with_claude_login_but_not_bot_type_is_not_trusted(self) -> None:
+        comments = [_comment(_outcome("clean")["body"], "claude[bot]", "User")]
         assert outcome_from_comments(comments, HEAD) is None
 
     def test_last_current_head_outcome_wins(self) -> None:
@@ -67,7 +73,10 @@ class TestWaitForOutcome:
         )
 
     def test_wait_rejects_stale_or_non_claude_marker(self) -> None:
-        comments = [_outcome("clean", "b" * 40), _comment(_outcome("clean")["body"], "bot")]
+        comments = [
+            _outcome("clean", "b" * 40),
+            _comment(_outcome("clean")["body"], "github-actions[bot]"),
+        ]
         assert (
             wait_for_outcome(lambda: comments, ["src/app.py"], HEAD, 1, 3, lambda _: None) is None
         )
@@ -138,7 +147,7 @@ class TestReviewGateExitCodes:
         main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
 
     def test_controller_pr_can_defer_producer_marker_to_trusted_bootstrap(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         self._mock_evidence(
             monkeypatch, [_comment("summary")], [".github/workflows/claude-review.yml"]
@@ -156,6 +165,71 @@ class TestReviewGateExitCodes:
                 "--allow-controller-bootstrap",
             ]
         )
+        assert "warning:" in capsys.readouterr().out
+
+    def test_producer_marker_accepts_real_claude_bot(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._mock_evidence(monkeypatch, [_outcome("clean")], ["src/app.py"])
+
+        main(
+            [
+                "--repo",
+                "owner/repo",
+                "--pr",
+                "1",
+                "--head-sha",
+                HEAD,
+                "--require-outcome-marker",
+            ]
+        )
+
+    def test_producer_without_marker_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._mock_evidence(monkeypatch, [_comment("summary")], ["src/app.py"])
+
+        with pytest.raises(SystemExit) as exc:
+            main(
+                [
+                    "--repo",
+                    "owner/repo",
+                    "--pr",
+                    "1",
+                    "--head-sha",
+                    HEAD,
+                    "--require-outcome-marker",
+                ]
+            )
+        assert exc.value.code == 2
+
+    def test_mid_poll_transport_failure_exits_with_infrastructure_code(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import scripts.check_claude_review as review_gate
+
+        calls = iter([[_comment("working")], RuntimeError("temporary GitHub API failure")])
+        monkeypatch.setattr(review_gate, "fetch_changed_paths", lambda *_args: ["src/app.py"])
+
+        def fetch(*_args: Any) -> list[dict[str, Any]]:
+            result = next(calls)
+            if isinstance(result, RuntimeError):
+                raise result
+            return result
+
+        monkeypatch.setattr(review_gate, "fetch_comments", fetch)
+        monkeypatch.setattr(review_gate.time, "sleep", lambda _seconds: None)
+
+        with pytest.raises(SystemExit) as exc:
+            main(
+                [
+                    "--repo",
+                    "owner/repo",
+                    "--pr",
+                    "1",
+                    "--head-sha",
+                    HEAD,
+                    "--wait-seconds",
+                    "10",
+                ]
+            )
+        assert exc.value.code == 2
 
     def test_gh_transport_failure_is_distinct(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fail(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
