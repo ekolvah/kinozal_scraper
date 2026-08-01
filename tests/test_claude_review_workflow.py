@@ -132,11 +132,13 @@ class TestReviewOutcomeGate:
     def test_review_emits_validated_structured_outcome(self) -> None:
         step = _review_step()
         args = str(_inputs().get("claude_args", ""))
+        prompt = _prompt()
 
         assert step["id"] == "review"
         assert "--json-schema" in args
         assert '"outcome"' in args
         assert all(outcome in args for outcome in ("clean", "rework", "blocking"))
+        assert "structured output `outcome` must exactly match the marker outcome" in prompt
 
     def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
         prompt = _prompt()
@@ -181,6 +183,8 @@ class TestReviewOutcomeGate:
         assert _ACTION in str(repair["uses"])
         assert "success()" in condition
         assert "steps.marker_probe.outcome == 'failure'" in condition
+        assert "steps.review.outputs.structured_output != ''" in condition
+        assert "track_progress" not in cast("dict[str, Any]", repair["with"])
         assert "--max-turns 2" in args
         assert "Do not review code" in prompt
         assert "fromJSON(steps.review.outputs.structured_output).outcome" in prompt
@@ -192,6 +196,8 @@ class TestReviewOutcomeGate:
         verifier = _named_step("Verify Claude outcome marker")
 
         assert probe["continue-on-error"] is True
+        assert "--wait-seconds 30" in str(probe["run"])
+        assert "--poll-seconds 10" in str(probe["run"])
         assert (
             names.index("Probe Claude outcome marker")
             < names.index("Repair Claude outcome marker")
@@ -199,7 +205,7 @@ class TestReviewOutcomeGate:
         )
         assert "--require-outcome-marker" in str(verifier["run"])
 
-    def test_controller_pr_skips_marker_repair(self) -> None:
+    def test_marker_checks_allow_controller_bootstrap(self) -> None:
         probe = _named_step("Probe Claude outcome marker")
         verifier = _named_step("Verify Claude outcome marker")
         repair = _named_step("Repair Claude outcome marker")
