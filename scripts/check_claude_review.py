@@ -22,7 +22,9 @@ _OUTCOME = re.compile(
     r"outcome=(?P<outcome>clean|rework|blocking) -->"
 )
 _BOOTSTRAP = re.compile(r"<!-- review-controller-bootstrap: sha=(?P<head_sha>[0-9a-f]{40}) -->")
-_CLAUDE_AUTHOR = "claude"
+# GitHub App comments use the app slug with a ``[bot]`` suffix.  Keep both
+# fields explicit: a human comment with a copied marker is never review evidence.
+_CLAUDE_LOGIN = "claude[bot]"
 # The current repository owner performs the exceptional, visible controller
 # review. Changing this set is itself a review-controller change.
 _BOOTSTRAP_MAINTAINERS = frozenset({"ekolvah"})
@@ -41,7 +43,11 @@ def outcome_from_comments(comments: Sequence[Mapping[str, Any]], head_sha: str) 
     for comment in comments:
         author = comment.get("user")
         body = comment.get("body")
-        if not isinstance(author, Mapping) or author.get("login") != _CLAUDE_AUTHOR:
+        if (
+            not isinstance(author, Mapping)
+            or author.get("login") != _CLAUDE_LOGIN
+            or author.get("type") != "Bot"
+        ):
             continue
         if not isinstance(body, str):
             continue
@@ -83,18 +89,21 @@ def wait_for_outcome(
     fetch: Callable[[], Sequence[Mapping[str, Any]]],
     changed_paths: Sequence[str],
     head_sha: str,
-    attempts: int,
-    delay: float,
+    wait_seconds: float,
+    poll_seconds: float,
     sleep: Callable[[float], None],
 ) -> str | None:
-    """Poll trusted comments a bounded number of times for current-head evidence."""
-    for attempt in range(attempts):
+    """Poll trusted comments for no more than the configured wait budget."""
+    remaining = wait_seconds
+    while True:
         decision = decision_from_evidence(fetch(), changed_paths, head_sha)
         if decision is not None:
             return decision
-        if attempt < attempts - 1:
-            sleep(delay)
-    return None
+        if remaining <= 0:
+            return None
+        delay = min(poll_seconds, remaining)
+        sleep(delay)
+        remaining -= delay
 
 
 def _fetch_api(repo: str, endpoint_suffix: str) -> list[Mapping[str, Any]]:
@@ -154,11 +163,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.wait_seconds < 0 or args.poll_seconds < 1:
         parser.error("wait-seconds must be non-negative and poll-seconds must be positive")
     try:
-        comments = fetch_comments(args.repo, args.pr)
         if args.require_outcome_marker:
+            comments = fetch_comments(args.repo, args.pr)
             changed_paths = fetch_changed_paths(args.repo, args.pr)
             if args.allow_controller_bootstrap and controller_changed(changed_paths):
-                print("ok: controller PR awaits trusted maintainer bootstrap marker")
+                print(
+                    "::warning::controller PR did not run a self-review; "
+                    "the trusted gate requires a maintainer bootstrap marker"
+                )
                 return
             outcome = outcome_from_comments(comments, args.head_sha)
             if outcome is not None:
@@ -170,19 +182,18 @@ def main(argv: Sequence[str] | None = None) -> None:
             )
             raise SystemExit(2)
         changed_paths = fetch_changed_paths(args.repo, args.pr)
+        decision = wait_for_outcome(
+            lambda: fetch_comments(args.repo, args.pr),
+            changed_paths,
+            args.head_sha,
+            args.wait_seconds,
+            args.poll_seconds,
+            time.sleep,
+        )
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
-    attempts = 1 + args.wait_seconds // args.poll_seconds
-    decision = wait_for_outcome(
-        lambda: fetch_comments(args.repo, args.pr),
-        changed_paths,
-        args.head_sha,
-        attempts,
-        args.poll_seconds,
-        time.sleep,
-    )
     if decision in {"clean", "bootstrap"}:
         print(f"ok: trusted review evidence is {decision}")
         return

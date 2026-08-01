@@ -20,9 +20,7 @@ from scripts.check_claude_review import (
 HEAD = "a" * 40
 
 
-def _comment(
-    body: str, author: str = "claude[bot]", author_type: str = "Bot"
-) -> dict[str, Any]:
+def _comment(body: str, author: str = "claude[bot]", author_type: str = "Bot") -> dict[str, Any]:
     return {"user": {"login": author, "type": author_type}, "body": body}
 
 
@@ -62,7 +60,7 @@ class TestWaitForOutcome:
             wait_for_outcome(lambda: next(calls), ["src/app.py"], HEAD, 2, 3, sleeps.append)
             == "clean"
         )
-        assert sleeps == [3]
+        assert sleeps == [2]
 
     def test_wait_times_out_without_valid_current_head_marker(self) -> None:
         assert (

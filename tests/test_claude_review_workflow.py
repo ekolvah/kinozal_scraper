@@ -156,3 +156,4 @@ class TestReviewOutcomeGate:
         )
 
         assert "--require-outcome-marker" in str(verifier["run"])
+        assert "--allow-controller-bootstrap" in str(verifier["run"])
