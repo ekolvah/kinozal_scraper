@@ -60,9 +60,7 @@ class TestAgentProcess:
         assert "human_merge:" in catalogue
 
     def test_documented_control_plane_caps_match_the_catalogue(self) -> None:
-        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
-            encoding="utf-8"
-        )
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
         catalogue = yaml.safe_load(
             (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
         )
