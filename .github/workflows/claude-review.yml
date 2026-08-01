@@ -95,5 +95,8 @@ jobs:
       - name: Enforce Claude review outcome
         if: ${{ always() }}
         env:
+          GH_TOKEN: ${{ github.token }}
           STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
-        run: python scripts/check_claude_review_outcome.py "$STRUCTURED_OUTCOME"
+        run: >
+          python scripts/check_claude_review_outcome.py "$STRUCTURED_OUTCOME"
+          --repo ${{ github.repository }} --pr ${{ github.event.pull_request.number }}
