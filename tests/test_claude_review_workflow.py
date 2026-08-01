@@ -48,12 +48,21 @@ _ACTION = "anthropics/claude-code-action"
 _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b", re.IGNORECASE)
 
 
-def _review_step() -> dict[str, Any]:
+def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    steps = cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
-    matches = [s for s in steps if _ACTION in str(s.get("uses", ""))]
-    assert len(matches) == 1, f"expected exactly one {_ACTION} step, got {len(matches)}"
+    return cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
+
+
+def _named_step(name: str) -> dict[str, Any]:
+    matches = [step for step in _steps() if step.get("name") == name]
+    assert len(matches) == 1, f"expected exactly one {name!r} step, got {len(matches)}"
     return matches[0]
+
+
+def _review_step() -> dict[str, Any]:
+    step = _named_step("Claude review")
+    assert _ACTION in str(step.get("uses", ""))
+    return step
 
 
 def _inputs() -> dict[str, Any]:
@@ -120,23 +129,40 @@ class TestCoverageFirstPrompt:
 
 
 class TestReviewOutcomeGate:
-    def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
+    def test_review_emits_validated_structured_outcome(self) -> None:
+        step = _review_step()
+        args = str(_inputs().get("claude_args", ""))
         prompt = _prompt()
-        assert (
-            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking"
-            in prompt
-        )
-        assert (
-            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework"
-            in prompt
-        )
-        assert (
-            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean"
-            in prompt
-        )
+
+        assert step["id"] == "review"
+        assert "--json-schema" in args
+        assert '"outcome"' in args
+        assert all(outcome in args for outcome in ("clean", "rework", "blocking"))
+        assert "structured output `outcome`" in prompt
+
+    def test_workflow_enforces_structured_outcome_directly(self) -> None:
+        verifier = _named_step("Enforce Claude review outcome")
+
+        assert "python -m scripts.check_claude_review_outcome" in str(verifier["run"])
+        assert "steps.review.outputs.structured_output" in str(verifier["env"])
+        assert verifier["if"] == "${{ always() }}"
+
+    def test_ordinary_review_has_no_marker_repair_or_polling(self) -> None:
+        names = [str(step.get("name")) for step in _steps()]
+        prompt = _prompt()
+
+        assert "Probe Claude outcome marker" not in names
+        assert "Repair Claude outcome marker" not in names
+        assert "Verify Claude outcome marker" not in names
+        assert "claude-review-outcome:" not in prompt
+
+    def test_prompt_keeps_comments_out_of_merge_authority(self) -> None:
+        prompt = _prompt()
+        assert "comments are feedback" in prompt
+        assert "merge authority" in prompt
         assert "update_claude_comment" in prompt
 
-    def test_trusted_target_workflow_is_the_only_required_gate(self) -> None:
+    def test_trusted_target_workflow_is_the_controller_gate(self) -> None:
         data = yaml.safe_load(_GATE_WORKFLOW.read_text(encoding="utf-8"))
         assert "pull_request_target" in data[True]
         steps = cast("list[dict[str, Any]]", data["jobs"]["agent-review-gate"]["steps"])
@@ -146,14 +172,4 @@ class TestReviewOutcomeGate:
         verifier = steps[1]
         assert "trusted/scripts/check_claude_review.py" in str(verifier["run"])
         assert "--head-sha ${{ github.event.pull_request.head.sha }}" in str(verifier["run"])
-        assert "--wait-seconds 360" in str(verifier["run"])
-
-    def test_claude_review_workflow_verifies_marker_after_review(self) -> None:
-        data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-        steps = cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
-        verifier = next(
-            step for step in steps if step.get("name") == "Verify Claude outcome marker"
-        )
-
-        assert "--require-outcome-marker" in str(verifier["run"])
-        assert "--allow-controller-bootstrap" in str(verifier["run"])
+        assert "--wait-seconds" not in str(verifier["run"])

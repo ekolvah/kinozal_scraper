@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -127,109 +126,18 @@ class TestReviewGateExitCodes:
         monkeypatch.setattr(review_gate, "fetch_comments", lambda *_args: comments)
         monkeypatch.setattr(review_gate, "fetch_changed_paths", lambda *_args: paths)
 
-    def test_blocking_outcome_fails_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._mock_evidence(monkeypatch, [_outcome("blocking")], ["src/app.py"])
-        with pytest.raises(SystemExit) as exc:
-            main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
-        assert exc.value.code == 1
-
-    def test_missing_evidence_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._mock_evidence(monkeypatch, [_comment("summary")], ["src/app.py"])
-        with pytest.raises(SystemExit) as exc:
-            main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
-        assert exc.value.code == 2
-
     def test_bootstrap_passes_the_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._mock_evidence(
             monkeypatch, [_bootstrap()], [".github/workflows/agent-review-gate.yml"]
         )
         main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
 
-    def test_controller_pr_can_defer_producer_marker_to_trusted_bootstrap(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        self._mock_evidence(
-            monkeypatch, [_comment("summary")], [".github/workflows/claude-review.yml"]
-        )
-
-        main(
-            [
-                "--repo",
-                "owner/repo",
-                "--pr",
-                "1",
-                "--head-sha",
-                HEAD,
-                "--require-outcome-marker",
-                "--allow-controller-bootstrap",
-            ]
-        )
-        assert "warning:" in capsys.readouterr().out
-
-    def test_producer_marker_accepts_real_claude_bot(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._mock_evidence(monkeypatch, [_outcome("clean")], ["src/app.py"])
-
-        main(
-            [
-                "--repo",
-                "owner/repo",
-                "--pr",
-                "1",
-                "--head-sha",
-                HEAD,
-                "--require-outcome-marker",
-            ]
-        )
-
-    def test_producer_without_marker_fails_closed(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._mock_evidence(monkeypatch, [_comment("summary")], ["src/app.py"])
-
-        with pytest.raises(SystemExit) as exc:
-            main(
-                [
-                    "--repo",
-                    "owner/repo",
-                    "--pr",
-                    "1",
-                    "--head-sha",
-                    HEAD,
-                    "--require-outcome-marker",
-                ]
-            )
-        assert exc.value.code == 2
-
-    def test_mid_poll_transport_failure_exits_with_infrastructure_code(
+    def test_controller_marker_is_checked_without_waiting(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        import scripts.check_claude_review as review_gate
-
-        calls: Iterator[list[dict[str, Any]] | RuntimeError] = iter(
-            [[_comment("working")], RuntimeError("temporary GitHub API failure")]
-        )
-        monkeypatch.setattr(review_gate, "fetch_changed_paths", lambda *_args: ["src/app.py"])
-
-        def fetch(*_args: Any) -> list[dict[str, Any]]:
-            result = next(calls)
-            if isinstance(result, RuntimeError):
-                raise result
-            return result
-
-        monkeypatch.setattr(review_gate, "fetch_comments", fetch)
-        monkeypatch.setattr(review_gate.time, "sleep", lambda _seconds: None)
-
+        self._mock_evidence(monkeypatch, [_comment("summary")], ["scripts/check_claude_review.py"])
         with pytest.raises(SystemExit) as exc:
-            main(
-                [
-                    "--repo",
-                    "owner/repo",
-                    "--pr",
-                    "1",
-                    "--head-sha",
-                    HEAD,
-                    "--wait-seconds",
-                    "10",
-                ]
-            )
+            main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
         assert exc.value.code == 2
 
     def test_gh_transport_failure_is_distinct(self, monkeypatch: pytest.MonkeyPatch) -> None:
