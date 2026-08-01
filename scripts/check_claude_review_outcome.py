@@ -6,7 +6,10 @@ import json
 import sys
 from collections.abc import Sequence
 
-from scripts.check_claude_review import controller_changed, fetch_changed_paths
+try:  # module import in tests
+    from scripts.check_claude_review import controller_changed, fetch_changed_paths
+except ModuleNotFoundError:  # direct `python scripts/...` workflow execution
+    from check_claude_review import controller_changed, fetch_changed_paths
 
 
 def main(argv: Sequence[str] | None = None) -> None:
