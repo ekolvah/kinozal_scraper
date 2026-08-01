@@ -193,7 +193,7 @@ def sigil_misuses(text: str) -> list[tuple[int, str]]:
 
 @lru_cache(maxsize=1)
 def _tracked_files() -> tuple[str, ...]:
-    """Все отслеживаемые пути. `-z`: иначе git C-квотит нелатиницу."""
+    """Existing tracked paths; ignore an unstaged deletion left in Git's index."""
     result = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=_REPO_ROOT,
@@ -202,7 +202,9 @@ def _tracked_files() -> tuple[str, ...]:
         encoding="utf-8",
         check=True,
     )
-    return tuple(name for name in result.stdout.split("\0") if name)
+    return tuple(
+        name for name in result.stdout.split("\0") if name and (_REPO_ROOT / name).is_file()
+    )
 
 
 def _tracked_docs() -> tuple[str, ...]:

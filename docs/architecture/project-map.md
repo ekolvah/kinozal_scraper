@@ -42,7 +42,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 |---|---|---|
 | `CLAUDE.md` (root) | Тонкий роутер: что за app + env-граблии + указатели. **Цель < 200 строк** | каждую сессию, целиком |
 | `.claude/rules/*.md` | Операционные инструкции, **один файл = одна тема**; можно path-scoped через frontmatter `paths:` | каждую сессию (или только при работе с matching-путями) |
-| `.claude/commands/`, `.claude/agents/`, `.claude/settings*.json` | Команды (`/plan`,`/implement`) / сабагенты / permissions-deny | по вызову / при старте |
+| `AGENTS.md`, `.agents/skills/`, `.claude/`, `.codex/` | Agent adapters: Codex skill, Claude planner/reviewer, and local hook policies | по вызову / при старте |
 | `docs/architecture/*.md` | Reference: как устроен код (runtime/pipeline/storage/gemini/…) + этот project-map + `principles.md` | по требованию |
 | `docs/adr/*.md` | Explanation: почему решение принято именно такое и какие альтернативы отвергнуты (MADR 4.0.0, append-only) | по ссылке из state-дока |
 | `~/.claude/projects/<repo>/memory/` | Auto-memory: **только машинно/процессно-специфичное** (см. ниже) | `MEMORY.md` индекс — каждую сессию |
@@ -237,7 +237,7 @@ orientation, которого в per-file docstring нет.
 + гейт `validate_issue_sections.py` + `principles.md §Governance`), память удалили (#150). Тот же
 переезд memory→repo — механика приоритета issue (поле Priority в GitHub Project 1): жила в приватной
 памяти, теперь в репо как `scripts/set_issue_priority.py` (зашитые Project/field/option-ID + unit-тесты)
-+ правило [`workflow.md`](../../.claude/rules/workflow.md) §11 (агент спрашивает приоритет у пользователя
++ правило [`agent-process.md`](agent-process.md) (агент спрашивает приоритет у пользователя
 → скрипт), память удалена (#351).
 
 **Гейт вместо прозы (#353).** Эта политика — сама была прозой и нарушалась дважды за одну сессию
@@ -261,20 +261,20 @@ false-positive-by-design, для редких memory-записей цена п�
 |---|---|---|
 | `~/.claude/CLAUDE.md` (глоб., вне репо) | Кросс-проектное (generic mindset для не-репо проектов). Repo-зеркало операционного mindset = `.claude/rules/mindset.md` | ✅ |
 | `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
-| `.claude/rules/workflow.md` | Процедурные правила workflow (ветка/PR-дисциплина/labels/plan→implement/гейты) — канон, always-load | ✅ |
+| `docs/architecture/agent-process.md` | Agent-neutral roles, issue hand-off, deterministic gates, and adapter contract | ✅ |
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
 | `.claude/rules/mindset.md` | Операционный mindset main-сессии: **канон цель-функции** (3 приоритета) + операционные токен-тактики main-сессии + указатели на §I,§IV,§V/workflow — always-load | ✅ |
-| `.claude/commands/plan.md` | Как структурировать issue-body под 8 required секций (вкл. architect-review и ADR) | ✅ |
-| `.claude/commands/implement.md` | Как исполнить issue с TDD red-green (10 шагов + запреты) | ✅ |
+| `.claude/commands/plan.md` | Claude planner adapter: fills the nine-section issue contract and hands off | ✅ |
+| `.agents/skills/implement-issue/` | Codex implementer/fixer adapter, invoked as `$implement-issue #N` | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings (coverage-first: градация, не фильтрация — #392); цель-функцию **читает из канона** `mindset.md §Цель-функция` (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |
-| `.claude/settings.json` | Что запрещено агенту (`permissions.deny`) — источник истины запретов, трекается | ✅ |
+| `.claude/settings.json`, `.codex/hooks.json`, `scripts/agent_policy.py` | Local deny policy for Claude and Codex; branch protection remains final | ✅ |
 | `.claude/settings.local.json` (gitignored) | Личный режим + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, личный) |
 
 ### `docs/architecture/`
 
 | Файл | На какой вопрос отвечает | Single-responsibility? |
 |---|---|---|
-| `principles.md` | Микс: §I–VII принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `.claude/rules/workflow.md`) | ❌ runtime-принципы + dev-process вместе |
+| `principles.md` | Микс: §I–VII принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `agent-process.md`) | ❌ runtime-принципы + dev-process вместе |
 | `project-map.md` (этот файл) | Какой файл на какой вопрос отвечает + где живёт какое знание (IA-policy) | ✅ |
 | `runtime.md` | Что существует в рантайме и как связано: какие пайплайны, какие Protocol-границы, generic data-flow + модули, сознательно обходящие generic-паттерн (Telethon-direct). Широта, не глубина | ✅ |
 | `pipeline.md` | Как устроен и ведёт себя **один** прогон: слои извлечения, контракты `extract_from_*` → `NormalizedItem`, «новый источник = конфиг, не код», error policy, шаблоны уведомлений, макросы, трейлеры **и поведение fetch** (HTML source config, mirror-fallback kinozal — #418) | ✅ |
@@ -296,9 +296,9 @@ false-positive-by-design, для редких memory-записей цена п�
 
 | Файл | На какой вопрос отвечает |
 |---|---|
-| `scripts/validate_issue_sections.py` | Содержит ли issue все 8 required секций (gate `/plan` и `/implement`); в т.ч. `ADR` — ссылка на запись либо явное `none: <причина>` |
+| `scripts/validate_issue_sections.py` | Verifies all nine issue sections, including `Agent handoff`; gate for planner and implementer adapters |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
-| `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project 1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; вызывается агентом по правилу `workflow.md` §11 (спросил приоритет → скрипт). Механика переехала memory→repo (#351) |
+| `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project 1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; вызывается агентом по контракту `agent-process.md` (спросил приоритет → скрипт). Механика переехала memory→repo (#351) |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
 | `scripts/open_pr.py` | Создание PR с гарантированным `Closes #N` в body + пост-верификация `closingIssuesReferences` (иначе exit 1, §IV): чтобы PR надёжно автозакрывал issue при squash-мёрдже (#320, precedent #319→#140). Pre-flight — делает правый путь дешёвым; enforcement — `verify_pr_link.py` |
 | `scripts/verify_pr_link.py` | CI-гейт (workflow `pr-link.yml`): PR из `issue-N` ветки обязан закрывать issue, иначе job red → required check блокирует мёрдж. Отдельный workflow (не `ci.yml`), т.к. триггерится и на `edited` (правка body убирает `Closes #N` → перепроверка), не гоняя тяжёлый `quality` на правку описания. Агент-независимый backstop к `open_pr.py` (переиспользует его чистые функции); enforcement через gate, не прозу (#320) |
@@ -306,7 +306,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `scripts/ci_check.py` | Локальный pre-commit/pre-push гейт качества (зеркало CI job) |
 | `scripts/eval_trailers.py` | Eval-harness подбора трейлера: три скоркарты — `TrailerStrategy` (YouTube-pick) + `evaluate_delivery` (прод-`select_trailer`, то что уходит юзеру, #379) + `evaluate_tmdb` (TMDB-источник) по frozen golden-set (Hit/Wrong/Miss относительно `correct`, офлайн) + `--record`/`--record-tmdb`/`--update-baseline`. **Гейт** — `tests/fixtures/trailer_baseline.json` (пофильмовый исход delivery) через `tests/test_eval_baseline.py`, не через запись в `ci_check` CHECKS. У набора две роли: «найди правильный» (accept-set `correct`) и «не бери чужой» (разметка `trap` — верифицированные чужие кандидаты в пуле, #380); deep-dive `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |
 | `scripts/eval_summarizer.py` | RAGAS-eval суммаризатора `summary_ru`: faithfulness/answer_relevancy по frozen golden-set вместо regex `response_pattern` (vibe-check формата). Метрика — LLM-судья, поэтому live/API-gated (dev-run, не CI); граница `_evaluate_dataset` мокается, чистые швы под тестом. RAGAS — dev-only dep. Deep-dive `testing.md#eval-harness--summarizer-faithfulness` (#347) |
-| `scripts/hooks.py` | Session-level `PostToolUse`-хук (`on-edit`): ruff check-only на `*.py` + pip-compile-reminder на `requirements*.in` — мгновенный feedback во время агентной сессии, дополняет `ci_check.py`; deep-dive [`ci.md`](ci.md#session-hooks-scriptshookspy) (#281) |
+| `scripts/hooks.py`, `scripts/codex_hooks.py` | Shared post-edit checks plus Codex hook adapter; ruff feedback and pip-compile reminder complement `ci_check.py` |
 | `.github/workflows/ci.yml` | Quality job на PR/push (должен зеркалить `ci_check.py`) |
 | `.importlinter` | §II protocol-boundaries как машинный контракт (гейт `imports` в `ci_check`): направление зависимостей + adapter-no-auth; deep-dive `ci.md` (#234) |
 

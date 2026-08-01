@@ -4,9 +4,9 @@
 Usage: python scripts/check_red.py <path-or-nodeid> [<path-or-nodeid> ...]
 
 Exits 0 only when the given tests are RED: ни один тест не зелёный И хотя бы один
-упал. Used by `/implement` to gate the RED→GREEN transition: if the freshly-written
-tests already pass, the test plan does not cover the intended behaviour change and
-`/implement` must abort.
+упал. Used by the implementer adapter to gate the RED→GREEN transition: if the
+freshly-written tests already pass, the test plan does not cover the intended
+behaviour change and implementation must abort.
 
 Исход берётся из **junit-отчёта** (`--junitxml`, ядро pytest + stdlib-разбор), а не
 из итоговой строки прогона: счётчики `N failed, M passed` не несут идентичности

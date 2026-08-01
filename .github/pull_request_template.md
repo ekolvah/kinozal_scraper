@@ -19,6 +19,19 @@ Divergence: совпало с issue `## Implementation outline`? Отклоне�
 
 Closes #
 
+## Agent record
+
+<!--
+Короткая provenance-запись, без промптов или chain-of-thought.
+- Implementer: <agent / model or version if known>
+- Reviewer / fixer: <agent or none>
+- CI evidence: <local ci_check result and PR checks URL/status>
+-->
+
+- Implementer:
+- Reviewer / fixer:
+- CI evidence:
+
 ## Test plan
 
 <!--

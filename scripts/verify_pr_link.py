@@ -9,7 +9,7 @@ Run in CI as a module so `from scripts.open_pr import …` resolves:
 root is not on `sys.path` then, same trap `issue_branch.py` documents.)
 
 `open_pr.py` makes the right path cheap at PR-creation time, but it is invoked by
-prose in `/implement` — an agent can forget it and `gh pr create` by hand,
+implementer prose — an agent can forget it and `gh pr create` by hand,
 re-opening #319 (issue #140 stayed open after merge). This gate makes the
 invariant NON-bypassable: as a required check it fails the PR — and blocks the
 merge — whenever an `issue-N` branch's PR closes no issue, regardless of HOW the

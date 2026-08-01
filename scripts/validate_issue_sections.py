@@ -4,8 +4,8 @@
 Usage: python scripts/validate_issue_sections.py <issue-number>
 
 Exits 0 if all required sections are present and non-empty. Otherwise
-prints the list of gaps to stderr and exits 1. Consumed by `/plan` and
-`/implement` so the agent does not have to "remember" the contract.
+prints the list of gaps to stderr and exits 1. Consumed by role adapters so an
+agent does not have to "remember" the hand-off contract.
 """
 
 from __future__ import annotations
@@ -35,6 +35,10 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     # so the gate enforces that the question was **answered**, not that the answer is
     # right (#426). Route and entry filter: `project-map.md` §Canonical-home.
     "ADR",
+    # Machine-independent provenance of the planning hand-off. The section
+    # records that a planner actually validated the artifact and intentionally
+    # passes it to an implementer; it does not contain prompts or transcripts.
+    "Agent handoff",
 )
 MIN_CONTENT_CHARS = 5
 
@@ -71,6 +75,22 @@ def _split_by_h2(body: str) -> dict[str, str]:
     return sections
 
 
+def _handoff_is_complete(content: str) -> bool:
+    """Require the machine-independent fields that make a plan hand-off usable."""
+    normalized = "\n".join(line.strip().lower() for line in content.splitlines())
+    return all(
+        marker in normalized
+        for marker in (
+            "planner:",
+            "validation:",
+            "validate_issue_sections.py",
+            "passed",
+            "next role: implementer",
+            "handoff: ready",
+        )
+    )
+
+
 def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
     """Пустые/отсутствующие секции из `required`.
 
@@ -82,7 +102,11 @@ def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[st
     gaps: list[str] = []
     for name in required:
         content = sections.get(name.lower())
-        if content is None or len(content) < MIN_CONTENT_CHARS:
+        if (
+            content is None
+            or len(content) < MIN_CONTENT_CHARS
+            or (name == "Agent handoff" and not _handoff_is_complete(content))
+        ):
             gaps.append(name)
     return gaps
 

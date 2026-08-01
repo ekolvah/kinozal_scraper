@@ -21,7 +21,7 @@ BRANCH_PREFIX = "issue-"
 
 
 def is_valid_branch_name(name: str) -> bool:
-    """A new branch must carry the project prefix (canon: `.claude/rules/workflow.md`)."""
+    """A new branch must carry the project prefix (canon: `agent-process.md`)."""
     return name.startswith(BRANCH_PREFIX)
 
 

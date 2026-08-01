@@ -167,7 +167,12 @@ def target_problem(
 
 @lru_cache(maxsize=1)
 def _tracked_files() -> tuple[str, ...]:
-    """Отслеживаемые пути (repo-relative posix). `-z`: иначе git C-квотит нелатиницу."""
+    """Existing tracked paths (repo-relative posix). `-z` preserves non-ASCII names.
+
+    Exclude an unstaged deletion: Git's index still lists it, but there is no
+    document for a link checker to inspect. CI always runs against a committed
+    tree, so this only makes the guard usable while removing a document.
+    """
     result = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=_REPO_ROOT,
@@ -176,7 +181,9 @@ def _tracked_files() -> tuple[str, ...]:
         encoding="utf-8",
         check=True,
     )
-    return tuple(name for name in result.stdout.split("\0") if name)
+    return tuple(
+        name for name in result.stdout.split("\0") if name and (_REPO_ROOT / name).is_file()
+    )
 
 
 @lru_cache(maxsize=1)

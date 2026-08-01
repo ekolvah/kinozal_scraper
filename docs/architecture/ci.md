@@ -39,7 +39,7 @@ dependency set — the shape (minutes, network-bound tail) is the durable part.
 Operational consequence for agents (output going quiet after `pytest` is
 `pip-audit` working, not a hang) is in `CLAUDE.md` §Среда. If the measurement
 ever crosses the Bash tool's 10-minute ceiling, the derived constant
-`timeout: 600000` in `.claude/commands/implement.md` step 6 stops working and
+`timeout: 600000` in the implementer adapter stops working and
 needs revisiting together with this number.
 
 **`pre-push` runs two gates, not one.** Ahead of `ci_check.py` it runs
@@ -104,18 +104,19 @@ semantics shift with the OS path separator. For a false positive **inside** our 
 code the escape hatch is an inline `# pragma: allowlist secret` at the site (see
 `tests/test_secrets_gate.py`), never a blanket exclusion.
 
-### Session hooks (`scripts/hooks.py`)
+### Session hooks (`scripts/hooks.py` and `.codex/hooks.json`)
 
 A separate, *earlier* feedback layer that runs **during** an agent session, not
-at push (#281). `.claude/settings.json` declares a single `PostToolUse` hook (matcher
-`Edit|Write`) invoking `python "$CLAUDE_PROJECT_DIR/scripts/hooks.py" on-edit`,
-which dispatches two cheap checks in one process right after each file edit:
+at push (#281). The Codex adapter declares a `PostToolUse` hook in
+`.codex/hooks.json` (matcher `Edit|Write`) invoking `scripts/codex_hooks.py on-edit`.
+It delegates to `scripts/hooks.py`, which dispatches two cheap checks in one process
+right after each file edit:
 
 - `*.py` → ruff **check-only** (`ruff format --check` + `ruff check`, **no
   `--fix`/format mutation** — the harness tracks file contents, so rewriting
   behind its back breaks the next Edit's `old_string` match). Remaining lint →
   stderr + exit 2 (PostToolUse exit 2 feeds stderr back to the agent).
-- `requirements*.in` → a `pip-compile` reminder (`workflow.md` §7 is otherwise only
+- `requirements*.in` → a `pip-compile` reminder (the agent process is otherwise only
   prose — this makes forgetting it a *visible* marker, not a CI-time surprise).
 
 §IV split: a malformed/empty payload is a silent no-op, but a ruff *exec*
@@ -519,7 +520,7 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 - **`tox`/`nox` (#255) — no.** Решают матрицу **версий Python**; проект прибит к одной 3.12.
   **Revisit:** появится настоящее требование мульти-версионной матрицы.
 - **Spec Kit (#114) — снят.** Его роль — спека → план → таски — покрыта локальным
-  `/plan #N` → `/implement #N` (`.claude/commands/`), который живёт в репо, гейтится
+  `/plan #N` → `$implement-issue #N`, который живёт в репо, гейтится
   `scripts/validate_issue_sections.py` и держит план в теле issue, а не в отдельном дереве
   артефактов. Плата за внешний фреймворк — `/speckit-*`-команды и spec-файлы поверх того же
   контракта. **Revisit:** появится потребность, которой локальный flow не покрывает.

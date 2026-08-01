@@ -28,6 +28,7 @@ from scripts.hooks import (
     pipcompile_signal,
     plan_checks,
     run_on_edit,
+    run_on_paths,
 )
 
 
@@ -71,6 +72,16 @@ class TestOnEditDispatch:
         code, stderr = run_on_edit(_payload("src/x.py"), ruff_runner=lambda _f: (0, ""))
         assert code == 0
         assert stderr == ""
+
+    def test_run_on_paths_deduplicates_multi_file_patch_paths(self) -> None:
+        calls: list[str] = []
+
+        def _stub(path: str) -> tuple[int, str]:
+            calls.append(path)
+            return 0, ""
+
+        assert run_on_paths(["src/x.py", "src/x.py"], ruff_runner=_stub) == (0, "")
+        assert calls == ["src/x.py"]
 
 
 class TestRuffSignal:
