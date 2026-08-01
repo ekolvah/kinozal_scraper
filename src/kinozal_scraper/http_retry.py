@@ -105,6 +105,12 @@ retry_antibot_http = retry(
     reraise=True,
 )
 
+
+def retry_antibot_patient(fn: Callable[..., object]) -> Callable[..., object]:
+    """RED-заглушка (#396) — реализация приходит GREEN-коммитом."""
+    raise NotImplementedError
+
+
 # JSON APIs: nothing else logs an attempt, and without a line per retry a flapping
 # source stays invisible until it dies outright — the retry would hide exactly the
 # degradation it was added to survive (§IV).

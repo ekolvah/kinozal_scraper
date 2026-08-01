@@ -14,9 +14,9 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ALLOWED_ROOT_PY: frozenset[str] = frozenset()
 
 
-def _tracked_py() -> list[str]:
-    """All tracked `*.py` paths (git, so untracked scraps never count —
-    otherwise an untracked .py would red these guards forever)."""
+def _tracked() -> list[str]:
+    """All tracked paths (git, so untracked scraps never count — otherwise a
+    stray working-tree file would red these guards forever)."""
     out = subprocess.run(
         ["git", "ls-files"],
         cwd=_REPO_ROOT,
@@ -25,7 +25,11 @@ def _tracked_py() -> list[str]:
         encoding="utf-8",
         check=True,
     ).stdout
-    return sorted(name for name in out.splitlines() if name.endswith(".py"))
+    return sorted(out.splitlines())
+
+
+def _tracked_py() -> list[str]:
+    return [name for name in _tracked() if name.endswith(".py")]
 
 
 def _tracked_root_py() -> list[str]:
@@ -52,4 +56,26 @@ class TestLayout:
         )
         assert not offenders, (
             f"source .py must live under src/kinozal_scraper/, not flat src/: {offenders}"
+        )
+
+
+# The #396 measurement probe was temporary by construction: it existed to choose
+# between "spread the retries" and "buy a different egress". The choice is made and
+# recorded in docs/adr/0002; the instrument's own hard-expiry would have reddened it
+# anyway. Pinned by path, never by the word "probe" — that word lives in
+# kinozal_auth.py and test_branch_protection.py in unrelated senses.
+_REMOVED_PROBE_PATHS = (
+    "scripts/probe.py",
+    ".github/workflows/soldout-probe.yml",
+    "tests/test_probe.py",
+)
+
+
+class TestTemporaryInstrumentsRemoved:
+    def test_soldout_probe_is_gone(self) -> None:
+        survivors = sorted(set(_REMOVED_PROBE_PATHS) & set(_tracked()))
+        assert not survivors, (
+            f"the #396 probe was measurement scaffolding, not a component: {survivors}. "
+            "Its decision is recorded in docs/adr/0002 — keeping the instrument means "
+            "24 pointless requests a day to a third-party site."
         )

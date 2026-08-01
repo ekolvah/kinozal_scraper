@@ -27,11 +27,20 @@ _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "
 # A pipeline step is one that runs `python -m kinozal_scraper.<name>_pipeline`.
 # telegram_summarizer (not *_pipeline) and the pytest gate are intentionally excluded.
 _PIPELINE_RUN = re.compile(r"python -m kinozal_scraper\.\w+_pipeline")
+# soldout is singled out by #396: it is the one step that sleeps for hours between
+# retries, so its position among the siblings is itself an invariant.
+_SOLDOUT_RUN = re.compile(r"python -m kinozal_scraper\.soldout_pipeline")
+_SUMMARIZER_RUN = re.compile(r"python -m kinozal_scraper\.telegram_summarizer")
+
+
+def _doc() -> dict[Any, Any]:
+    """The parsed workflow. Keys are `Any`: YAML 1.1 parses a bare `on:` as the
+    boolean `True`, so the trigger block is not reachable under the string "on"."""
+    return cast("dict[Any, Any]", yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8")))
 
 
 def _steps() -> list[dict[str, Any]]:
-    data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    return cast("list[dict[str, Any]]", data["jobs"]["run-script"]["steps"])
+    return cast("list[dict[str, Any]]", _doc()["jobs"]["run-script"]["steps"])
 
 
 def _pipeline_steps() -> list[dict[str, Any]]:
@@ -85,3 +94,61 @@ class TestPipelineStepIsolation:
         assert gate.get("continue-on-error") is not True, (
             "pytest gate must not set continue-on-error — red tests must block prod pipelines"
         )
+
+
+class TestSoldoutStepPlacement:
+    """soldout — единственный шаг, который спит часами (#396), поэтому его место и
+    его потолок в прогоне сами по себе инварианты."""
+
+    def test_soldout_waits_last_of_all(self) -> None:
+        """soldout ждёт до ~4.6 ч внутри шага (#396) — значит стоит последним.
+
+        Разброс попыток во времени и есть фикс: Cloudflare режет датацентровые IP
+        вероятностно, и единственное, что отличает доехавший прогон, — успела ли
+        хоть одна из 24 разнесённых попыток. Цена — часы ожидания, и заплатить её
+        можно только в самом конце: в середине прогона тот же шаг отложил бы
+        доставку остальных источников на те же часы.
+
+        Порядок ключей в YAML — ровно то, что следующий контрибьютор переставит,
+        не заметив; сам GitHub Actions такой инвариант не выражает.
+        """
+        steps = _steps()
+        soldout = [i for i, s in enumerate(steps) if _SOLDOUT_RUN.search(str(s.get("run", "")))]
+        assert len(soldout) == 1, f"expected exactly one soldout step, got {len(soldout)}"
+        earlier = [
+            i
+            for i, s in enumerate(steps)
+            if i != soldout[0]
+            and (
+                _PIPELINE_RUN.search(str(s.get("run", "")))
+                or _SUMMARIZER_RUN.search(str(s.get("run", "")))
+            )
+        ]
+        assert earlier, "derived no sibling delivery steps — the regexes went stale"
+        assert soldout[0] > max(earlier), (
+            f"soldout step is at index {soldout[0]}, but delivery steps run at "
+            f"{sorted(earlier)} — a step that sleeps for hours must not sit in front of them"
+        )
+
+    def test_soldout_step_has_a_timeout_below_the_job_ceiling(self) -> None:
+        """Без своего таймаута сетевая патология доедет до оператора за 6 часов —
+        столько GitHub Actions даёт job'у по умолчанию (#396)."""
+        soldout = [s for s in _steps() if _SOLDOUT_RUN.search(str(s.get("run", "")))]
+        assert len(soldout) == 1
+        timeout = soldout[0].get("timeout-minutes")
+        assert isinstance(timeout, int), (
+            "soldout step must carry an explicit timeout-minutes — its patient retry "
+            "policy makes an unbounded step a real possibility, not a theoretical one"
+        )
+        assert 0 < timeout < 360, (
+            f"timeout-minutes={timeout} must be under the 360-minute job ceiling to fire first"
+        )
+
+    def test_daily_schedule_unchanged(self) -> None:
+        """Фикс #396 сознательно НЕ трогает частоту: он разносит попытки внутри
+        одного суточного прогона. Учащение расписания — другое решение с другой
+        ценой (нагрузка на сайт, квота Gemini у соседних шагов), и молча оно
+        приехать не должно."""
+        triggers = _doc().get("on", _doc().get(True, {}))
+        crons = [entry["cron"] for entry in triggers["schedule"]]
+        assert crons == ["0 1 * * *"], f"daily cron changed to {crons}"

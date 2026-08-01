@@ -156,6 +156,11 @@ def fetch_html(url: str) -> str:
     return _get(url, **_HTML_GET).text
 
 
+def fetch_html_patient(url: str) -> str:
+    """RED-заглушка (#396) — реализация приходит GREEN-коммитом."""
+    raise NotImplementedError
+
+
 def fetch_bytes(url: str) -> bytes:
     """Binary sibling of fetch_html for downloading assets (e.g. posters).
 
