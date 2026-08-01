@@ -65,7 +65,14 @@ class TestAgentProcess:
             (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
         )
 
-        for role in ("planner", "architect_reviewer", "implementer", "pr_reviewer", "fixer"):
+        for role in (
+            "planner",
+            "architect_reviewer",
+            "implementer",
+            "pr_reviewer",
+            "fixer",
+            "human_merge",
+        ):
             assert f"| `{role}` | {catalogue['roles'][role]['max_runs']} |" in process
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
