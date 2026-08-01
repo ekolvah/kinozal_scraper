@@ -2,8 +2,7 @@
 
 **На какой вопрос отвечает этот файл:** как ежедневный прод-прогон эксплуатируется — расписание и
 порядок шагов, чем он конфигурируется (env-переменные и секреты), как изолируются падения
-отдельных источников и куда уходит алерт, какие runbook'и нужны оператору (ротация секрета,
-снятие матрицы пробника).
+отдельных источников и куда уходит алерт, какие runbook'и нужны оператору (ротация секрета).
 
 **Чего здесь нет** — один вопрос на файл ([`project-map.md`](project-map.md) §«Конвенция-заголовков»),
 и этот файл собирает разнородные блоки, поэтому граница проговорена явно: гейты качества на пути
@@ -20,9 +19,9 @@ Steps, in order:
 2. **github_popular_pipeline.py** — GitHub `new_popular`
 3. **github_trending_pipeline.py** — GitHub trending (HTML + enrichment)
 4. **steam_pipeline.py** — Steam Most Played (Steam Charts API + appdetails)
-5. **soldout_pipeline.py** — Soldout events
-6. **kinozal_pipeline.py** — Kinozal movies
-7. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
+5. **kinozal_pipeline.py** — Kinozal movies
+6. **telegram_summarizer.py** — `if: always()` (runs even if earlier steps fail)
+7. **soldout_pipeline.py** — Soldout events, **last on purpose** (see below)
 
 ### Pipeline-step isolation
 
@@ -33,7 +32,7 @@ delivery for that run ([run 28493805028](https://github.com/ekolvah/kinozal_scra
 Per-source isolation existed *inside* each `run_*_pipeline`, but not *between* the workflow
 steps.
 
-**Fix:** each pipeline step (2–6) carries
+**Fix:** every pipeline step carries
 `if: ${{ !cancelled() && steps.tests.outcome == 'success' }}`:
 
 - `!cancelled()` — the step runs even if an **earlier pipeline** step failed (defeats the
@@ -45,7 +44,7 @@ steps.
   *not* masked into a green job. This is why a `continue-on-error` + aggregate-gate design
   was rejected: it masks `conclusion` and adds a moving part.
 
-`telegram_summarizer` (step 7) is deliberately **not** isolated — it keeps `if: always()`
+`telegram_summarizer` is deliberately **not** isolated — it keeps `if: always()`
 and no `continue-on-error`, so its own failure hard-fails the job (§IV). The invariant is
 guarded statically by `tests/test_workflow_isolation.py::TestPipelineStepIsolation`, which
 *derives* the pipeline set from the workflow (any step running `kinozal_scraper.*_pipeline`)
@@ -70,46 +69,35 @@ fails after an earlier one already set the marker, the backstop is the **red run
 scope). `telegram_summarizer` keeps its own richer `deliver_results` alert path; `report_failures`
 and the marker helpers share one canonical home in `alerting.py`.
 
-## Soldout probe workflow (`soldout-probe.yml`) — ВРЕМЕННЫЙ
+## Soldout: терпеливый ретрай и место шага в прогоне
 
-Измеритель доступности `soldoutticketbox.com` из датацентра GitHub Actions.
-**Не гейт и не источник данных** — только замер, на который опирается решение по обходу
-Cloudflare.
+Единственный источник со **своим** расписанием ретраев. Cloudflare режет датацентровые
+IP-диапазоны GitHub Actions вероятностно, и недельный замер показал, что исход прогона решает не
+число попыток, а их разнос во времени: четыре попытки за ~7 секунд бьют в одно и то же решение
+Cloudflare и стоят одной. Отсюда 12 красных ночных прогонов подряд. Решение и разбор
+альтернатив — [ADR-0002](../adr/0002-soldout-cloudflare-spread-retries.md); политика в коде —
+`retry_antibot_patient` (`http_retry.py`), точка применения — `fetch_html_patient`.
 
-**Зачем.** Исход ежедневного прогона решает единственная величина — пробьёт ли хоть одна из
-4 попыток вероятностный `cf-mitigated=challenge` (RCA — #396). Историю по ней не
-восстановить: диагностика `describe_block` приехала только 25.07 (#358). Без числа выбор между
-«разнести попытки во времени» (бесплатно) и «residential-прокси» (платный сервис + секрет) —
-покупка вслепую. Вторая причина: до пробника единственный способ дёрнуть fetch из датацентра —
-прогнать `run-script.yml`, а он **рассылает в Telegram-канал**, т.е. каждая проверка гипотезы
-стоила пользователю сообщений. У пробника нет ни одного `secrets.*`.
+**Что это значит для оператора:**
 
-**Решающее правило (пред-зарегистрировано в issue до сбора данных).** Тайм-бокс 7 суток,
-8 запусков в сутки × 3 попытки = 24 замера. Если ≥1 успех был в **каждые** сутки — достаточно
-разнести попытки, прокси не покупаем; если хоть в одни сутки 0 из 24 — нужен другой egress.
-Величина наблюдаемая напрямую, без предположений о независимости попыток.
+- **Шаг идёт до ~4.6 часа** (24 попытки с паузой 12 минут). Это норма, а не зависание: каждая
+  пауза печатает строку `WARNING` из `http_retry`, каждая попытка — `[http_fetch] … cf-ray=…
+  cf-mitigated=…` из `_get_once`. Молчащий шаг — единственный признак настоящей проблемы.
+- **Шаг стоит последним, после суммаризатора.** Иначе те же часы ожидания сдвинули бы доставку
+  всех остальных источников. Инвариант статически пиньется
+  `tests/test_workflow_isolation.py::TestSoldoutStepPlacement` — порядок ключей в YAML сам себя
+  не защищает.
+- **`timeout-minutes: 330`** — под 360-минутным потолком job'а, чтобы при сетевой патологии
+  отказ доехал раньше, чем job упрётся в собственный лимит.
+- **Красный soldout — ожидаемое состояние, а не инцидент.** Часть суток блок не пробивается
+  вовсе; алерт при этом приходит не чаще одного раза в сутки (прогон-то один). Памяти «когда был
+  последний успех» нет сознательно — принятый пробел записан в
+  [`coverage-gaps.md`](coverage-gaps.md).
 
-**Коды выхода.** 403 — это *результат измерения*, прогон зелёный: красный workflow каждые
-3 часа обесценил бы алертинг остальных. Красным пробник становится только при сбое **самого
-инструмента** — пустой `PROBE_URL`, не-HTTP исключение, истёкший срок.
-
-**Снять матрицу:**
-
-```bash
-gh run list --workflow=soldout-probe.yml --limit 60 --json databaseId -q '.[].databaseId' \
-  | while read -r id; do gh run view "$id" --log | grep PROBE; done
-```
-
-В строке: `ts=` (UTC), `kind=html|poster`, `attempt=n/3`, `elapsed=`, `status=` + диагностика
-`describe_block`. Меряются **оба** ломающихся пути: RCA дал разные доли (страница 1/4, постеры
-0/8), поэтому «постеры вылечатся тем же обходом» — гипотеза, а не факт. Учти, что на блоке в логе
-**две** строки: своя `PROBE …` и уже существующая `[http_fetch] …` из `_get` — `grep PROBE`
-отбирает только замеры.
-
-**Удаление.** Пробник, его workflow и `tests/test_probe.py` удаляются вместе с решением, ради
-которого заведены (#396).
-Забыть не даст `_EXPIRES` в `scripts/probe.py`: после этой даты шаг печатает
-`probe expired … delete per #396` и краснеет — механизм вместо обещания в доке.
+**Побочный эффект переноса, который иначе прочитают как случайность.** Маркер
+`.run/technical_alert_sent` job-global, и до переноса его почти всегда ставил soldout — он падал
+первым и чаще всех, глуша curl-fallback для более поздних шагов. Теперь маркер ставит тот, кто
+упал раньше, а soldout — последний. Разбирая алертинг, учитывай это при чтении старых прогонов.
 
 ## Environment variables
 

@@ -72,7 +72,9 @@ def _run(
     notifier = InMemoryNotifier()
     config = sources_config or _SOURCES_CONFIG
 
-    with unittest.mock.patch("kinozal_scraper.soldout_pipeline.fetch_html", return_value=html):
+    with unittest.mock.patch(
+        "kinozal_scraper.soldout_pipeline.fetch_html_patient", return_value=html
+    ):
         run_soldout_pipeline(storage, notifier, sources_config=config)
 
     return storage, notifier
@@ -135,7 +137,7 @@ class TestSoldoutDiscriminator(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "kinozal_scraper.soldout_pipeline.fetch_html", return_value=_SOLDOUT_HTML
+            "kinozal_scraper.soldout_pipeline.fetch_html_patient", return_value=_SOLDOUT_HTML
         ) as mfetch:
             results = run_soldout_pipeline(storage, notifier, sources_config=config)
         self.assertEqual(results, [])
@@ -270,7 +272,7 @@ class TestSoldoutPipelineEdgeCases(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "kinozal_scraper.soldout_pipeline.fetch_html", side_effect=RuntimeError("boom")
+            "kinozal_scraper.soldout_pipeline.fetch_html_patient", side_effect=RuntimeError("boom")
         ):
             run_soldout_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertEqual(storage.stored_rows("events"), [])
@@ -288,7 +290,7 @@ class TestSoldoutPipelineExitCodeSurface(unittest.TestCase):
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with unittest.mock.patch(
-            "kinozal_scraper.soldout_pipeline.fetch_html", side_effect=RuntimeError("boom")
+            "kinozal_scraper.soldout_pipeline.fetch_html_patient", side_effect=RuntimeError("boom")
         ):
             results = run_soldout_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
         self.assertIsInstance(results, list)
@@ -309,7 +311,7 @@ class TestSoldoutPipelineExitCodeSurface(unittest.TestCase):
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.soldout_pipeline.fetch_html", return_value=_SOLDOUT_HTML
+                "kinozal_scraper.soldout_pipeline.fetch_html_patient", return_value=_SOLDOUT_HTML
             ),
             unittest.mock.patch(
                 "kinozal_scraper.soldout_pipeline.build_notification",
@@ -329,7 +331,7 @@ class TestSoldoutPipelineExitCodeSurface(unittest.TestCase):
         storage2 = InMemoryStorage()
         notifier2 = InMemoryNotifier()
         with unittest.mock.patch(
-            "kinozal_scraper.soldout_pipeline.fetch_html", return_value=_SOLDOUT_HTML
+            "kinozal_scraper.soldout_pipeline.fetch_html_patient", return_value=_SOLDOUT_HTML
         ):
             results = run_soldout_pipeline(storage2, notifier2, sources_config=_SOURCES_CONFIG)
         self.assertTrue(all(r.ok for r in results))
@@ -347,7 +349,9 @@ def _run_results(
     returning the PipelineResult list for delivery-truthfulness assertions."""
     storage = InMemoryStorage()
     notifier = InMemoryNotifier(fail_ids=fail_ids)
-    with unittest.mock.patch("kinozal_scraper.soldout_pipeline.fetch_html", return_value=html):
+    with unittest.mock.patch(
+        "kinozal_scraper.soldout_pipeline.fetch_html_patient", return_value=html
+    ):
         results = run_soldout_pipeline(storage, notifier, sources_config=_SOURCES_CONFIG)
     return storage, notifier, results
 

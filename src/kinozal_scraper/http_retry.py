@@ -24,6 +24,11 @@
   контракта у `appdetails` нет, окно сброса не документировано и не замерено —
   разница записана в `coverage-gaps.md` **M2**, чтобы не читаться как замер.
 
+**Расписаний тоже два, и они ортогональны наборам кодов.** Анти-бот-набор применяется
+в двух режимах: быстром (все источники) и терпеливом (только soldout, #396) — там
+попытки разнесены на минуты, потому что блокировка вероятностная и сжатые ретраи
+попадают в одно и то же решение Cloudflare. Обоснование чисел — у самой политики ниже.
+
 Оба набора намеренно расходятся с `sheets_storage._TRANSIENT_CODES`, который
 исключает 403 как fail-fast permission-fault: три соседних слоя трактуют 403
 по-разному **осознанно**, «унифицировать» их нельзя.
@@ -47,6 +52,7 @@ from tenacity import (
     retry_if_exception,
     stop_after_attempt,
     wait_exponential,
+    wait_fixed,
 )
 
 logger = logging.getLogger(__name__)
@@ -96,8 +102,10 @@ def _transient_http_predicate(codes: Iterable[int]) -> Callable[[BaseException],
 # keeping `_get(...)` typed as returning a `Response` — same reason `_get_once`
 # stays split out in `http_fetch` (#396).
 
-# HTML transport: `_get_once` already logs `describe_block` on every attempt (#358),
-# so a second per-attempt line here would only duplicate it.
+# HTML transport, fast schedule — every source except soldout. `_get_once` already
+# logs `describe_block` on every attempt (#358), and at 1/2/4 s sleeps a `before_sleep`
+# line would land in the same second as that one, so it is omitted **here**; the
+# patient sibling below sleeps for minutes and does need it.
 retry_antibot_http = retry(
     retry=retry_if_exception(_transient_http_predicate(ANTIBOT_TRANSIENT_CODES)),
     stop=stop_after_attempt(_MAX_ATTEMPTS),
@@ -105,10 +113,29 @@ retry_antibot_http = retry(
     reraise=True,
 )
 
+# HTML transport, patient schedule — soldout only (#396). Same code set, different
+# spacing: Cloudflare blocks GitHub Actions' datacenter ranges probabilistically, and
+# what decides a run is not the NUMBER of attempts but their spread. Four attempts
+# inside ~7 s (the schedule above) hit one and the same CF decision and amount to a
+# single throw per run — that is what made 12 consecutive nightly runs red. Attempts
+# 60 s apart were measured to behave independently.
+#
+# 24 × 720 s is the intersection of three constraints: the pause sits well above the
+# measured 60 s, the window (~4.6 h) stays under the hard 6-hour GitHub Actions job
+# ceiling, and the density equals the 24 requests/day the measurement itself ran at.
+# Full reasoning: `docs/adr/0002-soldout-cloudflare-spread-retries.md`.
+_PATIENT_ATTEMPTS = 24
+_PATIENT_WAIT_S = 720
 
-def retry_antibot_patient(fn: Callable[..., object]) -> Callable[..., object]:
-    """RED-заглушка (#396) — реализация приходит GREEN-коммитом."""
-    raise NotImplementedError
+# `before_sleep` is required here and not above: twelve minutes of silence between
+# `_get_once` lines is indistinguishable from a hung step (§IV).
+retry_antibot_patient = retry(
+    retry=retry_if_exception(_transient_http_predicate(ANTIBOT_TRANSIENT_CODES)),
+    stop=stop_after_attempt(_PATIENT_ATTEMPTS),
+    wait=wait_fixed(_PATIENT_WAIT_S),
+    reraise=True,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
 
 
 # JSON APIs: nothing else logs an attempt, and without a line per retry a flapping
