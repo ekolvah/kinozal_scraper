@@ -6,10 +6,7 @@ import json
 import sys
 from collections.abc import Sequence
 
-try:  # module import in tests
-    from scripts import check_claude_review as review_gate
-except ModuleNotFoundError:  # direct `python scripts/...` workflow execution
-    import check_claude_review as review_gate
+from scripts import check_claude_review as review_gate
 
 
 def main(argv: Sequence[str] | None = None) -> None:
