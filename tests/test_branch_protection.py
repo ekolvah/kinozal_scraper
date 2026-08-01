@@ -29,6 +29,7 @@ from typing import Any
 
 import pytest
 import yaml
+
 from scripts.check_branch_protection import (
     NOT_REQUIRED,
     REQUIRED_CONTEXTS,
@@ -43,8 +44,11 @@ _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _HOOK = _REPO_ROOT / ".githooks" / "pre-push"
 
 
-def _load_workflows() -> dict[str, dict[str, Any]]:
-    """Реальные воркфлоу репо: имя файла → распарсенный документ."""
+def _load_workflows() -> dict[str, dict[Any, Any]]:
+    """Реальные воркфлоу репо: имя файла → распарсенный документ.
+
+    Ключи документа намеренно `Any`: YAML 1.1 читает голое `on:` как булев `True`.
+    """
     return {
         path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
         for path in sorted(_WORKFLOWS.glob("*.yml"))
@@ -304,6 +308,15 @@ class TestPrePushHook:
         (tmp_path / "rc-ci_check.py").write_text("1", encoding="utf-8")
         result = self._run(tmp_path)
         assert "stderr-from-ci_check.py" in result.stderr
+
+    def test_hook_has_no_crlf_in_the_working_tree(self) -> None:
+        """CRLF в shebang'е убивает хук целиком — `.gitattributes` держит его LF-only.
+
+        С `core.autocrlf=true` (дефолт Git for Windows) и без атрибута свежий клон получил бы
+        `#!/usr/bin/env bash\\r`, bash упал бы с «bad interpreter», и pre-push гейт молча
+        перестал бы запускаться.
+        """
+        assert b"\r\n" not in _HOOK.read_bytes()
 
     def test_missing_interpreter_fails_loudly(self, tmp_path: Path) -> None:
         """Ни один кандидат не найден — видимый отказ, а не тихо пропущенный гейт (§IV).

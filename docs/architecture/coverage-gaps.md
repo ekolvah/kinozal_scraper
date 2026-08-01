@@ -345,6 +345,18 @@ decision goes to" route — and the rule itself — live in
   «покраснело → дописал слово». Записано, чтобы ветку не переоткрыли как забытую: вернуться
   — когда появится **измеренный** рецидив и правило о датах в каноне, а не наоборот.
 
+- **AD. Сетевая половина сверки branch protection не гоняется в CI (#436).**
+  `scripts/check_branch_protection.py` сверяет объявленный состав required-контекстов с
+  фактическим. Покрыто unit-тестами всё, кроме одного шага — реального `gh api` за конфигом:
+  у `GITHUB_TOKEN` нет скоупа `administration`, а classic branch protection не видна через
+  ruleset-эндпоинт (тот отдаёт `[]`), так что CI-прогон потребовал бы положить в secrets
+  отдельный admin-токен. **Отвергнуто по цене, а не по невозможности**: долгоживущий секрет
+  приносит ротацию, а протухший токен красит job без реального дрейфа и учит игнорировать
+  детектор. Компенсация — прогон из `.githooks/pre-push` на каждый push (чаще правдоподобного
+  cron'а) плюс оффлайн-гард `tests/test_branch_protection.py`, который держит in-repo половину
+  (объявление ↔ джобы воркфлоу) в CI. Вернуться — при переезде enforcement'а на rulesets,
+  который сделал бы конфиг читаемым обычным repo-read.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

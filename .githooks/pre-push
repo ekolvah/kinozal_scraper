@@ -1,4 +1,32 @@
 #!/usr/bin/env bash
-.venv/Scripts/python scripts/ci_check.py 2>/dev/null || \
-.venv/bin/python scripts/ci_check.py 2>/dev/null || \
-py -3.12 scripts/ci_check.py
+# Локальное surfacing перед push'ем — НЕ enforcement: `.githooks` включается опциональным
+# `git config core.hooksPath .githooks`. Авторитетный барьер для `main` — branch protection
+# на стороне GitHub (docs/architecture/ci.md).
+#
+# Интерпретатор ПРОБИРУЕТСЯ (`-c ''`), а не выводится из кода возврата гейта. Прежняя цепочка
+# `гейт || следующий-интерпретатор` толковала красный гейт как «интерпретатор не тот» и
+# перезапускала весь ci_check (минуты) под следующим кандидатом, а stderr первого прогона
+# глотала `2>/dev/null` (#436). Поэтому `2>/dev/null` остался только на пробе.
+set -u
+
+PY=""
+for candidate in ".venv/Scripts/python" ".venv/bin/python" "py -3.12"; do
+    # Без кавычек намеренно: "py -3.12" — это команда вместе с аргументом.
+    # shellcheck disable=SC2086
+    if $candidate -c "" 2>/dev/null; then
+        PY="$candidate"
+        break
+    fi
+done
+
+if [ -z "$PY" ]; then
+    echo "pre-push: не найден Python (пробовал .venv/Scripts/python, .venv/bin/python, py -3.12)" >&2
+    exit 1
+fi
+
+# Сначала дешёвая сетевая сверка (секунды), потом тяжёлый гейт (минуты): дрейф required-контекстов
+# не должен стоить полного прогона ci_check, прежде чем о нём скажут.
+# shellcheck disable=SC2086
+$PY scripts/check_branch_protection.py || exit 1
+# shellcheck disable=SC2086
+$PY scripts/ci_check.py || exit 1

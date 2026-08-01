@@ -1,44 +1,244 @@
 #!/usr/bin/env python3
-"""Заглушка-сигнатура для RED-шага #436 — реализация приходит GREEN-коммитом."""
+"""Детектор дрейфа: объявленные required status checks ↔ фактические в GitHub (#436).
+
+    python scripts/check_branch_protection.py
+
+Печатает фактический состав контекстов ветки `main` **всегда**, на любом коде выхода — это и
+есть воспроизводимый способ его увидеть, не открывая настройки руками. Коды: `0` совпало,
+`1` дрейф, `2` отказ инструмента (`gh` недоступен/без прав, битый JSON, сломанный захват вывода
+#364/#410). Разделение `1` и `2` — §IV: отказ инструмента не имеет права выглядеть как вердикт
+«дрейфа нет».
+
+**Почему дом объявления здесь, а не в доке.** Состав контекстов машинно сверяется — и с GitHub
+(этот скрипт), и с воркфлоу репо (`tests/test_branch_protection.py`). Проза сверяться не умеет,
+поэтому доки на `REQUIRED_CONTEXTS` ссылаются, а не пересказывают его (тот же приём, что
+`scripts/set_issue_priority.py`).
+
+**Почему дев-скрипт в `.githooks/pre-push`, а не job в CI.** У `GITHUB_TOKEN` нет скоупа
+`administration`, а чтение `branches/*/protection` требует admin-прав, поэтому CI-форма требует
+положить в secrets отдельный токен (fine-grained PAT с `Administration: read` или GitHub App).
+Радиус такого токена узкий, то есть форма рабочая — отвергнута она **по цене**: долгоживущий
+секрет приносит обязанность ротации, а протухший токен красит job без реального дрейфа и учит
+игнорировать детектор. Плюс `ci.yml` зеркалит реестр `CHECKS` из `ci_check.py`
+(`tests/test_ci_check.py::TestStepParity`), так что чек в `ci_check` автоматически обязан стать
+шагом CI — где и упрётся в права. Обходной путь через ruleset-эндпоинт (`repos/{owner}/{repo}/
+rules/branches/main`, читается обычным repo-read) для этого репо пуст: enforcement живёт в classic
+branch protection, которая туда не попадает. Пересматривать выбор уместно при переезде на rulesets
+или при появлении второго контрибьютора.
+
+**Хук — не enforcement.** `.githooks` включается опциональным `git config core.hooksPath`, так что
+это surfacing на машине мейнтейнера. Единственный авторитетный барьер для `main` — сама branch
+protection.
+"""
 
 from __future__ import annotations
 
+import argparse
+import json
+import subprocess
+import sys
 from collections.abc import Iterable, Mapping
+from pathlib import Path
 from typing import Any
 
-REQUIRED_CONTEXTS: tuple[str, ...] = ()
-NOT_REQUIRED: dict[str, str] = {}
+# Канон состава required-контекстов ветки `main`.
+REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link")
+
+# PR-джобы, сознательно НЕ сделанные required, и почему. Пустая причина — забытое решение,
+# а не принятое, поэтому гард её не принимает.
+NOT_REQUIRED: dict[str, str] = {
+    "review": (
+        "fork-PR не получает secrets.CLAUDE_CODE_OAUTH_TOKEN → внешний PR был бы заперт; "
+        "при enforce_admins: true залипший check блокирует мёрдж даже владельцу"
+    ),
+}
+
+BRANCH = "main"
+# Плейсхолдеры `{owner}`/`{repo}` подставляет сам `gh`; без ведущего слэша — иначе MSYS
+# на Windows подменит путь (CLAUDE.md §Среда).
+_ENDPOINT = f"repos/{{owner}}/{{repo}}/branches/{BRANCH}/protection"
 
 
 def protection_drift(
     actual: Iterable[str], expected: Iterable[str] = REQUIRED_CONTEXTS
 ) -> tuple[list[str], list[str]]:
-    """Расхождение объявленного состава контекстов с фактическим."""
-    raise NotImplementedError
+    """`(missing, unexpected)` — расхождение по обоим направлениям.
+
+    Сравнение по множеству: порядок в `checks` GitHub не гарантирует. Незаявленный контекст —
+    такое же расхождение, как отсутствующий: канон состава живёт в репо, и «кто-то добавил
+    руками» должно доходить до оператора, а не считаться нормой.
+    """
+    actual_set, expected_set = set(actual), set(expected)
+    return sorted(expected_set - actual_set), sorted(actual_set - expected_set)
 
 
 def contexts_from_protection(payload: Mapping[str, Any]) -> tuple[str, ...]:
-    """Фактические required-контексты из ответа branch-protection API."""
-    raise NotImplementedError
+    """Фактические контексты из ответа branch-protection API.
+
+    Читается `required_status_checks.checks[*].context` — недеприкейченная форма, та же, что
+    пишется при обновлении. Отсутствие ключа даёт пустой кортеж, то есть **дрейф**, а не сбой:
+    снесённый protection — самый вероятный реальный сценарий, и молчать о нём нельзя.
+    """
+    checks = payload.get("required_status_checks", {}).get("checks", [])
+    return tuple(check["context"] for check in checks)
+
+
+def _triggers(doc: Mapping[Any, Any]) -> Any:
+    """Секция `on:` воркфлоу. YAML 1.1 читает голое `on` как булев `True` — берём оба ключа.
+
+    Отсюда и `Mapping[Any, Any]` у документа: ключи воркфлоу — не только строки, и сузить тип
+    до `str` значило бы описать не тот объект, который реально приходит из парсера.
+    """
+    return doc.get("on", doc.get(True, {}))
+
+
+def _runs_on_pull_request(triggers: Any) -> bool:
+    """Триггерится ли воркфлоу на `pull_request` (dict / список / строка)."""
+    if isinstance(triggers, Mapping):
+        return "pull_request" in triggers
+    if isinstance(triggers, str):
+        return triggers == "pull_request"
+    if isinstance(triggers, Iterable):
+        return "pull_request" in triggers
+    return False
+
+
+def _pull_request_jobs(
+    workflows: Mapping[str, Mapping[Any, Any]],
+) -> dict[str, Mapping[str, Any]]:
+    """Эффективное имя check-run'а → определение джоба, по всем PR-воркфлоу.
+
+    Имя контекста — это `name:` джоба, если он задан, иначе ключ джоба. Сверка по ключу
+    сломалась бы молча при добавлении `name:`, оставив required-контекст навсегда в статусе
+    «Expected»; при `enforce_admins: true` это заперло бы мёрдж, включая PR с починкой.
+    """
+    jobs: dict[str, Mapping[str, Any]] = {}
+    for doc in workflows.values():
+        if not _runs_on_pull_request(_triggers(doc)):
+            continue
+        for job_key, job in (doc.get("jobs") or {}).items():
+            job = job or {}
+            jobs[job.get("name") or job_key] = job
+    return jobs
 
 
 def declaration_problems(
-    workflows: Mapping[str, Mapping[str, Any]],
-    declared: Iterable[str],
-    excluded: Mapping[str, str],
+    workflows: Mapping[str, Mapping[Any, Any]],
+    declared: Iterable[str] = REQUIRED_CONTEXTS,
+    excluded: Mapping[str, str] = NOT_REQUIRED,
 ) -> list[str]:
-    """Расхождения объявления с воркфлоу репо (оффлайн-половина гарда)."""
-    raise NotImplementedError
+    """Расхождения объявления с воркфлоу репо — оффлайн-половина гарда.
+
+    Ловит то, что сетевая половина увидеть не может: контекст без джоба (вечный «Expected»),
+    джоб с матрицей (контекст размножается в `job (value)`, голое имя не отчитается никогда),
+    новый PR-джоб, про который решение «required или нет» не принято.
+    """
+    jobs = _pull_request_jobs(workflows)
+    declared = tuple(declared)
+    problems: list[str] = []
+
+    for context in declared:
+        job = jobs.get(context)
+        if job is None:
+            problems.append(
+                f"объявлен required-контекст {context!r}, но PR-джоба с таким именем check-run'а "
+                f"нет — он навсегда останется в статусе «Expected» и запрёт мёрдж"
+            )
+            continue
+        if "matrix" in (job.get("strategy") or {}):
+            problems.append(
+                f"{context!r} объявлен голым именем, но джоб использует matrix — реальные "
+                f"контексты будут вида '{context} (value)'"
+            )
+
+    for context in sorted(jobs):
+        if context in declared:
+            continue
+        if context not in excluded:
+            problems.append(
+                f"PR-джоб {context!r} не объявлен required и не внесён в NOT_REQUIRED — "
+                f"решение не принято, а забыто"
+            )
+        elif not excluded[context].strip():
+            problems.append(f"{context!r} исключён из required без причины")
+
+    return problems
 
 
 def fetch_protection() -> Mapping[str, Any]:
-    """Прочитать branch protection ветки `main` через `gh api`."""
-    raise NotImplementedError
+    """Прочитать branch protection через `gh api`; отказ инструмента → exit 2.
+
+    Отдельный код 2 (а не пустой словарь) намеренно: транзиентный сбой `gh` (auth, rate-limit,
+    сеть) не должен быть истолкован как «required-контекстов нет», то есть как дрейф — это ложный
+    диагноз с противоположным лечением.
+    """
+    result = subprocess.run(
+        ["gh", "api", _ENDPOINT],
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+    )
+    if result.stdout is None or result.stderr is None:
+        print(
+            f"error: capture failed for `gh api {_ENDPOINT}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if result.returncode != 0:
+        print(
+            f"error: `gh api {_ENDPOINT}` failed (rc={result.returncode}): "
+            f"{result.stderr.strip()} — нужен `gh auth` с admin-правами на репозиторий.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        payload: Mapping[str, Any] = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        print(
+            f"error: `gh api {_ENDPOINT}` вернул неразбираемый ответ ({exc}): "
+            f"{result.stdout[:200]!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return payload
 
 
 def main(argv: list[str] | None = None) -> None:
     """Напечатать фактический состав контекстов и вернуть вердикт кодом выхода."""
-    raise NotImplementedError
+    parser = argparse.ArgumentParser(
+        description=f"Сверить required status checks ветки `{BRANCH}` с объявлением в этом файле."
+    )
+    parser.parse_args(argv)
+
+    actual = contexts_from_protection(fetch_protection())
+    print(f"required status checks on `{BRANCH}`: {', '.join(actual) or '(none)'}")
+    print(f"declared in {Path(__file__).name}: {', '.join(REQUIRED_CONTEXTS)}")
+
+    missing, unexpected = protection_drift(actual)
+    if not missing and not unexpected:
+        return
+
+    if missing:
+        body = json.dumps(
+            {"strict": True, "checks": [{"context": c} for c in REQUIRED_CONTEXTS]},
+            ensure_ascii=False,
+        )
+        print(
+            f"error: объявлены, но НЕ являются required: {', '.join(missing)} — гейт краснеет "
+            f"в UI и ничего не блокирует (ровно дефект #436).\n"
+            f"  починка: echo '{body}' | gh api --method PATCH "
+            f"{_ENDPOINT}/required_status_checks --input -",
+            file=sys.stderr,
+        )
+    if unexpected:
+        print(
+            f"error: required в GitHub, но не объявлены здесь: {', '.join(unexpected)} — если "
+            f"контекст добавлен намеренно, легальный путь один: внести его в REQUIRED_CONTEXTS "
+            f"тем же PR.",
+            file=sys.stderr,
+        )
+    sys.exit(1)
 
 
 if __name__ == "__main__":
