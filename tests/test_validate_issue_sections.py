@@ -194,7 +194,7 @@ class TestAgentHandoffSection:
 
     def test_agent_handoff_requires_all_handoff_fields(self) -> None:
         body = _full_body().replace("next role: implementer\n", "")
-        assert find_gaps(body) == ["Agent handoff"]
+        assert find_gaps(body) == ["Agent handoff (missing: next role)"]
 
 
 class TestFetchBodyEncoding:

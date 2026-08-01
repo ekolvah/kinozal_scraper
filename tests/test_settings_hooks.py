@@ -29,7 +29,8 @@ class TestCodexHookWiring:
         assert _HOOKS.is_file()
         commands = [*_commands("PreToolUse"), *_commands("PostToolUse")]
         assert commands
-        assert all("scripts/codex_hooks.py" in command for command in commands)
+        assert all("python -m scripts.codex_hooks" in command for command in commands)
+        assert all('cd "$(git rev-parse --show-toplevel)"' in command for command in commands)
         assert (_REPO / "scripts" / "codex_hooks.py").is_file()
 
     def test_pretooluse_blocks_shell_commands_before_execution(self) -> None:
@@ -37,21 +38,15 @@ class TestCodexHookWiring:
         assert len(entries) == 1
         assert entries[0]["matcher"] == "^Bash$"
         assert any(
-            re.search(r"codex_hooks\.py\"? pre-tool", command)
+            re.search(r"scripts\.codex_hooks pre-tool", command)
             for command in _commands("PreToolUse")
         )
 
     def test_posttooluse_checks_all_file_edits_in_one_spawn(self) -> None:
         entries = _entries("PostToolUse")
-        matching = [
-            entry for entry in entries if _matches_edit_and_write(str(entry.get("matcher", "")))
-        ]
+        matching = [entry for entry in entries if entry.get("matcher") == "^apply_patch$"]
         assert len(matching) == 1
         assert any(
-            re.search(r"codex_hooks\.py\"? on-edit", command)
+            re.search(r"scripts\.codex_hooks on-edit", command)
             for command in _commands("PostToolUse")
         )
-
-
-def _matches_edit_and_write(matcher: str) -> bool:
-    return {"Edit", "Write"}.issubset(re.split(r"[|\s]+", matcher))

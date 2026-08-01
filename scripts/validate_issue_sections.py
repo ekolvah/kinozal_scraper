@@ -75,20 +75,18 @@ def _split_by_h2(body: str) -> dict[str, str]:
     return sections
 
 
-def _handoff_is_complete(content: str) -> bool:
-    """Require the machine-independent fields that make a plan hand-off usable."""
+def handoff_gaps(content: str) -> list[str]:
+    """Return the missing provenance fields in an otherwise present hand-off."""
     normalized = "\n".join(line.strip().lower() for line in content.splitlines())
-    return all(
-        marker in normalized
-        for marker in (
-            "planner:",
-            "validation:",
-            "validate_issue_sections.py",
-            "passed",
-            "next role: implementer",
-            "handoff: ready",
-        )
-    )
+    required = {
+        "planner": "planner:",
+        "validation": "validation:",
+        "validator command": "validate_issue_sections.py",
+        "validation result": "passed",
+        "next role": "next role: implementer",
+        "handoff status": "handoff: ready",
+    }
+    return [name for name, marker in required.items() if marker not in normalized]
 
 
 def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
@@ -102,12 +100,12 @@ def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[st
     gaps: list[str] = []
     for name in required:
         content = sections.get(name.lower())
-        if (
-            content is None
-            or len(content) < MIN_CONTENT_CHARS
-            or (name == "Agent handoff" and not _handoff_is_complete(content))
-        ):
+        if content is None or len(content) < MIN_CONTENT_CHARS:
             gaps.append(name)
+        elif name == "Agent handoff":
+            missing_fields = handoff_gaps(content)
+            if missing_fields:
+                gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
     return gaps
 
 

@@ -36,3 +36,16 @@ def test_claude_defense_in_depth_covers_shared_policy() -> None:
         command for command in FORBIDDEN_COMMANDS if not any(command in value for value in values)
     ]
     assert not missing, f"Claude deny list drifted from shared policy: {missing}"
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "git push origin issue-443-fix",
+        "git branch -d old-branch",
+        "gh pr view 444",
+        'git commit -m "sleep on it"',
+    ),
+)
+def test_shared_policy_allows_safe_commands(command: str) -> None:
+    assert denied_reason(command) is None

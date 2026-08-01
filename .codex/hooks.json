@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$(git rev-parse --show-toplevel)/scripts/codex_hooks.py\" pre-tool",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && python -m scripts.codex_hooks pre-tool",
             "timeout": 30,
             "statusMessage": "Checking repository command policy"
           }
@@ -16,11 +16,11 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "^apply_patch$",
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$(git rev-parse --show-toplevel)/scripts/codex_hooks.py\" on-edit",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && python -m scripts.codex_hooks on-edit",
             "timeout": 30,
             "statusMessage": "Checking edited files"
           }

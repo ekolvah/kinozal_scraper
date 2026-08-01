@@ -3,8 +3,10 @@
     "deny": [
       "Bash(git push origin main)",
       "Bash(git push origin main:*)",
+      "Bash(git push origin HEAD:main)",
       "Bash(git push --force)",
       "Bash(git push --force *)",
+      "Bash(git push --force-with-lease*)",
       "Bash(git push -f*)",
       "Bash(git push --no-verify*)",
       "Bash(git commit --no-verify*)",
@@ -13,6 +15,19 @@
       "Bash(gh pr merge*)",
       "Bash(gh repo delete*)",
       "Bash(sleep:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/hooks.py\" on-edit"
+          }
+        ]
+      }
     ]
   }
 }

@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 jobs:
-  review:
+  agent-review-gate:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -82,4 +82,21 @@ jobs:
               This is mandatory: a silent finish is indistinguishable from a
               broken review and is not acceptable.
 
+            - End that top-level comment with exactly one machine-readable
+              marker, on its own line. Use
+              `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=blocking -->`
+              if any finding is blocking; otherwise use
+              `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=clean -->`.
+              The following check turns `blocking` into a failed required
+              status; never omit or alter the marker.
+
             Do not approve or merge — those stay with the human reviewer.
+
+      - name: Verify Claude review outcome
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          python scripts/check_claude_review.py
+          --repo ${{ github.repository }}
+          --pr ${{ github.event.pull_request.number }}
+          --run-id ${{ github.run_id }}

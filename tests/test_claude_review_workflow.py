@@ -47,7 +47,7 @@ _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b"
 
 def _review_step() -> dict[str, Any]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    steps = cast("list[dict[str, Any]]", data["jobs"]["review"]["steps"])
+    steps = cast("list[dict[str, Any]]", data["jobs"]["agent-review-gate"]["steps"])
     matches = [s for s in steps if _ACTION in str(s.get("uses", ""))]
     assert len(matches) == 1, f"expected exactly one {_ACTION} step, got {len(matches)}"
     return matches[0]
@@ -114,3 +114,22 @@ class TestCoverageFirstPrompt:
         assert "grouped by severity" in prompt, (
             "the summary contract must require listing findings of every severity (#374)"
         )
+
+
+class TestReviewOutcomeGate:
+    def test_prompt_requires_machine_readable_outcome_for_this_run(self) -> None:
+        prompt = _prompt()
+        assert "claude-review-outcome: run=${{ github.run_id }} outcome=blocking" in prompt
+        assert "claude-review-outcome: run=${{ github.run_id }} outcome=clean" in prompt
+
+    def test_workflow_verifies_outcome_after_claude_action(self) -> None:
+        data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+        steps = cast("list[dict[str, Any]]", data["jobs"]["agent-review-gate"]["steps"])
+        action_index = next(
+            i for i, step in enumerate(steps) if _ACTION in str(step.get("uses", ""))
+        )
+        verifier = steps[action_index + 1]
+        assert verifier["name"] == "Verify Claude review outcome"
+        command = str(verifier["run"])
+        assert "scripts/check_claude_review.py" in command
+        assert "--run-id ${{ github.run_id }}" in command

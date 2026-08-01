@@ -51,6 +51,11 @@ handoff: ready
 ```
 
 Do not store prompts, transcripts, secrets, or private reasoning in the issue.
+The recorded `validation: passed` is never an authorization by itself: every
+implementer re-runs the validator before creating a branch.
+Issues planned before this contract had eight sections. A planner adds
+`Agent handoff` before implementation; an implementer that sees the missing
+section stops and returns the issue to a planner rather than guessing it.
 
 ## Deterministic delivery flow
 
@@ -66,12 +71,31 @@ Do not store prompts, transcripts, secrets, or private reasoning in the issue.
    foreground.
 4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
    closing reference. Fix CI findings up to three improving iterations and
-   process one review pass. A human merges the PR.
+   process one review pass. A blocking reviewer outcome makes the `agent-review-gate`
+   GitHub check fail; a human merges the PR only after required checks pass.
 
 One PR is one logical unit. Do not bypass hooks, push to `main`, force-push,
 reset hard, delete branches forcefully, self-merge, or replace these gates with
 an agent assertion. Local agent hooks are defense in depth; GitHub branch
 protection is authoritative.
+## Governance conventions
+1. Create issue branches only with `python scripts/issue_branch.py <N>`; it
+   starts from fresh `origin/main`. Never create a branch directly.
+2. Keep one PR to one logical unit. A temporary CI unblock for an unrelated
+   failure may accompany the blocked change only when it has a tracked
+   follow-up for the root cause.
+3. Assign exactly one type label when creating an issue: `bug` for broken
+   behaviour; then `perf` / `security` / `enhancement` for user-visible work;
+   otherwise `refactor`, `testing`, `ci`, `documentation`, or `chore` by the
+   changed area. Non-type labels are outside this taxonomy.
+4. Ask the user for issue priority, then set the GitHub Project field with
+   `python scripts/set_issue_priority.py <N> <High|Medium|Low>`. Propose High
+   for user-facing bugs and development-process work, Medium for agentic
+   capability work outside the process, and Low otherwise; name the rule used.
+5. If a `requirements*.in` file changes, run `pip-compile` for its matching
+   lockfile in the same commit.
+6. Trivial non-behavioural one-line changes may skip the issue workflow only
+   with the explicit rationale recorded in the issue or PR.
 
 ## Agent records and adapters
 
@@ -90,3 +114,7 @@ An adapter supplies a role's user interface and platform-specific permissions:
 To add another agent, add an adapter that points to this document, records its
 role in the hand-off or PR record, and passes the same issue, RED, CI, PR-link,
 and branch-protection checks. Do not fork the workflow or issue schema.
+The Claude and Codex post-edit adapters both call `scripts/hooks.py` for the
+same ruff feedback and dependency-lock reminder. Codex uses the documented
+`apply_patch` hook payload (`tool_input.command`) and invokes
+`python -m scripts.codex_hooks` from the repository root so imports resolve.

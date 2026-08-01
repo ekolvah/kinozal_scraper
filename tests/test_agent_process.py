@@ -32,3 +32,11 @@ class TestAgentProcess:
         assert "Implementer:" in template
         assert "Reviewer / fixer:" in template
         assert "CI evidence:" in template
+
+    def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
+        skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        manifest = (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        assert "TODO:" not in skill
+        assert "## Structuring This Skill" not in skill
+        assert "implement-issue" in manifest

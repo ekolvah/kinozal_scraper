@@ -315,7 +315,7 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
   ссылкой, а текст заголовка нужен отрендеренный.
 - **форма ссылки** — `#N` стоит скобочным указателем, а не членом предложения; в заголовке
   секции запрещён и в скобках, потому что якорь генерится из текста заголовка (#428). Сигил `#`
-  зарезервирован за issue/PR: номер правила — `workflow.md §7`, доска — `Project 1`; конвенция
+  зарезервирован за issue/PR: правило — `agent-process.md`, доска — `Project 1`; конвенция
   заменяет собой открытый словарь исключений в предикате. Эта ветка идёт по **всем**
   отслеживаемым файлам, а не только по `.md`: словарь закрыт по **токену** (`workflow`,
   `Project`) в обычной markdown-оправе, а `.py` и `.toml` дрейфуют так же — прозой её
@@ -332,18 +332,17 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 
 ## Required status checks (branch protection)
 
-Two contexts block a merge into `main`: **`quality`** (`ci.yml`) and **`pr-link`**
+Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
+**`agent-review-gate`** (`claude-review.yml`).
 (`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
 issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
 compared against GitHub and against the workflow files.
 
-`review` is deliberately **not** required: a fork PR never receives
-`secrets.CLAUDE_CODE_OAUTH_TOKEN`, so an outside contribution would be locked out permanently;
-and with `enforce_admins: true` a stuck check (quota, expired OAuth token, upstream action break)
-blocks the merge even for the owner, with no bypass. The exclusion is recorded with its reason in
-`NOT_REQUIRED`, and a PR job that is neither required nor excluded fails
-`tests/test_branch_protection.py`.
+`agent-review-gate` is required because a successful action run is not a review verdict: the workflow
+requires Claude to publish an outcome marker and turns `blocking` into a failed status. A missing
+or malformed marker fails closed. Fork PRs without the Claude OAuth secret remain visibly blocked;
+a maintainer must move the contribution onto a repository branch so the required review can run.
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting

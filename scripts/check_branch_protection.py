@@ -44,16 +44,11 @@ from typing import Any, NamedTuple
 import yaml
 
 # Канон состава required-контекстов ветки `main`.
-REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link")
+REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", "agent-review-gate")
 
 # PR-джобы, сознательно НЕ сделанные required, и почему. Пустая причина — забытое решение,
 # а не принятое, поэтому гард её не принимает.
-NOT_REQUIRED: dict[str, str] = {
-    "review": (
-        "fork-PR не получает secrets.CLAUDE_CODE_OAUTH_TOKEN → внешний PR был бы заперт; "
-        "при enforce_admins: true залипший check блокирует мёрдж даже владельцу"
-    ),
-}
+NOT_REQUIRED: dict[str, str] = {}
 
 BRANCH = "main"
 # Плейсхолдеры `{owner}`/`{repo}` подставляет сам `gh`; без ведущего слэша — иначе MSYS
