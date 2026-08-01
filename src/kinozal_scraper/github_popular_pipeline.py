@@ -15,6 +15,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_json,
 )
+from kinozal_scraper.http_retry import retry_api_http
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier
@@ -27,11 +28,53 @@ logger = logging.getLogger(__name__)
 _SOURCE_TYPE = "github_popular"
 
 
-def _fetch_json(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
-    clean_headers = {k: v for k, v in headers.items() if v and not v.endswith(" ")}
-    resp = requests.get(url, params=params, headers=clean_headers, timeout=30)
+def _clean_headers(headers: dict[str, str]) -> dict[str, str]:
+    """Headers safe to send: a blank value or a trailing space makes one unusable."""
+    return {k: v for k, v in headers.items() if v and not v.endswith(" ")}
+
+
+@retry_api_http
+def _get_json(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
+    """One GET of the GitHub Search API, retried on transient 5xx (#365).
+
+    403/429 are NOT retried here — for this transport they are a rate limit, not
+    the anti-bot challenge `http_fetch` survives; see `http_retry` for the split.
+    """
+    resp = requests.get(url, params=params, headers=headers, timeout=30)
     resp.raise_for_status()
     return resp.json()
+
+
+def _fetch_json(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:
+    """Announce dropped headers once, then fetch (retrying) with what is left.
+
+    The announcement sits *outside* `@retry_api_http` on purpose: header cleaning
+    does not depend on the attempt, so leaving it inside would print the same line
+    up to four times on a 5xx.
+
+    §IV: dropping a header is right, dropping it *silently* is not — an unset
+    `GITHUB_TOKEN` expands to `"Bearer "`, the header goes, and the run degrades to
+    unauthenticated search (10 req/min) whose 403 has no visible cause.
+
+    The two drop reasons are reported apart because they call for different fixes,
+    and the trailing-space message names **both** of its causes: the filter cannot
+    tell `"Bearer "` (secret unset, expanded into the template) from
+    `"Bearer ghp_xxx "` (secret set but pasted with a stray space). Calling either
+    one "empty" would send the operator to check whether the secret exists — and
+    seeing that it does, rule out the real cause.
+
+    Only header *names* are logged; values never are.
+    """
+    clean_headers = _clean_headers(headers)
+    if blank := sorted(k for k, v in headers.items() if not v):
+        logger.warning("dropping request header(s) with a blank value: %s", ", ".join(blank))
+    if padded := sorted(k for k in headers if k not in clean_headers and k not in blank):
+        logger.warning(
+            "dropping request header(s) whose value ends with a space — secret unset "
+            "and expanded into the template, or set but pasted with a stray space: %s",
+            ", ".join(padded),
+        )
+    return _get_json(url, params, clean_headers)
 
 
 def _unwrap_records(data: Any, json_path: str | None) -> list[dict[str, Any]]:

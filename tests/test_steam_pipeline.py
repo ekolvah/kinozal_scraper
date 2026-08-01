@@ -11,10 +11,15 @@ import unittest
 import unittest.mock
 from typing import Any
 
+import requests
+
+# HTTP-response doubles are real requests.Response objects — see tests/_http_doubles.py.
+from _http_doubles import make_json_response, make_response
+
 from kinozal_scraper.gemini_enricher import QuotaExhausted
 from kinozal_scraper.generic_pipeline import NormalizedItem, PipelineResult
 from kinozal_scraper.sheets_storage import InMemoryStorage
-from kinozal_scraper.steam_pipeline import run_steam_pipeline
+from kinozal_scraper.steam_pipeline import _APPDETAILS_URL, run_steam_pipeline
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 _SOURCE: dict[str, Any] = {
@@ -484,6 +489,116 @@ class TestSourceIsolation(unittest.TestCase):
         self.assertTrue(any("unhandled error" in e for e in broken_result.errors))
         # the second source still delivered its 3 items despite the first erroring
         self.assertEqual(len(notifier.sent), 3)
+
+
+class _SteamTransport:
+    """`requests.get` double that dispatches by URL and counts each endpoint apart.
+
+    A single `side_effect` list cannot express "two GETs of charts": charts and
+    appdetails share one transport, and the number of appdetails calls follows the
+    source's `limit`, so a flat queue silently re-aims responses the moment the
+    limit changes. Each queue is sticky — its last response repeats — so "always
+    503" needs no guess about the attempt budget.
+    """
+
+    def __init__(
+        self, charts: list[requests.Response], appdetails: list[requests.Response]
+    ) -> None:
+        self._charts = charts
+        self._appdetails = appdetails
+        self.charts_calls = 0
+        self.appdetails_calls = 0
+
+    def __call__(self, url: str, **kwargs: Any) -> requests.Response:
+        if url == _APPDETAILS_URL:
+            self.appdetails_calls += 1
+            return self._pick(self._appdetails, self.appdetails_calls)
+        self.charts_calls += 1
+        return self._pick(self._charts, self.charts_calls)
+
+    @staticmethod
+    def _pick(queue: list[requests.Response], nth: int) -> requests.Response:
+        return queue[min(nth, len(queue)) - 1]
+
+
+_APPDETAILS_OK = {"730": {"success": True, "data": {"name": "Counter-Strike 2"}}}
+_ONE_ITEM_CONFIG: dict[str, Any] = {
+    "version": 1,
+    "sources": [{**_SOURCE, "limit": 1}],
+}
+
+
+class TestFetchRetry(unittest.TestCase):
+    """A transient 5xx from Steam must not kill the source — nor freeze a name (#365).
+
+    Patched at the transport boundary (`requests.get`) with real `requests.Response`
+    objects. The appdetails branch is the one that does not self-heal: its degraded
+    row is stored as delivered and dedupe by `appid` keeps it out of every later run
+    (root cause tracked in #437 — here only the odds of entering it drop).
+    """
+
+    def _run(self, transport: _SteamTransport) -> tuple[list[PipelineResult], InMemoryNotifier]:
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch("kinozal_scraper.steam_pipeline.requests.get", transport):
+            results = run_steam_pipeline(
+                InMemoryStorage(), notifier, sources_config=_ONE_ITEM_CONFIG
+            )
+        return results, notifier
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_charts_retries_transient_then_succeeds(self, _sleep: unittest.mock.Mock) -> None:
+        transport = _SteamTransport(
+            charts=[make_response(503), make_json_response(200, _CHARTS_RESPONSE)],
+            appdetails=[make_json_response(200, _APPDETAILS_OK)],
+        )
+        results, notifier = self._run(transport)
+
+        self.assertEqual(transport.charts_calls, 2)
+        self.assertEqual(results[0].errors, [])
+        self.assertEqual(len(notifier.sent), 1)
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_charts_gives_up_and_reports_error(self, _sleep: unittest.mock.Mock) -> None:
+        transport = _SteamTransport(
+            charts=[make_response(503)],
+            appdetails=[make_json_response(200, _APPDETAILS_OK)],
+        )
+        results, notifier = self._run(transport)
+
+        self.assertEqual(transport.charts_calls, 4)
+        self.assertTrue(results[0].errors)
+        self.assertEqual(notifier.sent, [])
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_appdetails_retries_transient_then_resolves_name(
+        self, _sleep: unittest.mock.Mock
+    ) -> None:
+        transport = _SteamTransport(
+            charts=[make_json_response(200, _CHARTS_RESPONSE)],
+            appdetails=[make_response(503), make_json_response(200, _APPDETAILS_OK)],
+        )
+        _, notifier = self._run(transport)
+
+        self.assertEqual(transport.appdetails_calls, 2)
+        self.assertIn("Counter-Strike 2", notifier.sent[0].text)
+        self.assertNotIn("⚠️ Game #", notifier.sent[0].text)
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_appdetails_gives_up_and_falls_back_to_placeholder(
+        self, _sleep: unittest.mock.Mock
+    ) -> None:
+        # Preservation guard, not RED: after the retry budget is spent the visible
+        # ⚠️ marker must still ship and the item must still be delivered (§IV) —
+        # retry lowers the odds of this branch, it does not remove it.
+        transport = _SteamTransport(
+            charts=[make_json_response(200, _CHARTS_RESPONSE)],
+            appdetails=[make_response(503)],
+        )
+        _, notifier = self._run(transport)
+
+        self.assertEqual(transport.appdetails_calls, 4)
+        self.assertEqual(len(notifier.sent), 1)
+        self.assertIn("⚠️ Game #730", notifier.sent[0].text)
 
 
 if __name__ == "__main__":

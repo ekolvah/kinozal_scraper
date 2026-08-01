@@ -233,12 +233,18 @@ trailer harness). The loader is fail-loud (§IV/§VI): non-list / empty / missin
   those are correctness logic mocked at the `gspread.Client` boundary, not internal call order.)
 - `http_fetch` live curl_cffi transport — real network / TLS handshake.
   (Its **retry on transient HTTP responses (403 anti-bot + 429 + 5xx)** *is* tested — see
-  `test_http_fetch.py::TestFetchRetry`, incl. a reality-anchor over a real curl_cffi
-  `HTTPError` — because that is correctness logic mocked at the `requests.get` boundary,
-  the HTTP-transport sibling of the `SheetsStorage` retry above (#306). Its **block
-  diagnostics** (`describe_block`, #358) are tested too — `TestBlockDiagnostics`, pure
-  formatter + a real captured Cloudflare block page; what *can't* be tested is which
-  block a given egress IP earns — gap **S**.)
+  `test_http_fetch.py::TestFetchRetry` — because that is correctness logic mocked at the
+  `requests.get` boundary, the HTTP-transport sibling of the `SheetsStorage` retry above
+  (#306). Its **block diagnostics** (`describe_block`, #358) are tested too —
+  `TestBlockDiagnostics`, pure formatter + a real captured Cloudflare block page; what
+  *can't* be tested is which block a given egress IP earns — gap **S**.)
+- Live GitHub Search / Steam Store APIs — real network, real rate limits.
+  (Their **retry on transient 5xx** *is* tested — `TestFetchRetry` in both
+  `test_github_popular_pipeline.py` and `test_steam_pipeline.py`, patched at the same
+  `requests.get` boundary with real `requests.Response` doubles. The shared policy —
+  two code sets and the predicate over both `HTTPError` hierarchies, incl. the
+  reality-anchors — lives in `test_http_retry.py`. What can't be tested is the
+  hosts' actual rate-limit windows — gap **M2**.)
 - `TelegramChannelSummarizer` / Telethon calls.
 - Any code path that requires live credentials.
 

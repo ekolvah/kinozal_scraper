@@ -15,6 +15,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_json,
 )
+from kinozal_scraper.http_retry import retry_api_http
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier
@@ -29,16 +30,34 @@ _APPDETAILS_URL = "https://store.steampowered.com/api/appdetails"
 _NEW_ENTRY_TOKEN = "new"
 
 
+@retry_api_http
 def _fetch_charts(url: str) -> dict[str, Any]:
+    """Single GET of the Most Played charts, retrying transient 5xx (#365).
+
+    Its failure kills the whole source for the run, so a blip here is the most
+    expensive of the three GETs — and the cheapest to survive.
+    """
     resp = requests.get(url, timeout=30)
     resp.raise_for_status()
     result: dict[str, Any] = resp.json()
     return result
 
 
+@retry_api_http
 def _fetch_appdetails(appid: int) -> dict[str, Any] | None:
     """Return the `data` block of Steam Store appdetails (basic filter), or None
-    if the appid is unknown / returns `success: false`."""
+    if the appid is unknown / returns `success: false`.
+
+    Retries transient 5xx (#365): unlike the two source-level GETs, a blip here is
+    NOT self-healing — the item ships with the `⚠️ Game #` placeholder and its row
+    is stored as delivered, so dedupe by `appid` keeps it out of every later run
+    (root cause of the irreversibility tracked in #437). Worst case with the retry
+    is `limit` × ~7 s (≈70 s at the default `STEAM_TOP_LIMIT`), and only while
+    charts stays up — a full Steam outage is cut short by `_fetch_charts`.
+
+    `success: false` on a 200 is a **different** route to the same placeholder and
+    is not covered here — see the accepted gap in `coverage-gaps.md`.
+    """
     resp = requests.get(
         _APPDETAILS_URL,
         params={"appids": str(appid), "filters": "basic"},
