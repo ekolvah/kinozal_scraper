@@ -78,6 +78,13 @@ def decision_from_evidence(
     return outcome_from_comments(comments, head_sha)
 
 
+def wait_for_outcome(
+    fetch: object, changed_paths: Sequence[str], head_sha: str, attempts: int, delay: float, sleep: object
+) -> str | None:
+    """Placeholder for bounded trusted-evidence polling (#447)."""
+    raise NotImplementedError
+
+
 def _fetch_api(repo: str, endpoint_suffix: str) -> list[Mapping[str, Any]]:
     endpoint = f"repos/{repo}/{endpoint_suffix}?per_page=100"
     result = subprocess.run(

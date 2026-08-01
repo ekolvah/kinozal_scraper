@@ -14,6 +14,7 @@ from scripts.check_claude_review import (
     fetch_changed_paths,
     main,
     outcome_from_comments,
+    wait_for_outcome,
 )
 
 HEAD = "a" * 40
@@ -44,6 +45,22 @@ class TestOutcomeParsing:
 
     def test_last_current_head_outcome_wins(self) -> None:
         assert outcome_from_comments([_outcome("clean"), _outcome("rework")], HEAD) == "rework"
+
+
+class TestWaitForOutcome:
+    def test_wait_returns_clean_current_head_marker(self) -> None:
+        calls = iter([[_comment("working")], [_outcome("clean")]])
+        sleeps: list[float] = []
+
+        assert wait_for_outcome(lambda: next(calls), ["src/app.py"], HEAD, 2, 3, sleeps.append) == "clean"
+        assert sleeps == [3]
+
+    def test_wait_times_out_without_valid_current_head_marker(self) -> None:
+        assert wait_for_outcome(lambda: [_comment("working")], ["src/app.py"], HEAD, 2, 3, lambda _: None) is None
+
+    def test_wait_rejects_stale_or_non_claude_marker(self) -> None:
+        comments = [_outcome("clean", "b" * 40), _comment(_outcome("clean")["body"], "bot")]
+        assert wait_for_outcome(lambda: comments, ["src/app.py"], HEAD, 1, 3, lambda _: None) is None
 
 
 class TestControllerBootstrap:
