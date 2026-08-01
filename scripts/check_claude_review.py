@@ -13,7 +13,6 @@ import json
 import re
 import subprocess
 import sys
-import time
 from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
@@ -33,6 +32,7 @@ _REVIEW_CONTROLLER_PATHS = frozenset(
         ".github/workflows/claude-review.yml",
         ".github/workflows/agent-review-gate.yml",
         "scripts/check_claude_review.py",
+        "scripts/check_claude_review_outcome.py",
     }
 )
 
@@ -155,40 +155,14 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
-    parser.add_argument("--wait-seconds", type=int, default=0)
-    parser.add_argument("--poll-seconds", type=int, default=10)
-    parser.add_argument("--require-outcome-marker", action="store_true")
-    parser.add_argument("--allow-controller-bootstrap", action="store_true")
     args = parser.parse_args(argv)
-    if args.wait_seconds < 0 or args.poll_seconds < 1:
-        parser.error("wait-seconds must be non-negative and poll-seconds must be positive")
     try:
-        if args.require_outcome_marker:
-            comments = fetch_comments(args.repo, args.pr)
-            changed_paths = fetch_changed_paths(args.repo, args.pr)
-            if args.allow_controller_bootstrap and controller_changed(changed_paths):
-                print(
-                    "::warning::controller PR did not run a self-review; "
-                    "the trusted gate requires a maintainer bootstrap marker"
-                )
-                return
-            outcome = outcome_from_comments(comments, args.head_sha)
-            if outcome is not None:
-                print(f"ok: Claude posted current-head {outcome} outcome marker")
-                return
-            print(
-                "error: Claude review completed without a valid current-head outcome marker.",
-                file=sys.stderr,
-            )
-            raise SystemExit(2)
         changed_paths = fetch_changed_paths(args.repo, args.pr)
-        decision = wait_for_outcome(
-            lambda: fetch_comments(args.repo, args.pr),
-            changed_paths,
-            args.head_sha,
-            args.wait_seconds,
-            args.poll_seconds,
-            time.sleep,
+        if not controller_changed(changed_paths):
+            print("ok: ordinary PR outcome is enforced by the claude-review job")
+            return
+        decision = decision_from_evidence(
+            fetch_comments(args.repo, args.pr), changed_paths, args.head_sha
         )
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -207,11 +181,6 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(
             "error: review-controller change needs a configured maintainer's "
             "exact-head bootstrap marker.",
-            file=sys.stderr,
-        )
-    else:
-        print(
-            "error: timed out waiting for a valid current-head Claude review outcome marker.",
             file=sys.stderr,
         )
     raise SystemExit(2)

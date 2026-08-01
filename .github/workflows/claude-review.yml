@@ -20,6 +20,7 @@ jobs:
           fetch-depth: 0
 
       - name: Claude review
+        id: review
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -35,6 +36,7 @@ jobs:
           # forcing function, see docs/architecture/ci.md.
           claude_args: |
             --model claude-opus-5
+            --json-schema '{"type":"object","properties":{"outcome":{"type":"string","enum":["clean","rework","blocking"]}},"required":["outcome"],"additionalProperties":false}'
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
@@ -82,25 +84,19 @@ jobs:
               This is mandatory: a silent finish is indistinguishable from a
               broken review and is not acceptable.
 
-            - End that top-level comment with exactly one machine-readable
-              marker, on its own line. Use
-              `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking -->`
-              if any finding is blocking; use
-              `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework -->`
-              if there are should-fix findings but no blocking finding; otherwise
-              use `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean -->`.
-              The trusted default-branch gate turns `blocking` and `rework` into a failed
-              required status; never omit or alter the marker.
+            - Set the schema-validated structured output `outcome` to `blocking`
+              for any blocking finding, `rework` for should-fix findings without
+              a blocking finding, and `clean` otherwise. The deterministic
+              workflow gate reads this output directly; comments are feedback
+              for people, never merge authority.
 
             Do not approve or merge — those stay with the human reviewer.
 
-      - name: Verify Claude outcome marker
+      - name: Enforce Claude review outcome
+        if: ${{ always() }}
         env:
           GH_TOKEN: ${{ github.token }}
+          STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
         run: >
-          python scripts/check_claude_review.py
-          --repo ${{ github.repository }}
-          --pr ${{ github.event.pull_request.number }}
-          --head-sha ${{ github.event.pull_request.head.sha }}
-          --require-outcome-marker
-          --allow-controller-bootstrap
+          python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
+          --repo ${{ github.repository }} --pr ${{ github.event.pull_request.number }}
