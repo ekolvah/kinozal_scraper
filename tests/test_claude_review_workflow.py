@@ -48,12 +48,21 @@ _ACTION = "anthropics/claude-code-action"
 _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b", re.IGNORECASE)
 
 
-def _review_step() -> dict[str, Any]:
+def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    steps = cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
-    matches = [s for s in steps if _ACTION in str(s.get("uses", ""))]
-    assert len(matches) == 1, f"expected exactly one {_ACTION} step, got {len(matches)}"
+    return cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
+
+
+def _named_step(name: str) -> dict[str, Any]:
+    matches = [step for step in _steps() if step.get("name") == name]
+    assert len(matches) == 1, f"expected exactly one {name!r} step, got {len(matches)}"
     return matches[0]
+
+
+def _review_step() -> dict[str, Any]:
+    step = _named_step("Claude review")
+    assert _ACTION in str(step.get("uses", ""))
+    return step
 
 
 def _inputs() -> dict[str, Any]:
@@ -120,6 +129,15 @@ class TestCoverageFirstPrompt:
 
 
 class TestReviewOutcomeGate:
+    def test_review_emits_validated_structured_outcome(self) -> None:
+        step = _review_step()
+        args = str(_inputs().get("claude_args", ""))
+
+        assert step["id"] == "review"
+        assert "--json-schema" in args
+        assert '"outcome"' in args
+        assert all(outcome in args for outcome in ("clean", "rework", "blocking"))
+
     def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
         prompt = _prompt()
         assert (
@@ -149,11 +167,42 @@ class TestReviewOutcomeGate:
         assert "--wait-seconds 360" in str(verifier["run"])
 
     def test_claude_review_workflow_verifies_marker_after_review(self) -> None:
-        data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-        steps = cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
-        verifier = next(
-            step for step in steps if step.get("name") == "Verify Claude outcome marker"
-        )
+        verifier = _named_step("Verify Claude outcome marker")
 
         assert "--require-outcome-marker" in str(verifier["run"])
         assert "--allow-controller-bootstrap" in str(verifier["run"])
+
+    def test_marker_repair_is_conditional_and_bounded(self) -> None:
+        repair = _named_step("Repair Claude outcome marker")
+        condition = str(repair["if"])
+        args = str(cast("dict[str, Any]", repair["with"])["claude_args"])
+        prompt = str(cast("dict[str, Any]", repair["with"])["prompt"])
+
+        assert _ACTION in str(repair["uses"])
+        assert "success()" in condition
+        assert "steps.marker_probe.outcome == 'failure'" in condition
+        assert "--max-turns 2" in args
+        assert "Do not review code" in prompt
+        assert "fromJSON(steps.review.outputs.structured_output).outcome" in prompt
+        assert "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }}" in prompt
+
+    def test_final_marker_verifier_runs_after_repair(self) -> None:
+        names = [str(step.get("name")) for step in _steps()]
+        probe = _named_step("Probe Claude outcome marker")
+        repair = _named_step("Repair Claude outcome marker")
+        verifier = _named_step("Verify Claude outcome marker")
+
+        assert probe["continue-on-error"] is True
+        assert names.index("Probe Claude outcome marker") < names.index(
+            "Repair Claude outcome marker"
+        ) < names.index("Verify Claude outcome marker")
+        assert "--require-outcome-marker" in str(verifier["run"])
+
+    def test_controller_pr_skips_marker_repair(self) -> None:
+        probe = _named_step("Probe Claude outcome marker")
+        verifier = _named_step("Verify Claude outcome marker")
+        repair = _named_step("Repair Claude outcome marker")
+
+        assert "--allow-controller-bootstrap" in str(probe["run"])
+        assert "--allow-controller-bootstrap" in str(verifier["run"])
+        assert "steps.marker_probe.outcome == 'failure'" in str(repair["if"])
