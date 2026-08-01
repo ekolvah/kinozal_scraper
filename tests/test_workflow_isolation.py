@@ -32,6 +32,15 @@ _PIPELINE_RUN = re.compile(r"python -m kinozal_scraper\.\w+_pipeline")
 _SOLDOUT_RUN = re.compile(r"python -m kinozal_scraper\.soldout_pipeline")
 _SUMMARIZER_RUN = re.compile(r"python -m kinozal_scraper\.telegram_summarizer")
 
+# GitHub Actions' default job timeout. Not ours to set — quoted here because the
+# soldout step's own timeout only means anything relative to it.
+_JOB_CEILING_MIN = 360
+# What the arithmetic reserves for everything before soldout (checkout, setup-python,
+# pip install, the pytest gate, four pipelines, the summarizer). Measured at ~3 min
+# on run 30683742474; 60 leaves an order of magnitude of slack without being so
+# generous that the soldout budget stops fitting.
+_PRECEDING_STEPS_BUDGET_MIN = 60
+
 
 def _doc() -> dict[Any, Any]:
     """The parsed workflow. Keys are `Any`: YAML 1.1 parses a bare `on:` as the
@@ -130,9 +139,26 @@ class TestSoldoutStepPlacement:
             f"{sorted(earlier)} — a step that sleeps for hours must not sit in front of them"
         )
 
-    def test_soldout_step_has_a_timeout_below_the_job_ceiling(self) -> None:
-        """Без своего таймаута сетевая патология доедет до оператора за 6 часов —
-        столько GitHub Actions даёт job'у по умолчанию (#396)."""
+    def test_soldout_step_timeout_brackets_the_patient_policy(self) -> None:
+        """Таймаут шага зажат с двух сторон, и обе границы выведены, а не вписаны (#396).
+
+        Снизу — худший случай самой политики: меньше него таймаут убивал бы штатный
+        прогон. Сверху — 360-минутный потолок job'а **минус бюджет предшествующих
+        шагов**: потолок отсчитывается от старта job'а, а не шага, и job, убитый по
+        нему, GitHub **отменяет**, а не проваливает — `if: failure()` у fallback-алерта
+        не разворачивается, и §IV-сигнал теряется ровно в той патологии, ради которой
+        таймаут заводился.
+
+        Обе границы читаются из констант политики: подняли число попыток — тест
+        покраснеет здесь, а не в проде через полгода.
+        """
+        from kinozal_scraper.http_fetch import _HTML_GET
+        from kinozal_scraper.http_retry import _PATIENT_ATTEMPTS, _PATIENT_WAIT_S
+
+        worst_case_min = (
+            (_PATIENT_ATTEMPTS - 1) * _PATIENT_WAIT_S + _PATIENT_ATTEMPTS * _HTML_GET["timeout"]
+        ) / 60
+
         soldout = [s for s in _steps() if _SOLDOUT_RUN.search(str(s.get("run", "")))]
         assert len(soldout) == 1
         timeout = soldout[0].get("timeout-minutes")
@@ -140,8 +166,14 @@ class TestSoldoutStepPlacement:
             "soldout step must carry an explicit timeout-minutes — its patient retry "
             "policy makes an unbounded step a real possibility, not a theoretical one"
         )
-        assert 0 < timeout < 360, (
-            f"timeout-minutes={timeout} must be under the 360-minute job ceiling to fire first"
+        assert timeout > worst_case_min, (
+            f"timeout-minutes={timeout} is below the policy's own worst case "
+            f"({worst_case_min:.0f} min) — it would kill healthy runs"
+        )
+        assert timeout + _PRECEDING_STEPS_BUDGET_MIN <= _JOB_CEILING_MIN, (
+            f"timeout-minutes={timeout} leaves under {_PRECEDING_STEPS_BUDGET_MIN} min of the "
+            f"{_JOB_CEILING_MIN}-minute job ceiling for every preceding step; the job would be "
+            "cancelled first and the fallback alert would never fire"
         )
 
     def test_daily_schedule_unchanged(self) -> None:
@@ -149,6 +181,7 @@ class TestSoldoutStepPlacement:
         одного суточного прогона. Учащение расписания — другое решение с другой
         ценой (нагрузка на сайт, квота Gemini у соседних шагов), и молча оно
         приехать не должно."""
-        triggers = _doc().get("on", _doc().get(True, {}))
+        doc = _doc()
+        triggers = doc.get("on", doc.get(True, {}))
         crons = [entry["cron"] for entry in triggers["schedule"]]
         assert crons == ["0 1 * * *"], f"daily cron changed to {crons}"

@@ -419,9 +419,10 @@ class TestSharedRequestKwargs(unittest.TestCase):
     """The request parameters live in one place so a second caller cannot drift
     from prod silently (#396).
 
-    The `scripts/probe.py` measurement is only meaningful while it hits the site
-    exactly the way prod does — a copy-pasted `impersonate`/`timeout`/`Accept`
-    would let the two diverge with nothing turning red.
+    `fetch_html` and `fetch_html_patient` differ ONLY in retry schedule — that is
+    the whole claim the patient path rests on, and a copy-pasted
+    `impersonate`/`timeout`/`Accept` in either of them would quietly make it false
+    with nothing turning red.
     """
 
     def test_fetch_html_uses_shared_kwargs(self) -> None:
