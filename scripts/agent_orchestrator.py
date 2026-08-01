@@ -25,6 +25,7 @@ _REQUIRED_ROLE_FIELDS = frozenset(
 _REQUIRED_INITIAL_ROLES = frozenset(
     {"planner", "architect_reviewer", "implementer", "pr_reviewer", "fixer", "human_merge"}
 )
+_NON_CATALOGUE_STEPS = frozenset({"deterministic_ci"})
 
 
 @dataclass(frozen=True)
@@ -81,7 +82,7 @@ def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
         completed.append("planner")
     if state.architect_completed or (state.issue_kind == "trivial" and state.architect_skip_reason):
         completed.append("architect_reviewer")
-    if state.implementation_completed:
+    if state.implementation_completed and state.ci_passed:
         completed.append("implementer")
     if (
         state.head_sha
@@ -89,7 +90,7 @@ def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
         and state.review_outcome in {"clean", "rework", "blocking"}
     ):
         completed.append("pr_reviewer")
-    if state.fixer_revisions:
+    if state.fixer_revisions and state.head_sha and state.head_sha not in state.reviewed_heads:
         completed.append("fixer")
     return tuple(completed)
 
@@ -105,6 +106,8 @@ def _decision(
 ) -> RouteDecision:
     role_data = catalogue["roles"].get(role)
     if role_data is None:
+        if role not in _NON_CATALOGUE_STEPS:
+            raise ValueError(f"unknown route step: {role}")
         return RouteDecision(
             next_role=role,
             status=status,
@@ -244,17 +247,29 @@ def decide(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision:
 
 def _state_from_json(payload: Mapping[str, Any]) -> WorkflowState:
     try:
-        reviewed_heads = tuple(str(head) for head in payload.get("reviewed_heads", ()))
+        raw_reviewed_heads = payload.get("reviewed_heads", ())
+        if not isinstance(raw_reviewed_heads, (list, tuple)) or not all(
+            isinstance(head, str) for head in raw_reviewed_heads
+        ):
+            raise TypeError("reviewed_heads must be a list of strings")
+        reviewed_heads = tuple(raw_reviewed_heads)
+
+        def optional_string(name: str) -> str | None:
+            value = payload.get(name)
+            if value is not None and not isinstance(value, str):
+                raise TypeError(f"{name} must be a string or null")
+            return value
+
         return WorkflowState(
             plan_completed=bool(payload["plan_completed"]),
             issue_kind=str(payload["issue_kind"]),
             architect_completed=bool(payload.get("architect_completed", False)),
-            architect_skip_reason=payload.get("architect_skip_reason"),
+            architect_skip_reason=optional_string("architect_skip_reason"),
             implementation_completed=bool(payload.get("implementation_completed", False)),
             ci_passed=bool(payload.get("ci_passed", False)),
-            head_sha=payload.get("head_sha"),
+            head_sha=optional_string("head_sha"),
             reviewed_heads=reviewed_heads,
-            review_outcome=payload.get("review_outcome"),
+            review_outcome=optional_string("review_outcome"),
             fixer_revisions=int(payload.get("fixer_revisions", 0)),
             planner_runs=int(payload.get("planner_runs", 0)),
             architect_runs=int(payload.get("architect_runs", 0)),

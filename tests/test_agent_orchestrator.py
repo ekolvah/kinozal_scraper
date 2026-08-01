@@ -9,7 +9,7 @@ from typing import Any
 import pytest
 import yaml
 
-from scripts.agent_orchestrator import WorkflowState, decide, load_catalog, main
+from scripts.agent_orchestrator import WorkflowState, _decision, decide, load_catalog, main
 
 
 def _state(**overrides: object) -> WorkflowState:
@@ -33,7 +33,7 @@ class TestRoleCatalogue:
     def test_all_initial_roles_have_complete_contracts(self) -> None:
         catalogue = load_catalog()
 
-        assert set(catalogue["roles"]) == {
+        assert set(catalogue["roles"]) >= {
             "planner",
             "architect_reviewer",
             "implementer",
@@ -67,6 +67,24 @@ class TestRoleCatalogue:
         extended_catalogue.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
 
         assert "code_critic" in load_catalog(extended_catalogue)["roles"]
+
+    def test_catalogue_validation_errors_are_visible(self, tmp_path: Path) -> None:
+        missing_mapping = tmp_path / "missing-mapping.yaml"
+        missing_mapping.write_text("roles: []", encoding="utf-8")
+        with pytest.raises(ValueError, match="mapping named 'roles'"):
+            load_catalog(missing_mapping)
+
+        missing_role = tmp_path / "missing-role.yaml"
+        missing_role.write_text("roles: {}", encoding="utf-8")
+        with pytest.raises(ValueError, match="missing initial roles"):
+            load_catalog(missing_role)
+
+        zero_budget = load_catalog()
+        zero_budget["roles"]["planner"]["max_runs"] = 0
+        zero_budget_catalogue = tmp_path / "zero-budget.yaml"
+        zero_budget_catalogue.write_text(yaml.safe_dump(zero_budget), encoding="utf-8")
+        with pytest.raises(ValueError, match="positive max_runs"):
+            load_catalog(zero_budget_catalogue)
 
 
 class TestRouteResolution:
@@ -181,6 +199,38 @@ class TestEvidenceTruthfulness:
         assert decision.next_role == "architect_reviewer"
         assert "architect_reviewer" not in decision.completed_roles
 
+    def test_implementer_needs_ci_and_fixer_needs_an_unreviewed_head(self) -> None:
+        blocked_ci = decide(
+            _state(architect_completed=True, implementation_completed=True),
+            load_catalog(),
+        )
+        fixer_in_progress = decide(
+            _state(
+                architect_completed=True,
+                implementation_completed=True,
+                ci_passed=True,
+                head_sha="d" * 40,
+                reviewed_heads=("d" * 40,),
+                review_outcome="rework",
+                fixer_revisions=1,
+            ),
+            load_catalog(),
+        )
+        fixer_handed_off = decide(
+            _state(
+                architect_completed=True,
+                implementation_completed=True,
+                ci_passed=True,
+                head_sha="e" * 40,
+                fixer_revisions=1,
+            ),
+            load_catalog(),
+        )
+
+        assert "implementer" not in blocked_ci.completed_roles
+        assert "fixer" not in fixer_in_progress.completed_roles
+        assert "fixer" in fixer_handed_off.completed_roles
+
 
 class TestBlockedRoutes:
     def test_invalid_issue_kind_has_a_blocked_shape(self) -> None:
@@ -221,6 +271,27 @@ class TestBlockedRoutes:
         assert invalid_outcome.missing_evidence == ("valid_review_outcome",)
         assert missing_head.status == invalid_outcome.status == "blocked"
         assert "pr_reviewer" not in invalid_outcome.completed_roles
+
+    def test_unknown_route_step_and_malformed_reviewed_heads_are_visible(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(ValueError, match="unknown route step"):
+            _decision("fixxer", load_catalog(), _state())
+
+        state_file = tmp_path / "bad-state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "plan_completed": True,
+                    "issue_kind": "nontrivial",
+                    "reviewed_heads": "not-a-list",
+                }
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(SystemExit, match="2"):
+            main([str(state_file)])
+        assert "reviewed_heads must be a list of strings" in capsys.readouterr().err
 
 
 class TestCli:
