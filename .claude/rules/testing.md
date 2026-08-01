@@ -20,7 +20,7 @@ paths:
    на фикстуре), за RED не считается — он не доказывает ничего, кроме того что файл не
    импортируется (#402). Поэтому тест на ещё не существующий символ идёт вместе с
    **заглушкой-сигнатурой** (`raise NotImplementedError`), чтобы падение пришло в тело теста;
-   контракт — [`commands/implement.md`](../commands/implement.md) шаг 3.
+   контракт — [`agent-process.md`](../../docs/architecture/agent-process.md).
    Но прежде — **стоит ли тест писать вообще:** регресс ломает корректность/безопасность
    (→ тест) или только тратит ресурсы CI-минут/токенов (→ forcing-function, не guard-тест)?
    Канон — [`testing.md`](../../docs/architecture/testing.md#rule-when-a-test-is-not-worth-writing).

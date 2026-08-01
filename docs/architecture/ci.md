@@ -39,7 +39,7 @@ dependency set — the shape (minutes, network-bound tail) is the durable part.
 Operational consequence for agents (output going quiet after `pytest` is
 `pip-audit` working, not a hang) is in `CLAUDE.md` §Среда. If the measurement
 ever crosses the Bash tool's 10-minute ceiling, the derived constant
-`timeout: 600000` in `.claude/commands/implement.md` step 6 stops working and
+`timeout: 600000` in the implementer adapter stops working and
 needs revisiting together with this number.
 
 **`pre-push` runs two gates, not one.** Ahead of `ci_check.py` it runs
@@ -104,18 +104,19 @@ semantics shift with the OS path separator. For a false positive **inside** our 
 code the escape hatch is an inline `# pragma: allowlist secret` at the site (see
 `tests/test_secrets_gate.py`), never a blanket exclusion.
 
-### Session hooks (`scripts/hooks.py`)
+### Session hooks (`scripts/hooks.py` and `.codex/hooks.json`)
 
 A separate, *earlier* feedback layer that runs **during** an agent session, not
-at push (#281). `.claude/settings.json` declares a single `PostToolUse` hook (matcher
-`Edit|Write`) invoking `python "$CLAUDE_PROJECT_DIR/scripts/hooks.py" on-edit`,
-which dispatches two cheap checks in one process right after each file edit:
+at push (#281). The Codex adapter declares a `PostToolUse` hook in
+`.codex/hooks.json` (matcher `Edit|Write`) invoking `scripts/codex_hooks.py on-edit`.
+It delegates to `scripts/hooks.py`, which dispatches two cheap checks in one process
+right after each file edit:
 
 - `*.py` → ruff **check-only** (`ruff format --check` + `ruff check`, **no
   `--fix`/format mutation** — the harness tracks file contents, so rewriting
   behind its back breaks the next Edit's `old_string` match). Remaining lint →
   stderr + exit 2 (PostToolUse exit 2 feeds stderr back to the agent).
-- `requirements*.in` → a `pip-compile` reminder (`workflow.md` §7 is otherwise only
+- `requirements*.in` → a `pip-compile` reminder (the agent process is otherwise only
   prose — this makes forgetting it a *visible* marker, not a CI-time surprise).
 
 §IV split: a malformed/empty payload is a silent no-op, but a ruff *exec*
@@ -314,7 +315,7 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
   ссылкой, а текст заголовка нужен отрендеренный.
 - **форма ссылки** — `#N` стоит скобочным указателем, а не членом предложения; в заголовке
   секции запрещён и в скобках, потому что якорь генерится из текста заголовка (#428). Сигил `#`
-  зарезервирован за issue/PR: номер правила — `workflow.md §7`, доска — `Project 1`; конвенция
+  зарезервирован за issue/PR: правило — `agent-process.md`, доска — `Project 1`; конвенция
   заменяет собой открытый словарь исключений в предикате. Эта ветка идёт по **всем**
   отслеживаемым файлам, а не только по `.md`: словарь закрыт по **токену** (`workflow`,
   `Project`) в обычной markdown-оправе, а `.py` и `.toml` дрейфуют так же — прозой её
@@ -331,18 +332,24 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 
 ## Required status checks (branch protection)
 
-Two contexts block a merge into `main`: **`quality`** (`ci.yml`) and **`pr-link`**
+Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
+**`agent-review-gate`** (`agent-review-gate.yml`).
 (`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
 issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
 compared against GitHub and against the workflow files.
 
-`review` is deliberately **not** required: a fork PR never receives
-`secrets.CLAUDE_CODE_OAUTH_TOKEN`, so an outside contribution would be locked out permanently;
-and with `enforce_admins: true` a stuck check (quota, expired OAuth token, upstream action break)
-blocks the merge even for the owner, with no bypass. The exclusion is recorded with its reason in
-`NOT_REQUIRED`, and a PR job that is neither required nor excluded fails
-`tests/test_branch_protection.py`.
+`agent-review-gate` is required because a successful action run is not a review verdict. It runs on
+`pull_request_target`, checks out only the default branch, and reads evidence through the GitHub API;
+it never executes PR code. For ordinary PRs it accepts only a Claude outcome marker bound to the
+current head SHA, and turns `blocking` or `rework` into a failed status. Missing, malformed, stale,
+or pending evidence fails closed. Fork PRs without the Claude OAuth secret remain visibly blocked;
+a maintainer must move the contribution onto a repository branch so the required review can run.
+
+A PR that changes the review-controller surface (`claude-review.yml`,
+`agent-review-gate.yml`, or `scripts/check_claude_review.py`) cannot receive a Claude review by
+design. The trusted gate then requires the configured maintainer's exact-head
+`review-controller-bootstrap` marker. This is a visible human exception, not a green provider skip.
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
@@ -358,9 +365,10 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
-One property the required status does **not** buy: on a fork PR the job executes the *fork's*
-copy of its own script, so a fork could make `pr-link` pass unconditionally. The human merge
-button remains the real control; this is worth stating once now that the check is required.
+One property the required status does **not** buy: `pr-link` still executes the *fork's* copy of
+its own script, so a fork could make it pass unconditionally. `agent-review-gate` does not share
+that weakness: its `pull_request_target` workflow executes the default branch's verifier. The
+human merge button remains the final control.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
 an expected extra minute, not a malfunction.
@@ -519,7 +527,7 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 - **`tox`/`nox` (#255) — no.** Решают матрицу **версий Python**; проект прибит к одной 3.12.
   **Revisit:** появится настоящее требование мульти-версионной матрицы.
 - **Spec Kit (#114) — снят.** Его роль — спека → план → таски — покрыта локальным
-  `/plan #N` → `/implement #N` (`.claude/commands/`), который живёт в репо, гейтится
+  `/plan #N` → `$implement-issue #N`, который живёт в репо, гейтится
   `scripts/validate_issue_sections.py` и держит план в теле issue, а не в отдельном дереве
   артефактов. Плата за внешний фреймворк — `/speckit-*`-команды и spec-файлы поверх того же
   контракта. **Revisit:** появится потребность, которой локальный flow не покрывает.

@@ -3,7 +3,7 @@
 **На какой вопрос отвечает этот файл:** каким операционным mindset'ом руководствуется агент
 в main-сессии этого репо — **канон цель-функции** + токен-тактики + указатели на принципы и workflow.
 **Принцип §I–VII или процедурное правило сюда не перефразируй — только ссылайся** (их канон —
-`principles.md` / `.claude/rules/workflow.md`). **Исключение — цель-функция: её канон здесь**
+`principles.md` / `docs/architecture/agent-process.md`). **Исключение — цель-функция: её канон здесь**
 (§Цель-функция); `architect-reviewer` **ссылается** на него, а не держит копию.
 
 Always-load (без `paths:`): операционные тактики нужны в любой сессии, не только при работе с тестами.
@@ -30,10 +30,10 @@ Always-load (без `paths:`): операционные тактики нужн�
 root cause → [`§V`](../../docs/architecture/principles.md#v-root-cause-before-fix),
 visibility → [`§IV`](../../docs/architecture/principles.md#iv-visibility-over-silence),
 test-first → [`§I`](../../docs/architecture/principles.md#i-test-first-non-negotiable)
-(RED-шаг в [`/implement`](../commands/implement.md)),
+(RED-шаг в [agent process](../../docs/architecture/agent-process.md)),
 simplicity / minimal-diff → [`§VII`](../../docs/architecture/principles.md#vii-simplicity-first)
 (дефолт «минимальный дифф, ничего спекулятивного» — против переусложнения; гейтится
-architect-review'ом на стадии плана, [`workflow.md`](workflow.md) §9). Пишешь тесты — сверься с
+architect-review'ом на стадии плана, [`agent process`](../../docs/architecture/agent-process.md)). Пишешь тесты — сверься с
 [`.claude/rules/testing.md`](testing.md) **до выбора уровня теста** (bug-taxonomy): он path-scoped
 (`tests/**`) и может подгрузиться уже после того, как стратегия выбрана.
 
@@ -71,4 +71,4 @@ pure-функции**, а не в пункт прозы; запреты — че
 ## (3) Предсказуемость / user-control
 
 Процедурные правила (всегда PR, no-main-push, no-self-merge, one-PR-one-unit, risky/shared-state →
-подтверждать у пользователя) — **канон** в [`.claude/rules/workflow.md`](workflow.md).
+подтверждать у пользователя) — **канон** в [`agent-process.md`](../../docs/architecture/agent-process.md).

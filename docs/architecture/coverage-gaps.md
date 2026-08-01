@@ -222,7 +222,7 @@ decision goes to" route — and the rule itself — live in
   ушли `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer`; они не
   исполнялись **ни разу** (`core.hooksPath` = `.githooks`), поэтому регрессии нет и замену им этот PR
   не заводит. Записано, чтобы «а где проверка YAML?» не переоткрыли как пробел покрытия: это
-  осознанный не-скоуп, отдельная единица (`workflow.md` §4).
+  осознанный не-скоуп, отдельная единица (`agent-process.md`, Governance conventions).
 
 - **W. Промпты ревьюеров: форма стережётся, семантика — нет (#374, #392).** Оба
   ревьюера — cloud (`.github/workflows/claude-review.yml`) и локальный

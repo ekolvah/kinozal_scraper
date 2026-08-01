@@ -23,7 +23,7 @@ from scripts.validate_issue_sections import (
 def _full_body() -> str:
     parts = []
     for s in REQUIRED_SECTIONS:
-        parts.append(f"## {s}\n\nReal content для {s} which is long enough.\n")
+        parts.append(f"## {s}\n\n{_section_content(s)}\n")
     return "\n".join(parts)
 
 
@@ -41,7 +41,18 @@ _LEGACY_SECTIONS = (
 
 
 def _body_with(sections: tuple[str, ...]) -> str:
-    return "\n".join(f"## {s}\n\nReal content для {s} which is long enough.\n" for s in sections)
+    return "\n".join(f"## {s}\n\n{_section_content(s)}\n" for s in sections)
+
+
+def _section_content(section: str) -> str:
+    if section == "Agent handoff":
+        return (
+            "planner: Claude [model]\n"
+            "validation: `python scripts/validate_issue_sections.py 1` — passed\n"
+            "next role: implementer\n"
+            "handoff: ready"
+        )
+    return f"Real content для {section} which is long enough."
 
 
 class TestFindGaps:
@@ -56,13 +67,13 @@ class TestFindGaps:
 
     def test_empty_section_listed_even_if_header_present(self) -> None:
         body = "## Context / Why\n\n\n" + "\n".join(
-            f"## {s}\n\nReal content для {s} which is long enough.\n" for s in REQUIRED_SECTIONS[1:]
+            f"## {s}\n\n{_section_content(s)}\n" for s in REQUIRED_SECTIONS[1:]
         )
         assert find_gaps(body) == ["Context / Why"]
 
     def test_whitespace_only_section_listed(self) -> None:
         body = "## Context / Why\n\n   \n\n" + "\n".join(
-            f"## {s}\n\nReal content для {s} which is long enough.\n" for s in REQUIRED_SECTIONS[1:]
+            f"## {s}\n\n{_section_content(s)}\n" for s in REQUIRED_SECTIONS[1:]
         )
         assert find_gaps(body) == ["Context / Why"]
 
@@ -129,9 +140,7 @@ class TestFindGaps:
         секция считалась отсутствующей. Тест фиксирует не каприз markdown-it, а
         совпадение гейта с тем, что видит человек в отрендеренной issue.
         """
-        body = "\n".join(
-            f"{s}\n---\n\nReal content для {s} which is long enough.\n" for s in REQUIRED_SECTIONS
-        )
+        body = "\n".join(f"{s}\n---\n\n{_section_content(s)}\n" for s in REQUIRED_SECTIONS)
         assert find_gaps(body) == []
 
 
@@ -172,6 +181,20 @@ class TestAdrSection:
     def test_adr_section_filled_passes(self) -> None:
         body = _body_with((*_LEGACY_SECTIONS, "Architect review", "ADR"))
         assert "ADR" not in find_gaps(body)
+
+
+class TestAgentHandoffSection:
+    def test_agent_handoff_required(self) -> None:
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review", "ADR"))
+        assert "Agent handoff" in find_gaps(body)
+
+    def test_agent_handoff_filled_passes(self) -> None:
+        body = _body_with((*_LEGACY_SECTIONS, "Architect review", "ADR", "Agent handoff"))
+        assert "Agent handoff" not in find_gaps(body)
+
+    def test_agent_handoff_requires_all_handoff_fields(self) -> None:
+        body = _full_body().replace("next role: implementer\n", "")
+        assert find_gaps(body) == ["Agent handoff (missing: next role)"]
 
 
 class TestFetchBodyEncoding:

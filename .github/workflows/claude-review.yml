@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 jobs:
-  review:
+  claude-review:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -81,5 +81,15 @@ jobs:
               any severity, post exactly: "✅ Review complete — nothing found."
               This is mandatory: a silent finish is indistinguishable from a
               broken review and is not acceptable.
+
+            - End that top-level comment with exactly one machine-readable
+              marker, on its own line. Use
+              `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking -->`
+              if any finding is blocking; use
+              `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework -->`
+              if there are should-fix findings but no blocking finding; otherwise
+              use `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean -->`.
+              The trusted default-branch gate turns `blocking` and `rework` into a failed
+              required status; never omit or alter the marker.
 
             Do not approve or merge — those stay with the human reviewer.

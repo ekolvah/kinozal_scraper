@@ -9,7 +9,7 @@ two `gh project` calls (add the issue to the project, then edit the field). That
 deterministic multi-step gh sequence used to live only in private agent memory —
 a violation of the Memory↔repo policy (`docs/architecture/project-map.md`) and of
 the `mindset.md` "Скрипты > инструкции" canon (prose steps get skipped in long
-pipelines). Rule #11 in `.claude/rules/workflow.md` binds it: on issue creation the
+pipelines). The agent process binds it: on issue creation the
 agent asks the user for the priority, then runs this script.
 
 The Project/field/option IDs are hardcoded constants here (not in prose, not in

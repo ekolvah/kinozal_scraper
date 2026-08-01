@@ -1,0 +1,82 @@
+"""Anti-drift checks for the agent-neutral workflow and its adapters."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from scripts.validate_issue_sections import REQUIRED_SECTIONS
+
+_REPO = Path(__file__).resolve().parent.parent
+_IMPLEMENTER_CONTRACT_MARKERS = (
+    "validate_issue_sections.py",
+    "issue_branch.py",
+    "check_red.py",
+    "ci_check.py",
+    "open_pr.py",
+    "gh pr checks",
+    "gh run view",
+    "review/fix loop",
+    "`clean` reviewer outcome",
+    "`not ready`",
+)
+
+
+class TestAgentProcess:
+    def test_issue_contract_has_nine_sections_and_handoff_last(self) -> None:
+        assert len(REQUIRED_SECTIONS) == 9
+        assert REQUIRED_SECTIONS[-1] == "Agent handoff"
+
+    def test_claude_and_codex_adapters_link_to_the_same_contract(self) -> None:
+        contract = "agent-process.md"
+        claude_plan = (_REPO / ".claude" / "commands" / "plan.md").read_text(encoding="utf-8")
+        codex_skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert contract in claude_plan
+        assert contract in codex_skill
+
+    def test_claude_implement_command_is_removed(self) -> None:
+        assert not (_REPO / ".claude" / "commands" / "implement.md").exists()
+
+    def test_pr_template_records_agent_provenance(self) -> None:
+        template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+        assert "## Agent record" in template
+        assert "Implementer:" in template
+        assert "Reviewer / fixer:" in template
+        assert "CI evidence:" in template
+
+    def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
+        skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
+        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+        manifest = (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
+        assert "TODO:" not in skill
+        assert "## Structuring This Skill" not in skill
+        assert "implement-issue" in manifest
+
+    def test_codex_adapter_requires_clean_review_before_merge_handoff(self) -> None:
+        skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert "review/fix loop" in skill
+        assert "`clean` reviewer outcome" in skill
+        assert "not ready" in skill
+
+    def test_canonical_contract_and_codex_skill_keep_all_implementer_gates(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        for marker in _IMPLEMENTER_CONTRACT_MARKERS:
+            assert marker in process, f"canonical process lost {marker!r}"
+            assert marker in skill, f"Codex adapter lost {marker!r}"
+
+    def test_permanent_codex_rules_preserve_post_pr_readiness_gate(self) -> None:
+        agents = (_REPO / "AGENTS.md").read_text(encoding="utf-8")
+        for marker in ("review/fix loop", "`not ready`", "`clean` reviewer outcome"):
+            assert marker in agents, f"AGENTS.md lost {marker!r}"
+
+    def test_review_controller_bootstrap_cannot_be_silent_approval(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert "## Review-controller bootstrap" in process
+        assert "agent-review-gate" in process
+        assert "No agent may treat the provider skip as an approval" in process

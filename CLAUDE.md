@@ -26,11 +26,11 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 
 ## PR Workflow
 
-Процедурные правила workflow (ветка, PR-дисциплина, labels, `/plan #N` → `/implement #N`, гейты) — канон в **[`.claude/rules/workflow.md`](.claude/rules/workflow.md)** (always-load). Здесь не дублируем.
+Процедурные правила workflow (роли, ветка, PR-дисциплина, labels, гейты) — канон в **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Claude выполняет planner/reviewer через `/plan #N`; реализацию передаёт Codex через `$implement-issue #N`. Здесь не дублируем.
 
 ## Зависимости
 
-Канон — [`workflow.md`](.claude/rules/workflow.md) §7 (pip-compile в том же коммите при изменении
+Канон — [`agent-process.md`](docs/architecture/agent-process.md) (pip-compile в том же коммите при изменении
 `requirements*.in`). Механика: `scripts/ci_check.py` ловит version-drift и пакеты в `.in` без pin
 в `.txt`.
 

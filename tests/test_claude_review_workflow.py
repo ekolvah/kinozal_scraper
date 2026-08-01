@@ -35,6 +35,9 @@ import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "claude-review.yml"
+_GATE_WORKFLOW = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
+)
 _ACTION = "anthropics/claude-code-action"
 
 # Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
@@ -47,7 +50,7 @@ _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b"
 
 def _review_step() -> dict[str, Any]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    steps = cast("list[dict[str, Any]]", data["jobs"]["review"]["steps"])
+    steps = cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
     matches = [s for s in steps if _ACTION in str(s.get("uses", ""))]
     assert len(matches) == 1, f"expected exactly one {_ACTION} step, got {len(matches)}"
     return matches[0]
@@ -114,3 +117,31 @@ class TestCoverageFirstPrompt:
         assert "grouped by severity" in prompt, (
             "the summary contract must require listing findings of every severity (#374)"
         )
+
+
+class TestReviewOutcomeGate:
+    def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
+        prompt = _prompt()
+        assert (
+            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking"
+            in prompt
+        )
+        assert (
+            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework"
+            in prompt
+        )
+        assert (
+            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean"
+            in prompt
+        )
+
+    def test_trusted_target_workflow_is_the_only_required_gate(self) -> None:
+        data = yaml.safe_load(_GATE_WORKFLOW.read_text(encoding="utf-8"))
+        assert "pull_request_target" in data[True]
+        steps = cast("list[dict[str, Any]]", data["jobs"]["agent-review-gate"]["steps"])
+        checkout = steps[0]
+        assert checkout["uses"] == "actions/checkout@v4"
+        assert checkout["with"]["ref"] == "${{ github.event.repository.default_branch }}"
+        verifier = steps[1]
+        assert "trusted/scripts/check_claude_review.py" in str(verifier["run"])
+        assert "--head-sha ${{ github.event.pull_request.head.sha }}" in str(verifier["run"])

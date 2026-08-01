@@ -1,107 +1,25 @@
-# Development Workflow
+# Claude planner adapter
 
-**На какой вопрос отвечает этот файл:** какие процедурные правила обязательны при разработке
-(создание ветки, PR-дисциплина, labels, plan→implement, гейты, зависимости, architect-review).
-**Канонический дом** этих правил (делегирован из
-[`principles.md §Governance`](../../docs/architecture/principles.md)). **Не добавляй сюда контент,
-не отвечающий на этот вопрос**: принципы §I–VII — в `principles.md`, git-запреты — в
-`.claude/settings.json` `permissions.deny`.
+**Question this document answers:** How Claude participates as the repository's
+planner adapter without becoming the source of the workflow contract.
 
-Эти процедурные правила дополняют принципы §I–VII и связывают **наравне** с ними:
+The canonical development workflow, roles, issue contract, delivery gates, and
+agent provenance are in
+[`docs/architecture/agent-process.md`](../../docs/architecture/agent-process.md).
+Do not duplicate them here.
 
-1. **Branch creation** — new work happens on `issue-N-<slug>` branches
-   created **only** via `python scripts/new_branch.py <name>`. Direct
-   `git checkout -b` is forbidden; the script guarantees the branch starts
-   at `origin/main` HEAD, preventing squash-merge divergence (issue #66).
-2. **No direct main pushes** — main is updated exclusively through PRs.
-3. **No self-merge** — `gh pr merge` is forbidden for the AI assistant
-   without explicit per-PR human approval. The human reviewer keeps the
-   merge button.
-4. **One PR, one logical unit** — docs-only PRs are separate from
-   refactor/feature PRs (precedent: #39 → #40 had to be redone after mixing).
-   **Pragmatic exception:** a *temporary* CI unblock of an **unrelated**
-   failing test (e.g. an E2E reddening a docs-PR via an external 520) goes
-   into the branch being merged — with a **tracked follow-up issue** for the
-   real fix — not a separate standalone fix PR (that costs an extra
-   merge+rebase round-trip). Permanent changes are still split.
-5. **Issues carry exactly one type-label** — the *type* of change lives in a
-   label, **not** in the title (the title is a plain description). `gh issue
-   create` sets exactly one label off the **type axis** below. The type-label is
-   the creator's call; `/plan` never touches labels (`commands/plan.md`). Pick it
-   by this **first-match** tree:
-     1. Something is broken / current behaviour is wrong → **`bug`**.
-     2. Changes user-visible behaviour or value: speed-only → **`perf`**;
-        closes a vulnerability / hardening → **`security`**; otherwise →
-        **`enhancement`**.
-     3. Behaviour unchanged: production code under `src/` (structure) →
-        **`refactor`**; `tests/`-only → **`testing`**; CI pipeline / quality
-        gates (`.github/workflows`, `ci_check`, lint/type/audit config) →
-        **`ci`**; `*.md`/`docs/`-only → **`documentation`**; other housekeeping
-        (non-CI dev scripts, dep bumps, repo config) → **`chore`**.
-   Example: `gh issue create --label refactor` (one, off the tree). Git *commit*
-   messages keep their conventional prefixes (`feat(ci): …` — changelog/history
-   is a separate axis from the issue title). The type axis above is **closed and
-   canonical**; **non-type** labels (`wontfix`, `duplicate`, …) live in
-   `gh label list` — don't hard-code *those* here, they drift.
-6. **Pre-commit gate** — `python scripts/ci_check.py` runs ruff format +
-   lint + pytest + mypy + pip-audit + lockfile drift. The `.githooks/pre-push`
-   hook runs it automatically; do not bypass with `--no-verify`.
-7. **Dependency consistency** — when a `requirements*.in` changes,
-   `pip-compile` regenerates the corresponding `.txt` in the same commit.
-8. **Plan-driven flow** — substantive new features and bug fixes are
-   authored via the project's local workflow: `/plan #N` writes a
-   structured plan into the issue body (Context / Acceptance / Test plan /
-   Implementation outline / Docs to update / Out of scope / Architect
-   review / ADR — canon набора секций: `REQUIRED_SECTIONS` в
-   `scripts/validate_issue_sections.py`, эта проза ему подчинена), then
-   `/implement #N` executes it with TDD red-green discipline.
-   Trivial fixes (typos, single-line non-behavioural tweaks) may skip the
-   workflow (#114 carries the rationale and the exact contract).
-9. **Architect review gate** — the issue body MUST carry a non-empty
-   `## Architect review` section before `/implement` runs; the existing
-   `scripts/validate_issue_sections.py` gate enforces it (no separate
-   script). `/plan` fills it by running the `architect-reviewer` subagent
-   (`.claude/agents/architect-reviewer.md`) over the drafted plan, whose
-   goal function is: minimise future bugfix/support → dev+runtime tokens →
-   predictability. Trivial issues record an explicit `skipped: <reason>` —
-   the gate guarantees the review is a *consciously-decided step*, not a
-   silently-forgotten one. **Rationale:** at plan stage the review catches
-   §IV silent-skips, §II mocks-of-internal-logic and runtime-token overspend
-   that the first draft of a plan misses; keeping the persona in-repo rather
-   than in out-of-repo agent memory makes it reproducible for any
-   contributor (#150).
-10. **Dedup check before issue creation** — before `gh issue create`, run
-    `git fetch` and scan recently-merged PRs / recently-closed issues for the
-    same topic (`git log --oneline origin/main -10`, `gh issue list --state
-    closed --limit 10`); if it overlaps, open that PR/issue and check scope
-    before filing. **Prose, not a gate, on purpose:** the deterministic half
-    (`git fetch`) is one command, but judging *topic overlap* is a semantic
-    call — the same class as the semantic-dup detector we deliberately don't
-    build (`docs/architecture/project-map.md`) — so a script wouldn't remove
-    the human step and a gate doesn't pay off. `scripts/new_branch.py` only
-    pulls fresh main at branch time, too late to catch the duplicate.
-    **Precedent:** a re-file of an already-fixed bug, closed by hand (#125).
-11. **Priority** — an issue's priority is the **Priority**
-    single-select field of GitHub Project 1 ("kinozal_scraper — backlog &
-    priority") — **not** a label and **not** a roadmap emoji. When creating an
-    issue the agent MUST **explicitly ask the user which priority** (High /
-    Medium / Low), never guessing, then apply it with
-    `python scripts/set_issue_priority.py <N> <High|Medium|Low>` (`N` = the bare
-    issue number, e.g. `351` — not an `issue-N` prefix). The Project/field/option
-    IDs are hardcoded there and unit-tested: this mechanics belongs in a script,
-    never in prose or agent memory (#354). **Prose for the *ask*, script for the
-    *apply*:** the priority is a human judgement call, so it stays an interactive
-    question; only the Project-mutation is scripted.
-    **Which level to propose** (at creation or revision) — the agent proposes, the human
-    still decides. **First match wins:**
-      1. A bug that stops the pipeline or visibly hurts the user, or anything that fixes
-         **or improves** the agentic dev process (workflow, gates, slash-commands, dev
-         tooling) → **High**. Process ranks on a level with bugs because deferred process
-         work never happens: the project ends first.
-      2. Grows agentic-development competence off the roadmap without touching the dev
-         process → **Medium** (these carry the `agentic-skill` label today — a hint, not
-         the rule).
-      3. Everything else → **Low**: planned, not now. Includes a feature that fixes no
-         defect, and a small latent bug that blocks nobody.
-    Name the proposed level **and** the branch that matched; if two are genuinely
-    arguable, say so rather than pick silently.
+Claude fills the `planner` role in the default setup:
+
+1. Use `/plan #N` for substantive features and bug fixes.
+2. Research the repository, complete all required issue sections, and run the
+   `architect-reviewer` once unless the issue explicitly records a trivial
+   `skipped:` rationale.
+3. Fill `## Agent handoff` with planner identity, successful validation, and
+   `next role: implementer`; then run
+   `python scripts/validate_issue_sections.py N`.
+4. Hand off a passing issue to an implementer. The default Codex adapter is
+   `$implement-issue #N`; Claude does not write implementation code or create
+   the implementation branch.
+
+When creating an issue, ask the user for priority and set the GitHub Project
+field with `python scripts/set_issue_priority.py <N> <High|Medium|Low>`.

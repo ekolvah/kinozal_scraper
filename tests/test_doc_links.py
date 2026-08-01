@@ -167,7 +167,7 @@ def target_problem(
 
 @lru_cache(maxsize=1)
 def _tracked_files() -> tuple[str, ...]:
-    """Отслеживаемые пути (repo-relative posix). `-z`: иначе git C-квотит нелатиницу."""
+    """Existing tracked paths (repo-relative posix). `-z` preserves non-ASCII names."""
     result = subprocess.run(
         ["git", "ls-files", "-z"],
         cwd=_REPO_ROOT,

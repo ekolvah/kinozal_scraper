@@ -4,7 +4,7 @@
 Usage: python scripts/open_pr.py --title "<title>" [--body-file <path>]
 
 Root cause it fixes (precedent #319 → issue #140 stayed open after merge):
-PR→issue auto-linking hung on two fragile assumptions in `/implement`'s prose:
+PR→issue auto-linking hung on two fragile assumptions in the implementer prose:
   1. a `(closes #N)` keyword in the *commit body* — squash-merge rebuilds the
      commit from the PR title and DROPS the feature-commit body, keyword and all;
   2. a hand-typed keyword in the PR body — which #319 wrote in Russian

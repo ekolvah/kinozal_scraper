@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Session-level PostToolUse hook: instant feedback after Edit/Write (#281).
 
-Wired in `.claude/settings.json` as a single PostToolUse entry (matcher
-`Edit|Write`) calling `python "$CLAUDE_PROJECT_DIR/scripts/hooks.py" on-edit`.
-It reads the PostToolUse JSON payload from stdin and dispatches two cheap checks
+Called by the Claude and Codex adapter hooks after edits. It reads an adapter
+payload from stdin and dispatches two cheap checks
 in ONE process (one python spawn per edit):
 
   - `*.py`            → ruff check-only (`ruff format --check` + `ruff check`,
@@ -12,7 +11,7 @@ in ONE process (one python spawn per edit):
                        Edit's `old_string` match). Remaining lint → stderr,
                        exit 2 (PostToolUse exit 2 feeds stderr back to the agent
                        without blocking the already-applied edit).
-  - `requirements*.in` → a `pip-compile` reminder (`workflow.md` §7 is otherwise only
+  - `requirements*.in` → a `pip-compile` reminder (the agent process is otherwise only
                        prose — easy to forget; the reminder makes it visible).
   - a write under the agent's out-of-repo auto-memory dir
                        (`.claude/projects/<slug>/memory/`) → a Memory↔repo
@@ -143,7 +142,7 @@ def pipcompile_signal(path: str) -> Signal:
         kind="pipcompile",
         message=(
             f"{path} changed — run `pip-compile {path}` in the SAME commit "
-            "(`workflow.md` §7) or CI will red on lockfile drift."
+            "(see `docs/architecture/agent-process.md`) or CI will red on lockfile drift."
         ),
     )
 
@@ -215,25 +214,39 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
     return worst_rc, combined_out
 
 
+def run_on_paths(
+    paths: list[str],
+    ruff_runner: Callable[[str], tuple[int, str]] = _run_ruff,
+) -> tuple[int, str]:
+    """Execute edit checks for paths supplied by any agent adapter.
+
+    The Claude hook supplies one ``tool_input.file_path`` while the Codex hook
+    supplies the paths parsed from an ``apply_patch`` command.  Keep the policy
+    here so adapters only translate their platform payloads.
+    """
+    signals: list[Signal] = []
+    for path in dict.fromkeys(paths):
+        for check in plan_checks({"tool_input": {"file_path": path}}):
+            if check == "ruff":
+                returncode, output = ruff_runner(path)
+                sig = classify_ruff_result(returncode, output)
+                if sig is not None:
+                    signals.append(sig)
+            elif check == "pipcompile":
+                signals.append(pipcompile_signal(path))
+            elif check == "memory_write":
+                signals.append(memory_write_signal(path))
+    stderr = "\n".join(s.message for s in signals)
+    return exit_code(signals), stderr
+
+
 def run_on_edit(
     payload: dict,
     ruff_runner: Callable[[str], tuple[int, str]] = _run_ruff,
 ) -> tuple[int, str]:
-    """Execute the planned checks for one edit. Returns (exit_code, stderr_text)."""
+    """Execute the shared checks for the Claude post-edit payload."""
     path = edited_path(payload)
-    signals: list[Signal] = []
-    for check in plan_checks(payload):
-        if check == "ruff" and path is not None:
-            returncode, output = ruff_runner(path)
-            sig = classify_ruff_result(returncode, output)
-            if sig is not None:
-                signals.append(sig)
-        elif check == "pipcompile" and path is not None:
-            signals.append(pipcompile_signal(path))
-        elif check == "memory_write" and path is not None:
-            signals.append(memory_write_signal(path))
-    stderr = "\n".join(s.message for s in signals)
-    return exit_code(signals), stderr
+    return run_on_paths([] if path is None else [path], ruff_runner=ruff_runner)
 
 
 def main() -> None:

@@ -1,0 +1,31 @@
+{
+  "description": "Repository safeguards and immediate edit feedback for Codex.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && python -m scripts.codex_hooks pre-tool",
+            "timeout": 30,
+            "statusMessage": "Checking repository command policy"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$(git rev-parse --show-toplevel)\" && python -m scripts.codex_hooks on-edit",
+            "timeout": 30,
+            "statusMessage": "Checking edited files"
+          }
+        ]
+      }
+    ]
+  }
+}

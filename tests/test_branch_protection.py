@@ -45,6 +45,10 @@ _HOOK = _REPO_ROOT / ".githooks" / "pre-push"
 
 
 class TestDriftDetection:
+    def test_agent_review_gate_is_required(self) -> None:
+        assert "agent-review-gate" in REQUIRED_CONTEXTS
+        assert "agent-review-gate" not in NOT_REQUIRED
+
     """Чистое сравнение объявленного состава контекстов с фактическим."""
 
     def test_missing_required_context_is_drift(self) -> None:

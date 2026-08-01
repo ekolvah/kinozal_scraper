@@ -7,8 +7,8 @@ runtime guidance and reference implementation detail — where they conflict wit
 document, this document wins.
 
 **Not here.** The *procedural* half of the workflow (branch creation, PR discipline,
-labels, `/plan` → `/implement`, the architect-review gate) is delegated to
-[`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) — see §Governance. How
+labels, role hand-offs, the architect-review gate) is delegated to
+[the agent process](agent-process.md) — see §Governance. How
 each gate is implemented and configured → [`ci.md`](ci.md). Which coverage gaps are
 consciously accepted → [`coverage-gaps.md`](coverage-gaps.md).
 
@@ -17,7 +17,7 @@ consciously accepted → [`coverage-gaps.md`](coverage-gaps.md).
 ### I. Test-First (NON-NEGOTIABLE)
 
 For every behavioural change a failing test exists **before** the implementation
-commit. The `/implement #N` workflow enforces this: write tests from the
+commit. The implementer workflow enforces this: write tests from the
 issue's `## Test plan` section, run pytest to confirm RED, then write code
 to make them GREEN (see #114).
 
@@ -154,13 +154,13 @@ length, rewrite it; an abstraction with a single caller is inlined, not introduc
 **Surgical changes:** touch only what the task requires and match the surrounding style;
 do NOT "improve" or refactor adjacent unbroken code inside an unrelated diff. Removing
 dead code is a separate, deliberate unit (one-PR-one-unit,
-[`workflow.md`](../../.claude/rules/workflow.md) §4), not silently widened scope. New
+[the agent process](agent-process.md)), not silently widened scope. New
 dependencies / packages / build steps are not added without asking first — prefer stdlib
 and existing repo packages.
 
 Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
 deliberately declines to script (see [`project-map.md`](project-map.md)). It is enforced at
-**plan stage** by the architect-review gate ([`workflow.md`](../../.claude/rules/workflow.md)
+**plan stage** by the architect-review gate ([the agent process](agent-process.md)
 §9), whose reviewer persona reads the goal function from
 [`.claude/rules/mindset.md`](../../.claude/rules/mindset.md); the cloud `Claude code review`
 workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
@@ -179,7 +179,7 @@ because that package's own review agent and pre-commit hook would duplicate the 
 The procedural workflow rules (branch creation, PR discipline, labels,
 plan→implement flow, pre-commit gate, dependency consistency, architect-review
 gate) are an **operational procedure**, delegated to their canonical home
-[`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) (an always-loaded
+[the agent process](agent-process.md) (an agent-neutral
 operational tier — see [`project-map.md`](project-map.md) IA-policy). They
 supplement the principles above and are **equally binding**. This file does not
 restate them — edit them there.
@@ -214,10 +214,10 @@ of truth on principles.
 **Delegation of operational procedures.** This constitution retains the
 **principles §I–VII**, the **Quality Gates**, and this **Governance** section as
 its canon. The *operational procedural rules* (the former §Development Workflow)
-are delegated to [`.claude/rules/workflow.md`](../../.claude/rules/workflow.md) —
+are delegated to [the agent process](agent-process.md) —
 the always-loaded operational tier in Claude Code's knowledge-carrier hierarchy
 (see [`project-map.md`](project-map.md)). Delegation does **not** weaken their
-authority: those rules bind equally and `.claude/rules/workflow.md` is their
+authority: those rules bind equally and `agent-process.md` is their
 single source of truth (other mentions are links only). Amending them happens
 in that file; amending the *delegation itself* (what is canon vs. delegated) is
 a Governance change made here.

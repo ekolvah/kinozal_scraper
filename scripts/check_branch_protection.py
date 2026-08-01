@@ -44,15 +44,12 @@ from typing import Any, NamedTuple
 import yaml
 
 # Канон состава required-контекстов ветки `main`.
-REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link")
+REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", "agent-review-gate")
 
 # PR-джобы, сознательно НЕ сделанные required, и почему. Пустая причина — забытое решение,
 # а не принятое, поэтому гард её не принимает.
 NOT_REQUIRED: dict[str, str] = {
-    "review": (
-        "fork-PR не получает secrets.CLAUDE_CODE_OAUTH_TOKEN → внешний PR был бы заперт; "
-        "при enforce_admins: true залипший check блокирует мёрдж даже владельцу"
-    ),
+    "claude-review": "Claude publishes evidence; trusted agent-review-gate verifies it.",
 }
 
 BRANCH = "main"
@@ -115,12 +112,13 @@ def _triggers(doc: Mapping[Any, Any]) -> Any:
 
 def _runs_on_pull_request(triggers: Any) -> bool:
     """Триггерится ли воркфлоу на `pull_request` (dict / список / строка)."""
+    events = {"pull_request", "pull_request_target"}
     if isinstance(triggers, Mapping):
-        return "pull_request" in triggers
+        return bool(events.intersection(triggers))
     if isinstance(triggers, str):
-        return triggers == "pull_request"
+        return triggers in events
     if isinstance(triggers, Iterable):
-        return "pull_request" in triggers
+        return bool(events.intersection(triggers))
     return False
 
 
@@ -140,10 +138,12 @@ def _pull_request_filters(triggers: Any) -> tuple[str, ...]:
     """Фильтры на `pull_request`-триггере, из-за которых джоб отчитается не на каждом PR."""
     if not isinstance(triggers, Mapping):
         return ()
-    config = triggers.get("pull_request")
-    if not isinstance(config, Mapping):
-        return ()
-    return tuple(key for key in _TRIGGER_FILTERS if key in config)
+    filters: set[str] = set()
+    for event in ("pull_request", "pull_request_target"):
+        config = triggers.get(event)
+        if isinstance(config, Mapping):
+            filters.update(key for key in _TRIGGER_FILTERS if key in config)
+    return tuple(sorted(filters))
 
 
 def _pull_request_jobs(
