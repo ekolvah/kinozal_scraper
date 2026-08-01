@@ -42,7 +42,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 |---|---|---|
 | `CLAUDE.md` (root) | Тонкий роутер: что за app + env-граблии + указатели. **Цель < 200 строк** | каждую сессию, целиком |
 | `.claude/rules/*.md` | Операционные инструкции, **один файл = одна тема**; можно path-scoped через frontmatter `paths:` | каждую сессию (или только при работе с matching-путями) |
-| `AGENTS.md`, `.agents/skills/`, `.claude/`, `.codex/` | Agent adapters: Codex skill, Claude planner/reviewer, and local hook policies | по вызову / при старте |
+| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral role catalogue: Codex skill, Claude planner/reviewer, control plane, and local hook policies | по вызову / при старте |
 | `docs/architecture/*.md` | Reference: как устроен код (runtime/pipeline/storage/gemini/…) + этот project-map + `principles.md` | по требованию |
 | `docs/adr/*.md` | Explanation: почему решение принято именно такое и какие альтернативы отвергнуты (MADR 4.0.0, append-only) | по ссылке из state-дока |
 | `~/.claude/projects/<repo>/memory/` | Auto-memory: **только машинно/процессно-специфичное** (см. ниже) | `MEMORY.md` индекс — каждую сессию |
@@ -297,6 +297,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | Файл | На какой вопрос отвечает |
 |---|---|
 | `scripts/validate_issue_sections.py` | Verifies all nine issue sections, including `Agent handoff`; gate for planner and implementer adapters |
+| `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: единый каталог ролей, evidence-based next action и bounded escalation; не вызывает провайдеров и не заменяет required gates |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
 | `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project 1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; вызывается агентом по контракту `agent-process.md` (спросил приоритет → скрипт). Механика переехала memory→repo (#351) |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |

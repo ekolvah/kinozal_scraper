@@ -26,11 +26,19 @@ Closes #
 - Implementer: <agent / model or version if known>
 - Reviewer / fixer: <agent or none>
 - CI evidence: <local ci_check result and PR checks URL/status>
+- Route: <roles selected by the control plane>
+- Model invocations: <role=count; run-count proxy, not invented token totals>
+- Fixer revisions: <count>
+- Conditional skips / escalations: <reason or none>
 -->
 
 - Implementer:
 - Reviewer / fixer:
 - CI evidence:
+- Route:
+- Model invocations:
+- Fixer revisions:
+- Conditional skips / escalations:
 
 ## Test plan
 

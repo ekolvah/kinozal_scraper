@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from scripts.agent_orchestrator import WorkflowState, decide, load_catalog
+import json
+
+from scripts.agent_orchestrator import WorkflowState, decide, load_catalog, main
 
 
 def _state(**overrides: object) -> WorkflowState:
@@ -117,3 +119,17 @@ class TestEvidenceTruthfulness:
         assert decision.next_role == "architect_reviewer"
         assert decision.status == "next"
         assert decision.completed_roles == ("planner",)
+
+
+class TestCli:
+    def test_cli_reads_state_and_emits_structured_next_action(self, tmp_path, capsys) -> None:
+        state_file = tmp_path / "state.json"
+        state_file.write_text(
+            json.dumps({"plan_completed": True, "issue_kind": "nontrivial"}), encoding="utf-8"
+        )
+
+        main([str(state_file)])
+
+        result = json.loads(capsys.readouterr().out)
+        assert result["next_role"] == "architect_reviewer"
+        assert result["status"] == "next"

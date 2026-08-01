@@ -44,6 +44,20 @@ class TestAgentProcess:
         assert "Implementer:" in template
         assert "Reviewer / fixer:" in template
         assert "CI evidence:" in template
+        assert "Route:" in template
+        assert "Model invocations:" in template
+        assert "Fixer revisions:" in template
+        assert "Conditional skips / escalations:" in template
+
+    def test_control_plane_is_provider_neutral_and_advisory(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        catalogue = (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(
+            encoding="utf-8"
+        )
+
+        assert "agent_orchestrator.py" in process
+        assert "never invokes a model" in process
+        assert "human_merge:" in catalogue
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"

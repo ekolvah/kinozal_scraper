@@ -24,7 +24,11 @@ workflow contract. This skill is the Codex adapter for the `implementer` and
    not symptoms.
 6. Create the PR with `python scripts/open_pr.py`, using the repository
    template. Fill `## Agent record` with your implementation identity, any
-   reviewer/fixer identities, and the actual CI evidence.
+   reviewer/fixer identities, the actual CI evidence, selected route,
+   invocation-count proxy, fixer revisions, and conditional skip/escalation
+   reasons. The provider-neutral control plane in
+   `.agents/orchestration/roles.yaml` may report the next bounded action; it
+   does not replace the checks below or invoke a provider.
 7. Stay active through the review/fix loop. After every push, wait for all PR
    checks with `gh pr checks <PR> --watch`. For a red CI check, inspect its
    root cause with `gh run view <run-id> --log-failed`, fix it in a separate

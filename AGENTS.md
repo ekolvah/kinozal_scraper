@@ -19,6 +19,9 @@ Claude or Codex adapter is the only permitted executor.
   commit fixes separately, and push again. The PR is `not ready` until its
   current head has a `clean` reviewer outcome, no actionable review threads,
   and every required GitHub check is green.
+- The advisory control plane (`scripts/agent_orchestrator.py` plus
+  `.agents/orchestration/roles.yaml`) reports evidence-based routing and budget
+  escalation. It never authorizes bypassing its required delivery gates.
 
 ## Repository conventions
 
