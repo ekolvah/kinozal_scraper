@@ -60,9 +60,12 @@ class TestRouteResolution:
         missing_reason = decide(_state(issue_kind="trivial"), catalogue)
         assert missing_reason.status == "blocked"
         assert "architect_skip_reason" in missing_reason.missing_evidence
-        assert decide(
-            _state(issue_kind="trivial", architect_skip_reason="one-line typo"), catalogue
-        ).next_role == "implementer"
+        assert (
+            decide(
+                _state(issue_kind="trivial", architect_skip_reason="one-line typo"), catalogue
+            ).next_role
+            == "implementer"
+        )
 
     def test_rework_routes_to_fixer_and_clean_routes_to_human_merge(self) -> None:
         catalogue = load_catalog()
@@ -75,7 +78,9 @@ class TestRouteResolution:
         }
 
         assert decide(_state(review_outcome="rework", **shared), catalogue).next_role == "fixer"
-        assert decide(_state(review_outcome="clean", **shared), catalogue).next_role == "human_merge"
+        assert (
+            decide(_state(review_outcome="clean", **shared), catalogue).next_role == "human_merge"
+        )
 
 
 class TestBudgetLimits:
@@ -88,7 +93,10 @@ class TestBudgetLimits:
             "head_sha": "b" * 40,
         }
 
-        assert decide(_state(reviewed_heads=("a" * 40,), **common), catalogue).next_role == "pr_reviewer"
+        assert (
+            decide(_state(reviewed_heads=("a" * 40,), **common), catalogue).next_role
+            == "pr_reviewer"
+        )
         current_head = decide(_state(reviewed_heads=("b" * 40,), **common), catalogue)
         assert current_head.status == "blocked"
         assert "review_outcome" in current_head.missing_evidence

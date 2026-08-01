@@ -51,9 +51,7 @@ class TestAgentProcess:
 
     def test_control_plane_is_provider_neutral_and_advisory(self) -> None:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
-        catalogue = (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(
-            encoding="utf-8"
-        )
+        catalogue = (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
 
         assert "agent_orchestrator.py" in process
         assert "never invokes a model" in process

@@ -118,17 +118,22 @@ def _decision(
     )
 
 
-def _planning_decision(
-    state: WorkflowState, catalogue: dict[str, Any]
-) -> RouteDecision | None:
+def _planning_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision | None:
     roles = catalogue["roles"]
     if not state.plan_completed:
         if state.planner_runs >= roles["planner"]["max_runs"]:
-            return _decision("human_merge", catalogue, state, status="escalate", action="human plan decision")
+            return _decision(
+                "human_merge", catalogue, state, status="escalate", action="human plan decision"
+            )
         return _decision("planner", catalogue, state)
     if state.issue_kind not in {"trivial", "nontrivial"}:
         return _decision(
-            "planner", catalogue, state, status="blocked", missing=("issue_kind",), action="classify issue"
+            "planner",
+            catalogue,
+            state,
+            status="blocked",
+            missing=("issue_kind",),
+            action="classify issue",
         )
     if state.issue_kind == "trivial":
         if not state.architect_skip_reason:
@@ -143,7 +148,11 @@ def _planning_decision(
     elif not state.architect_completed:
         if state.architect_runs >= roles["architect_reviewer"]["max_runs"]:
             return _decision(
-                "human_merge", catalogue, state, status="escalate", action="human architecture decision"
+                "human_merge",
+                catalogue,
+                state,
+                status="escalate",
+                action="human architecture decision",
             )
         return _decision("architect_reviewer", catalogue, state)
     return None
@@ -156,7 +165,11 @@ def _implementation_decision(
     if not state.implementation_completed:
         if state.implementer_runs >= roles["implementer"]["max_runs"]:
             return _decision(
-                "human_merge", catalogue, state, status="escalate", action="human implementation decision"
+                "human_merge",
+                catalogue,
+                state,
+                status="escalate",
+                action="human implementation decision",
             )
         return _decision("implementer", catalogue, state)
     if not state.ci_passed:
@@ -174,24 +187,43 @@ def _review_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDe
     roles = catalogue["roles"]
     if not state.head_sha:
         return _decision(
-            "pr_reviewer", catalogue, state, status="blocked", missing=("head_sha",), action="record PR head SHA"
+            "pr_reviewer",
+            catalogue,
+            state,
+            status="blocked",
+            missing=("head_sha",),
+            action="record PR head SHA",
         )
     if state.head_sha not in state.reviewed_heads:
         return _decision("pr_reviewer", catalogue, state)
     if state.review_outcome is None:
         return _decision(
-            "pr_reviewer", catalogue, state, status="blocked", missing=("review_outcome",), action="read current-head review outcome"
+            "pr_reviewer",
+            catalogue,
+            state,
+            status="blocked",
+            missing=("review_outcome",),
+            action="read current-head review outcome",
         )
     if state.review_outcome == "clean":
         return _decision("human_merge", catalogue, state)
     if state.review_outcome in {"rework", "blocking"}:
         if state.fixer_revisions >= roles["fixer"]["max_runs"]:
             return _decision(
-                "human_merge", catalogue, state, status="escalate", action="human decision after fixer budget exhausted"
+                "human_merge",
+                catalogue,
+                state,
+                status="escalate",
+                action="human decision after fixer budget exhausted",
             )
         return _decision("fixer", catalogue, state)
     return _decision(
-        "pr_reviewer", catalogue, state, status="blocked", missing=("valid_review_outcome",), action="record clean, rework, or blocking outcome"
+        "pr_reviewer",
+        catalogue,
+        state,
+        status="blocked",
+        missing=("valid_review_outcome",),
+        action="record clean, rework, or blocking outcome",
     )
 
 
