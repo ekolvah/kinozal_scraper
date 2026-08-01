@@ -42,6 +42,15 @@ ever crosses the Bash tool's 10-minute ceiling, the derived constant
 `timeout: 600000` in `.claude/commands/implement.md` step 6 stops working and
 needs revisiting together with this number.
 
+**`pre-push` runs two gates, not one.** Ahead of `ci_check.py` it runs
+`scripts/check_branch_protection.py` — a single `gh` call (seconds, 30 s timeout) that compares
+the declared required status checks against GitHub's actual config. It is deliberately first: a
+mismatch aborts the push immediately instead of costing the eight minutes below, which also
+leaves its message as the last thing on screen rather than scrolled away. Both non-zero codes
+stop the push and the hook propagates them unchanged (`1` drift, `2` the tool itself failed), so
+the two stay distinguishable. Details and the reasoning are in
+[§Required status checks](#required-status-checks-branch-protection).
+
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
 `python scripts/ci_check.py --only <name>`, so local and CI cannot drift. If
@@ -127,11 +136,9 @@ Triggers: `pull_request` (covers every PR branch) + `push` to `main` only
 (post-merge gate — catches a semantic conflict between two PRs each green
 in isolation). `issue-*` is deliberately **not** a push trigger: a PR branch
 push would otherwise fire the `quality` job twice (once per event) for the
-same commit. The required status check is the bare context `quality`
-(event-agnostic — verified once against `…/required_status_checks` →
-`contexts: ["quality"]`; re-verifying needs repo-admin scope, hence the note),
-so the `pull_request` run satisfies branch protection on its own and dropping
-`issue-*` orphans nothing (#206). Do not re-add `issue-*` to
+same commit. `quality` is one of the branch's required status checks — a bare,
+event-agnostic context, so the `pull_request` run satisfies branch protection on
+its own and dropping `issue-*` orphans nothing (#206). Do not re-add `issue-*` to
 `push` to "get CI on a branch" — the `.githooks/pre-push` hook already runs the
 identical `ci_check.py` locally before every push.
 
@@ -321,6 +328,54 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 Каждый из них — presence / резолвимость / форма, **не** корректность: указатель на существующий, но
 переставший быть домом темы файл, как и хроника, аккуратно уложенная в скобки, ловится человеком
 на ревью. Границы каждого гарда названы в его docstring.
+
+## Required status checks (branch protection)
+
+Two contexts block a merge into `main`: **`quality`** (`ci.yml`) and **`pr-link`**
+(`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
+issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
+`scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
+compared against GitHub and against the workflow files.
+
+`review` is deliberately **not** required: a fork PR never receives
+`secrets.CLAUDE_CODE_OAUTH_TOKEN`, so an outside contribution would be locked out permanently;
+and with `enforce_admins: true` a stuck check (quota, expired OAuth token, upstream action break)
+blocks the merge even for the owner, with no bypass. The exclusion is recorded with its reason in
+`NOT_REQUIRED`, and a PR job that is neither required nor excluded fails
+`tests/test_branch_protection.py`.
+
+**A required context blocks the merge when it does not report at all, not only when it is red.**
+That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
+maintainer approval, disabled Actions, or a renamed workflow on the PR branch. `enforce_admins:
+true` leaves no override. The cheap recovery is that `pr-link.yml` also triggers on `edited`, so
+editing the PR title/description re-runs it; pushing a commit works too. The same lockout risk
+that disqualifies `review` applies to `pr-link` and is **accepted** here: its trigger set covers
+every PR event and it runs on `github.token` alone, so it has no secret to lose. Three ways to
+manufacture that trap are guarded, because each one leaves a declared context permanently
+"Expected" and locks out even the PR that would undo it: renaming the job (a required context is
+the check-run name — a job's `name:`, else its key), putting a `strategy.matrix` on it (real
+contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`branches-ignore`
+filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
+a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
+
+One property the required status does **not** buy: on a fork PR the job executes the *fork's*
+copy of its own script, so a fork could make `pr-link` pass unconditionally. The human merge
+button remains the real control; this is worth stating once now that the check is required.
+
+With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
+an expected extra minute, not a malfunction.
+
+**Drift detection.** `python scripts/check_branch_protection.py` prints the actual contexts and
+exits `1` on drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable
+response) — a tool failure must not read as "no drift". `.githooks/pre-push` runs it before
+`ci_check.py`, so drift costs seconds rather than a full gate run, and both non-zero codes stop
+the push. Two consequences are deliberate and worth knowing: the hook is **surfacing, not
+enforcement** (`.githooks` is opt-in via `git config core.hooksPath`, and the authoritative
+barrier stays branch protection itself), and the probe assumes the pusher holds admin rights on
+the repository — true while this is a single-maintainer repo, and the first thing to revisit if
+that changes. Why this is not a CI job — GitHub's `GITHUB_TOKEN` has no `administration` scope,
+so a CI form needs a stored admin-scoped token whose rotation cost buys nothing here; the full
+reasoning lives in the script's docstring.
 
 ## Claude review workflow (`claude-review.yml`)
 

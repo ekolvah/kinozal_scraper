@@ -1,0 +1,5 @@
+# Хуки исполняет bash, а он не переживает CRLF в shebang'е: с `core.autocrlf=true`
+# (дефолт Git for Windows) свежий клон получил бы `#!/usr/bin/env bash\r`, хук умер бы с
+# «bad interpreter», и pre-push гейт молча перестал бы запускаться (#436).
+# Скоуп намеренно узкий — репозиторий целиком не перенормализуем.
+.githooks/** text eol=lf
