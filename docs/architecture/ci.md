@@ -347,8 +347,9 @@ status. It polls that trusted evidence for up to 360 seconds between API reads, 
 not race the slower review action; missing, malformed, stale, or timed-out evidence fails closed.
 Transport failures are reported as infrastructure failures, never as Claude findings. The producer
 first requests the review outcome as a schema-validated action output and normally publishes the
-matching marker with the review summary. If that marker is absent, a non-terminal probe starts one
-bounded, two-turn publisher invocation. It receives the already validated outcome and may only
+matching marker with the review summary. If that marker is absent, a non-terminal probe polls for up
+to 30 seconds before it starts one bounded, two-turn publisher invocation. It receives the already
+validated outcome and may only
 update a Claude comment with that exact marker: it does not re-review, reclassify, or spend another
 full review budget. The final strict producer check still fails closed if publication remains absent.
 Fork PRs without the Claude OAuth secret remain visibly blocked;
@@ -414,10 +415,14 @@ Visibility is guaranteed by two independent layers:
 
 The primary invocation also returns a schema-validated `clean`, `rework`, or `blocking` outcome.
 Its comment remains the normal marker publisher. Only when the marker probe cannot find current-head
-evidence does the workflow run one small (`--max-turns 2`) publisher invocation, passing that
+evidence within 30 seconds does the workflow run one small (`--max-turns 2`) publisher invocation, passing that
 validated outcome verbatim. It must only add the marker and cannot perform a second review or choose
 another verdict. The final strict marker verifier runs afterwards, so a second publication failure is
 red rather than being hidden by the probe's `continue-on-error`.
+
+The first ordinary PR after a change to this controller is the operational compatibility check for
+the action's schema output. A red `Claude review` step reporting schema validation means the normal
+publisher cannot start; revert the controller PR immediately rather than weakening the trusted gate.
 
 **Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
 включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний

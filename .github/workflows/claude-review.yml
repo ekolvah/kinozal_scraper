@@ -91,6 +91,9 @@ jobs:
               `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework -->`
               if there are should-fix findings but no blocking finding; otherwise
               use `<!-- claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean -->`.
+              The schema-validated structured output `outcome` must exactly match the marker outcome:
+              use `blocking` for any blocking finding, `rework` for should-fix findings without a
+              blocking finding, and `clean` otherwise.
               The trusted default-branch gate turns `blocking` and `rework` into a failed
               required status; never omit or alter the marker.
 
@@ -108,14 +111,15 @@ jobs:
           --head-sha ${{ github.event.pull_request.head.sha }}
           --require-outcome-marker
           --allow-controller-bootstrap
+          --wait-seconds 30
+          --poll-seconds 10
 
       - name: Repair Claude outcome marker
         id: marker_repair
-        if: ${{ success() && steps.marker_probe.outcome == 'failure' }}
+        if: ${{ success() && steps.marker_probe.outcome == 'failure' && steps.review.outputs.structured_output != '' }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          track_progress: true
           show_full_output: true
           claude_args: |
             --model claude-opus-5
