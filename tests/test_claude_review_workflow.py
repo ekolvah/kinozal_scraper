@@ -189,7 +189,6 @@ class TestReviewOutcomeGate:
     def test_final_marker_verifier_runs_after_repair(self) -> None:
         names = [str(step.get("name")) for step in _steps()]
         probe = _named_step("Probe Claude outcome marker")
-        repair = _named_step("Repair Claude outcome marker")
         verifier = _named_step("Verify Claude outcome marker")
 
         assert probe["continue-on-error"] is True
