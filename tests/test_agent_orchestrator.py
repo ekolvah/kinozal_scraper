@@ -9,7 +9,14 @@ from typing import Any
 import pytest
 import yaml
 
-from scripts.agent_orchestrator import WorkflowState, _decision, decide, load_catalog, main
+from scripts.agent_orchestrator import (
+    WorkflowState,
+    _decision,
+    _state_from_json,
+    decide,
+    load_catalog,
+    main,
+)
 
 
 def _state(**overrides: object) -> WorkflowState:
@@ -165,7 +172,7 @@ class TestBudgetLimits:
 
     def test_fixer_limit_escalates_to_human_without_retrying(self) -> None:
         catalogue = load_catalog()
-        decision = decide(
+        third_revision = decide(
             _state(
                 architect_completed=True,
                 implementation_completed=True,
@@ -177,9 +184,23 @@ class TestBudgetLimits:
             ),
             catalogue,
         )
+        decision = decide(
+            _state(
+                architect_completed=True,
+                implementation_completed=True,
+                ci_passed=True,
+                head_sha="a" * 40,
+                reviewed_heads=("a" * 40,),
+                review_outcome="blocking",
+                fixer_revisions=3,
+            ),
+            catalogue,
+        )
 
+        assert third_revision.next_role == "fixer"
         assert decision.next_role == "human_merge"
         assert decision.status == "escalate"
+        assert "fixer" not in decision.completed_roles
 
 
 class TestEvidenceTruthfulness:
@@ -233,6 +254,32 @@ class TestEvidenceTruthfulness:
 
 
 class TestBlockedRoutes:
+    @pytest.mark.parametrize(
+        "state",
+        [
+            _state(issue_kind="unknown"),
+            _state(issue_kind="trivial"),
+            _state(architect_completed=True, implementation_completed=True),
+            _state(
+                architect_completed=True,
+                implementation_completed=True,
+                ci_passed=True,
+            ),
+            _state(
+                architect_completed=True,
+                implementation_completed=True,
+                ci_passed=True,
+                head_sha="f" * 40,
+                reviewed_heads=("f" * 40,),
+            ),
+        ],
+    )
+    def test_blocked_role_is_never_reported_completed(self, state: WorkflowState) -> None:
+        decision = decide(state, load_catalog())
+
+        assert decision.status == "blocked"
+        assert decision.next_role not in decision.completed_roles
+
     def test_invalid_issue_kind_has_a_blocked_shape(self) -> None:
         decision = decide(_state(issue_kind="unknown"), load_catalog())
 
@@ -292,6 +339,22 @@ class TestBlockedRoutes:
         with pytest.raises(SystemExit, match="2"):
             main([str(state_file)])
         assert "reviewed_heads must be a list of strings" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        ("payload", "message"),
+        [
+            ({"plan_completed": "false", "issue_kind": "nontrivial"}, "must be a boolean"),
+            (
+                {"plan_completed": True, "issue_kind": "nontrivial", "fixer_revisions": -1},
+                "non-negative integer",
+            ),
+        ],
+    )
+    def test_boolean_and_counter_state_errors_are_visible(
+        self, payload: dict[str, object], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=message):
+            _state_from_json(payload)
 
 
 class TestCli:

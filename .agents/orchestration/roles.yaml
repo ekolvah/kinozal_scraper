@@ -33,7 +33,7 @@ roles:
     entry_evidence: "Current-head rework or blocking review outcome."
     completion_evidence: "A new head SHA for a fresh PR review."
     activation: "Only after actionable PR-review feedback."
-    max_runs: 2
+    max_runs: 3
   human_merge:
     adapter: "Human reviewer"
     authority: "May approve and merge after all required gates pass."

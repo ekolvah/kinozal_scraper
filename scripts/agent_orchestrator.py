@@ -47,6 +47,13 @@ class WorkflowState:
 
 @dataclass(frozen=True)
 class RouteDecision:
+    """The next route step and a snapshot of roles with satisfied current evidence.
+
+    ``completed_roles`` is deliberately not an invocation history. A role drops
+    from the snapshot when the current route says that role is blocked on more
+    evidence, including after a fixer outcome is reviewed.
+    """
+
     next_role: str
     status: str
     missing_evidence: tuple[str, ...]
@@ -104,6 +111,9 @@ def _decision(
     missing: tuple[str, ...] = (),
     action: str | None = None,
 ) -> RouteDecision:
+    completed_roles = _completed_roles(state)
+    if status == "blocked":
+        completed_roles = tuple(completed for completed in completed_roles if completed != role)
     role_data = catalogue["roles"].get(role)
     if role_data is None:
         if role not in _NON_CATALOGUE_STEPS:
@@ -112,7 +122,7 @@ def _decision(
             next_role=role,
             status=status,
             missing_evidence=missing,
-            completed_roles=_completed_roles(state),
+            completed_roles=completed_roles,
             adapter="deterministic local command",
             next_action=action or role,
         )
@@ -120,7 +130,7 @@ def _decision(
         next_role=role,
         status=status,
         missing_evidence=missing,
-        completed_roles=_completed_roles(state),
+        completed_roles=completed_roles,
         adapter=str(role_data["adapter"]),
         next_action=action or str(role_data["adapter"]),
     )
@@ -260,20 +270,32 @@ def _state_from_json(payload: Mapping[str, Any]) -> WorkflowState:
                 raise TypeError(f"{name} must be a string or null")
             return value
 
+        def boolean(name: str, *, default: bool | None = None) -> bool:
+            value = payload[name] if default is None else payload.get(name, default)
+            if not isinstance(value, bool):
+                raise TypeError(f"{name} must be a boolean")
+            return value
+
+        def nonnegative_integer(name: str) -> int:
+            value = payload.get(name, 0)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise TypeError(f"{name} must be a non-negative integer")
+            return int(value)
+
         return WorkflowState(
-            plan_completed=bool(payload["plan_completed"]),
+            plan_completed=boolean("plan_completed"),
             issue_kind=str(payload["issue_kind"]),
-            architect_completed=bool(payload.get("architect_completed", False)),
+            architect_completed=boolean("architect_completed", default=False),
             architect_skip_reason=optional_string("architect_skip_reason"),
-            implementation_completed=bool(payload.get("implementation_completed", False)),
-            ci_passed=bool(payload.get("ci_passed", False)),
+            implementation_completed=boolean("implementation_completed", default=False),
+            ci_passed=boolean("ci_passed", default=False),
             head_sha=optional_string("head_sha"),
             reviewed_heads=reviewed_heads,
             review_outcome=optional_string("review_outcome"),
-            fixer_revisions=int(payload.get("fixer_revisions", 0)),
-            planner_runs=int(payload.get("planner_runs", 0)),
-            architect_runs=int(payload.get("architect_runs", 0)),
-            implementer_runs=int(payload.get("implementer_runs", 0)),
+            fixer_revisions=nonnegative_integer("fixer_revisions"),
+            planner_runs=nonnegative_integer("planner_runs"),
+            architect_runs=nonnegative_integer("architect_runs"),
+            implementer_runs=nonnegative_integer("implementer_runs"),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid workflow state: {exc}") from exc

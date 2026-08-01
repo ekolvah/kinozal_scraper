@@ -150,11 +150,12 @@ evidence, and a bounded escalation path. It never invokes a model, changes the
 repository, posts to GitHub, or replaces deterministic CI and branch
 protection. The default route is planner → conditional architect reviewer →
 implementer → deterministic CI → PR reviewer → conditional fixer → human
-merge. The initial caps are one planning pass, one architect review, one PR
-review per head SHA, and two fixer revisions; an exhausted cap escalates to a
-human rather than silently retrying. After ten completed PRs, compare rework
-rate, actionable-review yield, cycle time, and invocation counts before adding
-a specialist such as the separate code-critic proposal.
+merge. The initial caps are one planning pass, one architect review, one
+implementation pass, one PR review per head SHA, and three fixer revisions; an
+exhausted cap escalates to a human rather than silently retrying. After ten
+completed PRs, compare rework rate, actionable-review yield, cycle time, and
+invocation counts before adding a specialist such as the separate code-critic
+proposal.
 
 An adapter supplies a role's user interface and platform-specific permissions:
 
