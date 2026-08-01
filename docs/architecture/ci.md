@@ -339,28 +339,21 @@ issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
 compared against GitHub and against the workflow files.
 
-`agent-review-gate` is required because a successful action run is not a review verdict. It runs on
-`pull_request_target`, checks out only the default branch, and reads evidence through the GitHub API;
-it never executes PR code. For ordinary PRs it accepts only a Claude outcome marker bound to the
-current head SHA from the `claude[bot]` GitHub App, and turns `blocking` or `rework` into a failed
-status. It polls that trusted evidence for up to 360 seconds between API reads, so the gate does
-not race the slower review action; missing, malformed, stale, or timed-out evidence fails closed.
-Transport failures are reported as infrastructure failures, never as Claude findings. The producer
-first requests the review outcome as a schema-validated action output and normally publishes the
-matching marker with the review summary. If that marker is absent, a non-terminal probe polls for up
-to 30 seconds before it starts one bounded, two-turn publisher invocation. It receives the already
-validated outcome and may only
-update a Claude comment with that exact marker: it does not re-review, reclassify, or spend another
-full review budget. The final strict producer check still fails closed if publication remains absent.
+The ordinary `claude-review` job is required because its deterministic final step reads the action's
+schema-validated outcome directly: `clean` succeeds, `rework` or `blocking` fails, and absent or
+malformed output is a readable `review unavailable` failure. A Claude comment is feedback for people,
+not merge authority, so ordinary PRs neither poll GitHub comments nor start a second Claude invocation.
+Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
+silently treated as `clean`.
 Fork PRs without the Claude OAuth secret remain visibly blocked;
 a maintainer must move the contribution onto a repository branch so the required review can run.
 
 A PR that changes the review-controller surface (`claude-review.yml`,
 `agent-review-gate.yml`, or `scripts/check_claude_review.py`) cannot receive a Claude review by
-design. The trusted gate then requires the configured maintainer's exact-head
-`review-controller-bootstrap` marker. Its producer-side check emits a GitHub Actions warning because
-the provider cannot self-review; only the trusted gate can accept the human marker. This is a visible
-human exception, not a green provider skip.
+design. The separate trusted `pull_request_target` gate then requires the configured maintainer's
+exact-head `review-controller-bootstrap` marker. It checks immediately rather than polling: after the
+maintainer posts the marker, the maintainer explicitly re-runs the failed check. This is a visible
+single-maintainer exception, not a green provider skip.
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
@@ -413,16 +406,11 @@ Visibility is guaranteed by two independent layers:
   via `update_claude_comment`. Controlling comment *format* is not enough: a run that finds
   no issues and invokes no publishing tool leaves the PR silent.
 
-The primary invocation also returns a schema-validated `clean`, `rework`, or `blocking` outcome.
-Its comment remains the normal marker publisher. Only when the marker probe cannot find current-head
-evidence within 30 seconds does the workflow run one small (`--max-turns 2`) publisher invocation, passing that
-validated outcome verbatim. It must only add the marker and cannot perform a second review or choose
-another verdict. The final strict marker verifier runs afterwards, so a second publication failure is
-red rather than being hidden by the probe's `continue-on-error`.
-
-The first ordinary PR after a change to this controller is the operational compatibility check for
-the action's schema output. A red `Claude review` step reporting schema validation means the normal
-publisher cannot start; revert the controller PR immediately rather than weakening the trusted gate.
+The primary invocation returns a schema-validated `clean`, `rework`, or `blocking` outcome. The
+following shell step maps it directly to the job result; no marker, polling, or repair invocation is
+in the ordinary path. The first ordinary PR after a controller change is the operational compatibility
+check: a red `Claude review` step reporting schema validation means the reviewer is unavailable, so
+revert the controller PR rather than weakening the gate.
 
 **Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
 включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний

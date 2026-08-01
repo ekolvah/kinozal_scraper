@@ -138,7 +138,7 @@ class TestReviewOutcomeGate:
         assert "--json-schema" in args
         assert '"outcome"' in args
         assert all(outcome in args for outcome in ("clean", "rework", "blocking"))
-        assert "structured output `outcome` must exactly match the marker outcome" in prompt
+        assert "structured output `outcome`" in prompt
 
     def test_workflow_enforces_structured_outcome_directly(self) -> None:
         verifier = _named_step("Enforce Claude review outcome")
@@ -156,20 +156,10 @@ class TestReviewOutcomeGate:
         assert "Verify Claude outcome marker" not in names
         assert "claude-review-outcome:" not in prompt
 
-    def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
+    def test_prompt_keeps_comments_out_of_merge_authority(self) -> None:
         prompt = _prompt()
-        assert (
-            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=blocking"
-            in prompt
-        )
-        assert (
-            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=rework"
-            in prompt
-        )
-        assert (
-            "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean"
-            in prompt
-        )
+        assert "comments are feedback" in prompt
+        assert "merge authority" in prompt
         assert "update_claude_comment" in prompt
 
     def test_trusted_target_workflow_is_the_only_required_gate(self) -> None:
@@ -182,50 +172,4 @@ class TestReviewOutcomeGate:
         verifier = steps[1]
         assert "trusted/scripts/check_claude_review.py" in str(verifier["run"])
         assert "--head-sha ${{ github.event.pull_request.head.sha }}" in str(verifier["run"])
-        assert "--wait-seconds 360" in str(verifier["run"])
-
-    def test_claude_review_workflow_verifies_marker_after_review(self) -> None:
-        verifier = _named_step("Verify Claude outcome marker")
-
-        assert "--require-outcome-marker" in str(verifier["run"])
-        assert "--allow-controller-bootstrap" in str(verifier["run"])
-
-    def test_marker_repair_is_conditional_and_bounded(self) -> None:
-        repair = _named_step("Repair Claude outcome marker")
-        condition = str(repair["if"])
-        args = str(cast("dict[str, Any]", repair["with"])["claude_args"])
-        prompt = str(cast("dict[str, Any]", repair["with"])["prompt"])
-
-        assert _ACTION in str(repair["uses"])
-        assert "success()" in condition
-        assert "steps.marker_probe.outcome == 'failure'" in condition
-        assert "steps.review.outputs.structured_output != ''" in condition
-        assert "track_progress" not in cast("dict[str, Any]", repair["with"])
-        assert "--max-turns 2" in args
-        assert "Do not review code" in prompt
-        assert "fromJSON(steps.review.outputs.structured_output).outcome" in prompt
-        assert "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }}" in prompt
-
-    def test_final_marker_verifier_runs_after_repair(self) -> None:
-        names = [str(step.get("name")) for step in _steps()]
-        probe = _named_step("Probe Claude outcome marker")
-        verifier = _named_step("Verify Claude outcome marker")
-
-        assert probe["continue-on-error"] is True
-        assert "--wait-seconds 30" in str(probe["run"])
-        assert "--poll-seconds 10" in str(probe["run"])
-        assert (
-            names.index("Probe Claude outcome marker")
-            < names.index("Repair Claude outcome marker")
-            < names.index("Verify Claude outcome marker")
-        )
-        assert "--require-outcome-marker" in str(verifier["run"])
-
-    def test_marker_checks_allow_controller_bootstrap(self) -> None:
-        probe = _named_step("Probe Claude outcome marker")
-        verifier = _named_step("Verify Claude outcome marker")
-        repair = _named_step("Repair Claude outcome marker")
-
-        assert "--allow-controller-bootstrap" in str(probe["run"])
-        assert "--allow-controller-bootstrap" in str(verifier["run"])
-        assert "steps.marker_probe.outcome == 'failure'" in str(repair["if"])
+        assert "--wait-seconds" not in str(verifier["run"])
