@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from scripts.validate_issue_sections import REQUIRED_SECTIONS
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -56,6 +58,17 @@ class TestAgentProcess:
         assert "agent_orchestrator.py" in process
         assert "never invokes a model" in process
         assert "human_merge:" in catalogue
+
+    def test_documented_control_plane_caps_match_the_catalogue(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
+            encoding="utf-8"
+        )
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+        )
+
+        for role in ("planner", "architect_reviewer", "implementer", "pr_reviewer", "fixer"):
+            assert f"| `{role}` | {catalogue['roles'][role]['max_runs']} |" in process
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"

@@ -36,7 +36,19 @@ def _state(**overrides: object) -> WorkflowState:
     return WorkflowState(**values)
 
 
+_EXAMPLE_STATE = (
+    Path(__file__).resolve().parent.parent / ".agents" / "orchestration" / "state.example.json"
+)
+
+
 class TestRoleCatalogue:
+    def test_example_workflow_state_is_a_valid_starting_point(self) -> None:
+        payload = json.loads(_EXAMPLE_STATE.read_text(encoding="utf-8"))
+
+        state = _state_from_json(payload)
+
+        assert decide(state, load_catalog()).next_role == "architect_reviewer"
+
     def test_all_initial_roles_have_complete_contracts(self) -> None:
         catalogue = load_catalog()
 
@@ -315,7 +327,7 @@ class TestBlockedRoutes:
         )
 
         assert missing_head.missing_evidence == ("head_sha",)
-        assert invalid_outcome.missing_evidence == ("valid_review_outcome",)
+        assert invalid_outcome.missing_evidence == ("review_outcome",)
         assert missing_head.status == invalid_outcome.status == "blocked"
         assert "pr_reviewer" not in invalid_outcome.completed_roles
 
@@ -344,6 +356,7 @@ class TestBlockedRoutes:
         ("payload", "message"),
         [
             ({"plan_completed": "false", "issue_kind": "nontrivial"}, "must be a boolean"),
+            ({"plan_completed": True, "issue_kind": "nontrivial", "head_sha": 12345}, "head_sha"),
             (
                 {"plan_completed": True, "issue_kind": "nontrivial", "fixer_revisions": -1},
                 "non-negative integer",
@@ -355,6 +368,10 @@ class TestBlockedRoutes:
     ) -> None:
         with pytest.raises(ValueError, match=message):
             _state_from_json(payload)
+
+    def test_missing_required_state_evidence_is_visible(self) -> None:
+        with pytest.raises(ValueError, match="plan_completed"):
+            _state_from_json({"issue_kind": "nontrivial"})
 
 
 class TestCli:
@@ -371,3 +388,13 @@ class TestCli:
         result = json.loads(capsys.readouterr().out)
         assert result["next_role"] == "architect_reviewer"
         assert result["status"] == "next"
+
+    def test_cli_reports_a_missing_state_file_without_a_traceback(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        missing_file = tmp_path / "missing-state.json"
+
+        with pytest.raises(SystemExit, match="2"):
+            main([str(missing_file)])
+
+        assert str(missing_file) in capsys.readouterr().err
