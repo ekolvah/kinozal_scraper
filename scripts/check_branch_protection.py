@@ -39,7 +39,9 @@ import subprocess
 import sys
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
+
+import yaml
 
 # Канон состава required-контекстов ветки `main`.
 REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link")
@@ -57,6 +59,9 @@ BRANCH = "main"
 # Плейсхолдеры `{owner}`/`{repo}` подставляет сам `gh`; без ведущего слэша — иначе MSYS
 # на Windows подменит путь (CLAUDE.md §Среда).
 _ENDPOINT = f"repos/{{owner}}/{{repo}}/branches/{BRANCH}/protection"
+# Одиночный GET к GitHub API; щедро, но конечно — эта проверка стоит перед восьмиминутным
+# ci_check, и висеть без вывода ей нельзя.
+_GH_TIMEOUT_S = 30
 
 
 def protection_drift(
@@ -79,8 +84,24 @@ def contexts_from_protection(payload: Mapping[str, Any]) -> tuple[str, ...]:
     пишется при обновлении. Отсутствие ключа даёт пустой кортеж, то есть **дрейф**, а не сбой:
     снесённый protection — самый вероятный реальный сценарий, и молчать о нём нельзя.
     """
-    checks = payload.get("required_status_checks", {}).get("checks", [])
+    # `or {}` на каждом шаге, а не только дефолт `.get`: явный JSON `null` в ответе — это не
+    # отсутствующий ключ, и без него `.get` на `None` кинул бы AttributeError, то есть отказ
+    # инструмента ушёл бы наружу под кодом 1 («дрейф») — ровно та подмена, от которой
+    # `fetch_protection` защищается.
+    checks = (payload.get("required_status_checks") or {}).get("checks") or []
     return tuple(check["context"] for check in checks)
+
+
+def load_workflows(directory: Path) -> dict[str, Mapping[Any, Any]]:
+    """Распарсить воркфлоу каталога: имя файла → документ.
+
+    Оба расширения, потому что GitHub Actions принимает и `.yml`, и `.yaml`: гард, который
+    смотрит только на первое, пропустил бы новый PR-джоб в `.yaml` молча и вакуумно позеленел
+    (§IV — в том самом гарде, чья работа это ловить). Пустой файл `safe_load` отдаёт как `None`,
+    нормализуем в `{}`, иначе обход упал бы трейсбеком вместо вердикта.
+    """
+    paths = sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
+    return {path.name: yaml.safe_load(path.read_text(encoding="utf-8")) or {} for path in paths}
 
 
 def _triggers(doc: Mapping[Any, Any]) -> Any:
@@ -103,40 +124,57 @@ def _runs_on_pull_request(triggers: Any) -> bool:
     return False
 
 
+# Фильтры на `pull_request`-триггере: с ними джоб отчитывается не на каждом PR, а required-контекст
+# обязан отчитаться на любом — иначе он навсегда «Expected».
+_TRIGGER_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")
+
+
+class _Job(NamedTuple):
+    """Определение джоба вместе с фильтрами воркфлоу, который его несёт."""
+
+    definition: Mapping[str, Any]
+    filters: tuple[str, ...]
+
+
+def _pull_request_filters(triggers: Any) -> tuple[str, ...]:
+    """Фильтры на `pull_request`-триггере, из-за которых джоб отчитается не на каждом PR."""
+    if not isinstance(triggers, Mapping):
+        return ()
+    config = triggers.get("pull_request")
+    if not isinstance(config, Mapping):
+        return ()
+    return tuple(key for key in _TRIGGER_FILTERS if key in config)
+
+
 def _pull_request_jobs(
     workflows: Mapping[str, Mapping[Any, Any]],
-) -> dict[str, Mapping[str, Any]]:
-    """Эффективное имя check-run'а → определение джоба, по всем PR-воркфлоу.
+) -> tuple[dict[str, _Job], list[str]]:
+    """Эффективное имя check-run'а → джоб, плюс список имён, встретившихся дважды.
 
     Имя контекста — это `name:` джоба, если он задан, иначе ключ джоба. Сверка по ключу
     сломалась бы молча при добавлении `name:`, оставив required-контекст навсегда в статусе
     «Expected»; при `enforce_admins: true` это заперло бы мёрдж, включая PR с починкой.
+    Коллизия имён возвращается отдельно, а не затирается молча: какой из двух джобов отчитается
+    под этим контекстом — неопределённость, а не деталь.
     """
-    jobs: dict[str, Mapping[str, Any]] = {}
+    jobs: dict[str, _Job] = {}
+    duplicates: list[str] = []
     for doc in workflows.values():
-        if not _runs_on_pull_request(_triggers(doc)):
+        triggers = _triggers(doc)
+        if not _runs_on_pull_request(triggers):
             continue
+        filters = _pull_request_filters(triggers)
         for job_key, job in (doc.get("jobs") or {}).items():
-            job = job or {}
-            jobs[job.get("name") or job_key] = job
-    return jobs
+            context = (job or {}).get("name") or job_key
+            if context in jobs:
+                duplicates.append(context)
+            jobs[context] = _Job(job or {}, filters)
+    return jobs, duplicates
 
 
-def declaration_problems(
-    workflows: Mapping[str, Mapping[Any, Any]],
-    declared: Iterable[str] = REQUIRED_CONTEXTS,
-    excluded: Mapping[str, str] = NOT_REQUIRED,
-) -> list[str]:
-    """Расхождения объявления с воркфлоу репо — оффлайн-половина гарда.
-
-    Ловит то, что сетевая половина увидеть не может: контекст без джоба (вечный «Expected»),
-    джоб с матрицей (контекст размножается в `job (value)`, голое имя не отчитается никогда),
-    новый PR-джоб, про который решение «required или нет» не принято.
-    """
-    jobs = _pull_request_jobs(workflows)
-    declared = tuple(declared)
+def _declared_problems(declared: tuple[str, ...], jobs: Mapping[str, _Job]) -> list[str]:
+    """Проблемы объявленных контекстов: нет джоба, матрица, фильтр на триггере."""
     problems: list[str] = []
-
     for context in declared:
         job = jobs.get(context)
         if job is None:
@@ -145,12 +183,25 @@ def declaration_problems(
                 f"нет — он навсегда останется в статусе «Expected» и запрёт мёрдж"
             )
             continue
-        if "matrix" in (job.get("strategy") or {}):
+        if "matrix" in (job.definition.get("strategy") or {}):
             problems.append(
                 f"{context!r} объявлен голым именем, но джоб использует matrix — реальные "
                 f"контексты будут вида '{context} (value)'"
             )
+        if job.filters:
+            problems.append(
+                f"{context!r} объявлен required, но его воркфлоу фильтрует `pull_request` по "
+                f"{', '.join(job.filters)} — на PR, не прошедшем фильтр, контекст не отчитается "
+                f"вовсе и запрёт мёрдж, включая PR со снятием фильтра"
+            )
+    return problems
 
+
+def _undeclared_problems(
+    declared: tuple[str, ...], jobs: Mapping[str, _Job], excluded: Mapping[str, str]
+) -> list[str]:
+    """Проблемы остальных: решение не принято, исключение без причины, протухшее исключение."""
+    problems: list[str] = []
     for context in sorted(jobs):
         if context in declared:
             continue
@@ -161,8 +212,39 @@ def declaration_problems(
             )
         elif not excluded[context].strip():
             problems.append(f"{context!r} исключён из required без причины")
-
+    for context in sorted(excluded):
+        if context not in jobs:
+            problems.append(
+                f"{context!r} числится в NOT_REQUIRED, но PR-джоба с таким именем больше нет — "
+                f"протухшее исключение переживает свой джоб и молча ничего не значит"
+            )
+        elif context in declared:
+            problems.append(f"{context!r} одновременно в REQUIRED_CONTEXTS и NOT_REQUIRED")
     return problems
+
+
+def declaration_problems(
+    workflows: Mapping[str, Mapping[Any, Any]],
+    declared: Iterable[str] = REQUIRED_CONTEXTS,
+    excluded: Mapping[str, str] = NOT_REQUIRED,
+) -> list[str]:
+    """Расхождения объявления с воркфлоу репо — оффлайн-половина гарда.
+
+    Ловит то, что сетевая половина увидеть не может: контекст без джоба (вечный «Expected»),
+    джоб с матрицей или с фильтром на триггере (контекст отчитается не всегда), новый PR-джоб,
+    про который решение «required или нет» не принято, и протухшее/противоречивое исключение.
+    """
+    jobs, duplicates = _pull_request_jobs(workflows)
+    declared = tuple(declared)
+    return [
+        *(
+            f"имя check-run'а {context!r} принадлежит более чем одному PR-джобу — какой из них "
+            f"отчитается под этим контекстом, неопределено"
+            for context in sorted(set(duplicates))
+        ),
+        *_declared_problems(declared, jobs),
+        *_undeclared_problems(declared, jobs, excluded),
+    ]
 
 
 def fetch_protection() -> Mapping[str, Any]:
@@ -172,12 +254,22 @@ def fetch_protection() -> Mapping[str, Any]:
     сеть) не должен быть истолкован как «required-контекстов нет», то есть как дрейф — это ложный
     диагноз с противоположным лечением.
     """
-    result = subprocess.run(
-        ["gh", "api", _ENDPOINT],
-        text=True,
-        capture_output=True,
-        encoding="utf-8",
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "api", _ENDPOINT],
+            text=True,
+            capture_output=True,
+            encoding="utf-8",
+            timeout=_GH_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        # Без таймаута зависший `gh` (прокси, DNS-чёрная дыра) повесил бы pre-push без вывода —
+        # а `CLAUDE.md` §Среда прямо учит оператора не убивать долгий pre-push.
+        print(
+            f"error: `gh api {_ENDPOINT}` не ответил за {_GH_TIMEOUT_S} с — проверка не выполнена.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     if result.stdout is None or result.stderr is None:
         print(
             f"error: capture failed for `gh api {_ENDPOINT}` (rc={result.returncode}): "

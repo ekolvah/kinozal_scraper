@@ -42,6 +42,15 @@ ever crosses the Bash tool's 10-minute ceiling, the derived constant
 `timeout: 600000` in `.claude/commands/implement.md` step 6 stops working and
 needs revisiting together with this number.
 
+**`pre-push` runs two gates, not one.** Ahead of `ci_check.py` it runs
+`scripts/check_branch_protection.py` — a single `gh` call (seconds, 30 s timeout) that compares
+the declared required status checks against GitHub's actual config. It is deliberately first: a
+mismatch aborts the push immediately instead of costing the eight minutes below, which also
+leaves its message as the last thing on screen rather than scrolled away. Both non-zero codes
+stop the push and the hook propagates them unchanged (`1` drift, `2` the tool itself failed), so
+the two stay distinguishable. Details and the reasoning are in
+[§Required status checks](#required-status-checks-branch-protection).
+
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
 `python scripts/ci_check.py --only <name>`, so local and CI cannot drift. If
@@ -341,10 +350,17 @@ maintainer approval, disabled Actions, or a renamed workflow on the PR branch. `
 true` leaves no override. The cheap recovery is that `pr-link.yml` also triggers on `edited`, so
 editing the PR title/description re-runs it; pushing a commit works too. The same lockout risk
 that disqualifies `review` applies to `pr-link` and is **accepted** here: its trigger set covers
-every PR event and it runs on `github.token` alone, so it has no secret to lose. The renaming
-trap is guarded — a required context is the check-run name (a job's `name:`, else its key), and
-a rename or a `strategy.matrix` on a declared job would leave the context permanently "Expected",
-locking out even the PR that fixes it.
+every PR event and it runs on `github.token` alone, so it has no secret to lose. Three ways to
+manufacture that trap are guarded, because each one leaves a declared context permanently
+"Expected" and locks out even the PR that would undo it: renaming the job (a required context is
+the check-run name — a job's `name:`, else its key), putting a `strategy.matrix` on it (real
+contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`branches-ignore`
+filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
+a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
+
+One property the required status does **not** buy: on a fork PR the job executes the *fork's*
+copy of its own script, so a fork could make `pr-link` pass unconditionally. The human merge
+button remains the real control; this is worth stating once now that the check is required.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
 an expected extra minute, not a malfunction.

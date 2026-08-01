@@ -25,8 +25,10 @@ if [ -z "$PY" ]; then
 fi
 
 # Сначала дешёвая сетевая сверка (секунды), потом тяжёлый гейт (минуты): дрейф required-контекстов
-# не должен стоить полного прогона ci_check, прежде чем о нём скажут.
+# не должен стоить полного прогона ci_check, прежде чем о нём скажут. Обе формы отказа блокируют
+# push, но код возврата пробрасывается как есть (`exit $?`), чтобы «дрейф» (1) и «инструмент не
+# сработал» (2) различались снаружи, а не схлопывались в один.
 # shellcheck disable=SC2086
-$PY scripts/check_branch_protection.py || exit 1
+$PY scripts/check_branch_protection.py || exit $?
 # shellcheck disable=SC2086
-$PY scripts/ci_check.py || exit 1
+$PY scripts/ci_check.py || exit $?

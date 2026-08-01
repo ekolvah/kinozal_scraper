@@ -28,7 +28,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from scripts.check_branch_protection import (
     NOT_REQUIRED,
@@ -36,23 +35,13 @@ from scripts.check_branch_protection import (
     contexts_from_protection,
     declaration_problems,
     fetch_protection,
+    load_workflows,
     protection_drift,
 )
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _HOOK = _REPO_ROOT / ".githooks" / "pre-push"
-
-
-def _load_workflows() -> dict[str, dict[Any, Any]]:
-    """Реальные воркфлоу репо: имя файла → распарсенный документ.
-
-    Ключи документа намеренно `Any`: YAML 1.1 читает голое `on:` как булев `True`.
-    """
-    return {
-        path.name: yaml.safe_load(path.read_text(encoding="utf-8"))
-        for path in sorted(_WORKFLOWS.glob("*.yml"))
-    }
 
 
 class TestDriftDetection:
@@ -116,10 +105,26 @@ class TestProtectionFetch:
             fetch_protection()
         assert exc.value.code == 2
 
+    def test_gh_timeout_exits_2(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Зависший `gh` не имеет права повесить pre-push без вывода."""
+
+        def _hang(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+            raise subprocess.TimeoutExpired(cmd="gh", timeout=30)
+
+        monkeypatch.setattr(subprocess, "run", _hang)
+        with pytest.raises(SystemExit) as exc:
+            fetch_protection()
+        assert exc.value.code == 2
+
     def test_absent_required_status_checks_is_drift_not_infra(self) -> None:
         """Снесённый protection — самый вероятный реальный сценарий, это дрейф, не сбой."""
         assert contexts_from_protection({}) == ()
         assert contexts_from_protection({"required_status_checks": {}}) == ()
+
+    def test_null_required_status_checks_is_drift_not_crash(self) -> None:
+        """Явный JSON `null` — не то же, что отсутствующий ключ; трейсбек дал бы код 1."""
+        assert contexts_from_protection({"required_status_checks": None}) == ()
+        assert contexts_from_protection({"required_status_checks": {"checks": None}}) == ()
 
     def test_contexts_are_read_from_the_checks_field(self) -> None:
         """Читаем недеприкейченную форму `checks[*].context`, ту же, что пишем."""
@@ -157,7 +162,9 @@ class TestDeclarationMatchesWorkflows:
         всё остальное вакуумно и молча ничего не гарантировал бы (§IV).
         """
         assert REQUIRED_CONTEXTS, "пустое объявление молча не гарантирует ничего"
-        assert declaration_problems(_load_workflows(), REQUIRED_CONTEXTS, NOT_REQUIRED) == []
+        assert (
+            declaration_problems(load_workflows(_WORKFLOWS), REQUIRED_CONTEXTS, NOT_REQUIRED) == []
+        )
 
     def test_every_pull_request_job_is_declared_or_excluded(self) -> None:
         """Новый PR-джоб обязан быть либо required, либо исключённым с причиной."""
@@ -208,6 +215,71 @@ class TestDeclarationMatchesWorkflows:
         """YAML 1.1 читает голое `on:` как `True` — джоб не должен из-за этого потеряться."""
         workflows = {"new.yml": {True: {"pull_request": None}, "jobs": {"gate": {}}}}
         assert declaration_problems(workflows, (), {}) != []
+
+    def test_trigger_filter_on_declared_context_is_a_problem(self) -> None:
+        """`paths`/`branches` на триггере — контекст отчитается не на каждом PR."""
+        for filter_key in ("paths", "paths-ignore", "branches", "branches-ignore"):
+            workflows = {
+                "new.yml": {
+                    "on": {"pull_request": {filter_key: ["src/**"]}},
+                    "jobs": {"gate": {}},
+                }
+            }
+            problems = declaration_problems(workflows, ("gate",), {})
+            assert len(problems) == 1, filter_key
+            assert filter_key in problems[0]
+
+    def test_unfiltered_trigger_is_clean(self) -> None:
+        """`types:` фильтром не является — он сужает события, а не набор PR."""
+        workflows = {
+            "new.yml": {
+                "on": {"pull_request": {"types": ["opened", "edited"]}},
+                "jobs": {"gate": {}},
+            }
+        }
+        assert declaration_problems(workflows, ("gate",), {}) == []
+
+    def test_stale_exclusion_is_a_problem(self) -> None:
+        """Исключение, переживающее свой удалённый джоб, молча ничего не значит."""
+        workflows = {"new.yml": {"on": {"pull_request": None}, "jobs": {"gate": {}}}}
+        problems = declaration_problems(workflows, ("gate",), {"ghost": "причина есть"})
+        assert len(problems) == 1
+        assert "ghost" in problems[0]
+
+    def test_context_in_both_lists_is_a_problem(self) -> None:
+        """Контекст и required, и исключённый — противоречие, а не уточнение."""
+        workflows = {"new.yml": {"on": {"pull_request": None}, "jobs": {"gate": {}}}}
+        problems = declaration_problems(workflows, ("gate",), {"gate": "причина есть"})
+        assert len(problems) == 1
+        assert "gate" in problems[0]
+
+    def test_duplicate_effective_job_name_is_a_problem(self) -> None:
+        """Одно имя check-run'а на два джоба — неопределённость, не деталь."""
+        workflows = {
+            "a.yml": {"on": {"pull_request": None}, "jobs": {"gate": {}}},
+            "b.yml": {"on": {"pull_request": None}, "jobs": {"other": {"name": "gate"}}},
+        }
+        problems = declaration_problems(workflows, ("gate",), {})
+        assert any("более чем одному" in p for p in problems)
+
+    def test_yaml_extension_workflow_is_loaded(self, tmp_path: Path) -> None:
+        """GitHub принимает и `.yaml`; гард, слепой к нему, зеленел бы вакуумно."""
+        (tmp_path / "a.yml").write_text(
+            "on:\n  pull_request:\njobs:\n  one: {}\n", encoding="utf-8"
+        )
+        (tmp_path / "b.yaml").write_text(
+            "on:\n  pull_request:\njobs:\n  two: {}\n", encoding="utf-8"
+        )
+        loaded = load_workflows(tmp_path)
+        assert set(loaded) == {"a.yml", "b.yaml"}
+        problems = declaration_problems(loaded, (), {})
+        assert len(problems) == 2
+
+    def test_empty_workflow_file_does_not_crash(self, tmp_path: Path) -> None:
+        """Пустой файл `safe_load` отдаёт как `None` — обход обязан пережить это."""
+        (tmp_path / "empty.yml").write_text("", encoding="utf-8")
+        assert load_workflows(tmp_path) == {"empty.yml": {}}
+        assert declaration_problems(load_workflows(tmp_path), (), {}) == []
 
     def test_non_pull_request_workflow_is_ignored(self) -> None:
         """Cron-джоб не может быть required-контекстом PR — он и не обязан объявляться."""
@@ -301,6 +373,12 @@ class TestPrePushHook:
         assert result.returncode != 0
         assert not any(c.startswith("bin|") for c in calls)
         assert sum("ci_check.py" in c for c in calls) == 1
+
+    def test_gate_exit_code_is_propagated(self, tmp_path: Path) -> None:
+        """`2` (инструмент не сработал) и `1` (дрейф) снаружи должны различаться."""
+        self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
+        (tmp_path / "rc-check_branch_protection.py").write_text("2", encoding="utf-8")
+        assert self._run(tmp_path).returncode == 2
 
     def test_gate_stderr_is_not_swallowed(self, tmp_path: Path) -> None:
         """`2>/dev/null` остаётся только на пробе интерпретатора, не на прогоне гейта."""
