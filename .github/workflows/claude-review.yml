@@ -74,8 +74,8 @@ jobs:
               at the relevant line for every blocking and should-fix finding.
               Lower-severity and low-confidence findings stay out of the inline
               channel so it does not drown, and appear in the summary instead.
-            - Always finish by posting a top-level summary via
-              `Bash(gh pr comment $PR_NUMBER --repo $REPO --body "...")`. The
+            - Always finish by posting a top-level summary with the available
+              `update_claude_comment` tool; do not rely on Bash or `gh pr comment`. The
               summary lists every finding grouped by severity, including the
               ones that got no inline comment. Only when you found nothing at
               any severity, post exactly: "✅ Review complete — nothing found."
@@ -93,3 +93,14 @@ jobs:
               required status; never omit or alter the marker.
 
             Do not approve or merge — those stay with the human reviewer.
+
+      - name: Verify Claude outcome marker
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          python scripts/check_claude_review.py
+          --repo ${{ github.repository }}
+          --pr ${{ github.event.pull_request.number }}
+          --head-sha ${{ github.event.pull_request.head.sha }}
+          --require-outcome-marker
+          --allow-controller-bootstrap

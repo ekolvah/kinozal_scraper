@@ -134,6 +134,7 @@ class TestReviewOutcomeGate:
             "claude-review-outcome: sha=${{ github.event.pull_request.head.sha }} outcome=clean"
             in prompt
         )
+        assert "update_claude_comment" in prompt
 
     def test_trusted_target_workflow_is_the_only_required_gate(self) -> None:
         data = yaml.safe_load(_GATE_WORKFLOW.read_text(encoding="utf-8"))
@@ -145,3 +146,14 @@ class TestReviewOutcomeGate:
         verifier = steps[1]
         assert "trusted/scripts/check_claude_review.py" in str(verifier["run"])
         assert "--head-sha ${{ github.event.pull_request.head.sha }}" in str(verifier["run"])
+        assert "--wait-seconds 360" in str(verifier["run"])
+
+    def test_claude_review_workflow_verifies_marker_after_review(self) -> None:
+        data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
+        steps = cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
+        verifier = next(
+            step for step in steps if step.get("name") == "Verify Claude outcome marker"
+        )
+
+        assert "--require-outcome-marker" in str(verifier["run"])
+        assert "--allow-controller-bootstrap" in str(verifier["run"])

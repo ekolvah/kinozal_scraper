@@ -108,6 +108,10 @@ surface as an exceptional human decision:
    GitHub PR-files API, and accepts that marker only from a configured
    maintainer. It otherwise remains red rather than treating the provider skip
    as approval.
+4. The provider-side marker check reports that skip as a visible warning, not
+   as a clean Claude review. On ordinary PRs the trusted gate polls bounded
+   current-head evidence; a GitHub transport failure is infrastructure failure,
+   never a reviewer verdict.
 
 No agent may treat the provider skip as an approval or post the maintainer
 marker. The first PR that installs this trusted default-branch gate cannot use
