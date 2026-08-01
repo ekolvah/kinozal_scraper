@@ -145,6 +145,14 @@ class TestReviewGateExitCodes:
         )
         main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
 
+    def test_controller_marker_is_checked_without_waiting(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._mock_evidence(monkeypatch, [_comment("summary")], ["scripts/check_claude_review.py"])
+        with pytest.raises(SystemExit) as exc:
+            main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
+        assert exc.value.code == 2
+
     def test_controller_pr_can_defer_producer_marker_to_trusted_bootstrap(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

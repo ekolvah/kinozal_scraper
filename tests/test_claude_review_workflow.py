@@ -140,6 +140,22 @@ class TestReviewOutcomeGate:
         assert all(outcome in args for outcome in ("clean", "rework", "blocking"))
         assert "structured output `outcome` must exactly match the marker outcome" in prompt
 
+    def test_workflow_enforces_structured_outcome_directly(self) -> None:
+        verifier = _named_step("Enforce Claude review outcome")
+
+        assert "check_claude_review_outcome.py" in str(verifier["run"])
+        assert "steps.review.outputs.structured_output" in str(verifier["env"])
+        assert verifier["if"] == "${{ always() }}"
+
+    def test_ordinary_review_has_no_marker_repair_or_polling(self) -> None:
+        names = [str(step.get("name")) for step in _steps()]
+        prompt = _prompt()
+
+        assert "Probe Claude outcome marker" not in names
+        assert "Repair Claude outcome marker" not in names
+        assert "Verify Claude outcome marker" not in names
+        assert "claude-review-outcome:" not in prompt
+
     def test_prompt_requires_machine_readable_outcome_for_current_head(self) -> None:
         prompt = _prompt()
         assert (
