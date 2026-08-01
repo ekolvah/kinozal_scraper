@@ -143,7 +143,7 @@ class TestReviewOutcomeGate:
     def test_workflow_enforces_structured_outcome_directly(self) -> None:
         verifier = _named_step("Enforce Claude review outcome")
 
-        assert "check_claude_review_outcome.py" in str(verifier["run"])
+        assert "python -m scripts.check_claude_review_outcome" in str(verifier["run"])
         assert "steps.review.outputs.structured_output" in str(verifier["env"])
         assert verifier["if"] == "${{ always() }}"
 
@@ -162,7 +162,7 @@ class TestReviewOutcomeGate:
         assert "merge authority" in prompt
         assert "update_claude_comment" in prompt
 
-    def test_trusted_target_workflow_is_the_only_required_gate(self) -> None:
+    def test_trusted_target_workflow_is_the_controller_gate(self) -> None:
         data = yaml.safe_load(_GATE_WORKFLOW.read_text(encoding="utf-8"))
         assert "pull_request_target" in data[True]
         steps = cast("list[dict[str, Any]]", data["jobs"]["agent-review-gate"]["steps"])

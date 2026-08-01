@@ -7,9 +7,9 @@ import sys
 from collections.abc import Sequence
 
 try:  # module import in tests
-    from scripts.check_claude_review import controller_changed, fetch_changed_paths
+    from scripts import check_claude_review as review_gate
 except ModuleNotFoundError:  # direct `python scripts/...` workflow execution
-    from check_claude_review import controller_changed, fetch_changed_paths
+    import check_claude_review as review_gate
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -24,7 +24,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             print("error: expected optional --repo OWNER/REPO --pr NUMBER", file=sys.stderr)
             raise SystemExit(2)
         try:
-            if controller_changed(fetch_changed_paths(args[1], int(args[3]))):
+            if review_gate.controller_changed(review_gate.fetch_changed_paths(args[1], int(args[3]))):
                 print(
                     "::warning::controller PR did not run a self-review; bootstrap remains required"
                 )

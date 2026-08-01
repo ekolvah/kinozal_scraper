@@ -98,5 +98,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
         run: >
-          python scripts/check_claude_review_outcome.py "$STRUCTURED_OUTCOME"
+          python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
           --repo ${{ github.repository }} --pr ${{ github.event.pull_request.number }}

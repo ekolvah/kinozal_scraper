@@ -12,7 +12,7 @@ class TestOutcome:
         import scripts.check_claude_review_outcome as outcome_gate
 
         monkeypatch.setattr(
-            outcome_gate,
+            outcome_gate.review_gate,
             "fetch_changed_paths",
             lambda *_args: [".github/workflows/claude-review.yml"],
         )

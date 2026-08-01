@@ -32,6 +32,7 @@ _REVIEW_CONTROLLER_PATHS = frozenset(
         ".github/workflows/claude-review.yml",
         ".github/workflows/agent-review-gate.yml",
         "scripts/check_claude_review.py",
+        "scripts/check_claude_review_outcome.py",
     }
 )
 
