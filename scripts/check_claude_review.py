@@ -149,12 +149,17 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--wait-seconds", type=int, default=0)
     parser.add_argument("--poll-seconds", type=int, default=10)
     parser.add_argument("--require-outcome-marker", action="store_true")
+    parser.add_argument("--allow-controller-bootstrap", action="store_true")
     args = parser.parse_args(argv)
     if args.wait_seconds < 0 or args.poll_seconds < 1:
         parser.error("wait-seconds must be non-negative and poll-seconds must be positive")
     try:
         comments = fetch_comments(args.repo, args.pr)
         if args.require_outcome_marker:
+            changed_paths = fetch_changed_paths(args.repo, args.pr)
+            if args.allow_controller_bootstrap and controller_changed(changed_paths):
+                print("ok: controller PR awaits trusted maintainer bootstrap marker")
+                return
             outcome = outcome_from_comments(comments, args.head_sha)
             if outcome is not None:
                 print(f"ok: Claude posted current-head {outcome} outcome marker")

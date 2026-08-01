@@ -137,6 +137,26 @@ class TestReviewGateExitCodes:
         )
         main(["--repo", "owner/repo", "--pr", "1", "--head-sha", HEAD])
 
+    def test_controller_pr_can_defer_producer_marker_to_trusted_bootstrap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._mock_evidence(
+            monkeypatch, [_comment("summary")], [".github/workflows/claude-review.yml"]
+        )
+
+        main(
+            [
+                "--repo",
+                "owner/repo",
+                "--pr",
+                "1",
+                "--head-sha",
+                HEAD,
+                "--require-outcome-marker",
+                "--allow-controller-bootstrap",
+            ]
+        )
+
     def test_gh_transport_failure_is_distinct(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fail(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(args=["gh"], returncode=1, stdout="", stderr="403")
