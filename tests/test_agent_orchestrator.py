@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
+from typing import Any
+
+import pytest
 
 from scripts.agent_orchestrator import WorkflowState, decide, load_catalog, main
 
 
 def _state(**overrides: object) -> WorkflowState:
-    values: dict[str, object] = {
+    values: dict[str, Any] = {
         "plan_completed": True,
         "issue_kind": "nontrivial",
         "architect_completed": False,
@@ -130,7 +134,9 @@ class TestEvidenceTruthfulness:
 
 
 class TestCli:
-    def test_cli_reads_state_and_emits_structured_next_action(self, tmp_path, capsys) -> None:
+    def test_cli_reads_state_and_emits_structured_next_action(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         state_file = tmp_path / "state.json"
         state_file.write_text(
             json.dumps({"plan_completed": True, "issue_kind": "nontrivial"}), encoding="utf-8"
