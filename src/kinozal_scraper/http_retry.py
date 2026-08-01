@@ -20,6 +20,9 @@
   Backoff в 1/2/4 s это окно не закрывает — он лишь добавляет три холостых запроса в
   тот же счётчик. Уважение `Retry-After` — отдельная задача; пока источники делают
   один-два запроса за прогон, дешевле не ретраить вовсе и показать отказ (§IV).
+  **Для Steam Store это решение по аналогии, а не по источнику:** публичного
+  контракта у `appdetails` нет, окно сброса не документировано и не замерено —
+  разница записана в `coverage-gaps.md` **M2**, чтобы не читаться как замер.
 
 Оба набора намеренно расходятся с `sheets_storage._TRANSIENT_CODES`, который
 исключает 403 как fail-fast permission-fault: три соседних слоя трактуют 403
@@ -57,12 +60,17 @@ ANTIBOT_TRANSIENT_CODES = frozenset({403, 429, 500, 502, 503, 504})
 API_TRANSIENT_CODES = frozenset({500, 502, 503, 504})
 
 # 4 attempts / max=30 (vs sheets' 5 / max=60): every source runs in the same CI job,
-# so the worst-case stall stays capped at ~2+4+8≈14 s per call site; after give-up
-# `reraise=True` hands the error to the per-source guard → §IV visible anomaly.
+# so the worst-case stall stays capped. With `wait_exponential(multiplier=1)` the
+# sleeps are 1 s, 2 s, 4 s — three of them for four attempts, so ~7 s per call site,
+# NOT the ~14 s the pre-#365 comment claimed (the 8 s wait belongs to a fifth attempt
+# that `stop_after_attempt(4)` never makes). Pinned by
+# `test_http_retry.py::TestPolicyParity::test_give_up_sleeps_one_two_four`, so the
+# figure the M2 argument rests on cannot drift back into prose-only.
+# After give-up `reraise=True` hands the error to the per-source guard → §IV.
 _MAX_ATTEMPTS = 4
 
 
-def transient_http_predicate(codes: Iterable[int]) -> Callable[[BaseException], bool]:
+def _transient_http_predicate(codes: Iterable[int]) -> Callable[[BaseException], bool]:
     """Build the "is this worth retrying" predicate for a given set of statuses.
 
     Keys off the authoritative HTTP status carried by the raised `HTTPError`. An
@@ -91,7 +99,7 @@ def transient_http_predicate(codes: Iterable[int]) -> Callable[[BaseException], 
 # HTML transport: `_get_once` already logs `describe_block` on every attempt (#358),
 # so a second per-attempt line here would only duplicate it.
 retry_antibot_http = retry(
-    retry=retry_if_exception(transient_http_predicate(ANTIBOT_TRANSIENT_CODES)),
+    retry=retry_if_exception(_transient_http_predicate(ANTIBOT_TRANSIENT_CODES)),
     stop=stop_after_attempt(_MAX_ATTEMPTS),
     wait=wait_exponential(multiplier=1, max=30),
     reraise=True,
@@ -101,7 +109,7 @@ retry_antibot_http = retry(
 # source stays invisible until it dies outright — the retry would hide exactly the
 # degradation it was added to survive (§IV).
 retry_api_http = retry(
-    retry=retry_if_exception(transient_http_predicate(API_TRANSIENT_CODES)),
+    retry=retry_if_exception(_transient_http_predicate(API_TRANSIENT_CODES)),
     stop=stop_after_attempt(_MAX_ATTEMPTS),
     wait=wait_exponential(multiplier=1, max=30),
     reraise=True,

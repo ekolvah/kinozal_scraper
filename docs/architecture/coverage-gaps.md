@@ -54,10 +54,19 @@ decision goes to" route — and the rule itself — live in
   and conscious; a broadening waits for an actual network-error incident.
 - **M2. 403/429 are NOT retried on the JSON-API transport (#365).** `github_popular_pipeline` and
   `steam_pipeline` run on `API_TRANSIENT_CODES` (5xx only), unlike the Cloudflare-fronted HTML
-  transport whose 403 is a proven-transient anti-bot challenge. **Accepted** — for these hosts
-  403/429 is a rate limit with its own reset window that a 1/2/4 s backoff cannot close, and GitHub
-  documents that continuing to request while limited risks banning the integration. Honouring
-  `Retry-After` is the real fix and stays unbuilt while each source makes one-two calls per run.
+  transport whose 403 is a proven-transient anti-bot challenge. **Accepted**, but the two hosts
+  rest on different evidence and the record must not blur them:
+  - **GitHub — from the source.** The REST API documents the reset window
+    (`x-ratelimit-reset` / `retry-after`) and warns that continuing to request while limited may
+    get the integration banned. The 1/2/4 s backoff cannot close that window.
+  - **Steam Store — by analogy, unverified.** `appdetails` has no public contract: no documented
+    reset window, no stated ban policy, and no measurement of our own. The rule was carried over
+    from GitHub because the shape of the failure looks the same — that is a judgement, not
+    evidence, and it covers `_fetch_appdetails`, the one call site whose failure does not
+    self-heal (#437). If a 429 is ever observed there, this is the entry to revisit first.
+
+  Honouring `Retry-After` is the real fix for both and stays unbuilt while each source makes
+  one-two calls per run.
 - **M3. `success: false` on a 200 from Steam appdetails is not covered by retry (#365).** It is a
   second route to the same `⚠️ Game #` placeholder, and the predicate — keyed off `HTTPError` —
   skips it by construction. **Accepted**: no measurement separates it from the 5xx route today, and

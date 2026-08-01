@@ -316,25 +316,51 @@ class TestEmptyAuthHeaderStripped(unittest.TestCase):
             _, kwargs = mock_get.call_args
             self.assertNotIn("Authorization", kwargs.get("headers", {}))
 
-    def test_stripped_header_is_logged(self) -> None:
-        # §IV: dropping the header is right, dropping it *silently* is not. An empty
-        # GITHUB_TOKEN expands to "Bearer " → unauthenticated search → 403, and with
-        # retry in place the operator would see several 403s and no cause at all.
-        source = {**_GITHUB_SOURCE, "headers": {"Authorization": "Bearer "}}
+    def _warnings_for(self, header_value: str) -> list[str]:
+        source = {**_GITHUB_SOURCE, "headers": {"Authorization": header_value}}
         config = {"version": 1, "sources": [source]}
 
         with (
             unittest.mock.patch(
                 "kinozal_scraper.github_popular_pipeline.requests.get",
                 return_value=make_json_response(200, _GITHUB_RESPONSE),
-            ),
+            ) as mock_get,
             self.assertLogs("kinozal_scraper.github_popular_pipeline", level="WARNING") as logs,
         ):
             run_github_popular_pipeline(
                 InMemoryStorage(), InMemoryNotifier(), sources_config=config
             )
 
-        self.assertTrue(any("Authorization" in line for line in logs.output), logs.output)
+        self.assertNotIn("Authorization", mock_get.call_args.kwargs.get("headers", {}))
+        return logs.output
+
+    def test_unset_token_is_not_reported_as_empty(self) -> None:
+        # §IV: dropping the header is right, dropping it *silently* is not — an unset
+        # GITHUB_TOKEN expands to "Bearer " → unauthenticated search → 403, and with
+        # retry in place that is several 403s and no cause at all. The message must
+        # NOT say "empty": the filter cannot tell an unset secret from one pasted
+        # with a stray space, and an operator sent to check whether the secret exists
+        # would see that it does and rule out the real cause.
+        output = self._warnings_for("Bearer ")
+
+        self.assertEqual(len(output), 1)
+        self.assertIn("ends with a space", output[0])
+        self.assertIn("Authorization", output[0])
+
+    def test_padded_token_is_reported_without_leaking_the_value(self) -> None:
+        output = self._warnings_for("Bearer ghp_xxx ")
+
+        self.assertEqual(len(output), 1)
+        self.assertIn("ends with a space", output[0])
+        self.assertNotIn("ghp_xxx", output[0])
+
+    def test_blank_header_is_reported_as_blank(self) -> None:
+        # The other drop reason, and the other fix: add the secret, don't edit it.
+        output = self._warnings_for("")
+
+        self.assertEqual(len(output), 1)
+        self.assertIn("blank value", output[0])
+        self.assertIn("Authorization", output[0])
 
 
 class TestFetchRetry(unittest.TestCase):

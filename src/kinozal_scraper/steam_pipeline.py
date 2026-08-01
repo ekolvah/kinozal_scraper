@@ -52,7 +52,8 @@ def _fetch_appdetails(appid: int) -> dict[str, Any] | None:
     NOT self-healing — the item ships with the `⚠️ Game #` placeholder and its row
     is stored as delivered, so dedupe by `appid` keeps it out of every later run
     (root cause of the irreversibility tracked in #437). Worst case with the retry
-    is `limit` × ~14 s, reachable only while charts stays up.
+    is `limit` × ~7 s (≈70 s at the default `STEAM_TOP_LIMIT`), and only while
+    charts stays up — a full Steam outage is cut short by `_fetch_charts`.
 
     `success: false` on a 200 is a **different** route to the same placeholder and
     is not covered here — see the accepted gap in `coverage-gaps.md`.

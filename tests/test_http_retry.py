@@ -29,7 +29,7 @@ from curl_cffi.requests.models import Response as CurlResponse
 from kinozal_scraper.http_retry import (
     ANTIBOT_TRANSIENT_CODES,
     API_TRANSIENT_CODES,
-    transient_http_predicate,
+    _transient_http_predicate,
 )
 
 _GITHUB_URL = "https://api.github.com/search/repositories"
@@ -61,8 +61,8 @@ def _requests_error(status: int) -> requests.HTTPError:
 
 class TestTransientPredicate(unittest.TestCase):
     def setUp(self) -> None:
-        self.is_antibot = transient_http_predicate(ANTIBOT_TRANSIENT_CODES)
-        self.is_api = transient_http_predicate(API_TRANSIENT_CODES)
+        self.is_antibot = _transient_http_predicate(ANTIBOT_TRANSIENT_CODES)
+        self.is_api = _transient_http_predicate(API_TRANSIENT_CODES)
 
     def test_curl_cffi_http_error_is_transient(self) -> None:
         # Reality-anchor moved here from test_http_fetch.py together with the
@@ -168,6 +168,25 @@ class TestPolicyParity(unittest.TestCase):
             self.assertEqual(get.call_count, 1, name)
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_give_up_sleeps_one_two_four(self, sleep: unittest.mock.Mock) -> None:
+        # The M2 argument ("a few seconds of backoff cannot close a rate-limit
+        # window") rests on this figure, so it is pinned rather than described:
+        # four attempts mean three sleeps, 1+2+4 = ~7 s — not the ~14 s the
+        # pre-#365 comment claimed by counting a fifth attempt that never runs.
+        from kinozal_scraper.github_popular_pipeline import _fetch_json
+
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.github_popular_pipeline.requests.get",
+                side_effect=lambda *a, **k: make_response(503),
+            ),
+            self.assertRaises(requests.HTTPError),
+        ):
+            _fetch_json(_GITHUB_URL, {}, {})
+
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4])
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_successful_retry_is_logged(self, _sleep: unittest.mock.Mock) -> None:
         # §IV: without a line per attempt a flapping source is invisible until it
         # dies completely — the retry would hide exactly what it was added to survive.
@@ -180,8 +199,11 @@ class TestPolicyParity(unittest.TestCase):
             ),
             self.assertLogs("kinozal_scraper.http_retry", level="WARNING") as logs,
             # Recovery itself is asserted by the pipeline's own TestFetchRetry; this
-            # test owns only the breadcrumb, and a failure to recover must surface as
-            # "no log line", not as an exception that never reaches the assertion.
+            # test owns only the breadcrumb. `suppress` covers the one regression that
+            # would otherwise escape before the assertion — "no retry at all", where
+            # the first 503 propagates. It is not a claim that every regression
+            # arrives as a missing log line: were the retry to fire and never recover,
+            # the two-item side_effect would run out and raise StopIteration instead.
             contextlib.suppress(requests.HTTPError),
         ):
             _fetch_json(_GITHUB_URL, {}, {})
