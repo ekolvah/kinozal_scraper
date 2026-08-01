@@ -120,6 +120,7 @@ class TestReviewOutcomeGate:
     def test_prompt_requires_machine_readable_outcome_for_this_run(self) -> None:
         prompt = _prompt()
         assert "claude-review-outcome: run=${{ github.run_id }} outcome=blocking" in prompt
+        assert "claude-review-outcome: run=${{ github.run_id }} outcome=rework" in prompt
         assert "claude-review-outcome: run=${{ github.run_id }} outcome=clean" in prompt
 
     def test_workflow_verifies_outcome_after_claude_action(self) -> None:

@@ -85,9 +85,11 @@ jobs:
             - End that top-level comment with exactly one machine-readable
               marker, on its own line. Use
               `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=blocking -->`
-              if any finding is blocking; otherwise use
-              `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=clean -->`.
-              The following check turns `blocking` into a failed required
+              if any finding is blocking; use
+              `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=rework -->`
+              if there are should-fix findings but no blocking finding; otherwise
+              use `<!-- claude-review-outcome: run=${{ github.run_id }} outcome=clean -->`.
+              The following check turns `blocking` and `rework` into a failed required
               status; never omit or alter the marker.
 
             Do not approve or merge — those stay with the human reviewer.

@@ -71,13 +71,21 @@ section stops and returns the issue to a planner rather than guessing it.
    foreground.
 4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
    closing reference. Fix CI findings up to three improving iterations and
-   process one review pass. A blocking reviewer outcome makes the `agent-review-gate`
-   GitHub check fail; a human merges the PR only after required checks pass.
+   enter the review/fix loop. After every push, wait for the current-head
+   reviewer outcome and all required checks. Fix every blocking and should-fix
+   finding in a separate fixer commit, push it, then repeat. The implementer
+   reports the PR ready for human merge only after the current head has a `clean`
+   reviewer outcome, no actionable review threads, and every required check passes.
 
 One PR is one logical unit. Do not bypass hooks, push to `main`, force-push,
 reset hard, delete branches forcefully, self-merge, or replace these gates with
 an agent assertion. Local agent hooks are defense in depth; GitHub branch
 protection is authoritative.
+A review check that is skipped, missing, malformed, or still pending is not a
+clean review. It leaves the PR not ready. GitHub cannot resume a local agent
+after its session ends; a session-driven adapter must stay active through this
+loop, while a fully autonomous loop needs separately operated runner and
+credential infrastructure.
 ## Governance conventions
 1. Create issue branches only with `python scripts/issue_branch.py <N>`; it
    starts from fresh `origin/main`. Never create a branch directly.

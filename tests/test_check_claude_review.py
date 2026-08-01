@@ -24,6 +24,10 @@ class TestOutcomeParsing:
         comments = [_comment("<!-- claude-review-outcome: run=1 outcome=blocking -->")]
         assert outcome_from_comments(comments, "1") == "blocking"
 
+    def test_rework_marker_is_detected(self) -> None:
+        comments = [_comment("<!-- claude-review-outcome: run=1 outcome=rework -->")]
+        assert outcome_from_comments(comments, "1") == "rework"
+
     def test_marker_from_other_author_is_not_trusted(self) -> None:
         comments = [_comment("<!-- claude-review-outcome: run=1 outcome=clean -->", "contributor")]
         assert outcome_from_comments(comments, "1") is None
@@ -43,6 +47,14 @@ class TestReviewGateExitCodes:
     def test_blocking_outcome_fails_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._mock_fetch(
             monkeypatch, [_comment("<!-- claude-review-outcome: run=1 outcome=blocking -->")]
+        )
+        with pytest.raises(SystemExit) as exc:
+            main(["--repo", "owner/repo", "--pr", "1", "--run-id", "1"])
+        assert exc.value.code == 1
+
+    def test_rework_outcome_fails_check(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._mock_fetch(
+            monkeypatch, [_comment("<!-- claude-review-outcome: run=1 outcome=rework -->")]
         )
         with pytest.raises(SystemExit) as exc:
             main(["--repo", "owner/repo", "--pr", "1", "--run-id", "1"])

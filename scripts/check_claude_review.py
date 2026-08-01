@@ -11,7 +11,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 _OUTCOME = re.compile(
-    r"<!-- claude-review-outcome: run=(?P<run_id>[^ ]+) outcome=(?P<outcome>clean|blocking) -->"
+    r"<!-- claude-review-outcome: run=(?P<run_id>[^ ]+) "
+    r"outcome=(?P<outcome>clean|rework|blocking) -->"
 )
 _AUTHOR = "claude"
 
@@ -72,9 +73,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     if outcome == "clean":
         print("ok: Claude review reported clean")
         return
-    if outcome == "blocking":
+    if outcome in {"rework", "blocking"}:
         print(
-            "error: Claude review reported blocking findings; resolve and re-run review.",
+            f"error: Claude review reported {outcome} findings; resolve and re-run review.",
             file=sys.stderr,
         )
         raise SystemExit(1)

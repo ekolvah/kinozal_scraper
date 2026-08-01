@@ -40,3 +40,11 @@ class TestAgentProcess:
         assert "TODO:" not in skill
         assert "## Structuring This Skill" not in skill
         assert "implement-issue" in manifest
+
+    def test_codex_adapter_requires_clean_review_before_merge_handoff(self) -> None:
+        skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert "review/fix loop" in skill
+        assert "`clean` reviewer outcome" in skill
+        assert "not ready" in skill
