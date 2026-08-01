@@ -7,6 +7,18 @@ from pathlib import Path
 from scripts.validate_issue_sections import REQUIRED_SECTIONS
 
 _REPO = Path(__file__).resolve().parent.parent
+_IMPLEMENTER_CONTRACT_MARKERS = (
+    "validate_issue_sections.py",
+    "issue_branch.py",
+    "check_red.py",
+    "ci_check.py",
+    "open_pr.py",
+    "gh pr checks",
+    "gh run view",
+    "review/fix loop",
+    "`clean` reviewer outcome",
+    "`not ready`",
+)
 
 
 class TestAgentProcess:
@@ -48,3 +60,23 @@ class TestAgentProcess:
         assert "review/fix loop" in skill
         assert "`clean` reviewer outcome" in skill
         assert "not ready" in skill
+
+    def test_canonical_contract_and_codex_skill_keep_all_implementer_gates(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        for marker in _IMPLEMENTER_CONTRACT_MARKERS:
+            assert marker in process, f"canonical process lost {marker!r}"
+            assert marker in skill, f"Codex adapter lost {marker!r}"
+
+    def test_permanent_codex_rules_preserve_post_pr_readiness_gate(self) -> None:
+        agents = (_REPO / "AGENTS.md").read_text(encoding="utf-8")
+        for marker in ("review/fix loop", "`not ready`", "`clean` reviewer outcome"):
+            assert marker in agents, f"AGENTS.md lost {marker!r}"
+
+    def test_review_controller_bootstrap_cannot_be_silent_approval(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert "## Review-controller bootstrap" in process
+        assert "agent-review-gate" in process
+        assert "No agent may treat the provider skip as an approval" in process

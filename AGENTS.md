@@ -14,6 +14,11 @@ Claude or Codex adapter is the only permitted executor.
   `python scripts/check_red.py <test paths>`, commit RED, then implement.
 - Before a PR, run `python scripts/ci_check.py` once in the foreground. Use
   `python scripts/open_pr.py` to create the PR and leave merging to a human.
+- After every PR push, stay in the review/fix loop defined in
+  `agent-process.md`: wait for checks, inspect failures and review feedback,
+  commit fixes separately, and push again. The PR is `not ready` until its
+  current head has a `clean` reviewer outcome, no actionable review threads,
+  and every required GitHub check is green.
 
 ## Repository conventions
 
