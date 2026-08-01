@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -202,7 +203,9 @@ class TestReviewGateExitCodes:
     ) -> None:
         import scripts.check_claude_review as review_gate
 
-        calls = iter([[_comment("working")], RuntimeError("temporary GitHub API failure")])
+        calls: Iterator[list[dict[str, Any]] | RuntimeError] = iter(
+            [[_comment("working")], RuntimeError("temporary GitHub API failure")]
+        )
         monkeypatch.setattr(review_gate, "fetch_changed_paths", lambda *_args: ["src/app.py"])
 
         def fetch(*_args: Any) -> list[dict[str, Any]]:
