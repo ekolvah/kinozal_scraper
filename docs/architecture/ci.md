@@ -346,7 +346,12 @@ current head SHA from the `claude[bot]` GitHub App, and turns `blocking` or `rew
 status. It polls that trusted evidence for up to 360 seconds between API reads, so the gate does
 not race the slower review action; missing, malformed, stale, or timed-out evidence fails closed.
 Transport failures are reported as infrastructure failures, never as Claude findings. The producer
-check also fails if Claude finishes without the marker. Fork PRs without the Claude OAuth secret remain visibly blocked;
+first requests the review outcome as a schema-validated action output and normally publishes the
+matching marker with the review summary. If that marker is absent, a non-terminal probe starts one
+bounded, two-turn publisher invocation. It receives the already validated outcome and may only
+update a Claude comment with that exact marker: it does not re-review, reclassify, or spend another
+full review budget. The final strict producer check still fails closed if publication remains absent.
+Fork PRs without the Claude OAuth secret remain visibly blocked;
 a maintainer must move the contribution onto a repository branch so the required review can run.
 
 A PR that changes the review-controller surface (`claude-review.yml`,
@@ -404,8 +409,15 @@ Visibility is guaranteed by two independent layers:
   that the review ran.
 - The prompt instructs Claude to (a) post per-issue inline comments via
   `mcp__github_inline_comment__create_inline_comment` and (b) finish with a top-level summary
-  via `Bash(gh pr comment ...)`. Controlling comment *format* is not enough: a run that finds
+  via `update_claude_comment`. Controlling comment *format* is not enough: a run that finds
   no issues and invokes no publishing tool leaves the PR silent.
+
+The primary invocation also returns a schema-validated `clean`, `rework`, or `blocking` outcome.
+Its comment remains the normal marker publisher. Only when the marker probe cannot find current-head
+evidence does the workflow run one small (`--max-turns 2`) publisher invocation, passing that
+validated outcome verbatim. It must only add the marker and cannot perform a second review or choose
+another verdict. The final strict marker verifier runs afterwards, so a second publication failure is
+red rather than being hidden by the probe's `continue-on-error`.
 
 **Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
 включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний

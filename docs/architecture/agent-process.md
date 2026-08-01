@@ -109,9 +109,12 @@ surface as an exceptional human decision:
    maintainer. It otherwise remains red rather than treating the provider skip
    as approval.
 4. The provider-side marker check reports that skip as a visible warning, not
-   as a clean Claude review. On ordinary PRs the trusted gate polls bounded
-   current-head evidence; a GitHub transport failure is infrastructure failure,
-   never a reviewer verdict.
+   as a clean Claude review. On ordinary PRs the primary review returns a
+   validated outcome and publishes the matching marker; a missing marker gets
+   one bounded publisher-only repair, never a second review or a new verdict.
+   The final producer check and trusted gate still require current-head
+   evidence. A GitHub transport failure is infrastructure failure, never a
+   reviewer verdict.
 
 No agent may treat the provider skip as an approval or post the maintainer
 marker. The first PR that installs this trusted default-branch gate cannot use
