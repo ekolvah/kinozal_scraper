@@ -397,4 +397,6 @@ class TestCli:
         with pytest.raises(SystemExit, match="2"):
             main([str(missing_file)])
 
-        assert str(missing_file) in capsys.readouterr().err
+        error = capsys.readouterr().err
+        assert missing_file.name in error
+        assert "error:" in error

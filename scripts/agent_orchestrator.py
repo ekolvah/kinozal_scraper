@@ -241,7 +241,7 @@ def _review_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDe
         catalogue,
         state,
         status="blocked",
-        missing=("valid_review_outcome",),
+        missing=("review_outcome",),
         action="record clean, rework, or blocking outcome",
     )
 

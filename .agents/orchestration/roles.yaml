@@ -26,6 +26,8 @@ roles:
     entry_evidence: "Passing deterministic CI and a PR head SHA."
     completion_evidence: "Current-head clean, rework, or blocking outcome marker."
     activation: "One review is required for every new PR head SHA."
+    # The router enforces this per-head cap through reviewed_heads; this value
+    # describes that contract rather than a repository-wide invocation counter.
     max_runs: 1
   fixer:
     adapter: "Codex $implement-issue #N review/fix loop"
@@ -40,4 +42,6 @@ roles:
     entry_evidence: "Current-head clean review and passing required checks."
     completion_evidence: "Human merge decision."
     activation: "Clean delivery, or a visible budget escalation."
+    # This terminal hand-off has no automated retry; keep max_runs only for the
+    # uniform catalogue contract, not as a router-enforced counter.
     max_runs: 1
