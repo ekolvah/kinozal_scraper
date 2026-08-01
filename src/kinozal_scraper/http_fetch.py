@@ -23,7 +23,7 @@ from typing import Any
 from curl_cffi import requests
 from curl_cffi.requests.exceptions import HTTPError
 
-from kinozal_scraper.http_retry import retry_antibot_http
+from kinozal_scraper.http_retry import retry_antibot_http, retry_antibot_patient
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +93,8 @@ def _get_once(url: str, **kwargs: Any) -> requests.Response:
     Split out of `_get` (#396) so a single attempt is a plain typed function
     rather than tenacity's dynamic `retry_with(...)`, which mypy cannot see
     (`attr-defined`) and which would need this repo's first `type: ignore`.
-    `scripts/probe.py` measures the probability of ONE attempt — the retry
-    masks it, turning the measurement into "did we get lucky at least once".
+    Two retry schedules now wrap this same body — the fast one and soldout's
+    patient one — and each wraps it as a plain decorator call for that reason.
 
     Диагностика висит на `except HTTPError`, а не на `if status >= 400`: «что есть
     ошибка» решает сам curl_cffi, happy-path не трогается, и лог привязан к точке
@@ -119,6 +119,11 @@ def _get_once(url: str, **kwargs: Any) -> requests.Response:
 # importable and typed (#396). The policy itself lives in `http_retry` (#365).
 _get = retry_antibot_http(_get_once)
 
+# Same body, patient schedule — soldout only (#396). Kept a separate module-level
+# object rather than a per-call `retry_with(...)`: the dynamic form is invisible to
+# mypy, and a policy chosen at the call site is a policy nobody can grep for.
+_get_patient = retry_antibot_patient(_get_once)
+
 
 class NotAnImageError(Exception):
     """A 200 response that is HTML, not the image we asked for (issue #265).
@@ -140,11 +145,11 @@ class NotAnImageError(Exception):
         self.body = body
 
 
-# Request parameters live here, in one place, because a second caller now exists:
-# the #396 measurement in `scripts/probe.py` is only meaningful while it hits the
-# site exactly the way prod does. Copy-pasted values would let the two drift apart
-# with nothing turning red — `tests/test_http_fetch.py::TestSharedRequestKwargs`
-# pins them to the prod call sites.
+# Request parameters live here, in one place, because more than one caller exists:
+# `fetch_html` and `fetch_html_patient` differ ONLY in retry schedule, and that
+# claim stops being true the moment someone copy-pastes an `impersonate`/`timeout`
+# into one of them. Nothing would turn red — hence
+# `tests/test_http_fetch.py::TestSharedRequestKwargs` pins them to the call sites.
 _HTML_GET: dict[str, Any] = {"impersonate": "chrome", "timeout": 30}
 _IMAGE_GET: dict[str, Any] = {
     **_HTML_GET,
@@ -154,6 +159,18 @@ _IMAGE_GET: dict[str, Any] = {
 
 def fetch_html(url: str) -> str:
     return _get(url, **_HTML_GET).text
+
+
+def fetch_html_patient(url: str) -> str:
+    """`fetch_html` for a source behind a probabilistic Cloudflare block (#396).
+
+    Identical request, attempts spread over hours instead of seconds. Used by
+    `soldout_pipeline` alone: the block keys off the datacenter IP range, not off
+    anything we send, so the only lever left is time. Do NOT reach for this as a
+    general "more reliable fetch" — it costs a job slot for ~4.6 h and its numbers
+    were measured against one host (`docs/adr/0002-soldout-cloudflare-spread-retries.md`).
+    """
+    return _get_patient(url, **_HTML_GET).text
 
 
 def fetch_bytes(url: str) -> bytes:

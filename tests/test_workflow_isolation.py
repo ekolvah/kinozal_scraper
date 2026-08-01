@@ -27,11 +27,29 @@ _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "
 # A pipeline step is one that runs `python -m kinozal_scraper.<name>_pipeline`.
 # telegram_summarizer (not *_pipeline) and the pytest gate are intentionally excluded.
 _PIPELINE_RUN = re.compile(r"python -m kinozal_scraper\.\w+_pipeline")
+# soldout is singled out by #396: it is the one step that sleeps for hours between
+# retries, so its position among the siblings is itself an invariant.
+_SOLDOUT_RUN = re.compile(r"python -m kinozal_scraper\.soldout_pipeline")
+_SUMMARIZER_RUN = re.compile(r"python -m kinozal_scraper\.telegram_summarizer")
+
+# GitHub Actions' default job timeout. Not ours to set — quoted here because the
+# soldout step's own timeout only means anything relative to it.
+_JOB_CEILING_MIN = 360
+# What the arithmetic reserves for everything before soldout (checkout, setup-python,
+# pip install, the pytest gate, four pipelines, the summarizer). Measured at ~3 min
+# on run 30683742474; 60 leaves an order of magnitude of slack without being so
+# generous that the soldout budget stops fitting.
+_PRECEDING_STEPS_BUDGET_MIN = 60
+
+
+def _doc() -> dict[Any, Any]:
+    """The parsed workflow. Keys are `Any`: YAML 1.1 parses a bare `on:` as the
+    boolean `True`, so the trigger block is not reachable under the string "on"."""
+    return cast("dict[Any, Any]", yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8")))
 
 
 def _steps() -> list[dict[str, Any]]:
-    data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    return cast("list[dict[str, Any]]", data["jobs"]["run-script"]["steps"])
+    return cast("list[dict[str, Any]]", _doc()["jobs"]["run-script"]["steps"])
 
 
 def _pipeline_steps() -> list[dict[str, Any]]:
@@ -85,3 +103,85 @@ class TestPipelineStepIsolation:
         assert gate.get("continue-on-error") is not True, (
             "pytest gate must not set continue-on-error — red tests must block prod pipelines"
         )
+
+
+class TestSoldoutStepPlacement:
+    """soldout — единственный шаг, который спит часами (#396), поэтому его место и
+    его потолок в прогоне сами по себе инварианты."""
+
+    def test_soldout_waits_last_of_all(self) -> None:
+        """soldout ждёт до ~4.6 ч внутри шага (#396) — значит стоит последним.
+
+        Разброс попыток во времени и есть фикс: Cloudflare режет датацентровые IP
+        вероятностно, и единственное, что отличает доехавший прогон, — успела ли
+        хоть одна из 24 разнесённых попыток. Цена — часы ожидания, и заплатить её
+        можно только в самом конце: в середине прогона тот же шаг отложил бы
+        доставку остальных источников на те же часы.
+
+        Порядок ключей в YAML — ровно то, что следующий контрибьютор переставит,
+        не заметив; сам GitHub Actions такой инвариант не выражает.
+        """
+        steps = _steps()
+        soldout = [i for i, s in enumerate(steps) if _SOLDOUT_RUN.search(str(s.get("run", "")))]
+        assert len(soldout) == 1, f"expected exactly one soldout step, got {len(soldout)}"
+        earlier = [
+            i
+            for i, s in enumerate(steps)
+            if i != soldout[0]
+            and (
+                _PIPELINE_RUN.search(str(s.get("run", "")))
+                or _SUMMARIZER_RUN.search(str(s.get("run", "")))
+            )
+        ]
+        assert earlier, "derived no sibling delivery steps — the regexes went stale"
+        assert soldout[0] > max(earlier), (
+            f"soldout step is at index {soldout[0]}, but delivery steps run at "
+            f"{sorted(earlier)} — a step that sleeps for hours must not sit in front of them"
+        )
+
+    def test_soldout_step_timeout_brackets_the_patient_policy(self) -> None:
+        """Таймаут шага зажат с двух сторон, и обе границы выведены, а не вписаны (#396).
+
+        Снизу — худший случай самой политики: меньше него таймаут убивал бы штатный
+        прогон. Сверху — 360-минутный потолок job'а **минус бюджет предшествующих
+        шагов**: потолок отсчитывается от старта job'а, а не шага, и job, убитый по
+        нему, GitHub **отменяет**, а не проваливает — `if: failure()` у fallback-алерта
+        не разворачивается, и §IV-сигнал теряется ровно в той патологии, ради которой
+        таймаут заводился.
+
+        Обе границы читаются из констант политики: подняли число попыток — тест
+        покраснеет здесь, а не в проде через полгода.
+        """
+        from kinozal_scraper.http_fetch import _HTML_GET
+        from kinozal_scraper.http_retry import _PATIENT_ATTEMPTS, _PATIENT_WAIT_S
+
+        worst_case_min = (
+            (_PATIENT_ATTEMPTS - 1) * _PATIENT_WAIT_S + _PATIENT_ATTEMPTS * _HTML_GET["timeout"]
+        ) / 60
+
+        soldout = [s for s in _steps() if _SOLDOUT_RUN.search(str(s.get("run", "")))]
+        assert len(soldout) == 1
+        timeout = soldout[0].get("timeout-minutes")
+        assert isinstance(timeout, int), (
+            "soldout step must carry an explicit timeout-minutes — its patient retry "
+            "policy makes an unbounded step a real possibility, not a theoretical one"
+        )
+        assert timeout > worst_case_min, (
+            f"timeout-minutes={timeout} is below the policy's own worst case "
+            f"({worst_case_min:.0f} min) — it would kill healthy runs"
+        )
+        assert timeout + _PRECEDING_STEPS_BUDGET_MIN <= _JOB_CEILING_MIN, (
+            f"timeout-minutes={timeout} leaves under {_PRECEDING_STEPS_BUDGET_MIN} min of the "
+            f"{_JOB_CEILING_MIN}-minute job ceiling for every preceding step; the job would be "
+            "cancelled first and the fallback alert would never fire"
+        )
+
+    def test_daily_schedule_unchanged(self) -> None:
+        """Фикс #396 сознательно НЕ трогает частоту: он разносит попытки внутри
+        одного суточного прогона. Учащение расписания — другое решение с другой
+        ценой (нагрузка на сайт, квота Gemini у соседних шагов), и молча оно
+        приехать не должно."""
+        doc = _doc()
+        triggers = doc.get("on", doc.get(True, {}))
+        crons = [entry["cron"] for entry in triggers["schedule"]]
+        assert crons == ["0 1 * * *"], f"daily cron changed to {crons}"

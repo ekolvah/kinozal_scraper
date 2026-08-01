@@ -18,6 +18,7 @@ from kinozal_scraper.http_fetch import (
     describe_block,
     fetch_bytes,
     fetch_html,
+    fetch_html_patient,
 )
 
 _FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -285,8 +286,13 @@ class TestFetchRetry(unittest.TestCase):
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_fetch_html_gives_up_after_max_attempts_reraises(
-        self, _sleep: unittest.mock.Mock
+        self, sleep: unittest.mock.Mock
     ) -> None:
+        # Характеризация быстрой политики (#396). Расписание пиньется здесь, а не
+        # только число попыток: рядом теперь живёт медленный режим, и «поправил
+        # заодно и общий» — самая дешёвая по опечатке и самая дорогая по последствиям
+        # ошибка. 1+2+4 = ~7 с — то самое окно, из-за которого 4 попытки бьют в одно
+        # решение Cloudflare и считаются за один бросок.
         with (
             unittest.mock.patch(
                 "kinozal_scraper.http_fetch.requests.get",
@@ -296,6 +302,7 @@ class TestFetchRetry(unittest.TestCase):
         ):
             fetch_html("https://example.com")
         self.assertEqual(mget.call_count, 4)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [1, 2, 4])
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_fetch_bytes_retries_transient_then_succeeds(self, _sleep: unittest.mock.Mock) -> None:
@@ -364,13 +371,58 @@ class TestFetchRetry(unittest.TestCase):
         self.assertEqual(len(logs.output), 4)
 
 
+class TestPatientHtml(unittest.TestCase):
+    """soldout тянет HTML разнесёнными попытками; постеры остаются на быстром пути (#396).
+
+    Разделение существенно: медленная политика умножается на число items, и перевод
+    постеров на неё оборвал бы прогон по таймауту вместо того, чтобы его спасти.
+    """
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_fetch_html_patient_makes_24_attempts_on_403(self, _sleep: unittest.mock.Mock) -> None:
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.http_fetch.requests.get",
+                side_effect=lambda *a, **k: _transient_resp(403),
+            ) as mget,
+            self.assertRaises(HTTPError),
+        ):
+            fetch_html_patient("https://www.soldoutticketbox.com/x")
+        self.assertEqual(mget.call_count, 24)
+
+    def test_fetch_html_patient_uses_the_shared_kwargs(self) -> None:
+        # Анти-дрейф: медленный путь обязан ходить теми же kwargs, что быстрый,
+        # иначе «то же самое, только терпеливее» тихо перестанет быть правдой.
+        with unittest.mock.patch(
+            "kinozal_scraper.http_fetch.requests.get", return_value=_ok_html()
+        ) as mget:
+            fetch_html_patient("https://example.com")
+
+        self.assertEqual(mget.call_args.kwargs, _HTML_GET)
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_fetch_bytes_stays_on_the_fast_transport(self, _sleep: unittest.mock.Mock) -> None:
+        # Preservation guard: самая вероятная ошибка при правке — «перевести заодно
+        # и постеры». 24 попытки × 12 мин на каждый item съели бы job целиком.
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.http_fetch.requests.get",
+                side_effect=lambda *a, **k: _transient_resp(403),
+            ) as mget,
+            self.assertRaises(HTTPError),
+        ):
+            fetch_bytes("https://example.com/poster.jpg")
+        self.assertEqual(mget.call_count, 4)
+
+
 class TestSharedRequestKwargs(unittest.TestCase):
     """The request parameters live in one place so a second caller cannot drift
     from prod silently (#396).
 
-    The `scripts/probe.py` measurement is only meaningful while it hits the site
-    exactly the way prod does — a copy-pasted `impersonate`/`timeout`/`Accept`
-    would let the two diverge with nothing turning red.
+    `fetch_html` and `fetch_html_patient` differ ONLY in retry schedule — that is
+    the whole claim the patient path rests on, and a copy-pasted
+    `impersonate`/`timeout`/`Accept` in either of them would quietly make it false
+    with nothing turning red.
     """
 
     def test_fetch_html_uses_shared_kwargs(self) -> None:

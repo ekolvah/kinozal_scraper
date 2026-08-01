@@ -65,16 +65,6 @@ jobs:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 
-      - name: Run soldout pipeline
-        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
-        run: python -m kinozal_scraper.soldout_pipeline
-        env:
-          SOLDOUT_URL: ${{ vars.SOLDOUT_URL }}
-          SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
-          CREDENTIALS: ${{ secrets.CREDENTIALS }}
-
       - name: Run Kinozal pipeline
         if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
         run: python -m kinozal_scraper.kinozal_pipeline
@@ -104,6 +94,30 @@ jobs:
           # back to a session file.
           TELETHON_SESSION: ${{ secrets.TELETHON_SESSION }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+
+      # Last on purpose (#396): soldout is fronted by Cloudflare, which blocks the
+      # datacenter IP ranges probabilistically, so its fetch retries are spread over
+      # ~4.6 h instead of ~7 s. Anywhere earlier that wait would delay every other
+      # source by the same hours.
+      #
+      # timeout-minutes must fire BEFORE the job's own 360-minute ceiling, which is
+      # counted from job start — not from this step. A job killed at the ceiling is
+      # *cancelled*, and `if: failure()` on the fallback alert would not fire, so the
+      # §IV alert would be lost in exactly the pathological case the timeout exists
+      # for. Hence 300: above the policy's own 288-minute worst case, and 60 minutes
+      # short of the ceiling for every preceding step. Both halves of that arithmetic
+      # are derived from the policy constants in
+      # tests/test_workflow_isolation.py::TestSoldoutStepPlacement.
+      - name: Run soldout pipeline
+        if: ${{ !cancelled() && steps.tests.outcome == 'success' }}
+        timeout-minutes: 300
+        run: python -m kinozal_scraper.soldout_pipeline
+        env:
+          SOLDOUT_URL: ${{ vars.SOLDOUT_URL }}
+          SPREADSHEET_URL: ${{ secrets.SPREADSHEET_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.BOT_CHATID }}
+          CREDENTIALS: ${{ secrets.CREDENTIALS }}
 
       - name: Send fallback failure alert
         if: failure() && hashFiles('.run/technical_alert_sent') == ''

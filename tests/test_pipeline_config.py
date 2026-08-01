@@ -335,6 +335,23 @@ class TestLoadSourcesConfig(unittest.TestCase):
         config = load_sources_config(sources_path)
         self.assertIn("sources", config)
 
+    def test_at_most_one_enabled_soldout_source(self) -> None:
+        # Бюджет терпеливого ретрая (#396) — 288 минут НА ИСТОЧНИК, а
+        # `run_soldout_pipeline` перебирает все включённые источники своего типа
+        # последовательно. Второй такой источник не сломал бы ни один тест, а в проде
+        # молча вылез бы за `timeout-minutes` и оборвал прогон посередине. Добавляешь
+        # второй — сначала реши, откуда возьмётся время (ADR-0002).
+        sources_path = Path(__file__).resolve().parents[1] / "sources.json"
+        if not sources_path.exists():
+            self.skipTest("sources.json not found")
+        config = load_sources_config(sources_path)
+        enabled = [s for s in config["sources"] if s.get("enabled") and s.get("type") == "soldout"]
+        self.assertLessEqual(
+            len(enabled),
+            1,
+            f"{len(enabled)} enabled soldout sources: the patient retry budget is per source",
+        )
+
     def test_unresolved_macro_in_url_raises_config_error(self) -> None:
         source = {**_MINIMAL_SOURCE, "url": "https://api.example.com?d={{TOAY}}"}
         path = _write_tmp(_make_config([source]))

@@ -356,6 +356,25 @@ decision goes to" route — and the rule itself — live in
   cron'а) плюс оффлайн-гард `tests/test_branch_protection.py`, который держит in-repo половину
   (объявление ↔ джобы воркфлоу) в CI. Вернуться — при переезде enforcement'а на rulesets,
   который сделал бы конфиг читаемым обычным repo-read.
+- **AE. Потерянный постер soldout — детектор не заводим.** Уведомление уходит без картинки,
+  дедуп в Sheets фиксирует отправку, второй попытки не будет. Раньше это почти не срабатывало
+  (страница и так не пробивалась); терпеливый ретрай поднимает долю доставляющих суток и вместе
+  с ней — частоту этого исхода. Замер: 3 успеха из 8 по картиночному пути против 1 из 4 по
+  странице, то есть постеры режутся **отдельно**, и «вылечатся тем же обходом» — гипотеза.
+  Терпеливую политику на них намеренно не распространяем: она умножается на число items и съела
+  бы прогон целиком (гард —
+  `test_http_fetch.py::TestPatientHtml::test_fetch_bytes_stays_on_the_fast_transport`).
+  Деградация **видима** — `WARNING` из `telegram_notifier._send_one`, не тихий пропуск, — поэтому
+  отдельный детектор был бы вторым сигналом о том, о чём уже сказано. Триггер пересмотра: первая
+  жалоба на уведомление без картинки; сам обход отслеживается отдельной задачей (#441). Решение
+  целиком — [ADR-0002](../adr/0002-soldout-cloudflare-spread-retries.md).
+- **AF. «Успеха по soldout не было N суток» — не детектируется.** Алерт привязан к прогону, а не
+  к состоянию источника: пустые сутки штатны, поэтому «сегодня не пробились» и «источник умер
+  неделю назад» снаружи неразличимы. Единственное лекарство — состояние между прогонами (ячейка
+  «последний успех» + правило устаревания), и его цена сейчас выше пользы: прогон один в сутки,
+  значит и алерт приходит не чаще раза в сутки — тот же объём шума, что был до фикса. Наблюдаемый
+  триггер пересмотра — **первый реально пропущенный сбой** (источник лежал, а узнали не из
+  алерта), а не «когда алерты надоедят».
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
@@ -375,4 +394,3 @@ decision goes to" route — and the rule itself — live in
 | `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
 | Package import-resolution & repo layout | A module failing to resolve as `kinozal_scraper.X`, or source drifting back to a flat `src/*.py` layout | `test_package_importable.py::TestPackage` (all modules import as `kinozal_scraper.X`); `test_repo_layout.py::TestLayout`. (The #237 B1 empty-/nested-scan guard moved off the retired `test_check_headers.py` — [#253](https://github.com/ekolvah/kinozal_scraper/issues/253) replaced `check_headers.py` with ruff `D100`/`D104`/`D419`; the "mis-pointed/empty `src/` scanned nothing" failure mode is now subsumed by these two guards, which fire strictly harder — 17 hard-coded imports + layout-drift — than the old zero-file check) |
 | Telethon session rotation (mint a `StringSession`, set the secret, revoke the old session in the Telegram app) | Interactive login against live Telegram, performed by an operator roughly once per incident | **Scope-skip** (#386, replaces the `crypto.py` glue entry that left with the module): there is no automatable surface — the code side *is* covered (`require_env` rejects an empty secret, `TestTelethonReaderAuth` pins StringSession-only auth and a fail-fast on a revoked session). The recipe lives in [operations.md](operations.md#minting-a-new-telethon_session); deliberately a doc snippet, not a script — a once-a-year human interactive is not the deterministic pipeline step "скрипты > инструкции" targets |
-| `scripts/probe.py` — живой запрос к soldoutticketbox.com | Замер вероятности блокировки требует настоящего датацентрового IP и настоящего Cloudflare | **Scope-skip** (#396): живой запрос из теста и есть работа самого пробника в CI — дублировать его в pytest значило бы гонять сеть на каждом прогоне ради того, что и так меряется каждые 3 часа. Покрыты именно границы, где замер может тихо испортиться: одна попытка на замер (не 4), те же request-kwargs что у прода (`TestSharedRequestKwargs`), строка на **каждый** исход включая 200, разделение «HTTP-исход → 0» / «сбой инструмента → ≠0», expiry и оба пути (HTML + постер) |

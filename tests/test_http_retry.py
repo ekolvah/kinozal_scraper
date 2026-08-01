@@ -30,6 +30,7 @@ from kinozal_scraper.http_retry import (
     ANTIBOT_TRANSIENT_CODES,
     API_TRANSIENT_CODES,
     _transient_http_predicate,
+    retry_antibot_patient,
 )
 
 _GITHUB_URL = "https://api.github.com/search/repositories"
@@ -209,6 +210,47 @@ class TestPolicyParity(unittest.TestCase):
             _fetch_json(_GITHUB_URL, {}, {})
 
         self.assertEqual(len(logs.output), 1)
+
+
+class TestPatientPolicy(unittest.TestCase):
+    """Второй режим того же анти-бот-транспорта: попытки разнесены, а не сжаты (#396).
+
+    Замер пробником установил две вещи: попытки с паузой 60 с ведут себя независимо,
+    а четыре попытки за ~7 с бьют в одно решение Cloudflare и дают фактически один
+    бросок в сутки — отсюда 12 красных ночных прогонов подряд.
+
+    Числа 24 и 720 с пиньются, а не описываются: на них стоит расчёт окна (~4.6 ч)
+    против жёсткого 6-часового потолка job'а GitHub Actions. Уехавшая вниз пауза
+    вернула бы корреляцию попыток, уехавшее вверх число — оборвало бы прогон
+    по таймауту; ни то ни другое не видно глазами в дифе.
+    """
+
+    def _attempts(self, status: int) -> int:
+        calls: list[int] = []
+
+        @retry_antibot_patient
+        def _blocked() -> None:
+            calls.append(1)
+            raise _curl_error(status)
+
+        with self.assertRaises(CurlHTTPError):
+            _blocked()
+        return len(calls)
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_patient_policy_makes_24_attempts_12_minutes_apart(
+        self, sleep: unittest.mock.Mock
+    ) -> None:
+        self.assertEqual(self._attempts(403), 24)
+        self.assertEqual([call.args[0] for call in sleep.call_args_list], [720] * 23)
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_patient_policy_retries_the_antibot_code_set(self, _sleep: unittest.mock.Mock) -> None:
+        # Медленная политика отличается от быстрой ТОЛЬКО расписанием: набор кодов
+        # общий, иначе «терпеливый» транспорт начал бы долбить постоянную ошибку.
+        for status, expected in ((403, 24), (429, 24), (404, 1)):
+            with self.subTest(status=status):
+                self.assertEqual(self._attempts(status), expected)
 
 
 if __name__ == "__main__":

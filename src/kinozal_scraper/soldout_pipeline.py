@@ -11,7 +11,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_html,
 )
-from kinozal_scraper.http_fetch import fetch_html
+from kinozal_scraper.http_fetch import fetch_html_patient
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
 from kinozal_scraper.telegram_notifier import Notifier
@@ -65,7 +65,7 @@ def _run_single_source(
         return result
 
     try:
-        html_text = fetch_html(url)
+        html_text = fetch_html_patient(url)
     except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
         logger.exception("[%s] fetch failed: %s", source_id, exc)
         result.errors.append(f"fetch failed: {exc}")
