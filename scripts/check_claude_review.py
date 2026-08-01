@@ -13,7 +13,8 @@ import json
 import re
 import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any
 
 _OUTCOME = re.compile(
@@ -79,10 +80,21 @@ def decision_from_evidence(
 
 
 def wait_for_outcome(
-    fetch: object, changed_paths: Sequence[str], head_sha: str, attempts: int, delay: float, sleep: object
+    fetch: Callable[[], Sequence[Mapping[str, Any]]],
+    changed_paths: Sequence[str],
+    head_sha: str,
+    attempts: int,
+    delay: float,
+    sleep: Callable[[float], None],
 ) -> str | None:
-    """Placeholder for bounded trusted-evidence polling (#447)."""
-    raise NotImplementedError
+    """Poll trusted comments a bounded number of times for current-head evidence."""
+    for attempt in range(attempts):
+        decision = decision_from_evidence(fetch(), changed_paths, head_sha)
+        if decision is not None:
+            return decision
+        if attempt < attempts - 1:
+            sleep(delay)
+    return None
 
 
 def _fetch_api(repo: str, endpoint_suffix: str) -> list[Mapping[str, Any]]:
@@ -134,15 +146,38 @@ def main(argv: Sequence[str] | None = None) -> None:
     parser.add_argument("--repo", required=True)
     parser.add_argument("--pr", required=True, type=int)
     parser.add_argument("--head-sha", required=True)
+    parser.add_argument("--wait-seconds", type=int, default=0)
+    parser.add_argument("--poll-seconds", type=int, default=10)
+    parser.add_argument("--require-outcome-marker", action="store_true")
     args = parser.parse_args(argv)
+    if args.wait_seconds < 0 or args.poll_seconds < 1:
+        parser.error("wait-seconds must be non-negative and poll-seconds must be positive")
     try:
         comments = fetch_comments(args.repo, args.pr)
+        if args.require_outcome_marker:
+            outcome = outcome_from_comments(comments, args.head_sha)
+            if outcome is not None:
+                print(f"ok: Claude posted current-head {outcome} outcome marker")
+                return
+            print(
+                "error: Claude review completed without a valid current-head outcome marker.",
+                file=sys.stderr,
+            )
+            raise SystemExit(2)
         changed_paths = fetch_changed_paths(args.repo, args.pr)
     except RuntimeError as exc:
         print(f"error: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
-    decision = decision_from_evidence(comments, changed_paths, args.head_sha)
+    attempts = 1 + args.wait_seconds // args.poll_seconds
+    decision = wait_for_outcome(
+        lambda: fetch_comments(args.repo, args.pr),
+        changed_paths,
+        args.head_sha,
+        attempts,
+        args.poll_seconds,
+        time.sleep,
+    )
     if decision in {"clean", "bootstrap"}:
         print(f"ok: trusted review evidence is {decision}")
         return
@@ -160,7 +195,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
     else:
         print(
-            "error: Claude review did not post a valid current-head outcome marker.",
+            "error: timed out waiting for a valid current-head Claude review outcome marker.",
             file=sys.stderr,
         )
     raise SystemExit(2)

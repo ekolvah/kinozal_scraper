@@ -342,8 +342,10 @@ compared against GitHub and against the workflow files.
 `agent-review-gate` is required because a successful action run is not a review verdict. It runs on
 `pull_request_target`, checks out only the default branch, and reads evidence through the GitHub API;
 it never executes PR code. For ordinary PRs it accepts only a Claude outcome marker bound to the
-current head SHA, and turns `blocking` or `rework` into a failed status. Missing, malformed, stale,
-or pending evidence fails closed. Fork PRs without the Claude OAuth secret remain visibly blocked;
+current head SHA, and turns `blocking` or `rework` into a failed status. It polls that trusted
+evidence for at most six minutes, so the gate does not race the slower review action; missing,
+malformed, stale, or timed-out evidence fails closed. The producer check also fails if Claude
+finishes without the marker. Fork PRs without the Claude OAuth secret remain visibly blocked;
 a maintainer must move the contribution onto a repository branch so the required review can run.
 
 A PR that changes the review-controller surface (`claude-review.yml`,
