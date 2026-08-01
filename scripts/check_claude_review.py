@@ -17,6 +17,27 @@ _OUTCOME = re.compile(
 _AUTHOR = "claude"
 
 
+# Temporary interfaces for the RED test commit. The implementation follows in
+# the next commit, after the new contract has proved it fails against the old gate.
+def bootstrap_approved(
+    comments: Sequence[Mapping[str, Any]], head_sha: str
+) -> bool:
+    """Return whether trusted bootstrap evidence exists for this controller head."""
+    return False
+
+
+def decision_from_evidence(
+    comments: Sequence[Mapping[str, Any]], changed_paths: Sequence[str], head_sha: str
+) -> str | None:
+    """Return the review decision for the current head and changed paths."""
+    return outcome_from_comments(comments, head_sha)
+
+
+def fetch_changed_paths(repo: str, pr: int) -> list[str]:
+    """Read changed PR paths for the controller-bootstrap decision."""
+    return []
+
+
 def outcome_from_comments(comments: Sequence[Mapping[str, Any]], run_id: str) -> str | None:
     """Return this run's Claude outcome, rejecting missing or malformed evidence."""
     matched: list[str] = []
