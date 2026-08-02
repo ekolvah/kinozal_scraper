@@ -79,5 +79,4 @@ class TestAgentProcess:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
         assert "## Review-controller manual review" in process
         assert "manual IDE-agent review" in process
-        assert "agent-review-gate" not in process
-        assert "review-controller-bootstrap" not in process
+        assert "it is enforced as `clean`, `rework`, or `blocking`" in process

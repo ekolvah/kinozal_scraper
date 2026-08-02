@@ -348,14 +348,15 @@ silently treated as `clean`.
 Fork PRs without the Claude OAuth secret remain visibly blocked;
 a maintainer must move the contribution onto a repository branch so the required review can run.
 
-A PR that changes the review-controller surface (`claude-review.yml`,
-`scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`) cannot receive a Claude review by
-design. `claude-review` succeeds only for this controller exception and emits a
-visible warning; it is not a successful Claude review. In this
-single-maintainer repository, the maintainer must review the complete controller
-diff with an agent in the IDE before merge. That is an accepted manual policy,
-not machine-verifiable evidence: there is no bootstrap marker and no separate
-required gate.
+When a PR changes the review-controller surface (`claude-review.yml`,
+`scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
+and produces no structured outcome, `claude-review` emits a visible warning; it
+is not a successful Claude review. A real `clean`, `rework`, or `blocking`
+outcome is enforced for controller PRs exactly as it is for ordinary PRs. In
+this single-maintainer repository, the maintainer must review the complete
+controller diff with an agent in the IDE before merge. That is an accepted manual
+policy, not machine-verifiable evidence: there is no bootstrap marker and no
+separate required gate.
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting

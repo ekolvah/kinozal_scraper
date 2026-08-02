@@ -24,9 +24,11 @@ class TestOutcome:
         )
         main(["", "--repo", "owner/repo", "--pr", "1"])
         warning = capsys.readouterr().out
-        assert warning.startswith("::warning::Claude self-skipped this review-controller PR.")
+        assert warning.startswith(
+            "::warning::No structured review outcome was produced for this review-controller PR."
+        )
         assert warning.endswith(
-            "manual IDE-agent review before merge under the single-maintainer policy.\n"
+            "otherwise complete the manual IDE-agent review before merge under the single-maintainer policy.\n"
         )
 
     def test_controller_pr_enforces_a_real_blocking_outcome(
@@ -60,6 +62,18 @@ class TestOutcome:
         with pytest.raises(SystemExit) as exc:
             main([payload])
         assert exc.value.code == 2
+
+    def test_ordinary_pr_without_an_outcome_is_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import scripts.check_claude_review_outcome as outcome_gate
+
+        monkeypatch.setattr(outcome_gate, "fetch_changed_paths", lambda *_args: ["src/app.py"])
+        with pytest.raises(SystemExit) as exc:
+            main(["", "--repo", "owner/repo", "--pr", "1"])
+
+        assert exc.value.code == 2
+        assert "Claude review unavailable" in capsys.readouterr().err
 
 
 class TestReviewOutcomeCli:
@@ -100,6 +114,14 @@ class TestChangedPaths:
 
         monkeypatch.setattr(subprocess, "run", fail)
         with pytest.raises(RuntimeError, match="failed: 403"):
+            fetch_changed_paths("owner/repo", 1)
+
+    def test_missing_subprocess_stdout_is_distinct(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def capture_failed(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args=["gh"], returncode=0, stdout=None, stderr="")
+
+        monkeypatch.setattr(subprocess, "run", capture_failed)
+        with pytest.raises(RuntimeError, match="failed: no stderr captured"):
             fetch_changed_paths("owner/repo", 1)
 
     def test_changed_paths_payload_must_be_file_list(self, monkeypatch: pytest.MonkeyPatch) -> None:

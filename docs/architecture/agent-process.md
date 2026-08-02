@@ -92,10 +92,11 @@ credential infrastructure.
 
 ## Review-controller manual review
 
-The Claude provider self-skips a PR that changes its workflow or outcome
-verifier; that warning is visible in `claude-review` and is not a successful
-Claude review. For this single-maintainer repository, the exception is an
-accepted operating policy: before merge, the maintainer completes a manual IDE-agent review of the complete controller diff.
+When a review-controller PR has no structured outcome, `claude-review` emits a
+visible warning instead of a successful Claude review. When a structured outcome
+exists, it is enforced as `clean`, `rework`, or `blocking` exactly as on an
+ordinary PR. For this single-maintainer repository, the no-outcome exception is
+an accepted operating policy: before merge, the maintainer completes a manual IDE-agent review of the complete controller diff.
 
 This review is a human merge responsibility, not machine-verifiable evidence.
 There is no bootstrap marker and no separate trusted review gate. Keep a
@@ -105,7 +106,7 @@ their direct tests, and documentation;
 do not mix application changes into it. Any push requires the maintainer to
 review the new complete diff in the IDE before merge.
 
-On ordinary PRs the workflow first reads the current PR body and head SHA from
+On every PR the workflow first reads the current PR body and head SHA from
 the GitHub API, then maps the primary review's validated structured outcome
 directly to the `claude-review` job result. This prevents a manual re-run from
 using stale event metadata; the body is untrusted data, never shell input, and

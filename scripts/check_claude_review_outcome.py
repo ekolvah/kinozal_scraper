@@ -119,8 +119,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     if payload_arg == "" and _is_controller_pr(repository, pr_number):
         print(
-            "::warning::Claude self-skipped this review-controller PR. The maintainer must perform "
-            "a manual IDE-agent review before merge under the single-maintainer policy."
+            "::warning::No structured review outcome was produced for this review-controller PR. "
+            "If the review step failed, re-run it; otherwise complete the manual IDE-agent review "
+            "before merge under the single-maintainer policy."
         )
         return
     if outcome == "clean":
