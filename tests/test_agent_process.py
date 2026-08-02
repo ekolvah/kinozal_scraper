@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from scripts.agent_orchestrator import RouteDecision
+from scripts.agent_orchestrator import RouteDecision, WorkflowState
 from scripts.validate_issue_sections import REQUIRED_SECTIONS
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -84,6 +84,25 @@ class TestAgentProcess:
         for field in fields(RouteDecision):
             assert f"| `{field.name}` |" in process
         assert all(status in process for status in ("`next`", "`blocked`", "`escalate`"))
+
+    def test_documented_input_contract_matches_workflow_state(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        for field in fields(WorkflowState):
+            assert f"| `{field.name}` |" in process
+
+    def test_completed_roles_contract_explains_blocked_route_exception(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        output_contract = process.split("### Control-plane output contract", maxsplit=1)[1]
+        output_contract = output_contract.split("| Role |", maxsplit=1)[0]
+
+        assert "selected route is `blocked`" in output_contract
+        assert "omitted" in output_contract
+
+    def test_pr_template_qualifies_agent_invocation_counts(self) -> None:
+        template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+
+        assert "completed run-count proxy at the time this record is written" in template
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
