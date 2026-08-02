@@ -9,6 +9,55 @@ from collections.abc import Sequence
 from scripts import check_claude_review as review_gate
 
 
+def _parse_options(args: list[str]) -> tuple[str | None, str | None, str | None]:
+    live_pr_context_status: str | None = None
+    repository: str | None = None
+    pr_number: str | None = None
+    while args:
+        option = args.pop(0)
+        if not args:
+            print(f"error: expected a value after {option}", file=sys.stderr)
+            raise SystemExit(2)
+        value = args.pop(0)
+        if option == "--live-pr-context-status":
+            live_pr_context_status = value
+        elif option == "--repo":
+            repository = value
+        elif option == "--pr":
+            pr_number = value
+        else:
+            print(f"error: unexpected argument {option}", file=sys.stderr)
+            raise SystemExit(2)
+
+    return live_pr_context_status, repository, pr_number
+
+
+def _require_live_pr_context(status: str | None) -> None:
+    if status is not None and status != "success":
+        print(
+            "error: live PR context is unavailable; inspect 'Fetch current PR context' "
+            "and re-run after GitHub API access recovers.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+
+def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
+    if (repository is None) != (pr_number is None):
+        print("error: --repo OWNER/REPO and --pr NUMBER must be provided together", file=sys.stderr)
+        raise SystemExit(2)
+    if repository is None or pr_number is None:
+        return False
+
+    try:
+        return review_gate.controller_changed(
+            review_gate.fetch_changed_paths(repository, int(pr_number))
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"error: unable to classify review-controller PR: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Exit cleanly only for Claude's validated ``clean`` outcome."""
     args = list(sys.argv[1:] if argv is None else argv)
@@ -16,21 +65,12 @@ def main(argv: Sequence[str] | None = None) -> None:
         print("error: expected one structured review outcome JSON value", file=sys.stderr)
         raise SystemExit(2)
     payload_arg = args.pop(0)
-    if args:
-        if len(args) != 4 or args[0] != "--repo" or args[2] != "--pr":
-            print("error: expected optional --repo OWNER/REPO --pr NUMBER", file=sys.stderr)
-            raise SystemExit(2)
-        try:
-            if review_gate.controller_changed(
-                review_gate.fetch_changed_paths(args[1], int(args[3]))
-            ):
-                print(
-                    "::warning::controller PR did not run a self-review; bootstrap remains required"
-                )
-                return
-        except (RuntimeError, ValueError) as exc:
-            print(f"error: unable to classify review-controller PR: {exc}", file=sys.stderr)
-            raise SystemExit(2) from exc
+    live_pr_context_status, repository, pr_number = _parse_options(args)
+    _require_live_pr_context(live_pr_context_status)
+
+    if _is_controller_pr(repository, pr_number):
+        print("::warning::controller PR did not run a self-review; bootstrap remains required")
+        return
     try:
         payload = json.loads(payload_arg)
     except json.JSONDecodeError:

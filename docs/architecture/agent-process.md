@@ -109,10 +109,14 @@ surface as an exceptional human decision:
    maintainer. It otherwise remains red rather than treating the provider skip
    as approval.
 4. The provider self-skip is visible, not a clean Claude review. On ordinary
-   PRs the primary review's validated structured outcome is mapped directly to
-   the `claude-review` job result; comments have no merge authority and there
-   is no repair invocation. A quota, transport, or malformed-output failure is
-   red until re-run. The trusted gate exists only for the controller exception.
+   PRs the workflow first reads the current PR body and head SHA from the
+   GitHub API, then maps the primary review's validated structured outcome
+   directly to the `claude-review` job result. This prevents a manual re-run
+   from using stale event metadata; the body is untrusted data, never shell
+   input, and the summary identifies the reviewed SHA. Comments have no merge
+   authority and there is no repair invocation. An unavailable live context,
+   quota, transport, or malformed output is red until re-run. The trusted gate
+   exists only for the controller exception.
 
 No agent may treat the provider skip as an approval or post the maintainer
 marker. The first PR that installs this trusted default-branch gate cannot use

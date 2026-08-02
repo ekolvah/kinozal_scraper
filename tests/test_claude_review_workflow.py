@@ -153,6 +153,10 @@ class TestReviewOutcomeGate:
         assert verifier["env"]["LIVE_PR_CONTEXT_STATUS"] == "${{ steps.pr-context.outcome }}"
         assert "--live-pr-context-status \"$LIVE_PR_CONTEXT_STATUS\"" in str(verifier["run"])
 
+        checkout = _named_step("Checkout current PR head")
+        assert checkout["if"] == "${{ steps.pr-context.outcome == 'success' }}"
+        assert checkout["with"]["ref"] == "${{ steps.pr-context.outputs.head_sha }}"
+
     def test_review_emits_validated_structured_outcome(self) -> None:
         step = _review_step()
         args = str(_inputs().get("claude_args", ""))
