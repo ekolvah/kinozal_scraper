@@ -35,7 +35,7 @@ import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "claude-review.yml"
-_GATE_WORKFLOW = (
+_REMOVED_GATE_WORKFLOW = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
 )
 _ACTION = "anthropics/claude-code-action"
@@ -191,4 +191,4 @@ class TestReviewOutcomeGate:
         assert "update_claude_comment" in prompt
 
     def test_controller_exception_has_no_separate_gate_workflow(self) -> None:
-        assert not _GATE_WORKFLOW.exists()
+        assert not _REMOVED_GATE_WORKFLOW.exists()

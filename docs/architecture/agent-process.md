@@ -92,7 +92,7 @@ credential infrastructure.
 
 ## Review-controller manual review
 
-When a review-controller PR has no structured outcome, `claude-review` emits a
+When a review-controller PR has an empty outcome output, `claude-review` emits a
 visible warning instead of a successful Claude review. When a structured outcome
 exists, it is enforced as `clean`, `rework`, or `blocking` exactly as on an
 ordinary PR. For this single-maintainer repository, the no-outcome exception is

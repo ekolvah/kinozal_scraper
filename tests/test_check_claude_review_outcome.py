@@ -48,6 +48,22 @@ class TestOutcome:
         assert exc.value.code == 1
         assert "Claude review reported blocking findings" in capsys.readouterr().err
 
+    @pytest.mark.parametrize("payload", ["{}", "not-json", '{"outcome":"unknown"}'])
+    def test_controller_pr_with_malformed_outcome_stays_red(
+        self, monkeypatch: pytest.MonkeyPatch, payload: str
+    ) -> None:
+        import scripts.check_claude_review_outcome as outcome_gate
+
+        monkeypatch.setattr(
+            outcome_gate,
+            "fetch_changed_paths",
+            lambda *_args: [".github/workflows/claude-review.yml"],
+        )
+        with pytest.raises(SystemExit) as exc:
+            main([payload, "--repo", "owner/repo", "--pr", "1"])
+
+        assert exc.value.code == 2
+
     def test_clean_outcome_passes(self) -> None:
         main(['{"outcome":"clean"}'])
 

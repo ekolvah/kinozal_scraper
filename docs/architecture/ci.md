@@ -345,12 +345,15 @@ malformed output is a readable `review unavailable` failure. A Claude comment is
 not merge authority, so ordinary PRs neither poll GitHub comments nor start a second Claude invocation.
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
-Fork PRs without the Claude OAuth secret remain visibly blocked;
-a maintainer must move the contribution onto a repository branch so the required review can run.
+Fork PRs have no Claude OAuth secret. All remaining required checks execute the
+PR-head workflow or script, so they do not provide trusted default-branch
+verification for an untrusted fork. This single-maintainer repository accepts
+that trade-off: the maintainer's IDE-agent review and merge decision are the
+sole backstop for controller and fork changes.
 
 When a PR changes the review-controller surface (`claude-review.yml`,
 `scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
-and produces no structured outcome, `claude-review` emits a visible warning; it
+and has an empty outcome output, `claude-review` emits a visible warning; it
 is not a successful Claude review. A real `clean`, `rework`, or `blocking`
 outcome is enforced for controller PRs exactly as it is for ordinary PRs. In
 this single-maintainer repository, the maintainer must review the complete
@@ -372,10 +375,10 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
-One property the required status does **not** buy: `pr-link` still executes the *fork's* copy of
-its own script, so a fork could make it pass unconditionally. A controller PR
-is likewise a deliberate manual-review exception; the human merge button
-remains the final control.
+All remaining required contexts execute the PR head, including their verifier
+scripts. Removing the trusted default-branch gate therefore deliberately removes
+machine-verifiable review evidence for an untrusted fork; the accepted
+single-maintainer fallback is the human merge decision after IDE-agent review.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
 an expected extra minute, not a malfunction.
