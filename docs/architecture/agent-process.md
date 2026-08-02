@@ -187,7 +187,7 @@ role. In particular, `deterministic_ci` is a deliberate non-catalogue step.
 | `next_role` | The selected catalogue role, or the explicit non-catalogue `deterministic_ci` step. |
 | `status` | `next` when an adapter may act, `blocked` when listed evidence is missing, or `escalate` when a bounded budget needs a human decision. |
 | `missing_evidence` | The exact evidence fields preventing the route from proceeding; empty for `next` and `escalate`. |
-| `completed_roles` | Snapshot of roles whose current completion evidence is satisfied; it is not an invocation history. |
+| `completed_roles` | Snapshot of roles whose current completion evidence is satisfied; it is not an invocation history. When the selected route is `blocked`, that selected role is omitted even if it had prior completion evidence, because more evidence is now required. |
 | `adapter` | The existing human-launched adapter or deterministic command for `next_role`. |
 | `next_action` | The concrete action to take, including a human-decision action for blocked or escalated routes. |
 

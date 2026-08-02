@@ -27,7 +27,7 @@ Closes #
 - Reviewer / fixer: <agent or none>
 - CI evidence: <local ci_check result and PR checks URL/status>
 - Route: <roles selected by the control plane>
-- Model invocations: <role=count; run-count proxy, not invented token totals>
+- Model invocations: <role=count; completed run-count proxy at the time this record is written, not invented token totals; exclude a review triggered by a later push>
 - Fixer revisions: <count>
 - Conditional skips / escalations: <reason or none>
 -->
