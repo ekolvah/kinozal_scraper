@@ -152,6 +152,8 @@ class TestReviewOutcomeGate:
         assert "Reviewed head SHA" in prompt
         assert verifier["env"]["LIVE_PR_CONTEXT_STATUS"] == "${{ steps.pr-context.outcome }}"
         assert '--live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"' in str(verifier["run"])
+        assert "--repo ${{ github.repository }}" in str(verifier["run"])
+        assert "--pr ${{ steps.pr-context.outputs.number }}" in str(verifier["run"])
 
         checkout = _named_step("Checkout current PR head")
         assert checkout["if"] == "${{ steps.pr-context.outcome == 'success' }}"

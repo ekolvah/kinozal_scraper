@@ -95,15 +95,16 @@ credential infrastructure.
 When a review-controller PR has an empty outcome output, `claude-review` emits a
 visible warning instead of a successful Claude review. When a structured outcome
 exists, it is enforced as `clean`, `rework`, or `blocking` exactly as on an
-ordinary PR. For this single-maintainer repository, the no-outcome exception is
-an accepted operating policy: before merge, the maintainer completes a manual IDE-agent review of the complete controller diff.
+ordinary PR. For this single-maintainer repository, the no-outcome exception
+is an accepted operating policy: before merge, the maintainer completes a
+manual IDE-agent review of the complete controller diff.
 
 This review is a human merge responsibility, not machine-verifiable evidence.
 There is no bootstrap marker and no separate trusted review gate. Keep a
 controller PR limited to `.github/workflows/claude-review.yml`,
 `scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
-their direct tests, and documentation;
-do not mix application changes into it. Any push requires the maintainer to
+their direct tests, and documentation; do not mix application changes into it.
+Any push requires the maintainer to
 review the new complete diff in the IDE before merge.
 
 On every PR the workflow first reads the current PR body and head SHA from

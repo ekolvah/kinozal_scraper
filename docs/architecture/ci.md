@@ -346,8 +346,6 @@ not merge authority, so ordinary PRs neither poll GitHub comments nor start a se
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
 
-### Fork PR handling and trust trade-off
-
 An ordinary fork PR has no Claude OAuth secret and remains red for its missing
 outcome; a maintainer moves it onto a repository branch to run the required
 review. Separately, no required context is trusted evidence on any fork: all
@@ -381,9 +379,7 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
-See [Fork PR handling and trust trade-off](#fork-pr-handling-and-trust-trade-off).
-
-With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
+With `strict: true` the "Update branch" button creates a new head SHA, so all required contexts re-run —
 an expected extra minute, not a malfunction.
 
 **Drift detection.** `python scripts/check_branch_protection.py` prints the actual contexts and

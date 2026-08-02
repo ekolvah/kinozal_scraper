@@ -67,6 +67,22 @@ class TestOutcome:
     def test_clean_outcome_passes(self) -> None:
         main(['{"outcome":"clean"}'])
 
+    @pytest.mark.parametrize(
+        ("options", "message"),
+        [
+            (["--repo", "owner/repo"], "must be provided together"),
+            (["--repo", "owner/repo", "--pr", "not-a-number"], "must be an integer"),
+        ],
+    )
+    def test_controller_options_are_validated_for_a_clean_outcome(
+        self, options: list[str], message: str, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as exc:
+            main(['{"outcome":"clean"}', *options])
+
+        assert exc.value.code == 2
+        assert message in capsys.readouterr().err
+
     @pytest.mark.parametrize("outcome", ["rework", "blocking"])
     def test_rework_and_blocking_fail(self, outcome: str) -> None:
         with pytest.raises(SystemExit) as exc:

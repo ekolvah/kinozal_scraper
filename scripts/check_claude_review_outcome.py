@@ -87,10 +87,21 @@ def controller_changed(changed_paths: Sequence[str]) -> bool:
     return bool(_REVIEW_CONTROLLER_PATHS.intersection(changed_paths))
 
 
-def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
+def _validate_controller_options(repository: str | None, pr_number: str | None) -> None:
+    """Reject a partial or malformed controller-classification request."""
     if (repository is None) != (pr_number is None):
         print("error: --repo OWNER/REPO and --pr NUMBER must be provided together", file=sys.stderr)
         raise SystemExit(2)
+    if pr_number is not None:
+        try:
+            int(pr_number)
+        except ValueError as exc:
+            print("error: --pr must be an integer", file=sys.stderr)
+            raise SystemExit(2) from exc
+
+
+def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
+    _validate_controller_options(repository, pr_number)
     if repository is None or pr_number is None:
         return False
 
@@ -110,6 +121,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     payload_arg = args.pop(0)
     live_pr_context_status, repository, pr_number = _parse_options(args)
     _require_live_pr_context(live_pr_context_status)
+    _validate_controller_options(repository, pr_number)
 
     try:
         payload = json.loads(payload_arg)
