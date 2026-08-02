@@ -75,8 +75,9 @@ class TestAgentProcess:
         for marker in ("review/fix loop", "`not ready`", "`clean` reviewer outcome"):
             assert marker in agents, f"AGENTS.md lost {marker!r}"
 
-    def test_review_controller_bootstrap_cannot_be_silent_approval(self) -> None:
+    def test_review_controller_policy_requires_manual_ide_review(self) -> None:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
-        assert "## Review-controller bootstrap" in process
-        assert "agent-review-gate" in process
-        assert "No agent may treat the provider skip as an approval" in process
+        assert "## Review-controller manual review" in process
+        assert "manual IDE-agent review" in process
+        assert "agent-review-gate" not in process
+        assert "review-controller-bootstrap" not in process
