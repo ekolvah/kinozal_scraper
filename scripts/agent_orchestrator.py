@@ -51,8 +51,9 @@ class RouteDecision:
 
     ``completed_roles`` is deliberately not an invocation history. A selected
     role drops from the snapshot when its current route is blocked on more
-    evidence. After a fixer outcome, the fixer also drops for an unreviewed new
-    head; that route is ``next``, rather than ``blocked``.
+    evidence. A fixer is present after it produces a new head that awaits
+    review, then drops once that head has been reviewed. A rework route to the
+    fixer is ``next``, rather than ``blocked``.
     """
 
     next_role: str
