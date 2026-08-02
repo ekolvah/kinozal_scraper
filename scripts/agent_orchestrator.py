@@ -49,9 +49,10 @@ class WorkflowState:
 class RouteDecision:
     """The next route step and a snapshot of roles with satisfied current evidence.
 
-    ``completed_roles`` is deliberately not an invocation history. A role drops
-    from the snapshot when the current route says that role is blocked on more
-    evidence, including after a fixer outcome is reviewed.
+    ``completed_roles`` is deliberately not an invocation history. A selected
+    role drops from the snapshot when its current route is blocked on more
+    evidence. After a fixer outcome, the fixer also drops for an unreviewed new
+    head; that route is ``next``, rather than ``blocked``.
     """
 
     next_role: str
