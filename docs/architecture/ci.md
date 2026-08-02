@@ -333,7 +333,7 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 ## Required status checks (branch protection)
 
 Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
-**`agent-review-gate`** (`agent-review-gate.yml`).
+**`claude-review`** (`claude-review.yml`).
 (`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
 issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
@@ -348,12 +348,14 @@ silently treated as `clean`.
 Fork PRs without the Claude OAuth secret remain visibly blocked;
 a maintainer must move the contribution onto a repository branch so the required review can run.
 
-A PR that changes the review-controller surface (`claude-review.yml`,
-`agent-review-gate.yml`, or `scripts/check_claude_review.py`) cannot receive a Claude review by
-design. The separate trusted `pull_request_target` gate then requires the configured maintainer's
-exact-head `review-controller-bootstrap` marker. It checks immediately rather than polling: after the
-maintainer posts the marker, the maintainer explicitly re-runs the failed check. This is a visible
-single-maintainer exception, not a green provider skip.
+A PR that changes the review-controller surface (`claude-review.yml` or
+`scripts/check_claude_review_outcome.py`) cannot receive a Claude review by
+design. `claude-review` succeeds only for this controller exception and emits a
+visible warning; it is not a successful Claude review. In this
+single-maintainer repository, the maintainer must review the complete controller
+diff with an agent in the IDE before merge. That is an accepted manual policy,
+not machine-verifiable evidence: there is no bootstrap marker and no separate
+required gate.
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
@@ -370,9 +372,9 @@ filter to the workflow's `pull_request` trigger (the job then simply does not ru
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
 One property the required status does **not** buy: `pr-link` still executes the *fork's* copy of
-its own script, so a fork could make it pass unconditionally. `agent-review-gate` does not share
-that weakness: its `pull_request_target` workflow executes the default branch's verifier. The
-human merge button remains the final control.
+its own script, so a fork could make it pass unconditionally. A controller PR
+is likewise a deliberate manual-review exception; the human merge button
+remains the final control.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
 an expected extra minute, not a malfunction.

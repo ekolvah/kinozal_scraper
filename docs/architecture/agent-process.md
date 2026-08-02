@@ -90,40 +90,27 @@ after its session ends; a session-driven adapter must stay active through this
 loop, while a fully autonomous loop needs separately operated runner and
 credential infrastructure.
 
-## Review-controller bootstrap
+## Review-controller manual review
 
-The Claude provider refuses to review a PR that changes its own workflow file;
-this is a deliberate supply-chain protection, never a `clean` result. The
-trusted `agent-review-gate` therefore treats changes to the review-controller
-surface as an exceptional human decision:
+The Claude provider self-skips a PR that changes its workflow or outcome
+verifier; that warning is visible in `claude-review` and is not a successful
+Claude review. For this single-maintainer repository, the exception is an
+accepted operating policy: before merge, the maintainer completes a manual IDE-agent review of the complete controller diff.
 
-1. Keep the PR limited to `.github/workflows/claude-review.yml`,
-   `.github/workflows/agent-review-gate.yml`, `scripts/check_claude_review.py`,
-   their direct tests, and documentation; do not mix application changes into it.
-2. A configured maintainer reviews the complete diff and posts exactly
-   `<!-- review-controller-bootstrap: sha=<current-head-sha> -->` in the PR
-   conversation. The SHA binds the exceptional decision to one head; any push
-   requires a new marker.
-3. The required gate runs from `main`, detects the protected paths through the
-   GitHub PR-files API, and accepts that marker only from a configured
-   maintainer. It otherwise remains red rather than treating the provider skip
-   as approval.
-4. The provider self-skip is visible, not a clean Claude review. On ordinary
-   PRs the workflow first reads the current PR body and head SHA from the
-   GitHub API, then maps the primary review's validated structured outcome
-   directly to the `claude-review` job result. This prevents a manual re-run
-   from using stale event metadata; the body is untrusted data, never shell
-   input, and the summary identifies the reviewed SHA. Comments have no merge
-   authority and there is no repair invocation. An unavailable live context,
-   quota, transport, or malformed output is red until re-run. The trusted gate
-   exists only for the controller exception.
+This review is a human merge responsibility, not machine-verifiable evidence.
+There is no bootstrap marker and no separate trusted review gate. Keep a
+controller PR limited to `.github/workflows/claude-review.yml`,
+`scripts/check_claude_review_outcome.py`, their direct tests, and documentation;
+do not mix application changes into it. Any push requires the maintainer to
+review the new complete diff in the IDE before merge.
 
-No agent may treat the provider skip as an approval or post the maintainer
-marker. The first PR that installs this trusted default-branch gate cannot use
-code that is not yet on `main`; it needs a one-time human bootstrap with the
-same narrow review and temporary protection change. After that installation,
-ordinary PRs use Claude outcomes and later controller changes use the marker
-path without changing branch protection.
+On ordinary PRs the workflow first reads the current PR body and head SHA from
+the GitHub API, then maps the primary review's validated structured outcome
+directly to the `claude-review` job result. This prevents a manual re-run from
+using stale event metadata; the body is untrusted data, never shell input, and
+the summary identifies the reviewed SHA. Comments have no merge authority and
+there is no repair invocation. An unavailable live context, quota, transport,
+or malformed output is red until re-run.
 
 ## Governance conventions
 1. Create issue branches only with `python scripts/issue_branch.py <N>`; it

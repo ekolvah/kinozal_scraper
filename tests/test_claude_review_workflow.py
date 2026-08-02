@@ -35,7 +35,9 @@ import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
 _WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "claude-review.yml"
-_GATE_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
+_GATE_WORKFLOW = (
+    Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
+)
 _ACTION = "anthropics/claude-code-action"
 
 # Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
