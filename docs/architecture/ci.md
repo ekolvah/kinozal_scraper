@@ -345,11 +345,12 @@ malformed output is a readable `review unavailable` failure. A Claude comment is
 not merge authority, so ordinary PRs neither poll GitHub comments nor start a second Claude invocation.
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
-Fork PRs have no Claude OAuth secret. All remaining required checks execute the
-PR-head workflow or script, so they do not provide trusted default-branch
-verification for an untrusted fork. This single-maintainer repository accepts
-that trade-off: the maintainer's IDE-agent review and merge decision are the
-sole backstop for controller and fork changes.
+An ordinary fork PR has no Claude OAuth secret and remains red for its missing
+outcome; a maintainer moves it onto a repository branch to run the required
+review. The exception is a fork that changes a controller verifier: every
+remaining required check executes PR-head code, so its success signal is not
+trusted. The accepted single-maintainer fallback is the maintainer's IDE-agent
+review and merge decision.
 
 When a PR changes the review-controller surface (`claude-review.yml`,
 `scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
@@ -375,10 +376,9 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
-All remaining required contexts execute the PR head, including their verifier
-scripts. Removing the trusted default-branch gate therefore deliberately removes
-machine-verifiable review evidence for an untrusted fork; the accepted
-single-maintainer fallback is the human merge decision after IDE-agent review.
+The fork and controller trust trade-off is documented above; it deliberately
+replaces machine-verifiable trusted review with the single maintainer's IDE-agent
+review and merge decision.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
 an expected extra minute, not a malfunction.
@@ -481,11 +481,9 @@ exactly the thing that drifts away from it.
 2. **`effort` по умолчанию наследует уровень сессии** — не `high`. Без пина одна и та же
    plan-стадийная проверка строже или мягче в зависимости от того, чья сессия её запустила;
    пин делает строгость гейта решением репозитория.
-3. **PR, правящий сам `claude-review.yml`, получает зелёный джоб без единого комментария** —
-   экшен из соображений безопасности не ревьюит собственное определение воркфлоу. Ни контракт
-   промпта, ни разрешённая модель на таком PR не наблюдаемы; оба проверяются на следующем
-   не-связанном PR (градация в комментарии, строка модели — в транскрипте Actions). Это стоячий
-   источник ложной тревоги «ревью сломалось».
+3. **PR, правящий сам `claude-review.yml`, проверяет outcome только при его наличии.** Пустой
+   outcome даёт видимое предупреждение, а `clean`, `rework` и `blocking` применяются обычно.
+   Контракт промпта и разрешённая модель проверяются на следующем несвязанном PR.
 4. **Гард отвергает только короткие алиасы** (`opus`/`sonnet`/`haiku`/`fable`) — любой полный id
    проходит. Уведомления «вышла новая модель» нет: ревизия происходит **по красному джобу**, не
    по календарю. Пин **family-level** намеренно: у этого поколения нет датированного snapshot-id,
