@@ -100,7 +100,8 @@ accepted operating policy: before merge, the maintainer completes a manual IDE-a
 This review is a human merge responsibility, not machine-verifiable evidence.
 There is no bootstrap marker and no separate trusted review gate. Keep a
 controller PR limited to `.github/workflows/claude-review.yml`,
-`scripts/check_claude_review_outcome.py`, their direct tests, and documentation;
+`scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
+their direct tests, and documentation;
 do not mix application changes into it. Any push requires the maintainer to
 review the new complete diff in the IDE before merge.
 

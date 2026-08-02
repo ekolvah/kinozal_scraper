@@ -348,8 +348,8 @@ silently treated as `clean`.
 Fork PRs without the Claude OAuth secret remain visibly blocked;
 a maintainer must move the contribution onto a repository branch so the required review can run.
 
-A PR that changes the review-controller surface (`claude-review.yml` or
-`scripts/check_claude_review_outcome.py`) cannot receive a Claude review by
+A PR that changes the review-controller surface (`claude-review.yml`,
+`scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`) cannot receive a Claude review by
 design. `claude-review` succeeds only for this controller exception and emits a
 visible warning; it is not a successful Claude review. In this
 single-maintainer repository, the maintainer must review the complete controller

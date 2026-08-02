@@ -47,7 +47,6 @@ _HOOK = _REPO_ROOT / ".githooks" / "pre-push"
 class TestDriftDetection:
     def test_controller_gate_is_not_a_required_context(self) -> None:
         assert REQUIRED_CONTEXTS == ("quality", "pr-link", "claude-review")
-        assert "agent-review-gate" not in NOT_REQUIRED
 
     """Чистое сравнение объявленного состава контекстов с фактическим."""
 

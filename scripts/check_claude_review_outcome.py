@@ -10,6 +10,7 @@ from collections.abc import Mapping, Sequence
 _REVIEW_CONTROLLER_PATHS = frozenset(
     {
         ".github/workflows/claude-review.yml",
+        "scripts/check_branch_protection.py",
         "scripts/check_claude_review_outcome.py",
     }
 )
@@ -95,7 +96,7 @@ def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
 
     try:
         return controller_changed(fetch_changed_paths(repository, int(pr_number)))
-    except (RuntimeError, ValueError) as exc:
+    except (OSError, RuntimeError, ValueError) as exc:
         print(f"error: unable to classify review-controller PR: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
@@ -110,17 +111,18 @@ def main(argv: Sequence[str] | None = None) -> None:
     live_pr_context_status, repository, pr_number = _parse_options(args)
     _require_live_pr_context(live_pr_context_status)
 
-    if _is_controller_pr(repository, pr_number):
-        print(
-            "::warning::Claude self-skipped this review-controller PR. The maintainer must perform "
-            "a manual IDE-agent review before merge under the single-maintainer policy."
-        )
-        return
     try:
         payload = json.loads(payload_arg)
     except json.JSONDecodeError:
         payload = None
     outcome = payload.get("outcome") if isinstance(payload, dict) else None
+
+    if payload_arg == "" and _is_controller_pr(repository, pr_number):
+        print(
+            "::warning::Claude self-skipped this review-controller PR. The maintainer must perform "
+            "a manual IDE-agent review before merge under the single-maintainer policy."
+        )
+        return
     if outcome == "clean":
         print("ok: Claude review outcome is clean")
         return
