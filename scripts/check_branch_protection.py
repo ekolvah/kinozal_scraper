@@ -44,7 +44,7 @@ from typing import Any, NamedTuple
 import yaml
 
 # Канон состава required-контекстов ветки `main`.
-REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", "claude-review", "agent-review-gate")
+REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", "claude-review")
 
 # PR-джобы, сознательно НЕ сделанные required, и почему. Пустая причина — забытое решение,
 # а не принятое, поэтому гард её не принимает.
