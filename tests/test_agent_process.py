@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
 import yaml
 
+from scripts.agent_orchestrator import RouteDecision
 from scripts.validate_issue_sections import REQUIRED_SECTIONS
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -74,6 +76,14 @@ class TestAgentProcess:
             "human_merge",
         ):
             assert f"| `{role}` | {catalogue['roles'][role]['max_runs']} |" in process
+
+    def test_documented_control_plane_output_matches_route_decision(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        assert "### Control-plane output contract" in process
+        for field in fields(RouteDecision):
+            assert f"| `{field.name}` |" in process
+        assert all(status in process for status in ("`next`", "`blocked`", "`escalate`"))
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
