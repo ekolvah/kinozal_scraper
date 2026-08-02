@@ -408,9 +408,15 @@ Visibility is guaranteed by two independent layers:
 
 The primary invocation returns a schema-validated `clean`, `rework`, or `blocking` outcome. The
 following shell step maps it directly to the job result; no marker, polling, or repair invocation is
-in the ordinary path. The first ordinary PR after a controller change is the operational compatibility
-check: a red `Claude review` step reporting schema validation means the reviewer is unavailable, so
-revert the controller PR rather than weakening the gate.
+in the ordinary path. Before that invocation, the workflow obtains the current PR number, body and
+head SHA through the GitHub API. A re-run keeps its original event payload, so this explicit read is
+what keeps a re-run from reviewing an old PR description or SHA. The body is passed only as fenced,
+untrusted data in an action input — never interpolated into a shell command — and the requested
+summary names the live head SHA. If that API read fails, the deterministic step reports `live PR
+context is unavailable` and stays red; it does not spend quota on a second model call. The first
+ordinary PR after a controller change is the operational compatibility check: a red `Claude review`
+step reporting schema validation means the reviewer is unavailable, so revert the controller PR
+rather than weakening the gate.
 
 **Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
 включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний

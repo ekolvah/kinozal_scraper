@@ -32,3 +32,14 @@ class TestOutcome:
         with pytest.raises(SystemExit) as exc:
             main([payload])
         assert exc.value.code == 2
+
+
+class TestReviewOutcomeCli:
+    def test_live_pr_context_failure_is_actionable(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as exc:
+            main(['{"outcome":"clean"}', "--live-pr-context-status", "failure"])
+
+        assert exc.value.code == 2
+        assert "live PR context is unavailable" in capsys.readouterr().err

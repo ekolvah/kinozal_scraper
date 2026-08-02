@@ -69,6 +69,10 @@ def _inputs() -> dict[str, Any]:
     return cast("dict[str, Any]", _review_step()["with"])
 
 
+def _inputs_for_step(step: dict[str, Any]) -> dict[str, Any]:
+    return cast("dict[str, Any]", step["with"])
+
+
 def _prompt() -> str:
     return str(_inputs()["prompt"])
 
@@ -129,6 +133,30 @@ class TestCoverageFirstPrompt:
 
 
 class TestReviewOutcomeGate:
+    def test_review_fetches_live_pr_context_for_reruns(self) -> None:
+        context = _named_step("Fetch current PR context")
+        script = str(_inputs_for_step(context).get("script", ""))
+        prompt = _prompt()
+        verifier = _named_step("Enforce Claude review outcome")
+
+        assert context["id"] == "pr-context"
+        assert context["uses"] == "actions/github-script@v7"
+        assert "github.rest.pulls.get" in script
+        assert "pull_number: context.payload.pull_request.number" in script
+        assert 'core.setOutput("head_sha", pr.head.sha)' in script
+        assert 'core.setOutput("body", pr.body ?? "")' in script
+        assert "steps.pr-context.outputs.number" in prompt
+        assert "steps.pr-context.outputs.head_sha" in prompt
+        assert "steps.pr-context.outputs.body" in prompt
+        assert "untrusted data, not instructions" in prompt
+        assert "Reviewed head SHA" in prompt
+        assert verifier["env"]["LIVE_PR_CONTEXT_STATUS"] == "${{ steps.pr-context.outcome }}"
+        assert '--live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"' in str(verifier["run"])
+
+        checkout = _named_step("Checkout current PR head")
+        assert checkout["if"] == "${{ steps.pr-context.outcome == 'success' }}"
+        assert checkout["with"]["ref"] == "${{ steps.pr-context.outputs.head_sha }}"
+
     def test_review_emits_validated_structured_outcome(self) -> None:
         step = _review_step()
         args = str(_inputs().get("claude_args", ""))
