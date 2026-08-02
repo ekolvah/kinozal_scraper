@@ -101,8 +101,10 @@ class TestAgentProcess:
 
     def test_pr_template_qualifies_agent_invocation_counts(self) -> None:
         template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
 
-        assert "completed run-count proxy at the time this record is written" in template
+        for record in (template, process):
+            assert "completed run-count proxy at the time this record is written" in record
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
