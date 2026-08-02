@@ -35,7 +35,9 @@ class TestOutcome:
 
 
 class TestReviewOutcomeCli:
-    def test_live_pr_context_failure_is_actionable(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_live_pr_context_failure_is_actionable(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         with pytest.raises(SystemExit) as exc:
             main(['{"outcome":"clean"}', "--live-pr-context-status", "failure"])
 
