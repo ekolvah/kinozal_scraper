@@ -411,10 +411,12 @@ Visibility is guaranteed by two independent layers:
   via `update_claude_comment`. Controlling comment *format* is not enough: a run that finds
   no issues and invokes no publishing tool leaves the PR silent.
 
-The primary invocation returns a schema-validated `clean`, `rework`, or `blocking` outcome. The
-following shell step maps it directly to the job result; no marker, polling, or repair invocation is
-in the ordinary path. Before that invocation, the workflow obtains the current PR number, body and
-head SHA through the GitHub API. A re-run keeps its original event payload, so this explicit read is
+The job first checks out the default-branch verifier source, so the deterministic step remains
+importable if the live PR API read fails. The primary invocation returns a schema-validated `clean`,
+`rework`, or `blocking` outcome. The following shell step maps it directly to the job result; no
+marker, polling, or repair invocation is in the ordinary path. Before that invocation, the workflow
+obtains the current PR number, body and head SHA through the GitHub API. A re-run keeps its original
+event payload, so this explicit read is
 what keeps a re-run from reviewing an old PR description or SHA. The body is passed only as fenced,
 untrusted data in an action input — never interpolated into a shell command — and the requested
 summary names the live head SHA. If that API read fails, the deterministic step reports `live PR

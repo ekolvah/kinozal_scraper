@@ -14,6 +14,13 @@ jobs:
   claude-review:
     runs-on: ubuntu-latest
     steps:
+      # Keep the outcome verifier importable even when the live-PR API read
+      # fails. A successful read below replaces this with the exact PR head.
+      - name: Checkout verifier source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
       # A re-run keeps the original pull_request event payload. Fetch the PR
       # again so the review prompt describes the head that is being reviewed.
       - name: Fetch current PR context
@@ -133,4 +140,4 @@ jobs:
         run: >
           python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
           --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
-          --repo ${{ github.repository }} --pr ${{ steps.pr-context.outputs.number }}
+          --repo "${{ github.repository }}" --pr "${{ steps.pr-context.outputs.number }}"

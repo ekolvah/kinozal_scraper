@@ -107,9 +107,10 @@ their direct tests, and documentation; do not mix application changes into it.
 Any push requires the maintainer to
 review the new complete diff in the IDE before merge.
 
-On every PR the workflow first reads the current PR body and head SHA from
-the GitHub API, then maps the primary review's validated structured outcome
-directly to the `claude-review` job result. This prevents a manual re-run from
+On every PR the workflow first checks out the default-branch verifier source,
+then reads the current PR body and head SHA from the GitHub API. It maps the
+primary review's validated structured outcome directly to the `claude-review`
+job result. This prevents a manual re-run from
 using stale event metadata; the body is untrusted data, never shell input, and
 the summary identifies the reviewed SHA. Comments have no merge authority and
 there is no repair invocation. An unavailable live context, quota, transport,
