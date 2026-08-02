@@ -345,12 +345,17 @@ malformed output is a readable `review unavailable` failure. A Claude comment is
 not merge authority, so ordinary PRs neither poll GitHub comments nor start a second Claude invocation.
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
+
+### Fork PR handling and trust trade-off
+
 An ordinary fork PR has no Claude OAuth secret and remains red for its missing
 outcome; a maintainer moves it onto a repository branch to run the required
-review. The exception is a fork that changes a controller verifier: every
-remaining required check executes PR-head code, so its success signal is not
-trusted. The accepted single-maintainer fallback is the maintainer's IDE-agent
-review and merge decision.
+review. Separately, no required context is trusted evidence on any fork: all
+three execute PR-head code (`ci.yml`, `scripts/verify_pr_link.py`, and
+`scripts/check_claude_review_outcome.py`), so a fork can make its own check
+green. A controller-verifier fork therefore uses the accepted
+single-maintainer fallback: the maintainer's IDE-agent review and merge
+decision.
 
 When a PR changes the review-controller surface (`claude-review.yml`,
 `scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
@@ -376,9 +381,7 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
-The fork and controller trust trade-off is documented above; it deliberately
-replaces machine-verifiable trusted review with the single maintainer's IDE-agent
-review and merge decision.
+See [Fork PR handling and trust trade-off](#fork-pr-handling-and-trust-trade-off).
 
 With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
 an expected extra minute, not a malfunction.
