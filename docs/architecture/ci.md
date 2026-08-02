@@ -333,7 +333,7 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 ## Required status checks (branch protection)
 
 Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
-**`agent-review-gate`** (`agent-review-gate.yml`).
+**`claude-review`** (`claude-review.yml`).
 (`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
 issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
@@ -345,15 +345,25 @@ malformed output is a readable `review unavailable` failure. A Claude comment is
 not merge authority, so ordinary PRs neither poll GitHub comments nor start a second Claude invocation.
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
-Fork PRs without the Claude OAuth secret remain visibly blocked;
-a maintainer must move the contribution onto a repository branch so the required review can run.
 
-A PR that changes the review-controller surface (`claude-review.yml`,
-`agent-review-gate.yml`, or `scripts/check_claude_review.py`) cannot receive a Claude review by
-design. The separate trusted `pull_request_target` gate then requires the configured maintainer's
-exact-head `review-controller-bootstrap` marker. It checks immediately rather than polling: after the
-maintainer posts the marker, the maintainer explicitly re-runs the failed check. This is a visible
-single-maintainer exception, not a green provider skip.
+An ordinary fork PR has no Claude OAuth secret and remains red for its missing
+outcome; a maintainer moves it onto a repository branch to run the required
+review. Separately, no required context is trusted evidence on any fork: all
+three execute PR-head code (`ci.yml`, `scripts/verify_pr_link.py`, and
+`scripts/check_claude_review_outcome.py`), so a fork can make its own check
+green. A controller-verifier fork therefore uses the accepted
+single-maintainer fallback: the maintainer's IDE-agent review and merge
+decision.
+
+When a PR changes the review-controller surface (`claude-review.yml`,
+`scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
+and has an empty outcome output, `claude-review` emits a visible warning; it
+is not a successful Claude review. A real `clean`, `rework`, or `blocking`
+outcome is enforced for controller PRs exactly as it is for ordinary PRs. In
+this single-maintainer repository, the maintainer must review the complete
+controller diff with an agent in the IDE before merge. That is an accepted manual
+policy, not machine-verifiable evidence: there is no bootstrap marker and no
+separate required gate.
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
@@ -369,12 +379,7 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
-One property the required status does **not** buy: `pr-link` still executes the *fork's* copy of
-its own script, so a fork could make it pass unconditionally. `agent-review-gate` does not share
-that weakness: its `pull_request_target` workflow executes the default branch's verifier. The
-human merge button remains the final control.
-
-With `strict: true` the "Update branch" button creates a new head SHA, so both contexts re-run —
+With `strict: true` the "Update branch" button creates a new head SHA, so all required contexts re-run —
 an expected extra minute, not a malfunction.
 
 **Drift detection.** `python scripts/check_branch_protection.py` prints the actual contexts and
@@ -406,11 +411,19 @@ Visibility is guaranteed by two independent layers:
   via `update_claude_comment`. Controlling comment *format* is not enough: a run that finds
   no issues and invokes no publishing tool leaves the PR silent.
 
-The primary invocation returns a schema-validated `clean`, `rework`, or `blocking` outcome. The
-following shell step maps it directly to the job result; no marker, polling, or repair invocation is
-in the ordinary path. The first ordinary PR after a controller change is the operational compatibility
-check: a red `Claude review` step reporting schema validation means the reviewer is unavailable, so
-revert the controller PR rather than weakening the gate.
+The job first checks out the default-branch verifier source, so the deterministic step remains
+importable if the live PR API read fails. The primary invocation returns a schema-validated `clean`,
+`rework`, or `blocking` outcome. The following shell step maps it directly to the job result; no
+marker, polling, or repair invocation is in the ordinary path. Before that invocation, the workflow
+obtains the current PR number, body and head SHA through the GitHub API. A re-run keeps its original
+event payload, so this explicit read is
+what keeps a re-run from reviewing an old PR description or SHA. The body is passed only as fenced,
+untrusted data in an action input — never interpolated into a shell command — and the requested
+summary names the live head SHA. If that API read fails, the deterministic step reports `live PR
+context is unavailable` and stays red; it does not spend quota on a second model call. The first
+ordinary PR after a controller change is the operational compatibility check: a red `Claude review`
+step reporting schema validation means the reviewer is unavailable, so revert the controller PR
+rather than weakening the gate.
 
 **Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
 включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний
@@ -469,11 +482,9 @@ exactly the thing that drifts away from it.
 2. **`effort` по умолчанию наследует уровень сессии** — не `high`. Без пина одна и та же
    plan-стадийная проверка строже или мягче в зависимости от того, чья сессия её запустила;
    пин делает строгость гейта решением репозитория.
-3. **PR, правящий сам `claude-review.yml`, получает зелёный джоб без единого комментария** —
-   экшен из соображений безопасности не ревьюит собственное определение воркфлоу. Ни контракт
-   промпта, ни разрешённая модель на таком PR не наблюдаемы; оба проверяются на следующем
-   не-связанном PR (градация в комментарии, строка модели — в транскрипте Actions). Это стоячий
-   источник ложной тревоги «ревью сломалось».
+3. **PR, правящий сам `claude-review.yml`, проверяет outcome только при его наличии.** Пустой
+   outcome даёт видимое предупреждение, а `clean`, `rework` и `blocking` применяются обычно.
+   Контракт промпта и разрешённая модель проверяются на следующем несвязанном PR.
 4. **Гард отвергает только короткие алиасы** (`opus`/`sonnet`/`haiku`/`fable`) — любой полный id
    проходит. Уведомления «вышла новая модель» нет: ревизия происходит **по красному джобу**, не
    по календарю. Пин **family-level** намеренно: у этого поколения нет датированного snapshot-id,
