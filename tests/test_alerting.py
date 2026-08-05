@@ -16,8 +16,13 @@ from types import SimpleNamespace
 import pytest
 
 from kinozal_scraper import alerting
-from kinozal_scraper.alerting import format_pipeline_failures, report_failures
-from kinozal_scraper.generic_pipeline import PipelineResult
+from kinozal_scraper.alerting import (
+    format_metrics_line,
+    format_pipeline_failures,
+    publish_run_summary,
+    report_failures,
+)
+from kinozal_scraper.generic_pipeline import PipelineResult, SourceMetrics
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 
@@ -137,3 +142,85 @@ class TestConfigRejectionAlert:
         assert alerting.alert_config_rejections(notifier, object()) is False
         assert notifier.texts == []
         assert not marker.exists()
+
+
+def _measured(source_id: str, **counts: int) -> PipelineResult:
+    result = PipelineResult(source_id=source_id)
+    result.metrics = SourceMetrics(**counts)
+    return result
+
+
+class TestFormatMetricsLine:
+    """#459: `new=0` used to be indistinguishable from "the source broke and
+    returned nothing" — the only trace was an INFO line. The metrics line makes
+    the reason readable without opening the job log."""
+
+    def test_line_matches_operator_format(self) -> None:
+        line = format_metrics_line(
+            "github_new_popular",
+            SourceMetrics(fetched=100, extracted=100, existing=93, new=7, sent=7, stored=7),
+        )
+        assert line == (
+            "github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7"
+        )
+
+    def test_zero_new_still_reports_how_deep_we_looked(self) -> None:
+        line = format_metrics_line(
+            "github_trending", SourceMetrics(fetched=25, extracted=25, existing=25)
+        )
+        assert "fetched=25" in line
+        assert "new=0" in line
+
+
+class TestPublishRunSummary:
+    def test_appends_line_when_env_var_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        publish_run_summary(
+            [_measured("github_new_popular", fetched=3, extracted=3, new=3, sent=3)]
+        )
+        assert "github_new_popular" in target.read_text(encoding="utf-8")
+
+    def test_no_env_var_logs_and_does_not_raise(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+        with caplog.at_level(logging.INFO, logger="kinozal_scraper.alerting"):
+            publish_run_summary(
+                [_measured("github_trending", fetched=25, extracted=25, existing=25)]
+            )
+        assert any("github_trending" in record.message % record.args for record in caplog.records)
+
+    def test_unwritable_target_warns_and_does_not_raise(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x", encoding="utf-8")
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(blocker / "summary.md"))
+        with caplog.at_level(logging.WARNING, logger="kinozal_scraper.alerting"):
+            publish_run_summary([_measured("github_new_popular", fetched=1)])
+        assert any(record.levelno >= logging.WARNING for record in caplog.records)
+
+    def test_zero_new_still_publishes_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        publish_run_summary(
+            [_measured("github_new_popular", fetched=100, extracted=100, existing=100)]
+        )
+        assert "new=0" in target.read_text(encoding="utf-8")
+
+    def test_uninstrumented_result_is_skipped_not_zeroed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # steam/kinozal/soldout do not measure; reporting them as all-zeros would
+        # recreate the very "silence looks like an empty source" ambiguity #459 fixes.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        publish_run_summary([_ok("steam"), _measured("github_trending", fetched=25)])
+        written = target.read_text(encoding="utf-8")
+        assert "steam" not in written
+        assert "github_trending" in written

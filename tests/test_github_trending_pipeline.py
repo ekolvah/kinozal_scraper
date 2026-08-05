@@ -531,6 +531,110 @@ class TestDegradedEnrichmentVisibility(unittest.TestCase):
                 )
 
 
+# ── #459: the whole page is searched, `limit` caps only what is delivered ────
+
+
+def _row(name: str, *, description: str = "desc", stars: str = "1,000") -> str:
+    return (
+        '<article class="Box-row">'
+        f'<h2><a href="/{name}">{name.replace("/", " / ")}</a></h2>'
+        f"<p>{description}</p>"
+        f'<a href="/{name}/stargazers">{stars}</a>'
+        '<span class="d-inline-block float-sm-right">5 stars today</span>'
+        "</article>"
+    )
+
+
+def _page_html(*names: str) -> str:
+    return "<html><body>" + "".join(_row(n) for n in names) + "</body></html>"
+
+
+class TestTrendingSearchesWholePage(unittest.TestCase):
+    """#459: the trending page IS the whole candidate set — there is no upstream
+    pagination — so `limit` must not cut the page down before dedup runs, or a
+    new repo sitting below position `limit` stays invisible forever."""
+
+    def test_new_repo_below_limit_is_notified(self) -> None:
+        source = {**_TRENDING_SOURCE, "limit": 2}
+        config = {"version": 1, "sources": [source]}
+        _, notifier = _run(
+            html=_page_html("a/1", "a/2", "b/new"),
+            existing_keys={"a/1", "a/2"},
+            sources_config=config,
+        )
+        self.assertEqual([n.id for n in notifier.sent], ["b/new"])
+
+    def test_delivers_at_most_limit_new_items(self) -> None:
+        source = {**_TRENDING_SOURCE, "limit": 2}
+        config = {"version": 1, "sources": [source]}
+        _, notifier = _run(html=_page_html("b/1", "b/2", "b/3"), sources_config=config)
+        self.assertEqual(len(notifier.sent), 2)
+
+    def test_drift_warnings_only_for_delivered_items(self) -> None:
+        # Searching deeper must not turn the §IV drift channel into noise about
+        # rows we will never send: an empty description is common on the trending
+        # page, and warning for all ~25 rows would drown the signal.
+        source = {**_TRENDING_SOURCE, "limit": 1}
+        config = {"version": 1, "sources": [source]}
+        html = (
+            "<html><body>"
+            + _row("b/new", description="")
+            + _row("c/below-cap", description="")
+            + "</body></html>"
+        )
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
+            _run(html=html, sources_config=config)
+        joined = "\n".join(caplog.output)
+        self.assertIn("b/new", joined)
+        self.assertNotIn("c/below-cap", joined)
+
+    def test_metrics_cover_whole_page_not_just_delivered(self) -> None:
+        source = {**_TRENDING_SOURCE, "limit": 1}
+        config = {"version": 1, "sources": [source]}
+        storage = InMemoryStorage()
+        storage.seed_existing("github_projects", {"a/1"})
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=_page_html("a/1", "b/2", "b/3"),
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+        metrics = results[0].metrics
+        assert metrics is not None
+        self.assertEqual(
+            (metrics.fetched, metrics.extracted, metrics.existing, metrics.new),
+            (3, 3, 1, 2),
+        )
+        self.assertEqual((metrics.sent, metrics.stored), (1, 1))
+
+
+class TestCanonicalRepoKey(unittest.TestCase):
+    """Both GitHub sources write into the shared `github_projects` tab, so one
+    repository must produce one key from either side or cross-source dedupe is a
+    no-op. The code is already correct (`_normalize_items` strips the leading
+    slash); this is the regression guard the invariant never had — it is expected
+    to be GREEN at the RED step (characterization guard, cf. #251)."""
+
+    def test_popular_and_trending_agree_on_owner_repo(self) -> None:
+        from kinozal_scraper.generic_pipeline import extract_from_json
+
+        popular_source = {
+            "id": "github_new_popular",
+            "type": "github_popular",
+            "limit": 10,
+            "dedupe_key": "full_name",
+            "fields": {"title": "full_name", "url": "html_url"},
+        }
+        record = {"full_name": "owner/repo", "html_url": "https://github.com/owner/repo"}
+        popular_key = extract_from_json([record], popular_source).items[0].dedupe_key
+
+        trending = extract_from_html(_page_html("owner/repo"), _TRENDING_SOURCE)
+        trending_key = _normalize_items(trending.items)[0].dedupe_key
+
+        self.assertEqual(popular_key, trending_key)
+        self.assertEqual(trending_key, "owner/repo")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     unittest.main()

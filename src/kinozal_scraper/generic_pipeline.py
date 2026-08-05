@@ -36,11 +36,36 @@ class NormalizedItem:
 
 
 @dataclass
+class SourceMetrics:
+    """Per-source run counters behind the operator summary line (#459).
+
+    `fetched` — records/rows the extractor was handed; `extracted` — those it
+    turned into items; `existing` / `new` — how the extracted candidates split
+    against storage (`extracted == existing + new`); `sent` / `stored` — what
+    delivery and the confirmed-delivery write actually landed.
+
+    `new` counts what was *found*, `sent` what fitted under the source's delivery
+    cap: a deferred remainder stays readable instead of vanishing (§IV).
+    """
+
+    fetched: int = 0
+    extracted: int = 0
+    existing: int = 0
+    new: int = 0
+    sent: int = 0
+    stored: int = 0
+
+
+@dataclass
 class PipelineResult:
     source_id: str
     items: list[NormalizedItem] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # `None` = this pipeline does not measure, which must stay distinguishable
+    # from an all-zero measurement (§IV) — the summary skips it rather than
+    # reporting a source as "fetched nothing" when nobody counted.
+    metrics: SourceMetrics | None = None
 
     @property
     def ok(self) -> bool:
@@ -111,9 +136,19 @@ def _build_item(
     )
 
 
+def select_new_items(
+    candidates: list[NormalizedItem],
+    existing: set[str],
+    limit: int,
+) -> tuple[list[NormalizedItem], int, int]:
+    raise NotImplementedError
+
+
 def extract_from_json(
     records: list[dict[str, Any]],
     source_config: dict[str, Any],
+    *,
+    limit: int | None = None,
 ) -> PipelineResult:
     source_id: str = source_config["id"]
     fields: dict[str, Any] = source_config.get("fields", {})
@@ -158,6 +193,8 @@ def _resolve_url(value: str, base_url: str) -> str:
 def extract_from_html(
     html: str,
     source_config: dict[str, Any],
+    *,
+    limit: int | None = None,
 ) -> PipelineResult:
     """Extract items from an HTML payload.
 

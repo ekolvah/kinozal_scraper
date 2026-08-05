@@ -27,6 +27,15 @@ logger = logging.getLogger(__name__)
 # deferred until ≥2 sources with a uniform single-GET fetch actually exist (#275).
 _SOURCE_TYPE = "github_popular"
 
+# Paging knobs live here, not in `sources.json`: HTTP fetching is the one part of
+# a source that is deliberately NOT declarative (see pipeline.md §"new source =
+# config, not code"). Both numbers come from the REST Search API documentation
+# (max `per_page` 100, max 1000 results per search) — never from probing the live
+# endpoint. We stop *before* the ceiling instead of discovering it by error, so
+# whatever GitHub returns past 1000 results can never redden a nightly run.
+_PER_PAGE = 100
+_SEARCH_RESULT_CEILING = 1000
+
 
 def _clean_headers(headers: dict[str, str]) -> dict[str, str]:
     """Headers safe to send: a blank value or a trailing space makes one unusable."""

@@ -21,7 +21,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from kinozal_scraper.generic_pipeline import PipelineResult
+from kinozal_scraper.generic_pipeline import PipelineResult, SourceMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,14 @@ def send_required_text(notifier: Any, text: str) -> bool:
     if not ok:
         logger.error("Telegram delivery failed")
     return ok
+
+
+def format_metrics_line(source_id: str, metrics: SourceMetrics) -> str:
+    raise NotImplementedError
+
+
+def publish_run_summary(results: list[PipelineResult]) -> None:
+    raise NotImplementedError
 
 
 def format_pipeline_failures(results: list[PipelineResult]) -> str:
