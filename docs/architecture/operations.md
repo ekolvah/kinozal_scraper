@@ -108,7 +108,7 @@ which is exactly why they travel here too:
 ```text
 github_trending: fetched=25 extracted=23 existing=23 new=0 sent=0 stored=0
 github_trending:   warning: row missing required field(s): dedupe_key='' title=''
-github_trending:   warning: row missing required field(s): dedupe_key='' title=''
+github_trending:   warning: row missing required field(s): dedupe_key='/owner/repo' title=''
 github_trending:   warning: 23 of 23 rows have an empty metric — page layout may have drifted: …
 ```
 

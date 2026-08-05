@@ -291,10 +291,16 @@ def run_github_trending_pipeline(
         if not source.get("url"):
             # No-url skip: no result entry at all, so nothing reaches the run summary
             # either — preserved byte-for-byte from the pre-split inline `continue`.
-            # Not a §IV hole: `url` is a required field in `validate_sources_config`,
-            # so a source can only get here by bypassing config loading (i.e. a test
-            # or a caller passing `sources_config` by hand). Config validation is the
-            # real guard; this branch is defence behind it.
+            #
+            # Unreachable today only because this source's `url` is a literal in
+            # `sources.json`. Config validation is NOT the guard: it checks key
+            # *presence* (`_REQUIRED_SOURCE_FIELDS - source.keys()`), so an empty
+            # string passes — which is live for `kinozal`/`soldout`, whose urls come
+            # from env macros that default to `""`.
+            #
+            # So: parameterising this url the way those two are would reintroduce a
+            # silent green skip, which is the exact shape #459 removes. Give it a
+            # `PipelineResult` with the reason on `warnings` if that ever happens.
             logger.warning("[%s] no URL configured", source["id"])
             continue
 

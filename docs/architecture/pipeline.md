@@ -250,8 +250,10 @@ than none). `new` vs `sent` shows a deferred remainder instead of hiding it.
   computed page ceiling `1000 // per_page`. The 100/1000 numbers come from the
   [REST Search API docs](https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28);
   we stay *inside* the ceiling rather than discovering it through whatever error
-  the API returns past it. Reaching the ceiling logs a WARNING — "scan truncated"
-  is not the same fact as "we saw everything".
+  the API returns past it. Reaching the ceiling logs a WARNING and puts it on
+  `result.warnings` — "the scan **may be** truncated" is not the same fact as "we
+  saw everything". Phrased as a possibility on purpose: a result set of exactly
+  1000 exhausts the loop with nothing beyond it.
   Paging knobs live in the fetch function, not in `sources.json`, per the
   known limitation above.
 - `github_trending` has no upstream pagination: the page *is* the whole candidate
