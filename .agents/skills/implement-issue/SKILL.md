@@ -25,8 +25,10 @@ workflow contract. This skill is the Codex adapter for the `implementer` and
 6. Create the PR with `python scripts/open_pr.py`, using the repository
    template. Fill `## Agent record` with your implementation identity, any
    reviewer/fixer identities, the actual CI evidence, selected route,
-   invocation-count proxy, fixer revisions, and conditional skip/escalation
-   reasons. The provider-neutral control plane in
+   invocation counts, fixer revisions, and conditional skip/escalation
+   reasons. Invocation counts are a completed run-count proxy at the time this
+   record is written, not invented provider token totals; they exclude a review
+   triggered by a later push. The provider-neutral control plane in
    `.agents/orchestration/roles.yaml` may report the next bounded action; it
    does not replace the checks below or invoke a provider.
 7. Stay active through the review/fix loop. After every push, wait for all PR

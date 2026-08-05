@@ -139,7 +139,11 @@ or malformed output is red until re-run.
 
 The PR template records the implementer, reviewer/fixer, concrete CI evidence,
 selected route, model-invocation counts, fixer revisions, and conditional
-skips/escalations in `## Agent record`. Invocation counts are a completed run-count proxy at the time this record is written, not invented provider token totals; they exclude a review triggered by a later push. This makes agents comparable without treating a particular provider as part of the workflow contract.
+skips/escalations in `## Agent record`. Invocation counts are a completed
+run-count proxy at the time this record is written, not invented provider token
+totals; they exclude a review triggered by a later push. This makes agents
+comparable without treating a particular provider as part of the workflow
+contract.
 
 `.agents/orchestration/roles.yaml` is the single machine-readable catalogue of
 the initial roles. `python scripts/agent_orchestrator.py <state.json>` is its
