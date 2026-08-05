@@ -103,7 +103,6 @@ class TestAgentProcess:
         records = (
             _REPO / ".github" / "pull_request_template.md",
             _REPO / "docs" / "architecture" / "agent-process.md",
-            _REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md",
         )
 
         for record in records:
@@ -112,6 +111,17 @@ class TestAgentProcess:
             assert "completed run-count proxy at the time this record is written" in unwrapped, (
                 f"{record.name} lost the invocation-count qualifier"
             )
+
+    def test_codex_adapter_defers_the_agent_record_contract_instead_of_restating_it(self) -> None:
+        skill = " ".join(
+            (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md")
+            .read_text(encoding="utf-8")
+            .split()
+        )
+
+        assert "agent-process.md#agent-records-and-adapters" in skill
+        # A third enumeration of the fields is what drifts; the pointer is the contract.
+        assert "fixer revisions" not in skill
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
