@@ -119,24 +119,40 @@ def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
     Aggregated rather than one line per row: drift is a property of the page, not
     of an item, so `all rows have an empty metric` is both a stronger signal and a
     bounded one now that the full page is searched instead of the first `limit`
-    rows. A few keys are named so the operator can open one and look."""
+    rows. A few keys are named so the operator can open one and look.
+
+    **Only an entirely blank column claims drift.** Repos without a description are
+    routine on the trending page, so warning "layout may have drifted" on 3 of 25
+    would assert a breakage that is not happening — every single run. A channel
+    that cries drift daily is one nobody reads, which is the same desensitisation
+    #459 is about. A partial count is still recorded, at INFO, without the verdict.
+    """
     if not items:
         return
     for field_name in ("metric", "description"):
         blank = [i.dedupe_key for i in items if not getattr(i, field_name)]
         if not blank:
             continue
-        scope = "all" if len(blank) == len(items) else f"{len(blank)}/{len(items)}"
         shown = ", ".join(blank[:_DRIFT_KEYS_IN_WARNING])
         if len(blank) > _DRIFT_KEYS_IN_WARNING:
             shown += f", … (+{len(blank) - _DRIFT_KEYS_IN_WARNING} more)"
-        logger.warning(
-            "[%s] %s rows have an empty %s — page layout may have drifted: %s",
-            source_id,
-            scope,
-            field_name,
-            shown,
-        )
+        if len(blank) == len(items):
+            logger.warning(
+                "[%s] all %d rows have an empty %s — page layout may have drifted: %s",
+                source_id,
+                len(items),
+                field_name,
+                shown,
+            )
+        else:
+            logger.info(
+                "[%s] %d of %d rows have an empty %s: %s",
+                source_id,
+                len(blank),
+                len(items),
+                field_name,
+                shown,
+            )
 
 
 def _enrich_new_items(
@@ -211,6 +227,20 @@ def _process_trending_source(
         logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
         result.errors.extend(extracted.errors)
         return result
+    if extracted.errors:
+        # Partial extraction stays green (the rows that parsed are worth delivering),
+        # but it must not stay *silent*: these errors used to be dropped on the
+        # floor, so `fetched=25 extracted=23` looked like a clean run. Warnings,
+        # not errors — reddening the run for two malformed rows out of 25 would
+        # make the whole source unavailable over a cosmetic page change.
+        logger.warning(
+            "[%s] %d of %d row(s) failed extraction: %s",
+            source["id"],
+            len(extracted.errors),
+            metrics.fetched,
+            extracted.errors,
+        )
+        result.warnings.extend(extracted.errors)
 
     items = _normalize_items(extracted.items)
     _enrich_with_stars_today(html_text, items)

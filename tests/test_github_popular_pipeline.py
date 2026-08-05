@@ -445,7 +445,10 @@ class TestOrdering(unittest.TestCase):
         with _patch_fetch(_GITHUB_RESPONSE):
             run_github_popular_pipeline(storage, notifier, sources_config=config)
 
-        self.assertEqual([n.id for n in notifier.sent][0], "user/repo-alpha")
+        self.assertEqual(
+            [n.id for n in notifier.sent],
+            ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"],
+        )
 
 
 # ── Enricher integration tests ─────────────────────────────────────────────────
@@ -700,6 +703,43 @@ class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
         metrics = results[0].metrics
         assert metrics is not None
         self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
+
+    def test_non_positive_limit_means_no_cap_not_one_page(self) -> None:
+        # `select_new_items` documents `limit <= 0` as "no cap"; without the
+        # `limit > 0` guard the paging stop condition (`len(selected) >= limit`)
+        # is trivially true and silently turns that into "one page".
+        # `_validate_limit` rejects such a config, so this is defence for the
+        # sentinel itself, reachable only by handing the config in directly.
+        pager = _Pager([_page("b/1", "b/2", "b/3"), _page("b/4")])
+        _, notifier, _ = _run_paged(pager, limit=0, per_page=3)
+        self.assertEqual(len(pager.requested_pages), 2)
+        self.assertEqual(len(notifier.sent), 4)
+
+    def test_later_page_failure_discards_the_run(self) -> None:
+        # Fail-closed on purpose: `@retry_api_http` has already exhausted its
+        # attempts by the time we get here, and the run reddens. Nothing is lost —
+        # dedup is permanent, so the next run re-collects page 1 and delivers it.
+        # Delivering a partial candidate set under a red result would make
+        # "how deep did we look" unanswerable from the metrics line.
+        def side_effect(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:  # noqa: ARG001
+            if params.get("page") == "2":
+                raise ConnectionError("network down")
+            return _page("b/1", "b/2", "b/3")
+
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        config = {"version": 1, "sources": [{**_GITHUB_SOURCE, "limit": 10}]}
+        module = "kinozal_scraper.github_popular_pipeline"
+        with (
+            unittest.mock.patch(f"{module}._PER_PAGE", 3),
+            unittest.mock.patch(f"{module}._SEARCH_RESULT_CEILING", 9),
+            unittest.mock.patch(f"{module}._fetch_json", side_effect=side_effect),
+        ):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=config)
+
+        self.assertFalse(results[0].ok)
+        self.assertEqual(notifier.sent, [])
+        self.assertEqual(storage.stored_rows("github_projects"), [])
 
     def test_delivers_at_most_limit_new_items(self) -> None:
         pager = _Pager([_page("b/1", "b/2", "b/3")])

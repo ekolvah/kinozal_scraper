@@ -606,6 +606,42 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         self.assertEqual(len(drift_lines), 2)  # one per affected field, not per row
         self.assertIn("more", "\n".join(drift_lines))  # evidence collapsed into a count
 
+    def test_partially_blank_column_does_not_claim_drift(self) -> None:
+        # Repos without a description are routine on the trending page. Asserting
+        # layout drift on them would fire a WARNING nearly every run, and a channel
+        # that cries drift daily stops being read (§IV desensitisation).
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = _row("a/described") + _row("b/blank", description="")
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="INFO") as caplog:
+            _run(html=f"<html><body>{rows}</body></html>", sources_config=config)
+        joined = "\n".join(caplog.output)
+        self.assertNotIn("may have drifted", joined)
+        self.assertIn("1 of 2 rows have an empty description", joined)
+
+    def test_partial_extraction_failure_is_visible_but_green(self) -> None:
+        # `fetched=2 extracted=1` used to be reachable with an entirely clean
+        # result: the per-row extraction errors were dropped on the floor, so the
+        # metrics gap the run summary now prints had nothing behind it (§IV).
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        broken_row = '<article class="Box-row"><p>no link at all</p></article>'
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=f"<html><body>{_row('a/good')}{broken_row}</body></html>",
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+
+        result = results[0]
+        self.assertTrue(result.ok, result.errors)  # one bad row must not kill the source
+        self.assertTrue(result.warnings, "partial extraction failure must be surfaced")
+        self.assertEqual([n.id for n in notifier.sent], ["a/good"])
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted), (2, 1))
+
     def test_metrics_cover_whole_page_not_just_delivered(self) -> None:
         source = {**_TRENDING_SOURCE, "limit": 1}
         config = {"version": 1, "sources": [source]}

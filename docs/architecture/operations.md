@@ -79,15 +79,21 @@ github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
 ```
 
 - `fetched` — records/rows the source handed us; `extracted` — those that became
-  items. A gap between them means records failed extraction (already red).
+  items. A gap between them means records failed extraction. On
+  `github_new_popular` that is already red (any bad record fails the source); on
+  `github_trending` a *partial* failure stays green — the rows that parsed are
+  worth delivering — but it is surfaced as a WARNING plus entries in
+  `PipelineResult.warnings`, so the gap is never unexplained.
 - `existing` — how many of the **examined candidates** were already known: rows
   in `github_projects` *plus* any repo seen twice within the run (the same repo on
   two search pages counts once as new, once as existing). It is *not* the size of
   the tab.
 - `new` — candidates not yet known. Normally `new == sent`: paging stops as soon
   as `limit` new items are in hand, so a remainder only arises from overshoot
-  *within* the last page. When it does (`new=12 sent=10`), the extra two are
-  deferred to the next run rather than lost.
+  *within* the last page. When it does (`new=12 sent=10`), the extra two wait for
+  the next run. On `github_new_popular` they reliably come back — the query is
+  stable. On `github_trending` they may not: the page churns daily, so a repo not
+  delivered today can simply be off it tomorrow.
 - `stored` — rows written to Sheets, i.e. confirmed deliveries.
 
 **`new=0` is green, and now explains itself.** `existing=100 new=0` means we
@@ -153,8 +159,8 @@ Cloudflare и стоят одной. Отсюда 12 красных ночных
 | Variable | Type | Purpose |
 |---|---|---|
 | `GITHUB_TOKEN` | secret | GitHub API auth (github_popular_pipeline only) |
-| `GH_TOP_LIMIT` | var | max GitHub repos to fetch (github_popular_pipeline only) |
-| `GH_TRENDING_LIMIT` | var | max GitHub trending repos to fetch (github_trending_pipeline; default 10) |
+| `GH_TOP_LIMIT` | var | max **new** GitHub repos to notify about per run (github_popular_pipeline only; default 10). Not a fetch budget — the number of candidates examined is `per_page` × pages, decided in code (#459, [ADR-0003](../adr/0003-limit-means-delivered-new-items.md)) |
+| `GH_TRENDING_LIMIT` | var | max **new** GitHub trending repos to notify about per run (github_trending_pipeline; default 10). The whole page is examined regardless |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |
 
