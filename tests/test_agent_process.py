@@ -23,6 +23,16 @@ _IMPLEMENTER_CONTRACT_MARKERS = (
     "`clean` reviewer outcome",
     "`not ready`",
 )
+# The record fields as the canonical section words them; adapters point here instead of copying.
+_CANONICAL_AGENT_RECORD_FIELDS = (
+    "the implementer",
+    "reviewer/fixer",
+    "CI evidence",
+    "selected route",
+    "model-invocation counts",
+    "fixer revisions",
+    "conditional skips/escalations",
+)
 # The field labels an adapter must defer to the canonical section instead of restating.
 _AGENT_RECORD_FIELD_LABELS = (
     "implementation identity",
@@ -121,6 +131,17 @@ class TestAgentProcess:
             assert "completed run-count proxy at the time this record is written" in unwrapped, (
                 f"{record.name} lost the invocation-count qualifier"
             )
+
+    def test_canonical_section_still_enumerates_the_agent_record_fields(self) -> None:
+        heading = "## Agent records and adapters"
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert heading in process, "the canonical record section was renamed or removed"
+        section = " ".join(
+            process.split(heading, maxsplit=1)[1].split("\n## ", maxsplit=1)[0].split()
+        )
+
+        for field in _CANONICAL_AGENT_RECORD_FIELDS:
+            assert field in section, f"canonical record section lost {field!r}"
 
     def test_codex_adapter_defers_the_agent_record_contract_instead_of_restating_it(self) -> None:
         skill = " ".join(
