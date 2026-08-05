@@ -13,8 +13,10 @@ from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     PipelineResult,
+    SourceMetrics,
     build_notification,
     extract_from_html,
+    select_new_items,
 )
 from kinozal_scraper.http_fetch import fetch_html
 from kinozal_scraper.pipeline_config import load_sources_config
@@ -89,6 +91,17 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
         item.raw["stars_today"] = by_href.get(key, "")
 
 
+def _count_rows(html: str, row_selector: str) -> int:
+    """Rows the page offered, before extraction dropped any — the `fetched` metric.
+
+    Counted here rather than threaded out of `extract_from_html` so the extractor
+    keeps one job; one extra parse of a page we already have in memory costs
+    milliseconds once per run."""
+    if not row_selector:
+        return 0
+    return len(BeautifulSoup(html, "html.parser").select(row_selector))
+
+
 def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
     """Surface empty metric/description as WARNINGs so page-layout drift reaches
     the operator instead of silently shipping blank fields (§IV)."""
@@ -160,6 +173,8 @@ def _process_trending_source(
         return None  # None = no-url silent-skip, preserved from pre-refactor
 
     result = PipelineResult(source_id=source["id"])
+    metrics = SourceMetrics()
+    result.metrics = metrics
     try:
         html_text = fetch_html(url)
     except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
@@ -167,7 +182,12 @@ def _process_trending_source(
         result.errors.append(f"fetch failed: {exc}")
         return result
 
-    extracted = extract_from_html(html_text, source)
+    metrics.fetched = _count_rows(html_text, source.get("row_selector", ""))
+    # limit=0: the trending page has no upstream pagination, so the page IS the
+    # whole candidate set. Truncating it to `limit` before dedup was #459's root
+    # cause on this side — a new repo below position `limit` stayed invisible
+    # forever, because dedup can only ever shrink what extraction handed it.
+    extracted = extract_from_html(html_text, source, limit=0)
     if not extracted.items and extracted.errors:
         logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
         result.errors.extend(extracted.errors)
@@ -175,13 +195,20 @@ def _process_trending_source(
 
     items = _normalize_items(extracted.items)
     _enrich_with_stars_today(html_text, items)
-    _warn_on_drift(source["id"], items)
 
     result.items = items
+    metrics.extracted = len(items)
 
     sheet_tab: str = source["sheet_tab"]
     existing = storage.get_existing_keys(sheet_tab)
-    new_items = [i for i in items if i.dedupe_key not in existing]
+    new_items, metrics.existing, metrics.new = select_new_items(
+        items, existing, int(source["limit"])
+    )
+    # Drift warnings run on what we deliver, not on every row of the page: now
+    # that the whole page is searched, warning about the ~15 rows we will never
+    # send would drown the §IV channel it lives in (empty descriptions are
+    # routine on the trending page).
+    _warn_on_drift(source["id"], new_items)
     if not new_items:
         logger.info("[%s] no new items", source["id"])
         return result
@@ -193,11 +220,13 @@ def _process_trending_source(
     template: str = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
     sent, failed = notifier.send_items(notifications)
+    metrics.sent = len(sent)
 
     if sent:
         sent_ids = {n.id for n in sent}
         items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
         storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+        metrics.stored = len(items_to_store)
 
     if failed:
         message = f"{len(failed)} notification(s) failed, will retry next run"
@@ -277,7 +306,15 @@ if __name__ == "__main__":
         sources_config=sources_config,
     )
 
-    from kinozal_scraper.alerting import alert_config_rejections, report_failures
+    from kinozal_scraper.alerting import (
+        alert_config_rejections,
+        publish_run_summary,
+        report_failures,
+    )
+
+    # Before the exit-code branch below: a failed run is exactly when the counters
+    # are worth reading, and publishing after `sys.exit(1)` would drop them (#459).
+    publish_run_summary(prod_results)
 
     # Evaluate both (no short-circuit) so a config-reject alert fires even when
     # sources all succeeded; either reddens the job (#340).

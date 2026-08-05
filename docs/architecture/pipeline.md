@@ -220,6 +220,48 @@ TMDB(#329) остаются eval-стратегиями (осознанно вн
 - Zero items extracted → `errors` entry (quality failure)
 - Missing `dedupe_key` or `title` on a record → `errors` entry, item skipped
 - Never raise for data quality issues — caller decides what to do
+- Keyword `limit=` overrides the source's own `limit`: `None` (default) → use
+  `source_config["limit"]`, `0` → no truncation, `N > 0` → first `N`. Resolved in
+  one shared place (`_effective_limit`) because the two extractors used to
+  disagree about a falsy value.
+
+## `limit` means "new items delivered", not "candidates examined"
+
+A source's `limit` caps **what the run notifies about**, not how deep it looks.
+The GitHub pipelines therefore extract with `limit=0` and apply the cap through
+`select_new_items(candidates, existing, limit)` *after* deduplication.
+
+Doing it the other way round was the root cause of [#459](../adr/0003-limit-means-delivered-new-items.md):
+truncating candidates first meant dedup could only ever shrink an already-cut
+set, so once the whole top-N sat in Sheets the source went permanently silent
+while staying green. With `sort=stars&order=desc` a freshly-qualifying repository
+sits at the *bottom* of the result set — exactly where the truncation cut.
+
+`select_new_items` returns `(selected, existing_count, new_count)` over all
+examined candidates, so `extracted == existing + new` always holds and `new` vs
+`sent` shows a deferred remainder instead of hiding it (§IV).
+
+**Fetch depth per source:**
+
+- `github_new_popular` pages the Search API with `per_page=100`, stopping at the
+  first of: enough new items collected, a page shorter than `per_page`, or the
+  computed page ceiling `1000 // per_page`. The 100/1000 numbers come from the
+  [REST Search API docs](https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28);
+  we stay *inside* the ceiling rather than discovering it through whatever error
+  the API returns past it. Reaching the ceiling logs a WARNING — "scan truncated"
+  is not the same fact as "we saw everything".
+  Paging knobs live in the fetch function, not in `sources.json`, per the
+  known limitation above.
+- `github_trending` has no upstream pagination: the page *is* the whole candidate
+  set (~25 rows), so it is searched in full and only the delivery cap applies.
+
+**Two consequences worth knowing.** `PipelineResult.items` for these two sources
+now holds every candidate, not just what gets delivered — read `metrics` for the
+split. And because search results shift between page requests, a repository can
+slip between pages; the next run picks it up, and there is no dedicated guard.
+
+Enrichment still runs on the selected items only, so searching deeper does not
+increase Gemini spend.
 
 ## HTML source config
 

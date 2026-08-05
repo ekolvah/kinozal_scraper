@@ -1,6 +1,11 @@
-"""Operator-facing failure alerting — канонический дом (#310).
+"""Operator-facing reporting — канонический дом (#310, расширен в #459).
 
-Собирает воедино то, что раньше жило только в `telegram_summarizer`: маркер
+Два канала одного концерна «что оператор узнаёт о прогоне»: **алерты** о сбоях
+(Telegram) и **сводка** прогона (лог + GitHub Actions Step Summary). Транспорт
+разный, потребитель один, поэтому дома тоже один — отдельный модуль под сводку
+стоил бы строки в `project-map.md`, тест-файла и раздела доков без выигрыша.
+
+Алертная половина собирает воедино то, что раньше жило только в `telegram_summarizer`: маркер
 `.run/technical_alert_sent` (гейтит generic curl-fallback в `run-script.yml`),
 доставку текста алерта и — новое — читаемый per-source алерт для скрейпинг-
 пайплайнов (`source_id: <ошибка>` вместо немого «run failed + link»).
@@ -43,11 +48,46 @@ def send_required_text(notifier: Any, text: str) -> bool:
 
 
 def format_metrics_line(source_id: str, metrics: SourceMetrics) -> str:
-    raise NotImplementedError
+    """One operator-readable line per source (#459).
+
+    `new=0` used to be indistinguishable from "the source broke and returned
+    nothing" — the only trace was an INFO line in the job log. The counts make
+    the reason readable at a glance: `existing=93 new=0` says we looked at 93
+    candidates and knew every one of them, which is a normal green run.
+    """
+    return (
+        f"{source_id}: fetched={metrics.fetched} extracted={metrics.extracted} "
+        f"existing={metrics.existing} new={metrics.new} "
+        f"sent={metrics.sent} stored={metrics.stored}"
+    )
 
 
 def publish_run_summary(results: list[PipelineResult]) -> None:
-    raise NotImplementedError
+    """Log the metrics lines and append them to the GitHub Actions Step Summary.
+
+    Results without metrics are skipped rather than reported as all-zeros:
+    `metrics is None` means "this pipeline does not measure", and printing it as
+    `fetched=0` would recreate the very ambiguity #459 removes (§IV).
+
+    A summary that cannot be written degrades to a WARNING — it is a report
+    channel, and losing it must not redden a run that otherwise succeeded. The
+    caller publishes *before* computing its exit code, so the line survives a
+    failed run, which is exactly when it is worth reading.
+    """
+    lines = [format_metrics_line(r.source_id, r.metrics) for r in results if r.metrics is not None]
+    if not lines:
+        return
+    for line in lines:
+        logger.info("%s", line)
+
+    target = os.getenv("GITHUB_STEP_SUMMARY")
+    if not target:
+        return
+    try:
+        with Path(target).open("a", encoding="utf-8") as handle:
+            handle.write("```text\n" + "\n".join(lines) + "\n```\n")
+    except OSError as exc:
+        logger.warning("could not write run summary to %s: %s", target, exc)
 
 
 def format_pipeline_failures(results: list[PipelineResult]) -> str:

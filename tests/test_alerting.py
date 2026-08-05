@@ -191,7 +191,7 @@ class TestPublishRunSummary:
             publish_run_summary(
                 [_measured("github_trending", fetched=25, extracted=25, existing=25)]
             )
-        assert any("github_trending" in record.message % record.args for record in caplog.records)
+        assert any("github_trending" in record.getMessage() for record in caplog.records)
 
     def test_unwritable_target_warns_and_does_not_raise(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture

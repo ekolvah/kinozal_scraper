@@ -5,7 +5,7 @@
 > (goal-function priority (2)). Strategy — levels, taxonomy, what we mock — is
 > [`testing.md`](testing.md); this file is the case-by-case ledger it refers to.
 >
-> Records carry stable letter IDs (`A`…`AB`); a state doc links to the letter instead of
+> Records carry stable letter IDs (`A`…`AH`); a state doc links to the letter instead of
 > retelling the reasoning next to itself.
 
 Every bug category in the [taxonomy](testing.md#bug-taxonomy) is covered by tests today (navigate to
@@ -375,6 +375,22 @@ decision goes to" route — and the rule itself — live in
   значит и алерт приходит не чаще раза в сутки — тот же объём шума, что был до фикса. Наблюдаемый
   триггер пересмотра — **первый реально пропущенный сбой** (источник лежал, а узнали не из
   алерта), а не «когда алерты надоедят».
+
+- **AG. `limit`-до-дедупа оставлен в `steam` / `kinozal` / `soldout` (#459).** Механизм тот же,
+  что чинился у GitHub-источников: `extract_from_*` режет кандидатов по `limit`, а дедуп идёт
+  после и может лишь сузить усечённое ([ADR-0003](../adr/0003-limit-means-delivered-new-items.md)).
+  Не починено здесь по двум причинам: их выдача не отсортирована так, чтобы новички
+  систематически уезжали вниз (наклон `sort=stars&order=desc` — свойство именно GitHub-запроса),
+  и прод-инцидента ни у одного из трёх не было. Цена фикса — по пайплайну на источник плюс
+  решение, что для них значит «глубже» (у kinozal это лишние страницы чужого сайта). Гейта нет
+  сознательно: `select_new_items` уже общий, так что переезд дешёвый, когда появится повод.
+  Наблюдаемый триггер пересмотра — **первый тихий `no new items` при живом источнике**, а не
+  «раз уж механизм общий».
+- **AH. Проводка `publish_run_summary` в `__main__` не покрыта (#459).** Сама функция и
+  форматтер протестированы (`test_alerting.py::TestPublishRunSummary`), но факт «оба
+  GitHub-`__main__` её зовут, и зовут *до* `sys.exit(1)`» — часть общего scope-skip'а на
+  `if __name__ == "__main__"` (см. таблицу ниже): mypy держит импорт, cron держит smoke.
+  Отдельный статический гард на порядок вызовов был бы гардом на две строки кода.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 

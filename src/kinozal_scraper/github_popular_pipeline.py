@@ -12,8 +12,10 @@ from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     PipelineResult,
+    SourceMetrics,
     build_notification,
     extract_from_json,
+    select_new_items,
 )
 from kinozal_scraper.http_retry import retry_api_http
 from kinozal_scraper.pipeline_config import load_sources_config
@@ -166,6 +168,74 @@ def _enrich_new_items(
         logger.info("[%s] enriched %d items", source_id, enriched)
 
 
+def _collect_candidates(
+    source: dict[str, Any],
+    existing: set[str],
+    limit: int,
+    result: PipelineResult,
+    metrics: SourceMetrics,
+) -> list[NormalizedItem] | None:
+    """Page through the search results until `limit` NEW items are in reach.
+
+    Returns the accumulated candidates, or `None` when the page fetch/extraction
+    failed (the reason is already on `result.errors`).
+
+    Depth is what #459 is about: the delivery cap used to truncate the candidate
+    set, and with `sort=stars&order=desc` a freshly-qualifying repo sits at the
+    *bottom* of the result set — exactly where the truncation cut. Stopping
+    conditions, in order: enough new items found; a short page (the API has no
+    more); the documented 1000-result ceiling, which we compute and stay inside
+    rather than discover through whatever error GitHub returns past it.
+    """
+    source_id = source["id"]
+    max_pages = max(1, _SEARCH_RESULT_CEILING // _PER_PAGE)
+    base_params = dict(source.get("params", {}))
+    sort_key = source.get("sort_by")
+    candidates: list[NormalizedItem] = []
+
+    for page in range(1, max_pages + 1):
+        params = {**base_params, "per_page": str(_PER_PAGE), "page": str(page)}
+        try:
+            data = _fetch_json(source["url"], params, source.get("headers", {}))
+        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+            logger.exception("[%s] fetch failed: %s", source_id, exc)
+            result.errors.append(f"fetch failed: {exc}")
+            return None
+
+        records = _unwrap_records(data, source.get("json_path"))
+        metrics.fetched += len(records)
+
+        if records:
+            if sort_key:
+                records.sort(
+                    key=lambda r: int(r.get(sort_key) or 0),
+                    reverse=source.get("sort_reverse", False),
+                )
+            # limit=0: the cap belongs to delivery, not to how deep we look.
+            extracted = extract_from_json(records, source, limit=0)
+            if not extracted.ok:
+                logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
+                result.errors.extend(extracted.errors)
+                return None
+            candidates.extend(extracted.items)
+
+        if len(records) < _PER_PAGE:
+            break
+        selected, _, _ = select_new_items(candidates, existing, limit)
+        if len(selected) >= limit:
+            break
+    else:
+        logger.warning(
+            "[%s] search result ceiling reached (%d pages x %d) — scan truncated, "
+            "new repositories may remain beyond it",
+            source_id,
+            max_pages,
+            _PER_PAGE,
+        )
+
+    return candidates
+
+
 def _run_single_source(
     source: dict[str, Any],
     storage: Storage,
@@ -174,36 +244,28 @@ def _run_single_source(
 ) -> PipelineResult:
     source_id = source["id"]
     result = PipelineResult(source_id=source_id)
-
-    try:
-        data = _fetch_json(
-            source["url"],
-            source.get("params", {}),
-            source.get("headers", {}),
-        )
-    except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
-        logger.exception("[%s] fetch failed: %s", source_id, exc)
-        result.errors.append(f"fetch failed: {exc}")
-        return result
-
-    records = _unwrap_records(data, source.get("json_path"))
-
-    sort_key = source.get("sort_by")
-    if sort_key:
-        records.sort(
-            key=lambda r: int(r.get(sort_key) or 0), reverse=source.get("sort_reverse", False)
-        )
-
-    extracted = extract_from_json(records, source)
-    if not extracted.ok:
-        logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
-        result.errors.extend(extracted.errors)
-        return result
-    result.items = extracted.items
+    metrics = SourceMetrics()
+    result.metrics = metrics
 
     tab = source["sheet_tab"]
+    limit = int(source["limit"])
+    # Read once per run, before paging: the known-key set does not change while
+    # we page, and re-reading it per page would be one Sheets call per request.
     existing = storage.get_existing_keys(tab)
-    new_items = [i for i in result.items if i.dedupe_key not in existing]
+
+    candidates = _collect_candidates(source, existing, limit, result, metrics)
+    if candidates is None:
+        return result
+
+    result.items = candidates
+    metrics.extracted = len(candidates)
+    if not candidates:
+        message = f"[{source_id}] extraction produced zero items"
+        logger.error("%s", message)
+        result.errors.append(message)
+        return result
+
+    new_items, metrics.existing, metrics.new = select_new_items(candidates, existing, limit)
     if not new_items:
         logger.info("[%s] no new items", source_id)
         return result
@@ -215,11 +277,13 @@ def _run_single_source(
     template = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
     sent, failed = notifier.send_items(notifications)
+    metrics.sent = len(sent)
 
     if sent:
         sent_ids = {n.id for n in sent}
         items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
         storage.append_rows(tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+        metrics.stored = len(items_to_store)
 
     if failed:
         message = f"{len(failed)} notification(s) failed, will retry next run"
@@ -253,7 +317,15 @@ if __name__ == "__main__":
 
     prod_results = run_github_popular_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
 
-    from kinozal_scraper.alerting import alert_config_rejections, report_failures
+    from kinozal_scraper.alerting import (
+        alert_config_rejections,
+        publish_run_summary,
+        report_failures,
+    )
+
+    # Before the exit-code branch below: a failed run is exactly when the counters
+    # are worth reading, and publishing after `sys.exit(1)` would drop them (#459).
+    publish_run_summary(prod_results)
 
     # Evaluate both (no short-circuit) so a config-reject alert fires even when
     # sources all succeeded; either reddens the job (#340).

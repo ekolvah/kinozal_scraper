@@ -69,6 +69,36 @@ fails after an earlier one already set the marker, the backstop is the **red run
 scope). `telegram_summarizer` keeps its own richer `deliver_results` alert path; `report_failures`
 and the marker helpers share one canonical home in `alerting.py`.
 
+### Run summary: reading the per-source metrics line
+
+Both GitHub steps publish one line per source to the job log and, when
+`GITHUB_STEP_SUMMARY` is set, to the GitHub Actions Step Summary (#459):
+
+```text
+github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
+```
+
+- `fetched` — records/rows the source handed us; `extracted` — those that became
+  items. A gap between them means records failed extraction (already red).
+- `existing` — how many of the **examined candidates** were already in
+  `github_projects`. It is *not* the size of the tab.
+- `new` — candidates not yet known. `sent` can be lower: the source's `limit`
+  caps delivery, and the remainder goes out next run. `new=7 sent=7` is the
+  ordinary case; `new=12 sent=10` says two are deferred.
+- `stored` — rows written to Sheets, i.e. confirmed deliveries.
+
+**`new=0` is green, and now explains itself.** `existing=100 new=0` means we
+looked at a hundred candidates and knew every one — a normal quiet day. That used
+to be indistinguishable from "the source returned nothing", which is what let
+[#459](../adr/0003-limit-means-delivered-new-items.md) run silently. An extraction
+that genuinely produced zero items is still red.
+
+The line is published **before** the step computes its exit code, so it survives a
+failed run. A summary file that cannot be written degrades to a WARNING — it is a
+report channel and must not redden an otherwise-successful run. Pipelines that do
+not measure (`steam`, `kinozal`, `soldout`) are skipped rather than printed as
+all-zeros, so "nobody counted" stays distinct from "the source fetched nothing".
+
 ## Soldout: терпеливый ретрай и место шага в прогоне
 
 Единственный источник со **своим** расписанием ретраев. Cloudflare режет датацентровые
