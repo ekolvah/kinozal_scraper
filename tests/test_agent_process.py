@@ -99,12 +99,19 @@ class TestAgentProcess:
         assert "selected route is `blocked`" in output_contract
         assert "omitted" in output_contract
 
-    def test_pr_template_qualifies_agent_invocation_counts(self) -> None:
-        template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
-        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+    def test_every_agent_record_copy_qualifies_invocation_counts(self) -> None:
+        records = (
+            _REPO / ".github" / "pull_request_template.md",
+            _REPO / "docs" / "architecture" / "agent-process.md",
+            _REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md",
+        )
 
-        for record in (template, process):
-            assert "completed run-count proxy at the time this record is written" in record
+        for record in records:
+            # Line wrapping is a formatting choice, not part of the contract.
+            unwrapped = " ".join(record.read_text(encoding="utf-8").split())
+            assert "completed run-count proxy at the time this record is written" in unwrapped, (
+                f"{record.name} lost the invocation-count qualifier"
+            )
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
