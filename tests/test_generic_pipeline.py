@@ -359,6 +359,14 @@ class TestExtractLimitOverride(unittest.TestCase):
         result = extract_from_html(self._html(7), {**_HTML_CONFIG, "limit": 3})
         self.assertEqual(len(result.items), 3)
 
+    def test_positive_override_wins_over_config_json(self) -> None:
+        result = extract_from_json(self._records(7), {**_JSON_CONFIG, "limit": 3}, limit=5)
+        self.assertEqual(len(result.items), 5)
+
+    def test_positive_override_wins_over_config_html(self) -> None:
+        result = extract_from_html(self._html(7), {**_HTML_CONFIG, "limit": 3}, limit=5)
+        self.assertEqual(len(result.items), 5)
+
     def test_zero_override_disables_truncation_json(self) -> None:
         result = extract_from_json(self._records(7), {**_JSON_CONFIG, "limit": 3}, limit=0)
         self.assertEqual(len(result.items), 7)

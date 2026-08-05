@@ -570,23 +570,41 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         _, notifier = _run(html=_page_html("b/1", "b/2", "b/3"), sources_config=config)
         self.assertEqual(len(notifier.sent), 2)
 
-    def test_drift_warnings_only_for_delivered_items(self) -> None:
-        # Searching deeper must not turn the §IV drift channel into noise about
-        # rows we will never send: an empty description is common on the trending
-        # page, and warning for all ~25 rows would drown the signal.
-        source = {**_TRENDING_SOURCE, "limit": 1}
+    def test_drift_warning_survives_a_fully_known_page(self) -> None:
+        # The steady state is the whole point: when every row is already in
+        # `github_projects` there is nothing to deliver, and a drift check scoped
+        # to delivered items would go silent exactly then — selector rot invisible
+        # on precisely the quiet days #459 exists to make readable.
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = "".join(_row(f"a/{i}", stars="") for i in range(3))
+        html = f"<html><body>{rows}</body></html>"
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
+            _, notifier = _run(
+                html=html,
+                existing_keys={"a/0", "a/1", "a/2"},
+                sources_config=config,
+            )
+        self.assertEqual(notifier.sent, [])
+        joined = "\n".join(caplog.output)
+        self.assertIn("metric", joined)
+        self.assertIn("all", joined)
+
+    def test_drift_warning_is_bounded_not_one_line_per_row(self) -> None:
+        # Searching the whole page must not turn the §IV channel into per-row spam;
+        # drift is a property of the page, so the warning is aggregated.
+        source = {**_TRENDING_SOURCE, "limit": 5}
         config = {"version": 1, "sources": [source]}
         html = (
             "<html><body>"
-            + _row("b/new", description="")
-            + _row("c/below-cap", description="")
+            + "".join(_row(f"b/{i}", description="", stars="") for i in range(20))
             + "</body></html>"
         )
         with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
             _run(html=html, sources_config=config)
-        joined = "\n".join(caplog.output)
-        self.assertIn("b/new", joined)
-        self.assertNotIn("c/below-cap", joined)
+        drift_lines = [line for line in caplog.output if "may have drifted" in line]
+        self.assertEqual(len(drift_lines), 2)  # one per affected field, not per row
+        self.assertIn("more", "\n".join(drift_lines))  # evidence collapsed into a count
 
     def test_metrics_cover_whole_page_not_just_delivered(self) -> None:
         source = {**_TRENDING_SOURCE, "limit": 1}

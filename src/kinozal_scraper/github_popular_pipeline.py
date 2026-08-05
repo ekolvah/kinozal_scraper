@@ -186,11 +186,21 @@ def _collect_candidates(
     conditions, in order: enough new items found; a short page (the API has no
     more); the documented 1000-result ceiling, which we compute and stay inside
     rather than discover through whatever error GitHub returns past it.
+
+    Candidate order is the API's own (`sort`/`order` search params) — we never
+    reorder, so the delivery cap applies to the ranking GitHub returned.
+
+    Rate limit, for the record: authenticated search allows 30 requests/minute, so
+    even the worst case here (10 pages, times `@retry_api_http` attempts) stays
+    inside it. Unauthenticated it is 10/minute — and `_fetch_json` drops a blank
+    `Authorization` (see its docstring), so a run with an unset `GITHUB_TOKEN`
+    could in theory spend its whole minute budget on one source. In practice
+    `created:>=T-30 stars:>1000` returns well under `_PER_PAGE` results, the
+    short-page break fires on page 1, and the deep path stays unreachable.
     """
     source_id = source["id"]
     max_pages = max(1, _SEARCH_RESULT_CEILING // _PER_PAGE)
     base_params = dict(source.get("params", {}))
-    sort_key = source.get("sort_by")
     candidates: list[NormalizedItem] = []
 
     for page in range(1, max_pages + 1):
@@ -206,11 +216,6 @@ def _collect_candidates(
         metrics.fetched += len(records)
 
         if records:
-            if sort_key:
-                records.sort(
-                    key=lambda r: int(r.get(sort_key) or 0),
-                    reverse=source.get("sort_reverse", False),
-                )
             # limit=0: the cap belongs to delivery, not to how deep we look.
             extracted = extract_from_json(records, source, limit=0)
             if not extracted.ok:
@@ -221,9 +226,12 @@ def _collect_candidates(
 
         if len(records) < _PER_PAGE:
             break
-        selected, _, _ = select_new_items(candidates, existing, limit)
-        if len(selected) >= limit:
-            break
+        # `limit <= 0` means "no cap" in `select_new_items`; without this guard the
+        # comparison below would be trivially true and turn "no cap" into "one page".
+        if limit > 0:
+            selected, _, _ = select_new_items(candidates, existing, limit)
+            if len(selected) >= limit:
+                break
     else:
         logger.warning(
             "[%s] search result ceiling reached (%d pages x %d) — scan truncated, "

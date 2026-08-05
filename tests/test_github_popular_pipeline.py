@@ -416,9 +416,28 @@ class TestFetchRetry(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
 
-class TestSorting(unittest.TestCase):
-    def test_sort_by_descending(self) -> None:
-        source = {**_GITHUB_SOURCE, "sort_by": "stargazers_count", "sort_reverse": True}
+class TestOrdering(unittest.TestCase):
+    """Candidate order is the API's own (`sort`/`order` search params) — the
+    pipeline never reorders, so the delivery cap applies to GitHub's ranking.
+
+    The former `sort_by`/`sort_reverse` config knob was removed in #459: paging
+    turned it into a *per-page* sort, which is not a meaningful order for anything
+    downstream, and no source ever set it (§VII — a dead knob whose contract had
+    quietly changed is worse than no knob)."""
+
+    def test_api_order_is_preserved(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+
+        with _patch_fetch(_GITHUB_RESPONSE):
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+
+        stored_keys = [row[0] for row in storage.stored_rows("github_projects")]
+        self.assertEqual(stored_keys, ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"])
+
+    def test_sort_by_key_is_no_longer_honoured(self) -> None:
+        # Ascending `sort_by` would have reversed the response order; it must not.
+        source = {**_GITHUB_SOURCE, "sort_by": "stargazers_count", "sort_reverse": False}
         config: dict[str, Any] = {"version": 1, "sources": [source]}
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -426,17 +445,7 @@ class TestSorting(unittest.TestCase):
         with _patch_fetch(_GITHUB_RESPONSE):
             run_github_popular_pipeline(storage, notifier, sources_config=config)
 
-        stored_keys = [row[0] for row in storage.stored_rows("github_projects")]
-        self.assertEqual(stored_keys, ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"])
-
-    def test_no_sort_by_preserves_order(self) -> None:
-        storage = InMemoryStorage()
-        notifier = InMemoryNotifier()
-
-        with _patch_fetch(_GITHUB_RESPONSE):
-            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
-
-        self.assertEqual(len(notifier.sent), 3)
+        self.assertEqual([n.id for n in notifier.sent][0], "user/repo-alpha")
 
 
 # ── Enricher integration tests ─────────────────────────────────────────────────

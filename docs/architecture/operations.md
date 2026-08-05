@@ -80,11 +80,14 @@ github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
 
 - `fetched` — records/rows the source handed us; `extracted` — those that became
   items. A gap between them means records failed extraction (already red).
-- `existing` — how many of the **examined candidates** were already in
-  `github_projects`. It is *not* the size of the tab.
-- `new` — candidates not yet known. `sent` can be lower: the source's `limit`
-  caps delivery, and the remainder goes out next run. `new=7 sent=7` is the
-  ordinary case; `new=12 sent=10` says two are deferred.
+- `existing` — how many of the **examined candidates** were already known: rows
+  in `github_projects` *plus* any repo seen twice within the run (the same repo on
+  two search pages counts once as new, once as existing). It is *not* the size of
+  the tab.
+- `new` — candidates not yet known. Normally `new == sent`: paging stops as soon
+  as `limit` new items are in hand, so a remainder only arises from overshoot
+  *within* the last page. When it does (`new=12 sent=10`), the extra two are
+  deferred to the next run rather than lost.
 - `stored` — rows written to Sheets, i.e. confirmed deliveries.
 
 **`new=0` is green, and now explains itself.** `existing=100 new=0` means we

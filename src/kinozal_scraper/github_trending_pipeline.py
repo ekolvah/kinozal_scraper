@@ -33,6 +33,11 @@ logger = logging.getLogger(__name__)
 _SOURCE_ID = "github_trending"
 _SHEET_TAB = "github_projects"
 
+# How many dedupe_keys a drift WARNING names before collapsing into a count. The
+# warning is per page, not per row (see `_warn_on_drift`), so this only bounds how
+# much of the evidence is quoted inline.
+_DRIFT_KEYS_IN_WARNING = 5
+
 
 def _digits_only(text: str) -> str:
     """Extract first run of digits (commas stripped). Returns "" if none."""
@@ -103,21 +108,35 @@ def _count_rows(html: str, row_selector: str) -> int:
 
 
 def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
-    """Surface empty metric/description as WARNINGs so page-layout drift reaches
-    the operator instead of silently shipping blank fields (§IV)."""
-    for item in items:
-        if not item.metric:
-            logger.warning(
-                "[%s] item '%s' has empty metric — page layout may have drifted",
-                source_id,
-                item.dedupe_key,
-            )
-        if not item.description:
-            logger.warning(
-                "[%s] item '%s' has empty description",
-                source_id,
-                item.dedupe_key,
-            )
+    """Surface empty metric/description so page-layout drift reaches the operator
+    instead of silently shipping blank fields (§IV).
+
+    Runs over **every extracted row, before deduplication**. Scoping it to the
+    items we deliver would go silent exactly in the steady state where the whole
+    page is already known — selector rot would then be invisible on precisely the
+    quiet days #459 exists to make readable.
+
+    Aggregated rather than one line per row: drift is a property of the page, not
+    of an item, so `all rows have an empty metric` is both a stronger signal and a
+    bounded one now that the full page is searched instead of the first `limit`
+    rows. A few keys are named so the operator can open one and look."""
+    if not items:
+        return
+    for field_name in ("metric", "description"):
+        blank = [i.dedupe_key for i in items if not getattr(i, field_name)]
+        if not blank:
+            continue
+        scope = "all" if len(blank) == len(items) else f"{len(blank)}/{len(items)}"
+        shown = ", ".join(blank[:_DRIFT_KEYS_IN_WARNING])
+        if len(blank) > _DRIFT_KEYS_IN_WARNING:
+            shown += f", … (+{len(blank) - _DRIFT_KEYS_IN_WARNING} more)"
+        logger.warning(
+            "[%s] %s rows have an empty %s — page layout may have drifted: %s",
+            source_id,
+            scope,
+            field_name,
+            shown,
+        )
 
 
 def _enrich_new_items(
@@ -195,6 +214,7 @@ def _process_trending_source(
 
     items = _normalize_items(extracted.items)
     _enrich_with_stars_today(html_text, items)
+    _warn_on_drift(source["id"], items)
 
     result.items = items
     metrics.extracted = len(items)
@@ -204,11 +224,6 @@ def _process_trending_source(
     new_items, metrics.existing, metrics.new = select_new_items(
         items, existing, int(source["limit"])
     )
-    # Drift warnings run on what we deliver, not on every row of the page: now
-    # that the whole page is searched, warning about the ~15 rows we will never
-    # send would drown the §IV channel it lives in (empty descriptions are
-    # routine on the trending page).
-    _warn_on_drift(source["id"], new_items)
     if not new_items:
         logger.info("[%s] no new items", source["id"])
         return result
