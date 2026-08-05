@@ -1,0 +1,47 @@
+roles:
+  planner:
+    adapter: "Claude /plan #N"
+    authority: "May edit the issue body; may not create an implementation branch or change production code."
+    entry_evidence: "Open issue and repository context."
+    completion_evidence: "Passing nine-section issue validation and ready handoff."
+    activation: "The issue has no validated plan."
+    max_runs: 1
+  architect_reviewer:
+    adapter: "Claude architect-reviewer subagent"
+    authority: "Read-only plan review."
+    entry_evidence: "Completed plan for a nontrivial change."
+    completion_evidence: "Recorded findings, or an explicit trivial-change skip reason."
+    activation: "Nontrivial issue after planning."
+    max_runs: 1
+  implementer:
+    adapter: "Codex $implement-issue #N"
+    authority: "May create the issue branch, commit, push, and open a PR."
+    entry_evidence: "Validated plan and architect-review evidence."
+    completion_evidence: "Implementation committed and local CI evidence available."
+    activation: "Plan and architecture gate are complete."
+    max_runs: 1
+  pr_reviewer:
+    adapter: "Claude code-review GitHub Action"
+    authority: "May publish review evidence; may not merge."
+    entry_evidence: "Passing deterministic CI and a PR head SHA."
+    completion_evidence: "Current-head clean, rework, or blocking outcome marker."
+    activation: "One review is required for every new PR head SHA."
+    # The router enforces this per-head cap through reviewed_heads; this value
+    # describes that contract rather than a repository-wide invocation counter.
+    max_runs: 1
+  fixer:
+    adapter: "Codex $implement-issue #N review/fix loop"
+    authority: "May make the minimal correction and push a fixer commit."
+    entry_evidence: "Current-head rework or blocking review outcome."
+    completion_evidence: "A new head SHA for a fresh PR review."
+    activation: "Only after actionable PR-review feedback."
+    max_runs: 3
+  human_merge:
+    adapter: "Human reviewer"
+    authority: "May approve and merge after all required gates pass."
+    entry_evidence: "Current-head clean review and passing required checks."
+    completion_evidence: "Human merge decision."
+    activation: "Clean delivery, or a visible budget escalation."
+    # This terminal hand-off has no automated retry; keep max_runs only for the
+    # uniform catalogue contract, not as a router-enforced counter.
+    max_runs: 1

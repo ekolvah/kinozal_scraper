@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+from dataclasses import fields
 from pathlib import Path
 
+import yaml
+
+from scripts.agent_orchestrator import RouteDecision, WorkflowState
 from scripts.validate_issue_sections import REQUIRED_SECTIONS
 
 _REPO = Path(__file__).resolve().parent.parent
@@ -18,6 +22,26 @@ _IMPLEMENTER_CONTRACT_MARKERS = (
     "review/fix loop",
     "`clean` reviewer outcome",
     "`not ready`",
+)
+# The record fields as the canonical section words them; adapters point here instead of copying.
+_CANONICAL_AGENT_RECORD_FIELDS = (
+    "the implementer",
+    "reviewer/fixer",
+    "CI evidence",
+    "selected route",
+    "model-invocation counts",
+    "fixer revisions",
+    "conditional skips/escalations",
+)
+# The field labels an adapter must defer to the canonical section instead of restating.
+_AGENT_RECORD_FIELD_LABELS = (
+    "implementation identity",
+    "reviewer/fixer identities",
+    "CI evidence",
+    "selected route",
+    "invocation counts",
+    "fixer revisions",
+    "skip/escalation",
 )
 
 
@@ -44,6 +68,94 @@ class TestAgentProcess:
         assert "Implementer:" in template
         assert "Reviewer / fixer:" in template
         assert "CI evidence:" in template
+        assert "Route:" in template
+        assert "Model invocations:" in template
+        assert "Fixer revisions:" in template
+        assert "Conditional skips / escalations:" in template
+
+    def test_control_plane_is_provider_neutral_and_advisory(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        catalogue = (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+
+        assert "agent_orchestrator.py" in process
+        assert "never invokes a model" in process
+        assert "human_merge:" in catalogue
+
+    def test_documented_control_plane_caps_match_the_catalogue(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+        )
+
+        for role in (
+            "planner",
+            "architect_reviewer",
+            "implementer",
+            "pr_reviewer",
+            "fixer",
+            "human_merge",
+        ):
+            assert f"| `{role}` | {catalogue['roles'][role]['max_runs']} |" in process
+
+    def test_documented_control_plane_output_matches_route_decision(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        assert "### Control-plane output contract" in process
+        for field in fields(RouteDecision):
+            assert f"| `{field.name}` |" in process
+        assert all(status in process for status in ("`next`", "`blocked`", "`escalate`"))
+
+    def test_documented_input_contract_matches_workflow_state(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        for field in fields(WorkflowState):
+            assert f"| `{field.name}` |" in process
+
+    def test_completed_roles_contract_explains_blocked_route_exception(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        output_contract = process.split("### Control-plane output contract", maxsplit=1)[1]
+        output_contract = output_contract.split("| Role |", maxsplit=1)[0]
+
+        assert "selected route is `blocked`" in output_contract
+        assert "omitted" in output_contract
+
+    def test_every_agent_record_copy_qualifies_invocation_counts(self) -> None:
+        records = (
+            _REPO / ".github" / "pull_request_template.md",
+            _REPO / "docs" / "architecture" / "agent-process.md",
+        )
+
+        for record in records:
+            # Line wrapping is a formatting choice, not part of the contract.
+            unwrapped = " ".join(record.read_text(encoding="utf-8").split())
+            assert "completed run-count proxy at the time this record is written" in unwrapped, (
+                f"{record.name} lost the invocation-count qualifier"
+            )
+
+    def test_canonical_section_still_enumerates_the_agent_record_fields(self) -> None:
+        heading = "## Agent records and adapters"
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert heading in process, "the canonical record section was renamed or removed"
+        section = " ".join(
+            process.split(heading, maxsplit=1)[1].split("\n## ", maxsplit=1)[0].split()
+        )
+
+        for field in _CANONICAL_AGENT_RECORD_FIELDS:
+            assert field in section, f"canonical record section lost {field!r}"
+
+    def test_codex_adapter_defers_the_agent_record_contract_instead_of_restating_it(self) -> None:
+        skill = " ".join(
+            (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md")
+            .read_text(encoding="utf-8")
+            .split()
+        )
+
+        assert "agent-process.md#agent-records-and-adapters" in skill, (
+            "Codex adapter stopped pointing at the canonical record contract"
+        )
+        # A third enumeration of the fields is what drifts; the pointer is the contract.
+        for label in _AGENT_RECORD_FIELD_LABELS:
+            assert label not in skill, f"Codex adapter restated {label!r}"
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"

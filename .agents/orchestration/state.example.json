@@ -1,0 +1,15 @@
+{
+  "plan_completed": true,
+  "issue_kind": "nontrivial",
+  "architect_completed": false,
+  "architect_skip_reason": null,
+  "implementation_completed": false,
+  "ci_passed": false,
+  "head_sha": null,
+  "reviewed_heads": [],
+  "review_outcome": null,
+  "fixer_revisions": 0,
+  "planner_runs": 0,
+  "architect_runs": 0,
+  "implementer_runs": 0
+}
