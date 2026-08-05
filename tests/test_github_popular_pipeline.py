@@ -590,7 +590,7 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         self.assertEqual(len(storage.stored_rows("github_projects")), 3)
 
 
-# ── #459: search depth is decoupled from the delivery cap ────────────────────
+# ── #459: per-source run counters and failure isolation ──────────────────────
 
 
 def _repo(name: str, stars: int = 100) -> dict[str, Any]:
@@ -607,161 +607,9 @@ def _page(*names: str) -> dict[str, Any]:
     return {"total_count": len(names), "items": [_repo(n) for n in names]}
 
 
-class _Pager:
-    """Serves one search page per call and records the `page` params requested."""
-
-    def __init__(self, pages: list[dict[str, Any]]) -> None:
-        self.pages = pages
-        self.requested_pages: list[str] = []
-
-    def __call__(self, url: str, params: dict[str, str], headers: dict[str, str]) -> Any:  # noqa: ARG002
-        self.requested_pages.append(params.get("page", ""))
-        index = len(self.requested_pages) - 1
-        return self.pages[index] if index < len(self.pages) else _page()
-
-
-def _run_paged(
-    pager: _Pager,
-    *,
-    existing: set[str] | None = None,
-    limit: int = 10,
-    per_page: int = 3,
-    ceiling: int = 9,
-) -> tuple[InMemoryStorage, InMemoryNotifier, list[PipelineResult]]:
-    """Run the source with small page/ceiling constants so the paging contract is
-    readable in the test instead of needing 100-record fixtures."""
-    storage = InMemoryStorage()
-    if existing:
-        storage.seed_existing("github_projects", existing)
-    notifier = InMemoryNotifier()
-    config = {"version": 1, "sources": [{**_GITHUB_SOURCE, "limit": limit}]}
-    module = "kinozal_scraper.github_popular_pipeline"
-    with (
-        unittest.mock.patch(f"{module}._PER_PAGE", per_page),
-        unittest.mock.patch(f"{module}._SEARCH_RESULT_CEILING", ceiling),
-        unittest.mock.patch(f"{module}._fetch_json", side_effect=pager),
-    ):
-        results = run_github_popular_pipeline(storage, notifier, sources_config=config)
-    return storage, notifier, results
-
-
-class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
-    """#459 root cause: `limit` used to truncate *candidates* before dedup ran, so
-    once the whole top-N sat in Sheets the source went permanently silent while
-    green. `limit` now caps delivered new items; candidates are paged through."""
-
-    def test_constants_match_documented_api_limits(self) -> None:
-        # Sourced from the REST Search API docs (max per_page 100, max 1000
-        # results per search), not from probing the live endpoint.
-        from kinozal_scraper import github_popular_pipeline as mod
-
-        self.assertEqual(mod._PER_PAGE, 100)
-        self.assertEqual(mod._SEARCH_RESULT_CEILING, 1000)
-
-    def test_new_repo_on_second_page_is_notified(self) -> None:
-        pager = _Pager([_page("a/1", "a/2", "a/3"), _page("b/new")])
-        _, notifier, results = _run_paged(
-            pager, existing={"a/1", "a/2", "a/3"}, limit=2, per_page=3
-        )
-        self.assertEqual([n.id for n in notifier.sent], ["b/new"])
-        self.assertTrue(results[0].ok, results[0].errors)
-
-    def test_stops_when_limit_new_collected(self) -> None:
-        pager = _Pager([_page("a/1", "a/2", "a/3"), _page("b/new")])
-        _, notifier, _ = _run_paged(pager, limit=2, per_page=3)
-        self.assertEqual(len(pager.requested_pages), 1)
-        self.assertEqual(len(notifier.sent), 2)
-
-    def test_stops_when_page_shorter_than_per_page(self) -> None:
-        pager = _Pager([_page("a/1", "a/2")])
-        _, notifier, results = _run_paged(pager, existing={"a/1", "a/2"}, limit=5, per_page=3)
-        self.assertEqual(len(pager.requested_pages), 1)
-        self.assertEqual(notifier.sent, [])
-        self.assertTrue(results[0].ok, results[0].errors)
-
-    def test_never_requests_beyond_api_result_ceiling(self) -> None:
-        known = {f"a/{i}" for i in range(99)}
-        pages = [_page(f"a/{3 * p}", f"a/{3 * p + 1}", f"a/{3 * p + 2}") for p in range(20)]
-        pager = _Pager(pages)
-        _run_paged(pager, existing=known, limit=5, per_page=3, ceiling=9)
-        self.assertEqual(pager.requested_pages, ["1", "2", "3"])
-
-    def test_ceiling_reached_logs_warning(self) -> None:
-        known = {f"a/{i}" for i in range(99)}
-        pages = [_page(f"a/{3 * p}", f"a/{3 * p + 1}", f"a/{3 * p + 2}") for p in range(20)]
-        with self.assertLogs("kinozal_scraper.github_popular_pipeline", level="WARNING") as caplog:
-            _run_paged(_Pager(pages), existing=known, limit=5, per_page=3, ceiling=9)
-        self.assertIn("ceiling", "\n".join(caplog.output).lower())
-
-    def test_intra_run_duplicate_counted_once(self) -> None:
-        pager = _Pager([_page("a/1", "a/2", "b/dup"), _page("b/dup", "a/3", "b/new")])
-        storage, notifier, results = _run_paged(
-            pager, existing={"a/1", "a/2", "a/3"}, limit=2, per_page=3
-        )
-        self.assertEqual([n.id for n in notifier.sent], ["b/dup", "b/new"])
-        self.assertEqual(len(storage.stored_rows("github_projects")), 2)
-        metrics = results[0].metrics
-        assert metrics is not None
-        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
-
-    def test_non_positive_limit_means_no_cap_not_one_page(self) -> None:
-        # `select_new_items` documents `limit <= 0` as "no cap"; without the
-        # `limit > 0` guard the paging stop condition (`len(selected) >= limit`)
-        # is trivially true and silently turns that into "one page".
-        # `_validate_limit` rejects such a config, so this is defence for the
-        # sentinel itself, reachable only by handing the config in directly.
-        pager = _Pager([_page("b/1", "b/2", "b/3"), _page("b/4")])
-        _, notifier, _ = _run_paged(pager, limit=0, per_page=3)
-        self.assertEqual(len(pager.requested_pages), 2)
-        self.assertEqual(len(notifier.sent), 4)
-
-    def test_later_page_failure_discards_the_run(self) -> None:
-        # Fail-closed on purpose: `@retry_api_http` has already exhausted its
-        # attempts by the time we get here, and the run reddens. Nothing is lost —
-        # dedup is permanent, so the next run re-collects page 1 and delivers it.
-        # Delivering a partial candidate set under a red result would make
-        # "how deep did we look" unanswerable from the metrics line.
-        def side_effect(url: str, params: dict[str, str], headers: dict[str, str]) -> Any:  # noqa: ARG001
-            if params.get("page") == "2":
-                raise ConnectionError("network down")
-            return _page("b/1", "b/2", "b/3")
-
-        storage = InMemoryStorage()
-        notifier = InMemoryNotifier()
-        config = {"version": 1, "sources": [{**_GITHUB_SOURCE, "limit": 10}]}
-        module = "kinozal_scraper.github_popular_pipeline"
-        with (
-            unittest.mock.patch(f"{module}._PER_PAGE", 3),
-            unittest.mock.patch(f"{module}._SEARCH_RESULT_CEILING", 9),
-            unittest.mock.patch(f"{module}._fetch_json", side_effect=side_effect),
-        ):
-            results = run_github_popular_pipeline(storage, notifier, sources_config=config)
-
-        self.assertFalse(results[0].ok)
-        self.assertEqual(notifier.sent, [])
-        self.assertEqual(storage.stored_rows("github_projects"), [])
-        # The summary is published on red runs too, so the counters must describe
-        # what actually happened: page 1 extracted three items. Reporting
-        # `extracted=0` here would diagnose "extraction produced nothing" instead
-        # of "the second fetch died" (§IV — a wrong number is worse than none).
-        metrics = results[0].metrics
-        assert metrics is not None
-        self.assertEqual((metrics.fetched, metrics.extracted), (3, 3))
-        # `extracted=3 existing=0 new=0` would describe three candidates that were
-        # neither known nor new — a state the model does not allow. The invariant
-        # holds over whatever was examined, aborted scan included.
-        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
-
-    def test_ceiling_warning_reaches_the_run_summary(self) -> None:
-        # The ceiling caveat is what makes `new=0` less reassuring than it looks, so
-        # it has to travel on the surface that reports `new=0`, not only in the log.
-        known = {f"a/{i}" for i in range(99)}
-        pages = [_page(f"a/{3 * p}", f"a/{3 * p + 1}", f"a/{3 * p + 2}") for p in range(20)]
-        _, _, results = _run_paged(_Pager(pages), existing=known, limit=5, per_page=3, ceiling=9)
-        self.assertTrue(
-            any("ceiling" in w for w in results[0].warnings),
-            f"expected a ceiling warning on the result, got: {results[0].warnings}",
-        )
+class TestGithubPopularFailureIsolation(unittest.TestCase):
+    """The run summary is published before the exit code, so a red run's counters
+    have to describe what actually happened rather than be lost or zeroed (§IV)."""
 
     def test_unhandled_error_keeps_the_counters_it_already_had(self) -> None:
         # The one failure path where delivery may already have happened, so
@@ -786,9 +634,9 @@ class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
         self.assertEqual(metrics.stored, 0)  # the write is what blew up
 
     def test_one_bad_record_among_many_voids_the_source(self) -> None:
-        # Pins the deliberate fail-closed choice in the direction where it costs
-        # something: a versioned JSON API handing back a record without `full_name`
-        # means the response contract changed, so no item's identity is trustworthy.
+        # Fail-closed on purpose: this source reads a versioned JSON API where
+        # `full_name` is guaranteed, so a record without one means the response
+        # contract changed and no item's dedupe identity can be trusted.
         good = _page("b/1", "b/2", "b/3")["items"]
         page = {"total_count": 4, "items": [*good, {"html_url": "x"}]}
         storage = InMemoryStorage()
@@ -798,24 +646,17 @@ class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
         self.assertFalse(results[0].ok)
         self.assertEqual(notifier.sent, [])
 
-    def test_delivers_at_most_limit_new_items(self) -> None:
-        pager = _Pager([_page("b/1", "b/2", "b/3")])
-        _, notifier, results = _run_paged(pager, limit=2, per_page=3)
-        self.assertEqual(len(notifier.sent), 2)
-        metrics = results[0].metrics
-        assert metrics is not None
-        # `new` reports what was found, `sent` what fitted under the cap — the
-        # deferred remainder is visible in the operator line, not swallowed (§IV).
-        self.assertEqual((metrics.new, metrics.sent), (3, 2))
-
 
 class TestGithubPopularMetrics(unittest.TestCase):
     """Metrics must survive every exit path — a summary that reports zeros for a
     run that actually failed is the same silent-success defect one level up."""
 
     def test_metrics_reported_on_success(self) -> None:
-        pager = _Pager([_page("a/1", "a/2", "b/new")])
-        storage, _, results = _run_paged(pager, existing={"a/1", "a/2"}, limit=5, per_page=3)
+        storage = InMemoryStorage()
+        storage.seed_existing("github_projects", {"a/1", "a/2"})
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_page("a/1", "a/2", "b/new")):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
         metrics = results[0].metrics
         assert metrics is not None
         self.assertEqual(

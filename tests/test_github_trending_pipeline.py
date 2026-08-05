@@ -531,7 +531,7 @@ class TestDegradedEnrichmentVisibility(unittest.TestCase):
                 )
 
 
-# ── #459: the whole page is searched, `limit` caps only what is delivered ────
+# ── #459: run counters, drift visibility, failure isolation ──────────────────
 
 
 def _row(name: str, *, description: str = "desc", stars: str = "1,000") -> str:
@@ -549,26 +549,17 @@ def _page_html(*names: str) -> str:
     return "<html><body>" + "".join(_row(n) for n in names) + "</body></html>"
 
 
-class TestTrendingSearchesWholePage(unittest.TestCase):
-    """#459: the trending page IS the whole candidate set — there is no upstream
-    pagination — so `limit` must not cut the page down before dedup runs, or a
-    new repo sitting below position `limit` stays invisible forever."""
+class TestTrendingRunVisibility(unittest.TestCase):
+    """#459 keeps the product behaviour (top-N of today's trending) and fixes what
+    the operator could not see: a quiet day, selector rot, and partial extraction."""
 
-    def test_new_repo_below_limit_is_notified(self) -> None:
+    def test_limit_still_selects_the_top_n(self) -> None:
+        # Product intent, pinned: `limit` is the top of the trending list, not a
+        # delivery cap over the whole page. Scanning deeper was tried and reverted.
         source = {**_TRENDING_SOURCE, "limit": 2}
         config = {"version": 1, "sources": [source]}
-        _, notifier = _run(
-            html=_page_html("a/1", "a/2", "b/new"),
-            existing_keys={"a/1", "a/2"},
-            sources_config=config,
-        )
-        self.assertEqual([n.id for n in notifier.sent], ["b/new"])
-
-    def test_delivers_at_most_limit_new_items(self) -> None:
-        source = {**_TRENDING_SOURCE, "limit": 2}
-        config = {"version": 1, "sources": [source]}
-        _, notifier = _run(html=_page_html("b/1", "b/2", "b/3"), sources_config=config)
-        self.assertEqual(len(notifier.sent), 2)
+        _, notifier = _run(html=_page_html("a/1", "a/2", "b/below"), sources_config=config)
+        self.assertEqual([n.id for n in notifier.sent], ["a/1", "a/2"])
 
     def test_drift_warning_survives_a_fully_known_page(self) -> None:
         # The steady state is the whole point: when every row is already in
@@ -609,9 +600,9 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         )
 
     def test_drift_warning_is_bounded_not_one_line_per_row(self) -> None:
-        # Searching the whole page must not turn the §IV channel into per-row spam;
-        # drift is a property of the page, so the warning is aggregated.
-        source = {**_TRENDING_SOURCE, "limit": 5}
+        # Drift is a property of the page, so the warning is aggregated rather than
+        # emitted per row — otherwise the §IV channel becomes spam.
+        source = {**_TRENDING_SOURCE, "limit": 25}
         config = {"version": 1, "sources": [source]}
         html = (
             "<html><body>"
@@ -704,8 +695,10 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         assert metrics is not None
         self.assertEqual((metrics.fetched, metrics.extracted), (2, 1))
 
-    def test_metrics_cover_whole_page_not_just_delivered(self) -> None:
-        source = {**_TRENDING_SOURCE, "limit": 1}
+    def test_metrics_describe_the_top_n_that_was_examined(self) -> None:
+        # `existing=1 new=2` is the whole point: a quiet day (`new=0`) becomes
+        # readable instead of looking like a source that returned nothing.
+        source = {**_TRENDING_SOURCE, "limit": 3}
         config = {"version": 1, "sources": [source]}
         storage = InMemoryStorage()
         storage.seed_existing("github_projects", {"a/1"})
@@ -721,7 +714,7 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
             (metrics.fetched, metrics.extracted, metrics.existing, metrics.new),
             (3, 3, 1, 2),
         )
-        self.assertEqual((metrics.sent, metrics.stored), (1, 1))
+        self.assertEqual((metrics.sent, metrics.stored), (2, 2))
 
 
 class TestCanonicalRepoKey(unittest.TestCase):

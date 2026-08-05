@@ -75,7 +75,7 @@ Both GitHub steps publish one line per source to the job log and, when
 `GITHUB_STEP_SUMMARY` is set, to the GitHub Actions Step Summary (#459):
 
 ```text
-github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
+github_new_popular: fetched=10 extracted=10 existing=8 new=2 sent=2 stored=2
 ```
 
 - `fetched` — records/rows the source handed us; `extracted` — those that became
@@ -87,46 +87,39 @@ github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
   page whose markup shifts cosmetically all the time, while popular reads a
   versioned JSON API where a record without `full_name` means the response
   contract changed and no item's identity can be trusted.
-- `existing` — how many of the **examined candidates** were already known: rows
-  in `github_projects` *plus* any repo seen twice within the run (the same repo on
-  two search pages counts once as new, once as existing). It is *not* the size of
-  the tab.
-- `new` — candidates not yet known. Normally `new == sent`: paging stops as soon
-  as `limit` new items are in hand, so a remainder only arises from overshoot
-  *within* the last page. When it does (`new=12 sent=10`), the extra two wait for
-  the next run. On `github_new_popular` they reliably come back — the query is
-  stable. On `github_trending` they may not: the page churns daily, so a repo not
-  delivered today can simply be off it tomorrow.
+- `existing` — how many of the examined top-N entries were already in
+  `github_projects`. It is *not* the size of the tab.
+- `new` — entries not yet known; every one of them is delivered, so `new == sent`
+  unless delivery itself failed.
 - `stored` — rows written to Sheets, i.e. confirmed deliveries.
 
 Per-source **errors and warnings** are printed under the counters (bounded, then
 collapsed into a count), so the numbers never stand without a reason. Not every
-anomaly shows up as a gap between counters — a fully drifted `metric` column and a
-scan truncated by the API's result ceiling both leave the counters looking healthy,
-which is exactly why they travel here too:
+anomaly shows up as a gap between counters — a fully drifted `metric` column leaves
+them looking perfectly healthy, which is exactly why warnings travel here too:
 
 ```text
-github_trending: fetched=25 extracted=23 existing=23 new=0 sent=0 stored=0
+github_trending: fetched=10 extracted=8 existing=8 new=0 sent=0 stored=0
 github_trending:   warning: row missing required field(s): dedupe_key='' title=''
 github_trending:   warning: row missing required field(s): dedupe_key='' title=''
-github_trending:   warning: 23 of 23 rows have an empty metric — page layout may have drifted: …
+github_trending:   warning: 8 of 8 rows have an empty metric — page layout may have drifted: …
 ```
 
-Two rows failed extraction, hence `fetched=25 extracted=23` and one warning each.
+Two rows failed extraction, hence `fetched=10 extracted=8` and one warning each.
 The two lines are identical on purpose, not a typo: `github_trending` reads both
 `dedupe_key` and `title` from the same selector (`h2 a@href`), so every row that
 fails there fails the same way. The drift check runs over the **extracted** items,
-so its denominator is 23, not 25 — a row that never became an item has no field to
+so its denominator is 8, not 10 — a row that never became an item has no field to
 be blank.
 
 Failures also reach Telegram through `report_failures`; the summary is the surface
 that pairs them with the counters of the same run.
 
-**`new=0` is green, and now explains itself.** `existing=100 new=0` means we
-looked at a hundred candidates and knew every one — a normal quiet day. That used
-to be indistinguishable from "the source returned nothing", which is what let
-[#459](../adr/0003-limit-means-delivered-new-items.md) run silently. An extraction
-that genuinely produced zero items is still red.
+**`new=0` is green, and now explains itself.** `existing=10 new=0` means the
+source's top-N was examined and every entry was already known — a normal quiet day,
+which is the expected outcome whenever the top-N did not change. That used to be
+indistinguishable from "the source returned nothing" (#459). An extraction that
+genuinely produced zero items is still red.
 
 The line is published **before** the step computes its exit code, so it survives a
 failed run. A summary file that cannot be written degrades to a WARNING — it is a
@@ -191,8 +184,8 @@ Cloudflare и стоят одной. Отсюда 12 красных ночных
 | Variable | Type | Purpose |
 |---|---|---|
 | `GITHUB_TOKEN` | secret | GitHub API auth (github_popular_pipeline only) |
-| `GH_TOP_LIMIT` | var | max **new** GitHub repos to notify about per run (github_popular_pipeline only; default 10). Not a fetch budget — the number of candidates examined is `per_page` × pages, decided in code (#459, [ADR-0003](../adr/0003-limit-means-delivered-new-items.md)) |
-| `GH_TRENDING_LIMIT` | var | max **new** GitHub trending repos to notify about per run (github_trending_pipeline; default 10). The whole page is examined regardless |
+| `GH_TOP_LIMIT` | var | how deep into the star-ranked search result to look — the top-N of `created:>=T-30 stars:>1000` (github_popular_pipeline only; default 10). Also the `per_page` of the single request |
+| `GH_TRENDING_LIMIT` | var | how many rows off the top of today's trending page to consider (github_trending_pipeline; default 10) |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |
 

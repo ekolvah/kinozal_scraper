@@ -332,52 +332,28 @@ class TestSelectorCssPart(unittest.TestCase):
         self.assertIsNone(_selector_css_part(None))
 
 
-class TestExtractLimitOverride(unittest.TestCase):
-    """`limit=` sentinel contract, shared by both extractors (#459).
+class TestSelectNewItems(unittest.TestCase):
+    """Extraction already applied the source's `limit`, so this only splits the
+    top-N against storage — that split is what the operator summary reports."""
 
-    `None` → take the source's own `limit` (what every non-GitHub pipeline does);
-    `0` → no truncation at all. The two extractors used to disagree here: the HTML
-    one already treated a falsy limit as "no truncation", while the JSON one would
-    have turned `0` into `records[:0]` — an empty extraction reported as
-    "produced zero items". The sentinel is now explicit in both."""
+    def _items(self, *keys: str) -> list[NormalizedItem]:
+        return [NormalizedItem(dedupe_key=k, title=k, source_id="s") for k in keys]
 
-    def _records(self, n: int) -> list[dict[str, object]]:
-        return [
-            {"id": f"k{i}", "name": f"n{i}", "link": "", "desc": "", "score": 1} for i in range(n)
-        ]
+    def test_known_keys_are_filtered_out(self) -> None:
+        selected, existing, new = select_new_items(self._items("a", "b", "c"), {"a"})
+        self.assertEqual([i.dedupe_key for i in selected], ["b", "c"])
+        self.assertEqual((existing, new), (1, 2))
 
-    def _html(self, n: int) -> str:
-        rows = "".join(
-            f'<tr class="item"><td class="key">k{i}</td><td class="title">t{i}</td></tr>'
-            for i in range(n)
-        )
-        return f"<table>{rows}</table>"
+    def test_extracted_equals_existing_plus_new(self) -> None:
+        candidates = self._items("a", "b", "c", "d", "e")
+        _, existing, new = select_new_items(candidates, {"b", "e"})
+        self.assertEqual(existing + new, len(candidates))
 
-    def test_config_limit_used_when_override_absent_json(self) -> None:
-        result = extract_from_json(self._records(7), {**_JSON_CONFIG, "limit": 3})
-        self.assertEqual(len(result.items), 3)
-
-    def test_config_limit_used_when_override_absent_html(self) -> None:
-        result = extract_from_html(self._html(7), {**_HTML_CONFIG, "limit": 3})
-        self.assertEqual(len(result.items), 3)
-
-    def test_positive_override_wins_over_config_json(self) -> None:
-        result = extract_from_json(self._records(7), {**_JSON_CONFIG, "limit": 3}, limit=5)
-        self.assertEqual(len(result.items), 5)
-
-    def test_positive_override_wins_over_config_html(self) -> None:
-        result = extract_from_html(self._html(7), {**_HTML_CONFIG, "limit": 3}, limit=5)
-        self.assertEqual(len(result.items), 5)
-
-    def test_zero_override_disables_truncation_json(self) -> None:
-        result = extract_from_json(self._records(7), {**_JSON_CONFIG, "limit": 3}, limit=0)
-        self.assertEqual(len(result.items), 7)
-        self.assertTrue(result.ok, result.errors)
-
-    def test_zero_override_disables_truncation_html(self) -> None:
-        result = extract_from_html(self._html(7), {**_HTML_CONFIG, "limit": 3}, limit=0)
-        self.assertEqual(len(result.items), 7)
-        self.assertTrue(result.ok, result.errors)
+    def test_collapses_intra_batch_duplicates(self) -> None:
+        # The same key twice in one batch must not be delivered twice.
+        selected, existing, new = select_new_items(self._items("a", "a", "b"), set())
+        self.assertEqual([i.dedupe_key for i in selected], ["a", "b"])
+        self.assertEqual((existing, new), (1, 2))
 
 
 class TestBoundedEvidence(unittest.TestCase):
@@ -415,42 +391,6 @@ class TestWithoutSourcePrefix(unittest.TestCase):
             without_source_prefix("steam", "[github_trending] row missing"),
             "[github_trending] row missing",
         )
-
-
-class TestSelectNewItems(unittest.TestCase):
-    """Root-cause helper of #459: the delivery cap is applied to *new* items, so
-    the candidate set can be searched deeper than the number we notify about."""
-
-    def _items(self, *keys: str) -> list[NormalizedItem]:
-        return [NormalizedItem(dedupe_key=k, title=k, source_id="s") for k in keys]
-
-    def test_returns_at_most_limit(self) -> None:
-        selected, _, _ = select_new_items(self._items("a", "b", "c"), set(), limit=2)
-        self.assertEqual([i.dedupe_key for i in selected], ["a", "b"])
-
-    def test_counts_existing_and_new_over_all_candidates(self) -> None:
-        # `new` is what was *found*, not what fits under the cap — otherwise the
-        # operator line could not distinguish "nothing new" from "deferred" (§IV).
-        selected, existing, new = self._select("a", "b", "c", "d", existing={"a"}, limit=2)
-        self.assertEqual(len(selected), 2)
-        self.assertEqual((existing, new), (1, 3))
-
-    def test_extracted_equals_existing_plus_new(self) -> None:
-        candidates = self._items("a", "b", "c", "d", "e")
-        _, existing, new = select_new_items(candidates, {"b", "e"}, limit=1)
-        self.assertEqual(existing + new, len(candidates))
-
-    def test_collapses_intra_batch_duplicates(self) -> None:
-        # A repo can show up on two search pages; the second sighting is "already
-        # known" and must not be notified twice.
-        selected, existing, new = self._select("a", "a", "b", existing=set(), limit=10)
-        self.assertEqual([i.dedupe_key for i in selected], ["a", "b"])
-        self.assertEqual((existing, new), (1, 2))
-
-    def _select(
-        self, *keys: str, existing: set[str], limit: int
-    ) -> tuple[list[NormalizedItem], int, int]:
-        return select_new_items(self._items(*keys), existing, limit=limit)
 
 
 if __name__ == "__main__":

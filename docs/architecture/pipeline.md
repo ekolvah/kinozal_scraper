@@ -220,52 +220,35 @@ TMDB(#329) остаются eval-стратегиями (осознанно вн
 - Zero items extracted → `errors` entry (quality failure)
 - Missing `dedupe_key` or `title` on a record → `errors` entry, item skipped
 - Never raise for data quality issues — caller decides what to do
-- Keyword `limit=` overrides the source's own `limit`: `None` (default) → use
-  `source_config["limit"]`, `0` → no truncation, `N > 0` → first `N`. Resolved in
-  one shared place (`_effective_limit`) because the two extractors used to
-  disagree about a falsy value.
+- `limit` truncates the payload **before** normalisation: a source's `limit` is the
+  top-N it is interested in, not a delivery cap
 
-## `limit` means "new items delivered", not "candidates examined"
+## Per-source run counters
 
-A source's `limit` caps **what the run notifies about**, not how deep it looks.
-The GitHub pipelines therefore extract with `limit=0` and apply the cap through
-`select_new_items(candidates, existing, limit)` *after* deduplication.
+`SourceMetrics` (on `PipelineResult.metrics`) records
+`fetched / extracted / existing / new / sent / stored` for one source, and
+`select_new_items(candidates, existing)` produces the `existing`/`new` split so
+`extracted == existing + new` always holds.
 
-Doing it the other way round was the root cause of [#459](../adr/0003-limit-means-delivered-new-items.md):
-truncating candidates first meant dedup could only ever shrink an already-cut
-set, so once the whole top-N sat in Sheets the source went permanently silent
-while staying green. With `sort=stars&order=desc` a freshly-qualifying repository
-sits at the *bottom* of the result set — exactly where the truncation cut.
+The counters exist because `new=0` used to be unreadable: it is the normal outcome
+of a quiet day (the top-N did not change), and it was indistinguishable from a
+source that fetched nothing at all. `existing=10 new=0` says the top-N was examined
+and every entry was already known. How the line reaches the operator —
+[`operations.md` § Run summary](operations.md#run-summary-reading-the-per-source-metrics-line).
 
-`select_new_items` returns `(selected, existing_count, new_count)` over all
-examined candidates, and the paging loop refreshes all three counters per page, so
-`extracted == existing + new` holds on a run that aborted mid-scan too — a red run
-reports what it actually looked at rather than zeros (§IV: a wrong number is worse
-than none). `new` vs `sent` shows a deferred remainder instead of hiding it.
+Counters are written as work proceeds and the `PipelineResult` is allocated by the
+*caller* of the per-source function, so a failure — including one caught by the
+per-source catch-all after delivery already happened — still publishes what it
+managed to measure. A red run reporting zeros would be a wrong number, which is
+worse than none (§IV).
 
-**Fetch depth per source:**
-
-- `github_new_popular` pages the Search API with `per_page=100`, stopping at the
-  first of: enough new items collected, a page shorter than `per_page`, or the
-  computed page ceiling `1000 // per_page`. The 100/1000 numbers come from the
-  [REST Search API docs](https://docs.github.com/en/rest/search/search?apiVersion=2022-11-28);
-  we stay *inside* the ceiling rather than discovering it through whatever error
-  the API returns past it. Reaching the ceiling logs a WARNING and puts it on
-  `result.warnings` — "the scan **may be** truncated" is not the same fact as "we
-  saw everything". Phrased as a possibility on purpose: a result set of exactly
-  1000 exhausts the loop with nothing beyond it.
-  Paging knobs live in the fetch function, not in `sources.json`, per the
-  known limitation above.
-- `github_trending` has no upstream pagination: the page *is* the whole candidate
-  set (~25 rows), so it is searched in full and only the delivery cap applies.
-
-**Two consequences worth knowing.** `PipelineResult.items` for these two sources
-now holds every candidate, not just what gets delivered — read `metrics` for the
-split. And because search results shift between page requests, a repository can
-slip between pages; the next run picks it up, and there is no dedicated guard.
-
-Enrichment still runs on the selected items only, so searching deeper does not
-increase Gemini spend.
+**Depth is deliberately the top-N, not the whole result set.** Scanning deeper and
+treating `limit` as a delivery cap was implemented and reverted: it changes the
+product from "the most-starred recent repositories" into "any repository above the
+star floor we have not seen yet". Measured 2026-08-05, `created:>=T-30 stars:>1000`
+returns `total_count=77`, and positions 60+ sit at ~1000 stars — exactly the
+one-day newcomers the source is not for. `github_trending` has the same shape: its
+`limit` selects the top of today's trending list, not any 10 unseen rows of ~25.
 
 ## HTML source config
 

@@ -29,15 +29,6 @@ logger = logging.getLogger(__name__)
 # deferred until ≥2 sources with a uniform single-GET fetch actually exist (#275).
 _SOURCE_TYPE = "github_popular"
 
-# Paging knobs live here, not in `sources.json`: HTTP fetching is the one part of
-# a source that is deliberately NOT declarative (see pipeline.md §"new source =
-# config, not code"). Both numbers come from the REST Search API documentation
-# (max `per_page` 100, max 1000 results per search) — never from probing the live
-# endpoint. We stop *before* the ceiling instead of discovering it by error, so
-# whatever GitHub returns past 1000 results can never redden a nightly run.
-_PER_PAGE = 100
-_SEARCH_RESULT_CEILING = 1000
-
 
 def _clean_headers(headers: dict[str, str]) -> dict[str, str]:
     """Headers safe to send: a blank value or a trailing space makes one unusable."""
@@ -176,101 +167,44 @@ def _enrich_new_items(
         logger.info("[%s] enriched %d items", source_id, enriched)
 
 
-def _collect_candidates(
+def _extract_candidates(
     source: dict[str, Any],
-    existing: set[str],
-    limit: int,
     result: PipelineResult,
     metrics: SourceMetrics,
 ) -> list[NormalizedItem] | None:
-    """Page through the search results until `limit` NEW items are in reach.
+    """Fetch the source's top-N and normalise it, or `None` on failure.
 
-    Returns the accumulated candidates, or `None` when the page fetch/extraction
-    failed (the reason is already on `result.errors`).
+    One request, `per_page` from the source's own params: the product intent is the
+    **top** of `created:>=T-30 stars:>1000` ranked by stars, and that ranking is what
+    `limit` selects. Scanning deeper was tried and reverted — it turns the source into
+    "any repo above the star floor we have not seen yet", which delivers the bottom of
+    the list (measured 2026-08-05: `total_count=77`, positions 60+ sit at ~1000 stars).
 
-    Depth is what #459 is about: the delivery cap used to truncate the candidate
-    set, and with `sort=stars&order=desc` a freshly-qualifying repo sits at the
-    *bottom* of the result set — exactly where the truncation cut. Stopping
-    conditions, in order: enough new items found; a short page (the API has no
-    more); the documented 1000-result ceiling, which we compute and stay inside
-    rather than discover through whatever error GitHub returns past it.
-
-    Candidate order is the API's own (`sort`/`order` search params) — we never
-    reorder, so the delivery cap applies to the ranking GitHub returned.
-
-    Rate limit, for the record: authenticated search allows 30 requests/minute, so
-    even the worst case here (10 pages, times `@retry_api_http` attempts) stays
-    inside it. Unauthenticated it is 10/minute — and `_fetch_json` drops a blank
-    `Authorization` (see its docstring), so a run with an unset `GITHUB_TOKEN`
-    could in theory spend its whole minute budget on one source. In practice
-    `created:>=T-30 stars:>1000` returns well under `_PER_PAGE` results, the
-    short-page break fires on page 1, and the deep path stays unreachable.
-    """
+    `None` means the reason is already on `result.errors`. Counters are written as we
+    go, so a failure still publishes what it managed to measure (§IV)."""
     source_id = source["id"]
-    max_pages = max(1, _SEARCH_RESULT_CEILING // _PER_PAGE)
-    base_params = dict(source.get("params", {}))
-    candidates: list[NormalizedItem] = []
-    selected: list[NormalizedItem] = []
-
-    for page in range(1, max_pages + 1):
-        params = {**base_params, "per_page": str(_PER_PAGE), "page": str(page)}
-        try:
-            data = _fetch_json(source["url"], params, source.get("headers", {}))
-        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
-            logger.exception("[%s] fetch failed: %s", source_id, exc)
-            result.errors.append(f"fetch failed: {exc}")
-            return None
-
-        records = _unwrap_records(data, source.get("json_path"))
-        metrics.fetched += len(records)
-
-        if records:
-            # limit=0: the cap belongs to delivery, not to how deep we look.
-            extracted = extract_from_json(records, source, limit=0)
-            if not extracted.ok:
-                # Fail-closed, deliberately asymmetric with `github_trending`, which
-                # keeps a partial extraction green. The sibling scrapes an HTML page
-                # whose markup shifts cosmetically all the time, so a few unparsable
-                # rows are routine drift. This source reads a *versioned JSON API*
-                # where `full_name` is a guaranteed field: a record without one means
-                # the response contract changed, and continuing would ship items
-                # whose dedupe identity we no longer trust. Paging widened the blast
-                # radius (up to 1000 records examined instead of `limit`), which
-                # raises the odds of tripping this — that is accepted, not overlooked.
-                logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
-                result.errors.extend(extracted.errors)
-                return None
-            candidates.extend(extracted.items)
-            # All three counters are updated per page, not once after the loop: a
-            # later-page failure returns early, and `extracted=0 existing=0 new=0`
-            # on a run whose first page yielded 100 items reads as "extraction
-            # produced nothing" — a different and wrong diagnosis from "the second
-            # fetch died". A wrong number on a red run is worse than none (§IV).
-            metrics.extracted = len(candidates)
-            selected, metrics.existing, metrics.new = select_new_items(candidates, existing, limit)
-
-        if len(records) < _PER_PAGE:
-            break
-        # `limit <= 0` means "no cap" in `select_new_items`; without this guard the
-        # comparison below would be trivially true and turn "no cap" into "one page".
-        if limit > 0 and len(selected) >= limit:
-            break
-    else:
-        # Phrased as a possibility, not a fact: when the result set is exactly
-        # `_SEARCH_RESULT_CEILING` the last page is full and the loop exhausts, yet
-        # nothing lay beyond it. Asserting "truncated" would be wrong in that case,
-        # and disambiguating via `total_count` is not worth a branch for a caveat.
-        message = (
-            f"search result ceiling reached ({max_pages} pages x {_PER_PAGE}) — "
-            "the scan may be truncated, and new repositories may remain beyond it"
+    try:
+        data = _fetch_json(
+            source["url"],
+            source.get("params", {}),
+            source.get("headers", {}),
         )
-        # Also on `result.warnings`, not just in the log: this is exactly the caveat
-        # that makes a `new=0` line less reassuring than it looks, so it has to reach
-        # the operator on the surface that reports `new=0` (#459).
-        logger.warning("[%s] %s", source_id, message)
-        result.warnings.append(message)
+    except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+        logger.exception("[%s] fetch failed: %s", source_id, exc)
+        result.errors.append(f"fetch failed: {exc}")
+        return None
 
-    return candidates
+    records = _unwrap_records(data, source.get("json_path"))
+    metrics.fetched = len(records)
+
+    extracted = extract_from_json(records, source)
+    if not extracted.ok:
+        logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
+        result.errors.extend(extracted.errors)
+        return None
+
+    metrics.extracted = len(extracted.items)
+    return extracted.items
 
 
 def _run_single_source(
@@ -287,23 +221,14 @@ def _run_single_source(
     be able to publish whatever was counted before an exception escaped."""
     source_id = source["id"]
     tab = source["sheet_tab"]
-    limit = int(source["limit"])
-    # Read once per run, before paging: the known-key set does not change while
-    # we page, and re-reading it per page would be one Sheets call per request.
-    existing = storage.get_existing_keys(tab)
 
-    candidates = _collect_candidates(source, existing, limit, result, metrics)
+    candidates = _extract_candidates(source, result, metrics)
     if candidates is None:
         return
-
     result.items = candidates
-    if not candidates:
-        message = f"[{source_id}] extraction produced zero items"
-        logger.error("%s", message)
-        result.errors.append(message)
-        return
 
-    new_items, metrics.existing, metrics.new = select_new_items(candidates, existing, limit)
+    existing = storage.get_existing_keys(tab)
+    new_items, metrics.existing, metrics.new = select_new_items(candidates, existing)
     if not new_items:
         logger.info("[%s] no new items", source_id)
         return

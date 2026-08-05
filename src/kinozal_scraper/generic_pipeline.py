@@ -69,14 +69,15 @@ class NormalizedItem:
 class SourceMetrics:
     """Per-source run counters behind the operator summary line (#459).
 
-    `fetched` — records/rows the extractor was handed; `extracted` — those it
-    turned into items; `existing` / `new` — how the extracted candidates split
-    against storage (`extracted == existing + new`, over whatever was examined so
-    far, so the invariant also holds on a run that aborted mid-scan);
-    `sent` / `stored` — what delivery and the confirmed-delivery write landed.
+    `fetched` — records/rows the extractor was handed (the source's own `limit`
+    already applied); `extracted` — those it turned into items; `existing` / `new` —
+    how they split against storage (`extracted == existing + new`); `sent` /
+    `stored` — what delivery and the confirmed-delivery write landed.
 
-    `new` counts what was *found*, `sent` what fitted under the source's delivery
-    cap: a deferred remainder stays readable instead of vanishing (§IV).
+    The point of the six is that `new=0` stops being ambiguous: `existing=10 new=0`
+    says the top-N was examined and every entry was already known — an ordinary
+    quiet day — which used to be indistinguishable from a source that returned
+    nothing at all (§IV).
     """
 
     fetched: int = 0
@@ -170,18 +171,16 @@ def _build_item(
 def select_new_items(
     candidates: list[NormalizedItem],
     existing: set[str],
-    limit: int,
 ) -> tuple[list[NormalizedItem], int, int]:
-    """Split candidates against storage and cap what gets delivered (#459).
+    """Split the extracted candidates against storage (#459).
 
-    Returns `(selected, existing_count, new_count)`. The cap applies to the
-    **new** items, never to the candidate set — applying it first was the root
-    cause of a source going permanently silent once its whole top-N sat in
-    Sheets. `limit <= 0` means "no cap".
+    Returns `(new_items, existing_count, new_count)`. Extraction has already
+    applied the source's `limit`, so this does not cap anything — it only reports
+    how the top-N split, which is what the operator summary line is read against:
+    `existing_count + new_count == len(candidates)` always holds.
 
-    A key seen twice within one run (the same repo on two search pages) counts as
-    existing on its second sighting, so `existing_count + new_count` always
-    equals `len(candidates)` — the invariant the operator line is read against.
+    A key repeated inside one batch counts as existing on its second sighting, so
+    the same item can never be delivered twice from one run.
     """
     seen = set(existing)
     selected: list[NormalizedItem] = []
@@ -193,37 +192,20 @@ def select_new_items(
             continue
         seen.add(item.dedupe_key)
         new_count += 1
-        if limit <= 0 or len(selected) < limit:
-            selected.append(item)
+        selected.append(item)
     return selected, existing_count, new_count
-
-
-def _effective_limit(override: int | None, source_config: dict[str, Any], fallback: int) -> int:
-    """Resolve the `limit=` sentinel shared by both extractors (#459).
-
-    `None` → the source's own `limit` (what every config-driven pipeline wants);
-    anything explicit wins, and `0` means "no truncation". The sentinel is
-    resolved in one place because the two extractors used to disagree about a
-    falsy limit: HTML read it as "no truncation", JSON would have sliced to
-    nothing and reported the run as "produced zero items"."""
-    if override is not None:
-        return override
-    return int(source_config.get("limit", fallback))
 
 
 def extract_from_json(
     records: list[dict[str, Any]],
     source_config: dict[str, Any],
-    *,
-    limit: int | None = None,
 ) -> PipelineResult:
     source_id: str = source_config["id"]
     fields: dict[str, Any] = source_config.get("fields", {})
-    effective_limit = _effective_limit(limit, source_config, len(records))
+    limit: int = int(source_config.get("limit", len(records)))
     result = PipelineResult(source_id=source_id)
-    considered = records if effective_limit <= 0 else records[:effective_limit]
 
-    for record in considered:
+    for record in records[:limit]:
         dedupe_key = _json_field(record, source_config.get("dedupe_key"))
         title = _json_field(record, fields.get("title"))
 
@@ -261,8 +243,6 @@ def _resolve_url(value: str, base_url: str) -> str:
 def extract_from_html(
     html: str,
     source_config: dict[str, Any],
-    *,
-    limit: int | None = None,
 ) -> PipelineResult:
     """Extract items from an HTML payload.
 
@@ -276,7 +256,7 @@ def extract_from_html(
     """
     source_id: str = source_config["id"]
     fields: dict[str, Any] = source_config.get("fields", {})
-    effective_limit = _effective_limit(limit, source_config, 0)
+    limit: int = int(source_config.get("limit", 0))
     row_selector: str = source_config.get("row_selector", "")
     base_url: str = source_config.get("base_url", "")
     result = PipelineResult(source_id=source_id)
@@ -287,8 +267,8 @@ def extract_from_html(
 
     soup = BeautifulSoup(html, "html.parser")
     rows: list[Tag] = list(soup.select(row_selector))
-    if effective_limit > 0:
-        rows = rows[:effective_limit]
+    if limit:
+        rows = rows[:limit]
 
     for row in rows:
         dedupe_key = _html_field(row, source_config.get("dedupe_key"))
