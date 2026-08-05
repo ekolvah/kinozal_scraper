@@ -289,9 +289,12 @@ def run_github_trending_pipeline(
 
     for source in trending_sources:
         if not source.get("url"):
-            # No-url silent-skip: no result entry at all, preserved from the
-            # pre-split inline `continue`. Checked here so the result below can be
-            # allocated unconditionally.
+            # No-url skip: no result entry at all, so nothing reaches the run summary
+            # either — preserved byte-for-byte from the pre-split inline `continue`.
+            # Not a §IV hole: `url` is a required field in `validate_sources_config`,
+            # so a source can only get here by bypassing config loading (i.e. a test
+            # or a caller passing `sources_config` by hand). Config validation is the
+            # real guard; this branch is defence behind it.
             logger.warning("[%s] no URL configured", source["id"])
             continue
 

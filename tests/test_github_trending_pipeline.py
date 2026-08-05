@@ -658,9 +658,11 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
                 raise RuntimeError("telegram exploded")
 
         storage = InMemoryStorage()
+        # Blank metric so a drift warning exists to be preserved alongside the counters.
+        html = f"<html><body>{_row('b/new', stars='')}</body></html>"
         with unittest.mock.patch(
             "kinozal_scraper.github_trending_pipeline.fetch_html",
-            return_value=_page_html("b/new"),
+            return_value=html,
         ):
             results = run_github_trending_pipeline(
                 storage, _ExplodingNotifier(), sources_config=_SOURCES_CONFIG
@@ -669,11 +671,15 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertFalse(results[0].ok)
         self.assertTrue(any("unhandled error" in e for e in results[0].errors))
-        # The counters (and any warnings already collected) must survive the
-        # catch-all — same contract as github_popular, same reason.
+        # The counters AND the warnings already collected must survive the catch-all —
+        # same contract as github_popular, same reason.
         metrics = results[0].metrics
         assert metrics is not None
         self.assertEqual((metrics.fetched, metrics.extracted, metrics.new), (1, 1, 1))
+        self.assertTrue(
+            any("may have drifted" in w for w in results[0].warnings),
+            f"drift warning must survive the catch-all, got: {results[0].warnings}",
+        )
 
     def test_partial_extraction_failure_is_visible_but_green(self) -> None:
         # `fetched=2 extracted=1` used to be reachable with an entirely clean

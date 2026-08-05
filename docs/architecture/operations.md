@@ -108,8 +108,13 @@ which is exactly why they travel here too:
 ```text
 github_trending: fetched=25 extracted=23 existing=23 new=0 sent=0 stored=0
 github_trending:   warning: row missing required field(s): dedupe_key='' title=''
-github_trending:   warning: 25 of 25 rows have an empty metric — page layout may have drifted: …
+github_trending:   warning: row missing required field(s): dedupe_key='' title=''
+github_trending:   warning: 23 of 23 rows have an empty metric — page layout may have drifted: …
 ```
+
+Two rows failed extraction, hence `fetched=25 extracted=23` and one warning each.
+The drift check runs over the **extracted** items, so its denominator is 23, not 25 —
+a row that never became an item has no field to be blank.
 
 Failures also reach Telegram through `report_failures`; the summary is the surface
 that pairs them with the counters of the same run.

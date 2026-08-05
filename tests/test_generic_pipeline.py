@@ -16,6 +16,7 @@ from kinozal_scraper.generic_pipeline import (
     extract_from_html,
     extract_from_json,
     select_new_items,
+    without_source_prefix,
 )
 
 _JSON_CONFIG = {
@@ -391,6 +392,29 @@ class TestBoundedEvidence(unittest.TestCase):
         result = bounded_evidence([str(i) for i in range(8)])
         self.assertTrue(result.startswith("0, 1, 2, 3, 4"))
         self.assertIn("+3 more", result)
+
+
+class TestWithoutSourcePrefix(unittest.TestCase):
+    """Shared by both reporting surfaces (run summary + Telegram alert), so the
+    pass-through contract is what makes it safe to apply to every message."""
+
+    def test_strips_the_leading_source_prefix(self) -> None:
+        self.assertEqual(
+            without_source_prefix("github_trending", "[github_trending] row missing"),
+            "row missing",
+        )
+
+    def test_message_without_the_prefix_passes_through(self) -> None:
+        self.assertEqual(
+            without_source_prefix("soldout", "fetch failed: HTTP Error 403"),
+            "fetch failed: HTTP Error 403",
+        )
+
+    def test_another_sources_prefix_is_left_alone(self) -> None:
+        self.assertEqual(
+            without_source_prefix("steam", "[github_trending] row missing"),
+            "[github_trending] row missing",
+        )
 
 
 class TestSelectNewItems(unittest.TestCase):

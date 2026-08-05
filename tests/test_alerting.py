@@ -51,6 +51,20 @@ class TestFormatPipelineFailures:
         assert "src11" not in text  # 12th failure not individually listed
         assert "ещё 2" in text  # 12 - 10
 
+    def test_source_id_is_not_printed_twice(self) -> None:
+        # Every `extract_from_*` message opens with `[source_id]`, and the alert line
+        # names the source itself — the Telegram surface strips it like the summary.
+        text = format_pipeline_failures(
+            [_failed("github_new_popular", "[github_new_popular] extraction produced zero items")]
+        )
+        assert "- github_new_popular: extraction produced zero items" in text
+        assert "[github_new_popular]" not in text
+
+    def test_message_without_the_prefix_is_untouched(self) -> None:
+        # What makes the strip safe for `fetch failed:` / `unhandled error:` messages.
+        text = format_pipeline_failures([_failed("soldout", "fetch failed: HTTP Error 403")])
+        assert "- soldout: fetch failed: HTTP Error 403" in text
+
     def test_escapes_html_in_error(self) -> None:
         text = format_pipeline_failures([_failed("s", "<b> & </b>")])
         assert "&lt;b&gt;" in text

@@ -13,11 +13,12 @@ from bs4 import BeautifulSoup, Tag
 
 ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]
 
-# How deep any operator-facing report goes before collapsing the rest into a count.
-# Two related-but-distinct bounds share it: how many keys `bounded_evidence` quotes
-# *inside* one message, and how many messages the run summary lists *under* one
-# source. One number wherever a report is bounded, so an operator cross-reading two
-# surfaces is never shown two different depths of the same evidence.
+# Evidence depth **under one source**: how many keys `bounded_evidence` quotes inside
+# one message, and how many messages the run summary lists beneath one source's
+# counters. One number for both, so an operator cross-reading the log and the summary
+# is never shown two different depths of the same evidence. It deliberately says
+# nothing about other axes — `format_pipeline_failures` bounds how many *sources* an
+# alert lists, which is a different question with its own literal.
 EVIDENCE_BOUND = 5
 
 
