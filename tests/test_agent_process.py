@@ -23,6 +23,16 @@ _IMPLEMENTER_CONTRACT_MARKERS = (
     "`clean` reviewer outcome",
     "`not ready`",
 )
+# The field labels an adapter must defer to the canonical section instead of restating.
+_AGENT_RECORD_FIELD_LABELS = (
+    "implementation identity",
+    "reviewer/fixer identities",
+    "CI evidence",
+    "selected route",
+    "invocation counts",
+    "fixer revisions",
+    "skip/escalation",
+)
 
 
 class TestAgentProcess:
@@ -119,9 +129,12 @@ class TestAgentProcess:
             .split()
         )
 
-        assert "agent-process.md#agent-records-and-adapters" in skill
+        assert "agent-process.md#agent-records-and-adapters" in skill, (
+            "Codex adapter stopped pointing at the canonical record contract"
+        )
         # A third enumeration of the fields is what drifts; the pointer is the contract.
-        assert "fixer revisions" not in skill
+        for label in _AGENT_RECORD_FIELD_LABELS:
+            assert label not in skill, f"Codex adapter restated {label!r}"
 
     def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
         skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
