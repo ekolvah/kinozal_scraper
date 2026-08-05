@@ -13,13 +13,12 @@ from bs4 import BeautifulSoup, Tag
 
 ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]
 
-# How many items an operator-facing report quotes before collapsing the rest into a
-# count. Used for two related-but-distinct bounds: how many keys `bounded_evidence`
-# quotes *inside* one message, and how many messages the run summary lists *under*
-# one source. They share the number deliberately — the log and the summary carry the
-# same lists, and different depths would show an operator cross-reading the two
-# surfaces different subsets of the same evidence.
-EVIDENCE_IN_MESSAGE = 5
+# How deep any operator-facing report goes before collapsing the rest into a count.
+# Two related-but-distinct bounds share it: how many keys `bounded_evidence` quotes
+# *inside* one message, and how many messages the run summary lists *under* one
+# source. One number wherever a report is bounded, so an operator cross-reading two
+# surfaces is never shown two different depths of the same evidence.
+EVIDENCE_BOUND = 5
 
 
 def bounded_evidence(values: list[str]) -> str:
@@ -27,10 +26,21 @@ def bounded_evidence(values: list[str]) -> str:
 
     A page-wide breakage involves as many items as the page has rows, and a message
     carrying all of them is not more readable than a count (§IV)."""
-    shown = ", ".join(values[:EVIDENCE_IN_MESSAGE])
-    if len(values) > EVIDENCE_IN_MESSAGE:
-        shown += f", … (+{len(values) - EVIDENCE_IN_MESSAGE} more)"
+    shown = ", ".join(values[:EVIDENCE_BOUND])
+    if len(values) > EVIDENCE_BOUND:
+        shown += f", … (+{len(values) - EVIDENCE_BOUND} more)"
     return shown
+
+
+def without_source_prefix(source_id: str, message: str) -> str:
+    """Drop a leading `[source_id] ` from a message.
+
+    Every `extract_from_*` message carries the prefix so a bare log line identifies
+    itself, but each reporting surface (`report_failures`' Telegram alert, the run
+    summary) also names the source on its own line. Shared so both formatters strip
+    it, rather than leaving a "remember to strip" rule per caller. A message without
+    the prefix passes through untouched."""
+    return message.removeprefix(f"[{source_id}] ")
 
 
 @dataclass

@@ -194,24 +194,22 @@ def _process_trending_source(
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None,
-) -> PipelineResult | None:
-    """Run one source end-to-end. Returns its PipelineResult, or None for the
-    no-url silent-skip (the source produces no result entry — behaviour
-    preserved byte-for-byte from the pre-split inline `continue`)."""
-    url: str = source.get("url", "")
-    if not url:
-        logger.warning("[%s] no URL configured", source["id"])
-        return None  # None = no-url silent-skip, preserved from pre-refactor
+    result: PipelineResult,
+    metrics: SourceMetrics,
+) -> None:
+    """Run one source end-to-end, recording everything on the caller's
+    `result`/`metrics`.
 
-    result = PipelineResult(source_id=source["id"])
-    metrics = SourceMetrics()
-    result.metrics = metrics
+    Owns no result of its own on purpose — mirror of `github_popular_pipeline`: the
+    caller's per-source catch-all has to be able to publish whatever was counted
+    (and whatever warnings were collected) before an exception escaped."""
+    url: str = source["url"]
     try:
         html_text = fetch_html(url)
     except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
         logger.exception("[%s] fetch failed: %s", source["id"], exc)
         result.errors.append(f"fetch failed: {exc}")
-        return result
+        return
 
     metrics.fetched = _count_rows(html_text, source.get("row_selector", ""))
     # limit=0: the trending page has no upstream pagination, so the page IS the
@@ -222,7 +220,7 @@ def _process_trending_source(
     if not extracted.items and extracted.errors:
         logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
         result.errors.extend(extracted.errors)
-        return result
+        return
     if extracted.errors:
         # Partial extraction stays green (the rows that parsed are worth delivering),
         # but it must not stay *silent*: these errors used to be dropped on the
@@ -252,7 +250,7 @@ def _process_trending_source(
     )
     if not new_items:
         logger.info("[%s] no new items", source["id"])
-        return result
+        return
 
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
@@ -274,7 +272,6 @@ def _process_trending_source(
         logger.error("[%s] %s", source["id"], message)
         result.errors.append(message)
     logger.info("[%s] sent %d notification(s)", source["id"], len(sent))
-    return result
 
 
 def run_github_trending_pipeline(
@@ -291,18 +288,27 @@ def run_github_trending_pipeline(
         return results
 
     for source in trending_sources:
+        if not source.get("url"):
+            # No-url silent-skip: no result entry at all, preserved from the
+            # pre-split inline `continue`. Checked here so the result below can be
+            # allocated unconditionally.
+            logger.warning("[%s] no URL configured", source["id"])
+            continue
+
+        # Built HERE, so the catch-all cannot discard what was already counted —
+        # including the drift and partial-extraction warnings collected for the
+        # summary. Mirror of `github_popular_pipeline`; the failure surface is the
+        # same (`send_items`/`append_rows`/enricher raising), and it is the path
+        # where delivery may already have happened (§IV).
+        result = PipelineResult(source_id=source["id"])
+        metrics = SourceMetrics()
+        result.metrics = metrics
         try:
-            result = _process_trending_source(source, storage, notifier, enricher)
+            _process_trending_source(source, storage, notifier, enricher, result, metrics)
         except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
-            # Mirrors `github_popular_pipeline`. Without it an unhandled error kills
-            # the step before `publish_run_summary`, so neither the counters nor the
-            # Telegram alert fire — and this PR is what attaches the promise "the
-            # summary survives a failed run" to that path (§IV).
             logger.exception("[%s] unhandled error: %s", source["id"], exc)
-            result = PipelineResult(source_id=source["id"])
             result.errors.append(f"unhandled error: {exc}")
-        if result is not None:  # None = no-url silent-skip, preserved from pre-refactor
-            results.append(result)
+        results.append(result)
 
     return results
 

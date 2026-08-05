@@ -107,7 +107,7 @@ which is exactly why they travel here too:
 
 ```text
 github_trending: fetched=25 extracted=23 existing=23 new=0 sent=0 stored=0
-github_trending:   warning: [github_trending] row missing required field(s): dedupe_key='' title=''
+github_trending:   warning: row missing required field(s): dedupe_key='' title=''
 github_trending:   warning: 25 of 25 rows have an empty metric — page layout may have drifted: …
 ```
 
@@ -127,10 +127,10 @@ report channel and must not redden an otherwise-successful run.
 **Only the two GitHub steps have a run summary at all.** `steam`, `kinozal` and
 `soldout` are separate workflow steps that never call `publish_run_summary`, so the
 absence of a Step Summary there is not the mechanism omitting them — there is
-nothing to omit. Where counters genuinely can be missing is a source that died on an
-unhandled error before anything was measured: then the summary prints the reason
-without a counter line, so "nobody counted" stays distinct from "the source fetched
-nothing".
+nothing to omit. Both GitHub sources allocate their counters before any work starts,
+so in practice every source they report has a counter line; the `metrics is None`
+branch is defence for a future pipeline that reports messages without instrumenting
+counters, keeping "nobody counted" distinct from "the source fetched nothing".
 
 ## Soldout: терпеливый ретрай и место шага в прогоне
 

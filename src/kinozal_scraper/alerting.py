@@ -27,9 +27,10 @@ from pathlib import Path
 from typing import Any
 
 from kinozal_scraper.generic_pipeline import (
-    EVIDENCE_IN_MESSAGE,
+    EVIDENCE_BOUND,
     PipelineResult,
     SourceMetrics,
+    without_source_prefix,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,11 +73,10 @@ def _annotations(source_id: str, label: str, messages: list[str]) -> list[str]:
     Each line already opens with the source id, so a `[source_id]` prefix baked into
     the message itself (every `extract_from_*` error carries one) is stripped rather
     than printed twice."""
-    prefix = f"[{source_id}] "
-    shown = [m.removeprefix(prefix) for m in messages[:EVIDENCE_IN_MESSAGE]]
+    shown = [without_source_prefix(source_id, m) for m in messages[:EVIDENCE_BOUND]]
     lines = [f"{source_id}:   {label}: {message}" for message in shown]
-    if len(messages) > EVIDENCE_IN_MESSAGE:
-        lines.append(f"{source_id}:   {label}: ... and {len(messages) - EVIDENCE_IN_MESSAGE} more")
+    if len(messages) > EVIDENCE_BOUND:
+        lines.append(f"{source_id}:   {label}: ... and {len(messages) - EVIDENCE_BOUND} more")
     return lines
 
 
@@ -132,6 +132,9 @@ def format_pipeline_failures(results: list[PipelineResult]) -> str:
     ]
     for result in failed[:10]:
         first = result.errors[0] if result.errors else "unknown error"
+        # Same de-duplication of the source id as the run summary: the line already
+        # names the source, so `- github_trending: [github_trending] …` reads twice.
+        first = without_source_prefix(result.source_id, first)
         lines.append(f"- {_html.escape(result.source_id)}: {_html.escape(first)}")
     if len(failed) > 10:
         lines.append(f"... и ещё {len(failed) - 10} failure(s)")
