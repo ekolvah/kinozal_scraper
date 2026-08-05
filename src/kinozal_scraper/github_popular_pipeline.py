@@ -118,11 +118,19 @@ def run_github_popular_pipeline(
         return results
 
     for source in github_sources:
+        # `result` and its counters are built HERE, not inside `_run_single_source`,
+        # so the catch-all below cannot throw them away. This is the one failure path
+        # where delivery may already have happened (`storage.append_rows` or
+        # `notifier.send_items` raising), which makes `sent`/`stored` the numbers an
+        # operator most needs before re-running — a red run with no counters at all
+        # is the same defect as a red run with zeroed ones (§IV).
+        result = PipelineResult(source_id=source["id"])
+        metrics = SourceMetrics()
+        result.metrics = metrics
         try:
-            result = _run_single_source(source, storage, notifier, enricher)
+            _run_single_source(source, storage, notifier, enricher, result, metrics)
         except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
             logger.exception("[%s] unhandled error: %s", source["id"], exc)
-            result = PipelineResult(source_id=source["id"])
             result.errors.append(f"unhandled error: {exc}")
         results.append(result)
 
@@ -248,9 +256,13 @@ def _collect_candidates(
         if limit > 0 and len(selected) >= limit:
             break
     else:
+        # Phrased as a possibility, not a fact: when the result set is exactly
+        # `_SEARCH_RESULT_CEILING` the last page is full and the loop exhausts, yet
+        # nothing lay beyond it. Asserting "truncated" would be wrong in that case,
+        # and disambiguating via `total_count` is not worth a branch for a caveat.
         message = (
             f"search result ceiling reached ({max_pages} pages x {_PER_PAGE}) — "
-            "scan truncated, new repositories may remain beyond it"
+            "the scan may be truncated, and new repositories may remain beyond it"
         )
         # Also on `result.warnings`, not just in the log: this is exactly the caveat
         # that makes a `new=0` line less reassuring than it looks, so it has to reach
@@ -266,12 +278,14 @@ def _run_single_source(
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None,
-) -> PipelineResult:
-    source_id = source["id"]
-    result = PipelineResult(source_id=source_id)
-    metrics = SourceMetrics()
-    result.metrics = metrics
+    result: PipelineResult,
+    metrics: SourceMetrics,
+) -> None:
+    """Run one source, recording everything on the caller's `result`/`metrics`.
 
+    Owns no result of its own on purpose: the caller's per-source catch-all has to
+    be able to publish whatever was counted before an exception escaped."""
+    source_id = source["id"]
     tab = source["sheet_tab"]
     limit = int(source["limit"])
     # Read once per run, before paging: the known-key set does not change while
@@ -280,19 +294,19 @@ def _run_single_source(
 
     candidates = _collect_candidates(source, existing, limit, result, metrics)
     if candidates is None:
-        return result
+        return
 
     result.items = candidates
     if not candidates:
         message = f"[{source_id}] extraction produced zero items"
         logger.error("%s", message)
         result.errors.append(message)
-        return result
+        return
 
     new_items, metrics.existing, metrics.new = select_new_items(candidates, existing, limit)
     if not new_items:
         logger.info("[%s] no new items", source_id)
-        return result
+        return
 
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
@@ -313,8 +327,6 @@ def _run_single_source(
         message = f"{len(failed)} notification(s) failed, will retry next run"
         logger.error("[%s] %s", source_id, message)
         result.errors.append(message)
-
-    return result
 
 
 if __name__ == "__main__":

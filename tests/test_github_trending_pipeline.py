@@ -650,6 +650,26 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         self.assertIn("2 of 3 rows have an empty metric", joined)
         self.assertIn("may have drifted", joined)
 
+    def test_unhandled_error_is_isolated_so_the_summary_still_runs(self) -> None:
+        # Without a per-source catch-all the exception kills the step before
+        # `publish_run_summary`, so neither the counters nor the Telegram alert fire.
+        class _ExplodingNotifier(InMemoryNotifier):
+            def send_items(self, notifications: Any) -> Any:
+                raise RuntimeError("telegram exploded")
+
+        storage = InMemoryStorage()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=_page_html("b/new"),
+        ):
+            results = run_github_trending_pipeline(
+                storage, _ExplodingNotifier(), sources_config=_SOURCES_CONFIG
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("unhandled error" in e for e in results[0].errors))
+
     def test_partial_extraction_failure_is_visible_but_green(self) -> None:
         # `fetched=2 extracted=1` used to be reachable with an entirely clean
         # result: the per-row extraction errors were dropped on the floor, so the

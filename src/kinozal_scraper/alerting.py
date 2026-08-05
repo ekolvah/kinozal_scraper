@@ -67,8 +67,14 @@ def format_metrics_line(source_id: str, metrics: SourceMetrics) -> str:
 
 
 def _annotations(source_id: str, label: str, messages: list[str]) -> list[str]:
-    """Bounded `label: <message>` lines under a source's counters."""
-    lines = [f"{source_id}:   {label}: {message}" for message in messages[:EVIDENCE_IN_MESSAGE]]
+    """Bounded `label: <message>` lines under a source's counters.
+
+    Each line already opens with the source id, so a `[source_id]` prefix baked into
+    the message itself (every `extract_from_*` error carries one) is stripped rather
+    than printed twice."""
+    prefix = f"[{source_id}] "
+    shown = [m.removeprefix(prefix) for m in messages[:EVIDENCE_IN_MESSAGE]]
+    lines = [f"{source_id}:   {label}: {message}" for message in shown]
     if len(messages) > EVIDENCE_IN_MESSAGE:
         lines.append(f"{source_id}:   {label}: ... and {len(messages) - EVIDENCE_IN_MESSAGE} more")
     return lines

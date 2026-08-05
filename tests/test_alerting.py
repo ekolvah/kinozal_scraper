@@ -262,6 +262,20 @@ class TestPublishRunSummary:
         assert "something degraded" in written
         assert "fetched=" not in written
 
+    def test_source_id_is_not_printed_twice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Every `extract_from_*` message already opens with `[source_id]`, and the
+        # annotation line prefixes the source id itself.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_trending", fetched=2, extracted=1)
+        result.warnings.append("[github_trending] row missing required field(s)")
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "warning: row missing required field(s)" in written
+        assert "[github_trending]" not in written
+
     def test_uninstrumented_result_is_skipped_not_zeroed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

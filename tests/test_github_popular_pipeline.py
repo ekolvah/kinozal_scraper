@@ -763,6 +763,28 @@ class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
             f"expected a ceiling warning on the result, got: {results[0].warnings}",
         )
 
+    def test_unhandled_error_keeps_the_counters_it_already_had(self) -> None:
+        # The one failure path where delivery may already have happened, so
+        # `sent`/`stored` are what an operator needs before re-running. A red run
+        # with no counters at all is the same defect as one with zeroed counters.
+        class _ExplodingStorage(InMemoryStorage):
+            def append_rows(self, tab_name: str, headers: list[str], rows: list[Any]) -> None:
+                raise RuntimeError("sheets exploded")
+
+        storage = _ExplodingStorage()
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_GITHUB_RESPONSE):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+
+        result = results[0]
+        self.assertFalse(result.ok)
+        self.assertTrue(any("unhandled error" in e for e in result.errors))
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted, metrics.new), (3, 3, 3))
+        self.assertEqual(metrics.sent, 3)
+        self.assertEqual(metrics.stored, 0)  # the write is what blew up
+
     def test_one_bad_record_among_many_voids_the_source(self) -> None:
         # Pins the deliberate fail-closed choice in the direction where it costs
         # something: a versioned JSON API handing back a record without `full_name`

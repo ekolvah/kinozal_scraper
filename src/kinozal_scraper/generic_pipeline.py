@@ -13,10 +13,12 @@ from bs4 import BeautifulSoup, Tag
 
 ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]
 
-# How many items any operator-facing message quotes before collapsing the rest into
-# a count. One constant, not one per surface: the log line and the run summary quote
-# the same lists, and different bounds would show an operator cross-reading them two
-# different subsets of the same evidence.
+# How many items an operator-facing report quotes before collapsing the rest into a
+# count. Used for two related-but-distinct bounds: how many keys `bounded_evidence`
+# quotes *inside* one message, and how many messages the run summary lists *under*
+# one source. They share the number deliberately — the log and the summary carry the
+# same lists, and different depths would show an operator cross-reading the two
+# surfaces different subsets of the same evidence.
 EVIDENCE_IN_MESSAGE = 5
 
 

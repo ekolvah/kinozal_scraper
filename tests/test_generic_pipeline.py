@@ -11,6 +11,7 @@ from kinozal_scraper.generic_pipeline import (
     NormalizedItem,
     PipelineResult,
     _selector_css_part,
+    bounded_evidence,
     build_notification,
     extract_from_html,
     extract_from_json,
@@ -376,6 +377,20 @@ class TestExtractLimitOverride(unittest.TestCase):
         result = extract_from_html(self._html(7), {**_HTML_CONFIG, "limit": 3}, limit=0)
         self.assertEqual(len(result.items), 7)
         self.assertTrue(result.ok, result.errors)
+
+
+class TestBoundedEvidence(unittest.TestCase):
+    """Shared bound behind every operator-facing report (#459): a page-wide
+    breakage involves as many items as the page has rows, and quoting all of them
+    is not more readable than a count."""
+
+    def test_short_list_is_quoted_whole(self) -> None:
+        self.assertEqual(bounded_evidence(["a", "b"]), "a, b")
+
+    def test_long_list_collapses_the_remainder(self) -> None:
+        result = bounded_evidence([str(i) for i in range(8)])
+        self.assertTrue(result.startswith("0, 1, 2, 3, 4"))
+        self.assertIn("+3 more", result)
 
 
 class TestSelectNewItems(unittest.TestCase):

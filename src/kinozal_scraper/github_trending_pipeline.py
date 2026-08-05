@@ -291,7 +291,16 @@ def run_github_trending_pipeline(
         return results
 
     for source in trending_sources:
-        result = _process_trending_source(source, storage, notifier, enricher)
+        try:
+            result = _process_trending_source(source, storage, notifier, enricher)
+        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+            # Mirrors `github_popular_pipeline`. Without it an unhandled error kills
+            # the step before `publish_run_summary`, so neither the counters nor the
+            # Telegram alert fire — and this PR is what attaches the promise "the
+            # summary survives a failed run" to that path (§IV).
+            logger.exception("[%s] unhandled error: %s", source["id"], exc)
+            result = PipelineResult(source_id=source["id"])
+            result.errors.append(f"unhandled error: {exc}")
         if result is not None:  # None = no-url silent-skip, preserved from pre-refactor
             results.append(result)
 

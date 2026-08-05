@@ -122,9 +122,15 @@ that genuinely produced zero items is still red.
 
 The line is published **before** the step computes its exit code, so it survives a
 failed run. A summary file that cannot be written degrades to a WARNING — it is a
-report channel and must not redden an otherwise-successful run. Pipelines that do
-not measure (`steam`, `kinozal`, `soldout`) are skipped rather than printed as
-all-zeros, so "nobody counted" stays distinct from "the source fetched nothing".
+report channel and must not redden an otherwise-successful run.
+
+**Only the two GitHub steps have a run summary at all.** `steam`, `kinozal` and
+`soldout` are separate workflow steps that never call `publish_run_summary`, so the
+absence of a Step Summary there is not the mechanism omitting them — there is
+nothing to omit. Where counters genuinely can be missing is a source that died on an
+unhandled error before anything was measured: then the summary prints the reason
+without a counter line, so "nobody counted" stays distinct from "the source fetched
+nothing".
 
 ## Soldout: терпеливый ретрай и место шага в прогоне
 
