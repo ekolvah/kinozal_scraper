@@ -295,12 +295,14 @@ def run_github_trending_pipeline(
             # Unreachable today only because this source's `url` is a literal in
             # `sources.json`. Config validation is NOT the guard: it checks key
             # *presence* (`_REQUIRED_SOURCE_FIELDS - source.keys()`), so an empty
-            # string passes — which is live for `kinozal`/`soldout`, whose urls come
-            # from env macros that default to `""`.
+            # string passes. `soldout` proves the path is live — its url is
+            # `{{SOLDOUT_URL}}`, which `build_macro_context` defaults to `""`, and it
+            # skips green the same way. (`kinozal` is not a case: it never reads the
+            # config url, and a missing one gives it a red result with a reason.)
             #
-            # So: parameterising this url the way those two are would reintroduce a
-            # silent green skip, which is the exact shape #459 removes. Give it a
-            # `PipelineResult` with the reason on `warnings` if that ever happens.
+            # So: parameterising this url would reintroduce a silent green skip, the
+            # exact shape #459 removes. Give it a `PipelineResult` with the reason on
+            # `warnings` if that ever happens.
             logger.warning("[%s] no URL configured", source["id"])
             continue
 
