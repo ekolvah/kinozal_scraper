@@ -82,8 +82,11 @@ github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
   items. A gap between them means records failed extraction. On
   `github_new_popular` that is already red (any bad record fails the source); on
   `github_trending` a *partial* failure stays green — the rows that parsed are
-  worth delivering — but it is surfaced as a WARNING plus entries in
-  `PipelineResult.warnings`, so the gap is never unexplained.
+  worth delivering — but the reasons are printed under the counters (see below),
+  so the gap is never unexplained. The asymmetry is deliberate: trending scrapes a
+  page whose markup shifts cosmetically all the time, while popular reads a
+  versioned JSON API where a record without `full_name` means the response
+  contract changed and no item's identity can be trusted.
 - `existing` — how many of the **examined candidates** were already known: rows
   in `github_projects` *plus* any repo seen twice within the run (the same repo on
   two search pages counts once as new, once as existing). It is *not* the size of
@@ -95,6 +98,14 @@ github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
   stable. On `github_trending` they may not: the page churns daily, so a repo not
   delivered today can simply be off it tomorrow.
 - `stored` — rows written to Sheets, i.e. confirmed deliveries.
+
+Any per-source warnings are printed under its counters (bounded, then collapsed
+into a count), so a gap you can see is a gap you can read:
+
+```text
+github_trending: fetched=25 extracted=23 existing=23 new=0 sent=0 stored=0
+github_trending:   warning: [github_trending] row missing required field(s): dedupe_key='' title=''
+```
 
 **`new=0` is green, and now explains itself.** `existing=100 new=0` means we
 looked at a hundred candidates and knew every one — a normal quiet day. That used

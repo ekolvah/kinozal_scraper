@@ -587,8 +587,8 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
             )
         self.assertEqual(notifier.sent, [])
         joined = "\n".join(caplog.output)
-        self.assertIn("metric", joined)
-        self.assertIn("all", joined)
+        self.assertIn("3 of 3 rows have an empty metric", joined)
+        self.assertIn("may have drifted", joined)
 
     def test_drift_warning_is_bounded_not_one_line_per_row(self) -> None:
         # Searching the whole page must not turn the §IV channel into per-row spam;
@@ -618,6 +618,19 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         joined = "\n".join(caplog.output)
         self.assertNotIn("may have drifted", joined)
         self.assertIn("1 of 2 rows have an empty description", joined)
+
+    def test_mostly_blank_metric_column_still_claims_drift(self) -> None:
+        # Unlike `description`, every trending row carries a stargazers link, so a
+        # blank `metric` is never routine: requiring a 100%-blank column would let
+        # "24 of 25 rows lost their metric" through at INFO.
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = _row("a/kept") + _row("b/lost", stars="") + _row("c/lost", stars="")
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
+            _run(html=f"<html><body>{rows}</body></html>", sources_config=config)
+        joined = "\n".join(caplog.output)
+        self.assertIn("2 of 3 rows have an empty metric", joined)
+        self.assertIn("may have drifted", joined)
 
     def test_partial_extraction_failure_is_visible_but_green(self) -> None:
         # `fetched=2 extracted=1` used to be reachable with an entirely clean

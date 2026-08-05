@@ -740,6 +740,13 @@ class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
         self.assertFalse(results[0].ok)
         self.assertEqual(notifier.sent, [])
         self.assertEqual(storage.stored_rows("github_projects"), [])
+        # The summary is published on red runs too, so the counters must describe
+        # what actually happened: page 1 extracted three items. Reporting
+        # `extracted=0` here would diagnose "extraction produced nothing" instead
+        # of "the second fetch died" (§IV — a wrong number is worse than none).
+        metrics = results[0].metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted), (3, 3))
 
     def test_delivers_at_most_limit_new_items(self) -> None:
         pager = _Pager([_page("b/1", "b/2", "b/3")])

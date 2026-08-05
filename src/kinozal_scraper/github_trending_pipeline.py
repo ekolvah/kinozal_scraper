@@ -33,10 +33,16 @@ logger = logging.getLogger(__name__)
 _SOURCE_ID = "github_trending"
 _SHEET_TAB = "github_projects"
 
-# How many dedupe_keys a drift WARNING names before collapsing into a count. The
-# warning is per page, not per row (see `_warn_on_drift`), so this only bounds how
-# much of the evidence is quoted inline.
-_DRIFT_KEYS_IN_WARNING = 5
+# How many items a page-level WARNING quotes before collapsing the rest into a
+# count. Warnings here are per page, not per row, so this only bounds the evidence.
+_EVIDENCE_IN_WARNING = 5
+
+# Fields whose blank value is anomalous on its own, so *any* blank earns the drift
+# verdict. Every trending row carries an `a[href$="/stargazers"]` link, so a missing
+# `metric` is never routine — 24 blanks out of 25 is a page-wide drift, and requiring
+# a 100%-blank column would let it through at INFO. `description` is the opposite:
+# repos without one are ordinary, so only an entirely blank column is evidence.
+_DRIFT_ON_ANY_BLANK = frozenset({"metric"})
 
 
 def _digits_only(text: str) -> str:
@@ -96,6 +102,18 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
         item.raw["stars_today"] = by_href.get(key, "")
 
 
+def _bounded(values: list[str]) -> str:
+    """Quote a few items of evidence, then collapse the rest into a count.
+
+    Shared by every page-level warning here: searching the whole page instead of
+    the first `limit` rows means a page-wide breakage can involve ~25 items, and a
+    log line carrying all of them is not more readable than a count (§IV)."""
+    shown = ", ".join(values[:_EVIDENCE_IN_WARNING])
+    if len(values) > _EVIDENCE_IN_WARNING:
+        shown += f", … (+{len(values) - _EVIDENCE_IN_WARNING} more)"
+    return shown
+
+
 def _count_rows(html: str, row_selector: str) -> int:
     """Rows the page offered, before extraction dropped any — the `fetched` metric.
 
@@ -121,11 +139,13 @@ def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
     bounded one now that the full page is searched instead of the first `limit`
     rows. A few keys are named so the operator can open one and look.
 
-    **Only an entirely blank column claims drift.** Repos without a description are
-    routine on the trending page, so warning "layout may have drifted" on 3 of 25
-    would assert a breakage that is not happening — every single run. A channel
-    that cries drift daily is one nobody reads, which is the same desensitisation
-    #459 is about. A partial count is still recorded, at INFO, without the verdict.
+    **The drift verdict has a per-field threshold** (`_DRIFT_ON_ANY_BLANK`): one
+    blank `metric` is already anomalous, while a blank `description` is routine and
+    only an entirely blank column is evidence. One shared threshold cannot serve
+    both — "any blank" would cry drift on nearly every run and train the operator
+    to ignore the channel; "all blank" would let 24 of 25 missing metrics through
+    at INFO. Below the threshold the count is still recorded, just without the
+    verdict.
     """
     if not items:
         return
@@ -133,16 +153,14 @@ def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
         blank = [i.dedupe_key for i in items if not getattr(i, field_name)]
         if not blank:
             continue
-        shown = ", ".join(blank[:_DRIFT_KEYS_IN_WARNING])
-        if len(blank) > _DRIFT_KEYS_IN_WARNING:
-            shown += f", … (+{len(blank) - _DRIFT_KEYS_IN_WARNING} more)"
-        if len(blank) == len(items):
+        if field_name in _DRIFT_ON_ANY_BLANK or len(blank) == len(items):
             logger.warning(
-                "[%s] all %d rows have an empty %s — page layout may have drifted: %s",
+                "[%s] %d of %d rows have an empty %s — page layout may have drifted: %s",
                 source_id,
+                len(blank),
                 len(items),
                 field_name,
-                shown,
+                _bounded(blank),
             )
         else:
             logger.info(
@@ -151,7 +169,7 @@ def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
                 len(blank),
                 len(items),
                 field_name,
-                shown,
+                _bounded(blank),
             )
 
 
@@ -238,7 +256,7 @@ def _process_trending_source(
             source["id"],
             len(extracted.errors),
             metrics.fetched,
-            extracted.errors,
+            _bounded(extracted.errors),
         )
         result.warnings.extend(extracted.errors)
 

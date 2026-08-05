@@ -32,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 _TECH_ALERT_MARKER = ".run/technical_alert_sent"
 
+# How many per-source warnings the run summary quotes before collapsing the rest
+# into a count — a page-wide extraction failure can produce one per row.
+_WARNINGS_IN_SUMMARY = 3
+
 
 def mark_technical_alert_sent(path: str | None = None) -> None:
     marker_value = path if path is not None else os.getenv("TECH_ALERT_MARKER")
@@ -74,7 +78,20 @@ def publish_run_summary(results: list[PipelineResult]) -> None:
     caller publishes *before* computing its exit code, so the line survives a
     failed run, which is exactly when it is worth reading.
     """
-    lines = [format_metrics_line(r.source_id, r.metrics) for r in results if r.metrics is not None]
+    lines: list[str] = []
+    for result in results:
+        if result.metrics is None:
+            continue
+        lines.append(format_metrics_line(result.source_id, result.metrics))
+        # Warnings ride along so a `fetched=25 extracted=23` gap explains itself
+        # right here. Without them the operator sees the gap in the summary and
+        # still has to open the job log — the exact "only trace was a log line"
+        # problem this summary exists to remove (§IV).
+        for warning in result.warnings[:_WARNINGS_IN_SUMMARY]:
+            lines.append(f"{result.source_id}:   warning: {warning}")
+        if len(result.warnings) > _WARNINGS_IN_SUMMARY:
+            remaining = len(result.warnings) - _WARNINGS_IN_SUMMARY
+            lines.append(f"{result.source_id}:   warning: ... and {remaining} more")
     if not lines:
         return
     for line in lines:

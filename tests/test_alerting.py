@@ -213,6 +213,28 @@ class TestPublishRunSummary:
         )
         assert "new=0" in target.read_text(encoding="utf-8")
 
+    def test_warnings_ride_along_so_a_metrics_gap_explains_itself(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_trending", fetched=25, extracted=23, existing=23)
+        result.warnings.append("[github_trending] row missing required field(s)")
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "extracted=23" in written
+        assert "row missing required field(s)" in written
+
+    def test_warning_list_is_bounded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_trending", fetched=25, extracted=5)
+        result.warnings.extend(f"row {i} broke" for i in range(20))
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "and 17 more" in written
+        assert "row 19 broke" not in written
+
     def test_uninstrumented_result_is_skipped_not_zeroed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

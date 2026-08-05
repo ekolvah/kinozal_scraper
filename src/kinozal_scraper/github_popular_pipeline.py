@@ -219,10 +219,24 @@ def _collect_candidates(
             # limit=0: the cap belongs to delivery, not to how deep we look.
             extracted = extract_from_json(records, source, limit=0)
             if not extracted.ok:
+                # Fail-closed, deliberately asymmetric with `github_trending`, which
+                # keeps a partial extraction green. The sibling scrapes an HTML page
+                # whose markup shifts cosmetically all the time, so a few unparsable
+                # rows are routine drift. This source reads a *versioned JSON API*
+                # where `full_name` is a guaranteed field: a record without one means
+                # the response contract changed, and continuing would ship items
+                # whose dedupe identity we no longer trust. Paging widened the blast
+                # radius (up to 1000 records examined instead of `limit`), which
+                # raises the odds of tripping this — that is accepted, not overlooked.
                 logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
                 result.errors.extend(extracted.errors)
                 return None
             candidates.extend(extracted.items)
+            # Updated per page, not once after the loop: a later-page failure
+            # returns early, and `extracted=0` on a run whose first page yielded
+            # 100 items reads as "extraction produced nothing" — a different and
+            # wrong diagnosis from "the second fetch died" (§IV).
+            metrics.extracted = len(candidates)
 
         if len(records) < _PER_PAGE:
             break
@@ -266,7 +280,6 @@ def _run_single_source(
         return result
 
     result.items = candidates
-    metrics.extracted = len(candidates)
     if not candidates:
         message = f"[{source_id}] extraction produced zero items"
         logger.error("%s", message)
