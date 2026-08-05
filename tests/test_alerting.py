@@ -232,8 +232,35 @@ class TestPublishRunSummary:
         result.warnings.extend(f"row {i} broke" for i in range(20))
         publish_run_summary([result])
         written = target.read_text(encoding="utf-8")
-        assert "and 17 more" in written
+        assert "and 15 more" in written
         assert "row 19 broke" not in written
+
+    def test_errors_are_reported_beside_the_counters(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The summary is published before the exit code precisely so a failed run's
+        # numbers survive; six counters with no stated reason is not actionable.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_new_popular", fetched=3, extracted=3)
+        result.errors.append("fetch failed: network down")
+        publish_run_summary([result])
+        assert "fetch failed: network down" in target.read_text(encoding="utf-8")
+
+    def test_warnings_survive_a_result_without_counters(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The `metrics is None` guard is about the counters. Coupling a source's
+        # messages to whether it instruments counters would silence the channel by
+        # accident for the first pipeline that reports one without measuring.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _ok("soldout")
+        result.warnings.append("something degraded")
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "something degraded" in written
+        assert "fetched=" not in written
 
     def test_uninstrumented_result_is_skipped_not_zeroed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

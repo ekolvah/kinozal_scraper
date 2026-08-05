@@ -14,6 +14,7 @@ from kinozal_scraper.generic_pipeline import (
     NormalizedItem,
     PipelineResult,
     SourceMetrics,
+    bounded_evidence,
     build_notification,
     extract_from_html,
     select_new_items,
@@ -32,10 +33,6 @@ logger = logging.getLogger(__name__)
 
 _SOURCE_ID = "github_trending"
 _SHEET_TAB = "github_projects"
-
-# How many items a page-level WARNING quotes before collapsing the rest into a
-# count. Warnings here are per page, not per row, so this only bounds the evidence.
-_EVIDENCE_IN_WARNING = 5
 
 # Fields whose blank value is anomalous on its own, so *any* blank earns the drift
 # verdict. Every trending row carries an `a[href$="/stargazers"]` link, so a missing
@@ -102,18 +99,6 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
         item.raw["stars_today"] = by_href.get(key, "")
 
 
-def _bounded(values: list[str]) -> str:
-    """Quote a few items of evidence, then collapse the rest into a count.
-
-    Shared by every page-level warning here: searching the whole page instead of
-    the first `limit` rows means a page-wide breakage can involve ~25 items, and a
-    log line carrying all of them is not more readable than a count (§IV)."""
-    shown = ", ".join(values[:_EVIDENCE_IN_WARNING])
-    if len(values) > _EVIDENCE_IN_WARNING:
-        shown += f", … (+{len(values) - _EVIDENCE_IN_WARNING} more)"
-    return shown
-
-
 def _count_rows(html: str, row_selector: str) -> int:
     """Rows the page offered, before extraction dropped any — the `fetched` metric.
 
@@ -125,7 +110,7 @@ def _count_rows(html: str, row_selector: str) -> int:
     return len(BeautifulSoup(html, "html.parser").select(row_selector))
 
 
-def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
+def _warn_on_drift(result: PipelineResult, items: list[NormalizedItem]) -> None:
     """Surface empty metric/description so page-layout drift reaches the operator
     instead of silently shipping blank fields (§IV).
 
@@ -153,24 +138,17 @@ def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
         blank = [i.dedupe_key for i in items if not getattr(i, field_name)]
         if not blank:
             continue
+        detail = f"{len(blank)} of {len(items)} rows have an empty {field_name}"
         if field_name in _DRIFT_ON_ANY_BLANK or len(blank) == len(items):
-            logger.warning(
-                "[%s] %d of %d rows have an empty %s — page layout may have drifted: %s",
-                source_id,
-                len(blank),
-                len(items),
-                field_name,
-                _bounded(blank),
-            )
+            message = f"{detail} — page layout may have drifted: {bounded_evidence(blank)}"
+            # Also on `result.warnings`: drift leaves no gap between `fetched` and
+            # `extracted`, so a summary reader has no cue to go looking for it. The
+            # log alone is the "only trace was a line in the job log" problem the
+            # run summary exists to remove (#459).
+            logger.warning("[%s] %s", result.source_id, message)
+            result.warnings.append(message)
         else:
-            logger.info(
-                "[%s] %d of %d rows have an empty %s: %s",
-                source_id,
-                len(blank),
-                len(items),
-                field_name,
-                _bounded(blank),
-            )
+            logger.info("[%s] %s: %s", result.source_id, detail, bounded_evidence(blank))
 
 
 def _enrich_new_items(
@@ -256,13 +234,13 @@ def _process_trending_source(
             source["id"],
             len(extracted.errors),
             metrics.fetched,
-            _bounded(extracted.errors),
+            bounded_evidence(extracted.errors),
         )
         result.warnings.extend(extracted.errors)
 
     items = _normalize_items(extracted.items)
     _enrich_with_stars_today(html_text, items)
-    _warn_on_drift(source["id"], items)
+    _warn_on_drift(result, items)
 
     result.items = items
     metrics.extracted = len(items)

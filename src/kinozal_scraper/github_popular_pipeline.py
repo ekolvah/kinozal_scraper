@@ -202,6 +202,7 @@ def _collect_candidates(
     max_pages = max(1, _SEARCH_RESULT_CEILING // _PER_PAGE)
     base_params = dict(source.get("params", {}))
     candidates: list[NormalizedItem] = []
+    selected: list[NormalizedItem] = []
 
     for page in range(1, max_pages + 1):
         params = {**base_params, "per_page": str(_PER_PAGE), "page": str(page)}
@@ -232,28 +233,30 @@ def _collect_candidates(
                 result.errors.extend(extracted.errors)
                 return None
             candidates.extend(extracted.items)
-            # Updated per page, not once after the loop: a later-page failure
-            # returns early, and `extracted=0` on a run whose first page yielded
-            # 100 items reads as "extraction produced nothing" — a different and
-            # wrong diagnosis from "the second fetch died" (§IV).
+            # All three counters are updated per page, not once after the loop: a
+            # later-page failure returns early, and `extracted=0 existing=0 new=0`
+            # on a run whose first page yielded 100 items reads as "extraction
+            # produced nothing" — a different and wrong diagnosis from "the second
+            # fetch died". A wrong number on a red run is worse than none (§IV).
             metrics.extracted = len(candidates)
+            selected, metrics.existing, metrics.new = select_new_items(candidates, existing, limit)
 
         if len(records) < _PER_PAGE:
             break
         # `limit <= 0` means "no cap" in `select_new_items`; without this guard the
         # comparison below would be trivially true and turn "no cap" into "one page".
-        if limit > 0:
-            selected, _, _ = select_new_items(candidates, existing, limit)
-            if len(selected) >= limit:
-                break
+        if limit > 0 and len(selected) >= limit:
+            break
     else:
-        logger.warning(
-            "[%s] search result ceiling reached (%d pages x %d) — scan truncated, "
-            "new repositories may remain beyond it",
-            source_id,
-            max_pages,
-            _PER_PAGE,
+        message = (
+            f"search result ceiling reached ({max_pages} pages x {_PER_PAGE}) — "
+            "scan truncated, new repositories may remain beyond it"
         )
+        # Also on `result.warnings`, not just in the log: this is exactly the caveat
+        # that makes a `new=0` line less reassuring than it looks, so it has to reach
+        # the operator on the surface that reports `new=0` (#459).
+        logger.warning("[%s] %s", source_id, message)
+        result.warnings.append(message)
 
     return candidates
 

@@ -747,6 +747,34 @@ class TestGithubPopularPaginatesPastKnownItems(unittest.TestCase):
         metrics = results[0].metrics
         assert metrics is not None
         self.assertEqual((metrics.fetched, metrics.extracted), (3, 3))
+        # `extracted=3 existing=0 new=0` would describe three candidates that were
+        # neither known nor new — a state the model does not allow. The invariant
+        # holds over whatever was examined, aborted scan included.
+        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
+
+    def test_ceiling_warning_reaches_the_run_summary(self) -> None:
+        # The ceiling caveat is what makes `new=0` less reassuring than it looks, so
+        # it has to travel on the surface that reports `new=0`, not only in the log.
+        known = {f"a/{i}" for i in range(99)}
+        pages = [_page(f"a/{3 * p}", f"a/{3 * p + 1}", f"a/{3 * p + 2}") for p in range(20)]
+        _, _, results = _run_paged(_Pager(pages), existing=known, limit=5, per_page=3, ceiling=9)
+        self.assertTrue(
+            any("ceiling" in w for w in results[0].warnings),
+            f"expected a ceiling warning on the result, got: {results[0].warnings}",
+        )
+
+    def test_one_bad_record_among_many_voids_the_source(self) -> None:
+        # Pins the deliberate fail-closed choice in the direction where it costs
+        # something: a versioned JSON API handing back a record without `full_name`
+        # means the response contract changed, so no item's identity is trustworthy.
+        good = _page("b/1", "b/2", "b/3")["items"]
+        page = {"total_count": 4, "items": [*good, {"html_url": "x"}]}
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with _patch_fetch(page):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+        self.assertFalse(results[0].ok)
+        self.assertEqual(notifier.sent, [])
 
     def test_delivers_at_most_limit_new_items(self) -> None:
         pager = _Pager([_page("b/1", "b/2", "b/3")])

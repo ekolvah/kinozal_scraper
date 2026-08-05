@@ -590,6 +590,24 @@ class TestTrendingSearchesWholePage(unittest.TestCase):
         self.assertIn("3 of 3 rows have an empty metric", joined)
         self.assertIn("may have drifted", joined)
 
+    def test_drift_reaches_the_run_summary_not_only_the_log(self) -> None:
+        # Drift leaves no gap between `fetched` and `extracted`, so a summary reader
+        # has no cue to go looking for it — the warning has to travel on the result.
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = "".join(_row(f"a/{i}", stars="") for i in range(3))
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=f"<html><body>{rows}</body></html>",
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+        self.assertTrue(
+            any("may have drifted" in w for w in results[0].warnings),
+            f"expected a drift warning on the result, got: {results[0].warnings}",
+        )
+
     def test_drift_warning_is_bounded_not_one_line_per_row(self) -> None:
         # Searching the whole page must not turn the §IV channel into per-row spam;
         # drift is a property of the page, so the warning is aggregated.

@@ -99,13 +99,20 @@ github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7
   delivered today can simply be off it tomorrow.
 - `stored` — rows written to Sheets, i.e. confirmed deliveries.
 
-Any per-source warnings are printed under its counters (bounded, then collapsed
-into a count), so a gap you can see is a gap you can read:
+Per-source **errors and warnings** are printed under the counters (bounded, then
+collapsed into a count), so the numbers never stand without a reason. Not every
+anomaly shows up as a gap between counters — a fully drifted `metric` column and a
+scan truncated by the API's result ceiling both leave the counters looking healthy,
+which is exactly why they travel here too:
 
 ```text
 github_trending: fetched=25 extracted=23 existing=23 new=0 sent=0 stored=0
 github_trending:   warning: [github_trending] row missing required field(s): dedupe_key='' title=''
+github_trending:   warning: 25 of 25 rows have an empty metric — page layout may have drifted: …
 ```
+
+Failures also reach Telegram through `report_failures`; the summary is the surface
+that pairs them with the counters of the same run.
 
 **`new=0` is green, and now explains itself.** `existing=100 new=0` means we
 looked at a hundred candidates and knew every one — a normal quiet day. That used

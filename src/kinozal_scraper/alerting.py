@@ -26,15 +26,15 @@ import os
 from pathlib import Path
 from typing import Any
 
-from kinozal_scraper.generic_pipeline import PipelineResult, SourceMetrics
+from kinozal_scraper.generic_pipeline import (
+    EVIDENCE_IN_MESSAGE,
+    PipelineResult,
+    SourceMetrics,
+)
 
 logger = logging.getLogger(__name__)
 
 _TECH_ALERT_MARKER = ".run/technical_alert_sent"
-
-# How many per-source warnings the run summary quotes before collapsing the rest
-# into a count — a page-wide extraction failure can produce one per row.
-_WARNINGS_IN_SUMMARY = 3
 
 
 def mark_technical_alert_sent(path: str | None = None) -> None:
@@ -66,32 +66,36 @@ def format_metrics_line(source_id: str, metrics: SourceMetrics) -> str:
     )
 
 
+def _annotations(source_id: str, label: str, messages: list[str]) -> list[str]:
+    """Bounded `label: <message>` lines under a source's counters."""
+    lines = [f"{source_id}:   {label}: {message}" for message in messages[:EVIDENCE_IN_MESSAGE]]
+    if len(messages) > EVIDENCE_IN_MESSAGE:
+        lines.append(f"{source_id}:   {label}: ... and {len(messages) - EVIDENCE_IN_MESSAGE} more")
+    return lines
+
+
 def publish_run_summary(results: list[PipelineResult]) -> None:
     """Log the metrics lines and append them to the GitHub Actions Step Summary.
 
-    Results without metrics are skipped rather than reported as all-zeros:
-    `metrics is None` means "this pipeline does not measure", and printing it as
-    `fetched=0` would recreate the very ambiguity #459 removes (§IV).
+    Counters are omitted rather than zeroed when `metrics is None` ("this pipeline
+    does not measure"), because printing `fetched=0` would recreate the very
+    ambiguity #459 removes (§IV). Warnings and errors are reported either way — the
+    guard is about the counters, and coupling a source's *messages* to whether it
+    happens to instrument counters would silence the channel by accident.
+
+    Errors travel here as well as through `report_failures`: the summary is
+    published before the exit code precisely so a failed run's numbers survive, and
+    six counters with no stated reason is not a report an operator can act on.
 
     A summary that cannot be written degrades to a WARNING — it is a report
-    channel, and losing it must not redden a run that otherwise succeeded. The
-    caller publishes *before* computing its exit code, so the line survives a
-    failed run, which is exactly when it is worth reading.
+    channel, and losing it must not redden a run that otherwise succeeded.
     """
     lines: list[str] = []
     for result in results:
-        if result.metrics is None:
-            continue
-        lines.append(format_metrics_line(result.source_id, result.metrics))
-        # Warnings ride along so a `fetched=25 extracted=23` gap explains itself
-        # right here. Without them the operator sees the gap in the summary and
-        # still has to open the job log — the exact "only trace was a log line"
-        # problem this summary exists to remove (§IV).
-        for warning in result.warnings[:_WARNINGS_IN_SUMMARY]:
-            lines.append(f"{result.source_id}:   warning: {warning}")
-        if len(result.warnings) > _WARNINGS_IN_SUMMARY:
-            remaining = len(result.warnings) - _WARNINGS_IN_SUMMARY
-            lines.append(f"{result.source_id}:   warning: ... and {remaining} more")
+        if result.metrics is not None:
+            lines.append(format_metrics_line(result.source_id, result.metrics))
+        lines.extend(_annotations(result.source_id, "error", result.errors))
+        lines.extend(_annotations(result.source_id, "warning", result.warnings))
     if not lines:
         return
     for line in lines:

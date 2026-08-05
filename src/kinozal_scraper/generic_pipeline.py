@@ -13,6 +13,23 @@ from bs4 import BeautifulSoup, Tag
 
 ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]
 
+# How many items any operator-facing message quotes before collapsing the rest into
+# a count. One constant, not one per surface: the log line and the run summary quote
+# the same lists, and different bounds would show an operator cross-reading them two
+# different subsets of the same evidence.
+EVIDENCE_IN_MESSAGE = 5
+
+
+def bounded_evidence(values: list[str]) -> str:
+    """Quote a few items of evidence, then collapse the rest into a count.
+
+    A page-wide breakage involves as many items as the page has rows, and a message
+    carrying all of them is not more readable than a count (§IV)."""
+    shown = ", ".join(values[:EVIDENCE_IN_MESSAGE])
+    if len(values) > EVIDENCE_IN_MESSAGE:
+        shown += f", … (+{len(values) - EVIDENCE_IN_MESSAGE} more)"
+    return shown
+
 
 @dataclass
 class NormalizedItem:
@@ -41,8 +58,9 @@ class SourceMetrics:
 
     `fetched` — records/rows the extractor was handed; `extracted` — those it
     turned into items; `existing` / `new` — how the extracted candidates split
-    against storage (`extracted == existing + new`); `sent` / `stored` — what
-    delivery and the confirmed-delivery write actually landed.
+    against storage (`extracted == existing + new`, over whatever was examined so
+    far, so the invariant also holds on a run that aborted mid-scan);
+    `sent` / `stored` — what delivery and the confirmed-delivery write landed.
 
     `new` counts what was *found*, `sent` what fitted under the source's delivery
     cap: a deferred remainder stays readable instead of vanishing (§IV).

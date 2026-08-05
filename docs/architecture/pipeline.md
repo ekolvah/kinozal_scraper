@@ -238,8 +238,10 @@ while staying green. With `sort=stars&order=desc` a freshly-qualifying repositor
 sits at the *bottom* of the result set — exactly where the truncation cut.
 
 `select_new_items` returns `(selected, existing_count, new_count)` over all
-examined candidates, so `extracted == existing + new` always holds and `new` vs
-`sent` shows a deferred remainder instead of hiding it (§IV).
+examined candidates, and the paging loop refreshes all three counters per page, so
+`extracted == existing + new` holds on a run that aborted mid-scan too — a red run
+reports what it actually looked at rather than zeros (§IV: a wrong number is worse
+than none). `new` vs `sent` shows a deferred remainder instead of hiding it.
 
 **Fetch depth per source:**
 
