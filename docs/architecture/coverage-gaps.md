@@ -5,7 +5,7 @@
 > (goal-function priority (2)). Strategy — levels, taxonomy, what we mock — is
 > [`testing.md`](testing.md); this file is the case-by-case ledger it refers to.
 >
-> Records carry stable letter IDs (`A`…`AH`); a state doc links to the letter instead of
+> Records carry stable letter IDs (`A`…`AI`); a state doc links to the letter instead of
 > retelling the reasoning next to itself.
 
 Every bug category in the [taxonomy](testing.md#bug-taxonomy) is covered by tests today (navigate to
@@ -386,6 +386,21 @@ decision goes to" route — and the rule itself — live in
   сознательно: `select_new_items` уже общий, так что переезд дешёвый, когда появится повод.
   Наблюдаемый триггер пересмотра — **первый тихий `no new items` при живом источнике**, а не
   «раз уж механизм общий».
+- **AI. Пустой `url` в конфиге проходит валидацию, и `soldout` на нём скипается зелёным (#459).**
+  `validate_sources_config` проверяет **наличие** ключа (`_REQUIRED_SOURCE_FIELDS - source.keys()`),
+  а не непустоту, поэтому `"url": ""` доходит до рантайма целиком. У `soldout` url — это
+  `{{SOLDOUT_URL}}`, а `build_macro_context` дефолтит макрос в `""`: при незаданной
+  `vars.SOLDOUT_URL` прогон зелёный, доставки нет, единственный след — WARNING в логе шага.
+  Это ровно та форма тишины, против которой заведена дедуп-глубина, и установлено это было
+  при работе над ней (#459).
+  **Почему не починено там же:** очевидный фикс (непустой `url` → `ConfigError`) уронил бы
+  загрузку конфига **каждого kinozal-прогона** в текущей прод-конфигурации — `run-script.yml`
+  задаёт `KINOZAL_URLS` и никогда `KINOZAL_TOP_URL`, поэтому `sources.json` разворачивает
+  kinozal-url в `""` всегда. (Сам kinozal от этого не страдает: url из конфига он не читает
+  вовсе, а отсутствие URL даёт ему красный результат с причиной.) То есть чинить нужно вместе
+  с развязкой «url в конфиге vs url в env», а это отдельная единица работы.
+  Наблюдаемый триггер пересмотра — **любая работа над `SOLDOUT_URL`/конфиг-схемой url**, а не
+  «когда-нибудь потом»; до тех пор гейт — обычный код-ревью `sources.json`.
 - **AH. Проводка `publish_run_summary` в `__main__` не покрыта (#459).** Сама функция и
   форматтер протестированы (`test_alerting.py::TestPublishRunSummary`), но факт «оба
   GitHub-`__main__` её зовут, и зовут *до* `sys.exit(1)`» — часть общего scope-skip'а на
