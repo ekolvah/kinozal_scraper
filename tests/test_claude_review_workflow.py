@@ -131,7 +131,6 @@ class TestCoverageFirstPrompt:
             "the summary contract must require listing findings of every severity (#374)"
         )
 
-
     def test_should_fix_has_a_concrete_bar(self) -> None:
         """#458: only `blocking` was defined; should-fix had no bar at all.
 

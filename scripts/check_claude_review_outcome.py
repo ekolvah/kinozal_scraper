@@ -1,4 +1,11 @@
-"""Map a Claude structured review outcome to a deterministic workflow result."""
+"""Map a Claude structured review outcome to a deterministic workflow result.
+
+Merge authority is deliberately narrower than report coverage (#458): `blocking`
+reds the required check, `clean` and `rework` pass (the latter with a visible
+`::warning::`), and every state that is *not* evidence — empty, malformed,
+unknown outcome, or an unavailable live PR context — stays red. Absence of
+evidence must never read as success (§IV).
+"""
 
 from __future__ import annotations
 
@@ -113,7 +120,7 @@ def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
-    """Exit cleanly only for Claude's validated ``clean`` outcome."""
+    """Exit non-zero unless Claude's validated outcome is ``clean`` or ``rework``."""
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
         print("error: expected one structured review outcome JSON value", file=sys.stderr)
@@ -139,9 +146,22 @@ def main(argv: Sequence[str] | None = None) -> None:
     if outcome == "clean":
         print("ok: Claude review outcome is clean")
         return
-    if outcome in {"rework", "blocking"}:
+    if outcome == "rework":
+        # #458: report completeness is not merge authority. The prompt requires
+        # every finding to be reported, so a should-fix finding is the normal
+        # outcome of a thorough review — reding the required check on it made a
+        # green result unreachable by construction (ten rounds on PR #462, the
+        # last four purely cosmetic). The findings stay visible in the PR and
+        # become the maintainer's call, not an automatic barrier.
         print(
-            f"error: Claude review reported {outcome} findings; resolve and re-run review.",
+            "::warning::Claude review reported should-fix findings. They are published "
+            "in the PR and are the maintainer's call — not an automatic merge blocker. "
+            "Only blocking findings red this check."
+        )
+        return
+    if outcome == "blocking":
+        print(
+            "error: Claude review reported blocking findings; resolve and re-run review.",
             file=sys.stderr,
         )
         raise SystemExit(1)

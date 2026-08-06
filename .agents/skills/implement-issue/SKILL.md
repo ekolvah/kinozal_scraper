@@ -33,10 +33,12 @@ workflow contract. This skill is the Codex adapter for the `implementer` and
    checks with `gh pr checks <PR> --watch`. For a red CI check, inspect its
    root cause with `gh run view <run-id> --log-failed`, fix it in a separate
    fixer commit, push, and repeat. Inspect the reviewer outcome and threads for
-   the current head too; fix every actionable blocking or should-fix finding in
-   a separate fixer commit, push, and repeat. Do not report the PR ready for
-   merge until the current head has a `clean` reviewer outcome, no actionable
-   review threads, and every required GitHub check is green. A skipped, missing,
+   the current head too; fix every actionable **blocking** finding in a separate
+   fixer commit, push, and repeat. `should-fix` findings are published for the
+   maintainer to decide on and do not gate the loop (#458). Do not report the PR
+   ready for merge until the current head has
+   no blocking finding and every required check passes; a `rework` outcome with
+   its warning is ready, not unfinished. A skipped, missing,
    malformed, or pending review means `not ready`, not `clean`; report that
    external blocker instead of handing off the merge decision.
 

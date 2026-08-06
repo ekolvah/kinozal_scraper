@@ -109,10 +109,11 @@ class TestOutcome:
         assert exc.value.code == 2
         assert message in capsys.readouterr().err
 
-    @pytest.mark.parametrize("outcome", ["rework", "blocking"])
-    def test_rework_and_blocking_fail(self, outcome: str) -> None:
+    def test_only_blocking_fails(self) -> None:
+        """`rework` deliberately no longer reds this check — see
+        `test_rework_is_success_with_a_visible_warning` (#458)."""
         with pytest.raises(SystemExit) as exc:
-            main([f'{{"outcome":"{outcome}"}}'])
+            main(['{"outcome":"blocking"}'])
         assert exc.value.code == 1
 
     @pytest.mark.parametrize("payload", ["", "{}", "not-json", '{"outcome":"unknown"}'])

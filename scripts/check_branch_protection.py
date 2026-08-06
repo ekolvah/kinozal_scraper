@@ -26,9 +26,21 @@ rules/branches/main`, читается обычным repo-read) для этог
 branch protection, которая туда не попадает. Пересматривать выбор уместно при переезде на rulesets
 или при появлении второго контрибьютора.
 
-**Хук — не enforcement.** `.githooks` включается опциональным `git config core.hooksPath`, так что
-это surfacing на машине мейнтейнера. Единственный авторитетный барьер для `main` — сама branch
-protection.
+**Локальный enforcement, а не surfacing (#458).** `.githooks` включается опциональным
+`git config core.hooksPath`, поэтому на сервере скрипт ничего не решает — единственный
+авторитетный барьер для `main` это сама branch protection. Но подключён он через
+`|| exit $?` и **блокирует push**, и это правильное поведение: прежняя формулировка
+«не enforcement / surfacing» описывала не то, что происходит. Печатающий-но-не-блокирующий
+детектор утонул бы в выводе push'а, а дрейф остался бы — ровно silent skip, против которого §IV.
+
+Намеренный временный дрейф выражается флагом `--allow-drift "<причина>"`, а не обходится
+через `--no-verify` (который глушит и `ci_check`). Причина печатается, так что принятое
+исключение видно в выводе push'а.
+
+**Почему нет триггера по ветке.** «Проверять только при push в `main`» выглядит логично — push
+в feature-ветку защиту `main` ослабить не может — но push в `main` запрещён политикой репо
+(всегда PR), поэтому такой триггер означал бы «не проверять никогда». Вариант отвергнут; записано
+здесь, чтобы его не переоткрывали.
 """
 
 from __future__ import annotations
@@ -299,7 +311,16 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         description=f"Сверить required status checks ветки `{BRANCH}` с объявлением в этом файле."
     )
-    parser.parse_args(argv)
+    parser.add_argument(
+        "--allow-drift",
+        metavar="ПРИЧИНА",
+        help=(
+            "Принять дрейф как намеренный и временный: exit 0, причина печатается. "
+            "Для случая «чек снят руками на время мержа» — чтобы намеренное состояние "
+            "выражалось, а не обходилось через --no-verify."
+        ),
+    )
+    options = parser.parse_args(argv)
 
     actual = contexts_from_protection(fetch_protection())
     print(f"required status checks on `{BRANCH}`: {', '.join(actual) or '(none)'}")
@@ -307,6 +328,15 @@ def main(argv: list[str] | None = None) -> None:
 
     missing, unexpected = protection_drift(actual)
     if not missing and not unexpected:
+        return
+
+    if options.allow_drift:
+        # #458: без этого выхода единственный способ запушить при намеренно снятом
+        # чеке — `--no-verify`, который глушит и `ci_check`. Гейт, регулярно
+        # требующий обхода, приучает обходить, и в следующий раз обход проглотит
+        # настоящий красный. Здесь дрейф принимается, но НЕ становится невидимым:
+        # причина печатается в вывод push'а.
+        print(f"accepted: дрейф принят намеренно — {options.allow_drift}")
         return
 
     if missing:
