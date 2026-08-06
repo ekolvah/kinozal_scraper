@@ -57,6 +57,10 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 бюджет вырос на ~3.8 КБ в #416/#417). Чего гейт **не** ловит — ledger-запись **AB** в
 [`coverage-gaps.md`](coverage-gaps.md).
 
+**Объявленная плата ≠ уплаченная.** Байты always-load набора множатся на число turn'ов через
+`cache_read`, и этого множителя храповик не видит. Фактический расход меряет
+`scripts/token_trend.py` (#464) — по транскриптам Claude Code, на ветку и на turn.
+
 ### Canonical-home правило
 
 > **У каждого факта — ровно один дом. Прочие упоминания — только ссылка, никогда не перефраз.**
@@ -308,6 +312,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `scripts/eval_trailers.py` | Eval-harness подбора трейлера: три скоркарты — `TrailerStrategy` (YouTube-pick) + `evaluate_delivery` (прод-`select_trailer`, то что уходит юзеру, #379) + `evaluate_tmdb` (TMDB-источник) по frozen golden-set (Hit/Wrong/Miss относительно `correct`, офлайн) + `--record`/`--record-tmdb`/`--update-baseline`. **Гейт** — `tests/fixtures/trailer_baseline.json` (пофильмовый исход delivery) через `tests/test_eval_baseline.py`, не через запись в `ci_check` CHECKS. У набора две роли: «найди правильный» (accept-set `correct`) и «не бери чужой» (разметка `trap` — верифицированные чужие кандидаты в пуле, #380); deep-dive `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |
 | `scripts/eval_summarizer.py` | RAGAS-eval суммаризатора `summary_ru`: faithfulness/answer_relevancy по frozen golden-set вместо regex `response_pattern` (vibe-check формата). Метрика — LLM-судья, поэтому live/API-gated (dev-run, не CI); граница `_evaluate_dataset` мокается, чистые швы под тестом. RAGAS — dev-only dep. Deep-dive `testing.md#eval-harness--summarizer-faithfulness` (#347) |
 | `scripts/hooks.py`, `scripts/codex_hooks.py` | Shared post-edit checks plus Codex hook adapter; ruff feedback and pip-compile reminder complement `ci_check.py` |
+| `scripts/token_trend.py` | **Фактический** расход токенов dev-сессий: читает транскрипты Claude Code, считает effective tokens (составляющие взвешены по относительной цене, веса — по модели) на ветку и на turn, детектирует рост по rolling window (медиана + абсолютный пол). Триггер — `SessionStart` hook в `.claude/settings.json`, тихий в норме и **всегда** exit 0 (иначе `SessionStart` выбросит собственный алерт); `--report` — таблица. Транскрипты не durable (`cleanupPeriodDays` = 30 дней), поэтому агрегат по ветке переживает ретенцию в локальном `token_ledger.jsonl`. Дополняет статический храповик `test_always_load_budget.py`: тот стережёт объявленную плату, этот — уплаченную (#464) |
 | `.github/workflows/ci.yml` | Quality job на PR/push (должен зеркалить `ci_check.py`) |
 | `.importlinter` | §II protocol-boundaries как машинный контракт (гейт `imports` в `ci_check`): направление зависимостей + adapter-no-auth; deep-dive `ci.md` (#234) |
 

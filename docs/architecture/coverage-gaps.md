@@ -397,6 +397,17 @@ decision goes to" route — and the rule itself — live in
   с развязкой «url в конфиге vs url в env», а это отдельная единица работы.
   Наблюдаемый триггер пересмотра — **любая работа над `SOLDOUT_URL`/конфиг-схемой url**, а не
   «когда-нибудь потом»; до тех пор гейт — обычный код-ревью `sources.json`.
+- **AJ. Метрика расхода токенов принципиально не гейтится в `ci_check`/CI (#464).**
+  У `ci_check.py` один реестр `CHECKS` на локальный прогон и на CI, а данные метрики —
+  транскрипты Claude Code на машине мейнтейнера, которых в CI нет. Запись в `CHECKS` дала бы
+  либо красный CI всегда, либо skip-по-отсутствию-данных — то есть ровно ту тишину, против
+  которой метрика и заводится. Роль гейта берёт `SessionStart` hook: он запускается сам каждую
+  сессию и печатает **только** аномалию, а `tests/test_token_trend.py::TestHookRegistration`
+  стережёт, что регистрация хука не отвалится (без него скрипт повторил бы судьбу eval'а
+  из #361 — метрика есть, никто не гоняет). Под тестом остаётся вся детерминированная логика;
+  непокрытым — только тонкий I/O-слой чтения каталога, как у `scripts/hooks.py`.
+  Пересмотр — если появится общий носитель dev-телеметрии, который CI сможет прочитать.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no
