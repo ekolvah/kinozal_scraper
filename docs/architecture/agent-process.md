@@ -74,11 +74,13 @@ section stops and returns the issue to a planner rather than guessing it.
    enter the review/fix loop. After every push, run `gh pr checks <PR> --watch`,
    inspect a failed CI run with `gh run view <run-id> --log-failed`, and wait for
    the current-head
-   reviewer outcome and all required checks. Fix every blocking and should-fix
-   finding in a separate fixer commit, push it, then repeat. The implementer
-   reports the PR ready for human merge only after the current head has a
-   `clean` reviewer outcome, no actionable review threads, and every required
-   check passes.
+   reviewer outcome and all required checks. Fix every **blocking** finding in a
+   separate fixer commit, push it, then repeat. `should-fix` findings are
+   published in the PR and are the maintainer's decision — they do not gate the
+   loop. Chasing them is how one delivery PR reached ten review rounds with the
+   last four purely cosmetic (#458). The implementer reports the PR ready once the
+   current head has no blocking finding and every required check passes; a
+   `rework` outcome with its warning is a ready PR, not an unfinished one.
 
 One PR is one logical unit. Do not bypass hooks, push to `main`, force-push,
 reset hard, delete branches forcefully, self-merge, or replace these gates with
@@ -94,8 +96,8 @@ credential infrastructure.
 
 When a review-controller PR has an empty outcome output, `claude-review` emits a
 visible warning instead of a successful Claude review. When a structured outcome
-exists, it is enforced as `clean`, `rework`, or `blocking` exactly as on an
-ordinary PR. For this single-maintainer repository, the no-outcome exception
+exists, it is enforced exactly as on an ordinary PR: `clean` and `rework` pass,
+`blocking` reds the check. For this single-maintainer repository, the no-outcome exception
 is an accepted operating policy: before merge, the maintainer completes a
 manual IDE-agent review of the complete controller diff.
 

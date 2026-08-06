@@ -17,8 +17,8 @@ Claude or Codex adapter is the only permitted executor.
 - After every PR push, stay in the review/fix loop defined in
   `agent-process.md`: wait for checks, inspect failures and review feedback,
   commit fixes separately, and push again. The PR is `not ready` until its
-  current head has a `clean` reviewer outcome, no actionable review threads,
-  and every required GitHub check is green.
+  current head has no blocking finding and every required check passes;
+  `should-fix` findings are the maintainer's call, not a gate (#458).
 - The advisory control plane (`scripts/agent_orchestrator.py` plus
   `.agents/orchestration/roles.yaml`) reports evidence-based routing and budget
   escalation. It never authorizes bypassing its required delivery gates.
