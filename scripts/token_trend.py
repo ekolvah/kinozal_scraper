@@ -339,8 +339,15 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
 
 
 def issue_branches(stats: Iterable[BranchStats]) -> list[BranchStats]:
-    """Только issue-ветки, упорядоченные по времени первой записи (`main` и no-branch — вне)."""
-    kept = [s for s in stats if s.branch not in (MAIN_BUCKET, NO_BRANCH_BUCKET)]
+    """Issue-ветки с непустым знаменателем, упорядоченные по времени первой записи.
+
+    `main` и no-branch — вне тренда как разнородные. Бакет с `turns == 0` (все записи —
+    субагенты или служебные) исключён по другой причине: его `per_turn` равен нулю, и в
+    `statistics.median` он шёл бы наравне с реальными ветками — в recent-окне гасил бы
+    алерт, в baseline задирал бы процент. Осел бы он там навсегда: после ретенции такой
+    бакет уже нечем пересчитать, а из ledger'а он не уходит.
+    """
+    kept = [s for s in stats if s.branch not in (MAIN_BUCKET, NO_BRANCH_BUCKET) and s.turns > 0]
     return sorted(kept, key=lambda s: (s.first_seen, s.branch))
 
 
@@ -354,6 +361,11 @@ def merge_ledger(
     поэтому пересчёт по ней неполон: приняв его, ветка «худела» бы молча, а недосчёт читался
     бы как падение расхода — ровно тот отказ, ради которого ledger и заведён. Первыми
     страдали бы долгоживущие бакеты (`main` — 37 % turn'ов по замеру).
+
+    Обратная сторона названа честно: долгоживущий бакет замерзает на историческом пике.
+    У `main` окно чтения (45 дней) шире ретенции (30), поэтому свежий пересчёт по нему
+    систематически меньше накопленного и строка в отчёте перестаёт обновляться. Для
+    issue-веток, живущих дни, эффекта нет — а `main` в тренде не участвует.
     """
     merged = dict(ledger)
     for branch, entry in fresh.items():
@@ -582,9 +594,32 @@ def write_ledger(ledger_path: Path, stats: dict[str, BranchStats]) -> None:
 
 
 def _read_ledger_lines(ledger_path: Path) -> list[str]:
+    """Строки ledger'а; битые байты заменяются, как и в `_iter_lines`.
+
+    Без `errors="replace"` один невалидный байт давал бы `UnicodeDecodeError` — это
+    `ValueError`, а не `OSError`, поэтому он пробивал бы перехват в hook-режиме. Хуже, что
+    падение происходит **до** `write_ledger`: файл никогда не перезаписался бы, и хук ронял
+    бы каждую сессию без шанса самовылечиться. Заменённый байт вместо этого доходит до
+    `parse_ledger` и становится штатной аномалией.
+    """
     if not ledger_path.exists():
         return []
-    return ledger_path.read_text(encoding="utf-8").splitlines()
+    return ledger_path.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+def resolve_transcripts(payload: dict) -> Path:
+    """Каталог транскриптов: из `SessionStart`-payload, иначе по slug-правилу.
+
+    `transcript_path` приходит от самого Claude Code, поэтому в hook-режиме снимает весь
+    класс отказа «правило нормализации slug'а уехало». Вывод slug'а остаётся для `--report`,
+    где payload'а нет.
+    """
+    raw = payload.get("transcript_path")
+    if isinstance(raw, str) and raw:
+        candidate = Path(raw).parent
+        if candidate.is_dir():
+            return candidate
+    return transcript_dir()
 
 
 def emit(text: str, stream: TextSink | None = None) -> None:
@@ -611,22 +646,24 @@ def main() -> int:
     parser.add_argument("--report", action="store_true", help="таблица по веткам (по умолчанию)")
     args = parser.parse_args()
 
-    transcripts = transcript_dir()
-    ledger_path = transcripts / LEDGER_NAME
-
     if args.hook:
         try:
-            text = run_hook(read_payload(sys.stdin.read()), transcripts, ledger_path)
+            payload = read_payload(sys.stdin.read())
+            transcripts = resolve_transcripts(payload)
+            text = run_hook(payload, transcripts, transcripts / LEDGER_NAME)
             if text:
                 emit(text)
-        except OSError as exc:
-            # Сам сбой метрики виден, но код остаётся нулевым: иначе `SessionStart`
-            # выбросит stdout и юзер увидит только «hook error» без содержания.
-            # `emit` внутри try по той же причине — закрытый stdout не должен ронять хук.
-            with contextlib.suppress(OSError):
-                emit(f"token-trend аномалия [io]: {exc}", sys.stderr)
+        except Exception as exc:  # noqa: BLE001 - контракт «hook всегда exit 0», см. ниже
+            # Любое исключение, не только `OSError`: на ненулевом коде `SessionStart`
+            # выбрасывает stdout, и вместо содержательной аномалии юзер видит голое
+            # «hook error» — каждую сессию, без шанса на самолечение. Сбой остаётся
+            # видимым (stderr), но код нулевой. `emit` внутри try по той же причине.
+            with contextlib.suppress(Exception):
+                emit(f"token-trend аномалия [{type(exc).__name__}]: {exc}", sys.stderr)
         return 0
 
+    transcripts = transcript_dir()
+    ledger_path = transcripts / LEDGER_NAME
     if not transcripts.is_dir():
         emit(f"нет каталога транскриптов: {transcripts}", sys.stderr)
         return 1
@@ -634,9 +671,14 @@ def main() -> int:
     anomalies = health_anomalies(records, parse_anomalies, files_seen=files_seen)
     ledger, ledger_anomalies = parse_ledger(_read_ledger_lines(ledger_path))
     merged = merge_ledger(ledger, aggregate_by_branch(records))
-    emit(
-        format_report(merged.values(), detect_growth(merged.values()), anomalies + ledger_anomalies)
+    report = format_report(
+        merged.values(), detect_growth(merged.values()), anomalies + ledger_anomalies
     )
+    try:
+        emit(report)
+    except OSError:
+        # `--report | head` закрывает stdout на полуслове — это не сбой метрики.
+        return 0
     return 0
 
 

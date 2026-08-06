@@ -364,6 +364,28 @@ class TestDetect:
         few = [_stats(f"issue-o{i}", first=f"2026-08-0{i + 1}") for i in range(3)]
         assert detect_growth(few).status == "insufficient_data"
 
+    def test_turnless_bucket_does_not_move_the_median(self) -> None:
+        """Ветка из одних субагентов даёт `per_turn = 0` — в медиане это гасило бы алерт.
+
+        И осело бы навсегда: после ретенции такой бакет уже нечем пересчитать, а из ledger'а
+        он не уходит.
+        """
+        old = [_stats(f"issue-o{i}", per_turn=100_000, first=f"2026-07-0{i + 1}") for i in range(5)]
+        new = [_stats(f"issue-n{i}", per_turn=500_000, first=f"2026-08-0{i + 1}") for i in range(5)]
+        turnless = BranchStats(
+            branch="issue-subagents-only",
+            turns=0,
+            first_seen="2026-08-03",
+            last_seen="2026-08-03",
+            effective=100_000.0,
+            input_tokens=0,
+            output_tokens=0,
+            cache_read=0,
+            cache_write=0,
+            sidechain_effective=100_000.0,
+        )
+        assert detect_growth([*old, *new, turnless]) == detect_growth([*old, *new])
+
     def test_main_bucket_excluded_from_windows(self) -> None:
         main = _stats(MAIN_BUCKET, per_turn=5_000_000, first="2026-08-09")
         few = [_stats(f"issue-o{i}", first=f"2026-08-0{i + 1}") for i in range(3)]
@@ -544,6 +566,23 @@ class TestEmit:
         assert stream.getvalue() == "ok\n"
 
 
+class TestResolveTranscripts:
+    """`SessionStart` приносит `transcript_path` — самый частый путь не должен зависеть от slug'а."""
+
+    def test_payload_path_wins_over_slug_rule(self, tmp_path: Path) -> None:
+        transcripts = tmp_path / "projects" / "slug"
+        transcripts.mkdir(parents=True)
+        payload = {"transcript_path": str(transcripts / "session.jsonl")}
+        assert token_trend.resolve_transcripts(payload) == transcripts
+
+    def test_falls_back_to_slug_when_payload_is_silent(self) -> None:
+        assert token_trend.resolve_transcripts({}) == token_trend.transcript_dir()
+
+    def test_falls_back_when_payload_path_does_not_exist(self, tmp_path: Path) -> None:
+        payload = {"transcript_path": str(tmp_path / "gone" / "session.jsonl")}
+        assert token_trend.resolve_transcripts(payload) == token_trend.transcript_dir()
+
+
 class TestHookRegistration:
     """Гард против мёртвого кода: метрика без автотриггера повторит судьбу eval'а (#361)."""
 
@@ -677,6 +716,49 @@ class TestExitCodes:
         monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
         assert token_trend.main() == 0
         assert "вырос" in capsys.readouterr().out
+
+    def test_hook_exits_zero_on_corrupt_ledger(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Невалидный байт в ledger'е — `UnicodeDecodeError`, а это не `OSError`.
+
+        Падение происходит до `write_ledger`, поэтому файл никогда не перезапишется: хук
+        выдавал бы «hook error» каждую сессию, и метрика не могла бы самовылечиться.
+        """
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
+        (transcripts / token_trend.LEDGER_NAME).write_bytes(b"\xff\xfe not utf-8\n")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
+        monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
+        assert token_trend.main() == 0
+
+    def test_hook_exits_zero_on_ledger_with_wrong_field_types(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`"turns": "12"` проходит конструктор, но роняет сравнение в `merge_ledger`."""
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
+        broken = dict(
+            schema=token_trend.LEDGER_SCHEMA,
+            branch="issue-1-a",
+            turns="12",
+            first_seen="2026-08-01",
+            last_seen="2026-08-01",
+            effective=1.0,
+            input_tokens=0,
+            output_tokens=0,
+            cache_read=0,
+            cache_write=0,
+            sidechain_effective=0.0,
+        )
+        (transcripts / token_trend.LEDGER_NAME).write_text(json.dumps(broken), encoding="utf-8")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
+        monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
+        assert token_trend.main() == 0
 
     def test_hook_exits_zero_when_stdout_is_closed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
