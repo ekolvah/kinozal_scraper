@@ -48,7 +48,9 @@ the declared required status checks against GitHub's actual config. It is delibe
 mismatch aborts the push immediately instead of costing the eight minutes below, which also
 leaves its message as the last thing on screen rather than scrolled away. Both non-zero codes
 stop the push and the hook propagates them unchanged (`1` drift, `2` the tool itself failed), so
-the two stay distinguishable. Details and the reasoning are in
+the two stay distinguishable. A drift you introduced on purpose (a check removed by hand for a
+one-off merge) is declared with `--allow-drift "<reason>"`, never worked around with
+`--no-verify`. Details and the reasoning are in
 [§Required status checks](#required-status-checks-branch-protection).
 
 **Single source of truth.** The registry is the *only* place the check set is
@@ -340,8 +342,19 @@ issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 compared against GitHub and against the workflow files.
 
 The ordinary `claude-review` job is required because its deterministic final step reads the action's
-schema-validated outcome directly: `clean` succeeds, `rework` or `blocking` fails, and absent or
-malformed output is a readable `review unavailable` failure. A Claude comment is feedback for people,
+schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a visible
+`::warning::`**, `blocking` fails, and absent or malformed output is a readable
+`review unavailable` failure.
+
+**Merge authority is narrower than report coverage (#458).** The prompt requires every finding to
+be reported at every severity, so a should-fix finding is the normal outcome of a thorough review.
+Reding the required check on it made a green result unreachable by construction: one delivery PR
+went through ten review rounds, the last four of them cosmetic, two of those fixing wording
+introduced by the previous round (#458). So only `blocking` blocks: bugs, security, a violated task contract, a
+missing test for changed behaviour. `should-fix` findings stay visible in the PR and are the
+maintainer's decision, not a condition for `clean`. What is *not* evidence — empty, malformed or
+unknown outcome, unavailable live PR context — stays red: absence of evidence must never read as
+success (§IV). A Claude comment is feedback for people,
 not merge authority, so ordinary PRs neither poll GitHub comments nor start a second Claude invocation.
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
@@ -386,13 +399,21 @@ an expected extra minute, not a malfunction.
 exits `1` on drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable
 response) — a tool failure must not read as "no drift". `.githooks/pre-push` runs it before
 `ci_check.py`, so drift costs seconds rather than a full gate run, and both non-zero codes stop
-the push. Two consequences are deliberate and worth knowing: the hook is **surfacing, not
-enforcement** (`.githooks` is opt-in via `git config core.hooksPath`, and the authoritative
-barrier stays branch protection itself), and the probe assumes the pusher holds admin rights on
+the push. Two consequences are deliberate and worth knowing: the hook is **local enforcement**
+— server-side it decides nothing (`.githooks` is opt-in via `git config core.hooksPath`, and the
+authoritative barrier stays branch protection itself), but wired through `|| exit $?` it blocks
+the push, and that is intended: a detector that only printed would scroll past while the drift
+survived. And the probe assumes the pusher holds admin rights on
 the repository — true while this is a single-maintainer repo, and the first thing to revisit if
 that changes. Why this is not a CI job — GitHub's `GITHUB_TOKEN` has no `administration` scope,
 so a CI form needs a stored admin-scoped token whose rotation cost buys nothing here; the full
 reasoning lives in the script's docstring.
+
+**Declaring an intentional drift.** `--allow-drift "<reason>"` exits `0` and prints the reason
+into the push output. It exists because the alternative was `--no-verify`, which also swallows
+`ci_check` — a gate that regularly demands bypassing teaches bypassing, and the next bypass eats
+a genuine red (#458). Scoping the check to pushes to `main` was considered and rejected: pushing
+to `main` is forbidden by process, so that trigger would mean never checking at all.
 
 ## Claude review workflow (`claude-review.yml`)
 
@@ -483,7 +504,7 @@ exactly the thing that drifts away from it.
    plan-стадийная проверка строже или мягче в зависимости от того, чья сессия её запустила;
    пин делает строгость гейта решением репозитория.
 3. **PR, правящий сам `claude-review.yml`, проверяет outcome только при его наличии.** Пустой
-   outcome даёт видимое предупреждение, а `clean`, `rework` и `blocking` применяются обычно.
+   outcome даёт видимое предупреждение; `clean` и `rework` проходят, `blocking` краснит.
    Контракт промпта и разрешённая модель проверяются на следующем несвязанном PR.
 4. **Гард отвергает только короткие алиасы** (`opus`/`sonnet`/`haiku`/`fable`) — любой полный id
    проходит. Уведомления «вышла новая модель» нет: ревизия происходит **по красному джобу**, не

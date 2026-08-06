@@ -99,8 +99,24 @@ jobs:
             `blocking` is a concrete bar, not a feeling: wrong behaviour, a
             failing test, a missing test for changed behaviour, a result that
             misleads the reader, a leaked secret, or a violation of the
-            CLAUDE.md conventions listed above. Everything else is graded
-            below blocking and still reported.
+            CLAUDE.md conventions listed above.
+
+            `should-fix` has an equally concrete bar: the finding changes
+            behaviour, contract, or what the operator reads. Comment wording, a
+            doc example, a constant's name, ordering and style are
+            `nice-to-have` — they are still reported, just never graded as
+            should-fix. A severity without a bar collects everything: ten review
+            rounds on PR #462 ended in cosmetic findings, two of them fixing
+            wording introduced by the previous round's "improvement".
+
+            Do not re-raise a finding that the diff already answers with a
+            recorded rationale — a code comment, a `coverage-gaps.md` entry, an
+            ADR, or an explicit point in the issue body. If the rationale is
+            wrong, that is a `blocking` finding naming what it gets wrong;
+            otherwise stay silent. On a re-run, review the increment since the
+            previously reviewed SHA: do not re-list consciously-kept tradeoffs
+            "for coverage". Everything else is graded below blocking and still
+            reported.
 
             Something the deterministic gate already catches (ruff / mypy in
             `scripts/ci_check.py`) is graded `nice-to-have, duplicate of

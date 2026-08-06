@@ -20,7 +20,7 @@ _IMPLEMENTER_CONTRACT_MARKERS = (
     "gh pr checks",
     "gh run view",
     "review/fix loop",
-    "`clean` reviewer outcome",
+    "no blocking finding and every required check passes",
     "`not ready`",
 )
 # The record fields as the canonical section words them; adapters point here instead of copying.
@@ -170,7 +170,7 @@ class TestAgentProcess:
             encoding="utf-8"
         )
         assert "review/fix loop" in skill
-        assert "`clean` reviewer outcome" in skill
+        assert "no blocking finding and every required check passes" in skill
         assert "not ready" in skill
 
     def test_canonical_contract_and_codex_skill_keep_all_implementer_gates(self) -> None:
@@ -184,11 +184,16 @@ class TestAgentProcess:
 
     def test_permanent_codex_rules_preserve_post_pr_readiness_gate(self) -> None:
         agents = (_REPO / "AGENTS.md").read_text(encoding="utf-8")
-        for marker in ("review/fix loop", "`not ready`", "`clean` reviewer outcome"):
+        for marker in (
+            "review/fix loop",
+            "`not ready`",
+            "no blocking finding and every required check passes",
+        ):
             assert marker in agents, f"AGENTS.md lost {marker!r}"
 
     def test_review_controller_policy_requires_manual_ide_review(self) -> None:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
         assert "## Review-controller manual review" in process
         assert "manual IDE-agent review" in process
-        assert "it is enforced as `clean`, `rework`, or `blocking`" in process
+        assert "`clean` and `rework` pass" in process
+        assert "`blocking` reds the check" in process

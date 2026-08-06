@@ -71,6 +71,58 @@ class TestDriftDetection:
         assert protection_drift(("pr-link", "quality"), ("quality", "pr-link")) == ([], [])
 
 
+class TestAllowDrift:
+    """#458: a gate that regularly demands bypassing teaches bypassing.
+
+    The maintainer removes `claude-review` from required to merge a PR whose review
+    is red by construction; the drift detector then blocks every push to unrelated
+    feature branches, and the only escape is `--no-verify`, which swallows
+    `ci_check` too. `--allow-drift "<reason>"` makes the intentional temporary state
+    expressible instead."""
+
+    @staticmethod
+    def _patch_actual(monkeypatch: pytest.MonkeyPatch, contexts: list[str]) -> None:
+        import scripts.check_branch_protection as guard
+
+        monkeypatch.setattr(
+            guard,
+            "fetch_protection",
+            lambda: {"required_status_checks": {"checks": [{"context": c} for c in contexts]}},
+        )
+
+    def test_drift_without_the_flag_still_exits_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import scripts.check_branch_protection as guard
+
+        self._patch_actual(monkeypatch, ["quality", "pr-link"])
+        with pytest.raises(SystemExit) as exc:
+            guard.main([])
+        assert exc.value.code == 1
+
+    def test_allow_drift_exits_zero_and_prints_the_reason(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        import scripts.check_branch_protection as guard
+
+        self._patch_actual(monkeypatch, ["quality", "pr-link"])
+        guard.main(["--allow-drift", "claude-review снят для мержа #458"])
+        out = capsys.readouterr().out
+        assert "#458" in out, "the stated reason must reach the push output"
+
+    def test_allow_drift_requires_a_reason(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import scripts.check_branch_protection as guard
+
+        self._patch_actual(monkeypatch, ["quality", "pr-link"])
+        with pytest.raises(SystemExit) as exc:
+            guard.main(["--allow-drift"])
+        assert exc.value.code == 2
+
+    def test_no_drift_with_the_flag_is_still_clean(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import scripts.check_branch_protection as guard
+
+        self._patch_actual(monkeypatch, list(REQUIRED_CONTEXTS))
+        guard.main(["--allow-drift", "не нужен"])
+
+
 class TestProtectionFetch:
     """Сетевой слой: отказ инструмента (exit 2) не маскируется под вердикт (exit 0/1)."""
 

@@ -31,6 +31,32 @@ class TestOutcome:
             "otherwise complete the manual IDE-agent review before merge under the single-maintainer policy.\n"
         )
 
+    def test_rework_is_success_with_a_visible_warning(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """#458: should-fix findings are a report, not merge authority.
+
+        `rework` used to red a required check, and because the prompt requires
+        reporting every finding, a green outcome was unreachable by construction —
+        ten review rounds on PR #462, the last four of them cosmetic."""
+        main(['{"outcome":"rework"}'])
+        out = capsys.readouterr().out
+        assert out.startswith("::warning::")
+        assert "should-fix" in out
+        assert "maintainer" in out
+
+    def test_blocking_is_the_only_finding_outcome_that_reds(self) -> None:
+        with pytest.raises(SystemExit) as exc:
+            main(['{"outcome":"blocking"}'])
+        assert exc.value.code == 1
+
+    @pytest.mark.parametrize("payload", ["{}", "not-json", '{"outcome":"unknown"}', ""])
+    def test_absent_evidence_is_still_not_success(self, payload: str) -> None:
+        """Fail-closed half must not be weakened: no evidence != clean."""
+        with pytest.raises(SystemExit) as exc:
+            main([payload])
+        assert exc.value.code == 2
+
     def test_controller_pr_enforces_a_real_blocking_outcome(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
@@ -83,10 +109,11 @@ class TestOutcome:
         assert exc.value.code == 2
         assert message in capsys.readouterr().err
 
-    @pytest.mark.parametrize("outcome", ["rework", "blocking"])
-    def test_rework_and_blocking_fail(self, outcome: str) -> None:
+    def test_only_blocking_fails(self) -> None:
+        """`rework` deliberately no longer reds this check — see
+        `test_rework_is_success_with_a_visible_warning` (#458)."""
         with pytest.raises(SystemExit) as exc:
-            main([f'{{"outcome":"{outcome}"}}'])
+            main(['{"outcome":"blocking"}'])
         assert exc.value.code == 1
 
     @pytest.mark.parametrize("payload", ["", "{}", "not-json", '{"outcome":"unknown"}'])

@@ -131,6 +131,33 @@ class TestCoverageFirstPrompt:
             "the summary contract must require listing findings of every severity (#374)"
         )
 
+    def test_should_fix_has_a_concrete_bar(self) -> None:
+        """#458: only `blocking` was defined; should-fix had no bar at all.
+
+        With `rework` reding a required check, an undefined should-fix meant comment
+        wording and doc examples could block a merge. Same known-form guard as the
+        rest of this class: presence of the bar, not its semantics."""
+        prompt = _prompt().lower()
+        assert "should-fix" in prompt
+        assert "behaviour, contract" in prompt or "behavior, contract" in prompt, (
+            "should-fix must name what qualifies (behaviour / contract / what the "
+            "operator reads), or prose and naming findings land there by default (#458)"
+        )
+
+    def test_prompt_retires_findings_with_recorded_rationale(self) -> None:
+        prompt = _prompt().lower()
+        assert "recorded rationale" in prompt, (
+            "a finding answered by a rationale in the diff (code comment, "
+            "coverage-gaps entry, ADR) must not be re-raised each round (#458)"
+        )
+
+    def test_prompt_forbids_relisting_accepted_tradeoffs(self) -> None:
+        prompt = _prompt().lower()
+        assert "re-list" in prompt, (
+            "re-runs must describe the increment; re-listing consciously-kept "
+            "tradeoffs every round is what made ten rounds of PR #462 grow (#458)"
+        )
+
 
 class TestReviewOutcomeGate:
     def test_review_fetches_live_pr_context_for_reruns(self) -> None:
