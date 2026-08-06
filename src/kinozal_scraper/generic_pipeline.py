@@ -13,6 +13,36 @@ from bs4 import BeautifulSoup, Tag
 
 ROW_HEADERS = ["dedupe_key", "title", "url", "metric", "source_id", "notified_at"]
 
+# Evidence depth **under one source**: how many keys `bounded_evidence` quotes inside
+# one message, and how many messages the run summary lists beneath one source's
+# counters. One number for both, so an operator cross-reading the log and the summary
+# is never shown two different depths of the same evidence. It deliberately says
+# nothing about other axes — `format_pipeline_failures` bounds how many *sources* an
+# alert lists, which is a different question with its own literal.
+EVIDENCE_BOUND = 5
+
+
+def bounded_evidence(values: list[str]) -> str:
+    """Quote a few items of evidence, then collapse the rest into a count.
+
+    A page-wide breakage involves as many items as the page has rows, and a message
+    carrying all of them is not more readable than a count (§IV)."""
+    shown = ", ".join(values[:EVIDENCE_BOUND])
+    if len(values) > EVIDENCE_BOUND:
+        shown += f", … (+{len(values) - EVIDENCE_BOUND} more)"
+    return shown
+
+
+def without_source_prefix(source_id: str, message: str) -> str:
+    """Drop a leading `[source_id] ` from a message.
+
+    Every `extract_from_*` message carries the prefix so a bare log line identifies
+    itself, but each reporting surface (`report_failures`' Telegram alert, the run
+    summary) also names the source on its own line. Shared so both formatters strip
+    it, rather than leaving a "remember to strip" rule per caller. A message without
+    the prefix passes through untouched."""
+    return message.removeprefix(f"[{source_id}] ")
+
 
 @dataclass
 class NormalizedItem:
@@ -36,11 +66,38 @@ class NormalizedItem:
 
 
 @dataclass
+class SourceMetrics:
+    """Per-source run counters behind the operator summary line (#459).
+
+    `fetched` — records/rows the extractor was handed (the source's own `limit`
+    already applied); `extracted` — those it turned into items; `existing` / `new` —
+    how they split against storage (`extracted == existing + new`); `sent` /
+    `stored` — what delivery and the confirmed-delivery write landed.
+
+    The point of the six is that `new=0` stops being ambiguous: `existing=10 new=0`
+    says the top-N was examined and every entry was already known — an ordinary
+    quiet day — which used to be indistinguishable from a source that returned
+    nothing at all (§IV).
+    """
+
+    fetched: int = 0
+    extracted: int = 0
+    existing: int = 0
+    new: int = 0
+    sent: int = 0
+    stored: int = 0
+
+
+@dataclass
 class PipelineResult:
     source_id: str
     items: list[NormalizedItem] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    # `None` = this pipeline does not measure, which must stay distinguishable
+    # from an all-zero measurement (§IV) — the summary skips it rather than
+    # reporting a source as "fetched nothing" when nobody counted.
+    metrics: SourceMetrics | None = None
 
     @property
     def ok(self) -> bool:
@@ -109,6 +166,34 @@ def _build_item(
         image_url=image_url.strip(),
         raw=raw,
     )
+
+
+def select_new_items(
+    candidates: list[NormalizedItem],
+    existing: set[str],
+) -> tuple[list[NormalizedItem], int, int]:
+    """Split the extracted candidates against storage (#459).
+
+    Returns `(new_items, existing_count, new_count)`. Extraction has already
+    applied the source's `limit`, so this does not cap anything — it only reports
+    how the top-N split, which is what the operator summary line is read against:
+    `existing_count + new_count == len(candidates)` always holds.
+
+    A key repeated inside one batch counts as existing on its second sighting, so
+    the same item can never be delivered twice from one run.
+    """
+    seen = set(existing)
+    selected: list[NormalizedItem] = []
+    existing_count = 0
+    new_count = 0
+    for item in candidates:
+        if item.dedupe_key in seen:
+            existing_count += 1
+            continue
+        seen.add(item.dedupe_key)
+        new_count += 1
+        selected.append(item)
+    return selected, existing_count, new_count
 
 
 def extract_from_json(

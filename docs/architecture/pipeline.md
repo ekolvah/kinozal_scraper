@@ -220,6 +220,35 @@ TMDB(#329) остаются eval-стратегиями (осознанно вн
 - Zero items extracted → `errors` entry (quality failure)
 - Missing `dedupe_key` or `title` on a record → `errors` entry, item skipped
 - Never raise for data quality issues — caller decides what to do
+- `limit` truncates the payload **before** normalisation: a source's `limit` is the
+  top-N it is interested in, not a delivery cap
+
+## Per-source run counters
+
+`SourceMetrics` (on `PipelineResult.metrics`) records
+`fetched / extracted / existing / new / sent / stored` for one source, and
+`select_new_items(candidates, existing)` produces the `existing`/`new` split so
+`extracted == existing + new` always holds.
+
+The counters exist because `new=0` used to be unreadable: it is the normal outcome
+of a quiet day (the top-N did not change), and it was indistinguishable from a
+source that fetched nothing at all. `existing=10 new=0` says the top-N was examined
+and every entry was already known. How the line reaches the operator —
+[`operations.md` § Run summary](operations.md#run-summary-reading-the-per-source-metrics-line).
+
+Counters are written as work proceeds and the `PipelineResult` is allocated by the
+*caller* of the per-source function, so a failure — including one caught by the
+per-source catch-all after delivery already happened — still publishes what it
+managed to measure. A red run reporting zeros would be a wrong number, which is
+worse than none (§IV).
+
+**Depth is deliberately the top-N, not the whole result set.** Scanning deeper and
+treating `limit` as a delivery cap was implemented and reverted: it changes the
+product from "the most-starred recent repositories" into "any repository above the
+star floor we have not seen yet". Measured 2026-08-05, `created:>=T-30 stars:>1000`
+returns `total_count=77`, and positions 60+ sit at ~1000 stars — exactly the
+one-day newcomers the source is not for. `github_trending` has the same shape: its
+`limit` selects the top of today's trending list, not any 10 unseen rows of ~25.
 
 ## HTML source config
 

@@ -322,6 +322,6 @@ python scripts/ci_check.py  # full CI mirror: format + lint + tests + mypy
 
 ## Consciously-accepted coverage gaps
 
-The ledger moved to its own file: [`coverage-gaps.md`](coverage-gaps.md) — records `A`…`AB`
+The ledger moved to its own file: [`coverage-gaps.md`](coverage-gaps.md) — records `A`…`AI`
 plus «modules without dedicated tests». This doc keeps the strategy, that one keeps the
 case-by-case exceptions and the rule for which home a decision goes to.

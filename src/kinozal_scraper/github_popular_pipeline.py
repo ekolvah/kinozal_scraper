@@ -12,8 +12,10 @@ from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     PipelineResult,
+    SourceMetrics,
     build_notification,
     extract_from_json,
+    select_new_items,
 )
 from kinozal_scraper.http_retry import retry_api_http
 from kinozal_scraper.pipeline_config import load_sources_config
@@ -107,11 +109,19 @@ def run_github_popular_pipeline(
         return results
 
     for source in github_sources:
+        # `result` and its counters are built HERE, not inside `_run_single_source`,
+        # so the catch-all below cannot throw them away. This is the one failure path
+        # where delivery may already have happened (`storage.append_rows` or
+        # `notifier.send_items` raising), which makes `sent`/`stored` the numbers an
+        # operator most needs before re-running — a red run with no counters at all
+        # is the same defect as a red run with zeroed ones (§IV).
+        result = PipelineResult(source_id=source["id"])
+        metrics = SourceMetrics()
+        result.metrics = metrics
         try:
-            result = _run_single_source(source, storage, notifier, enricher)
+            _run_single_source(source, storage, notifier, enricher, result, metrics)
         except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
             logger.exception("[%s] unhandled error: %s", source["id"], exc)
-            result = PipelineResult(source_id=source["id"])
             result.errors.append(f"unhandled error: {exc}")
         results.append(result)
 
@@ -157,15 +167,22 @@ def _enrich_new_items(
         logger.info("[%s] enriched %d items", source_id, enriched)
 
 
-def _run_single_source(
+def _extract_candidates(
     source: dict[str, Any],
-    storage: Storage,
-    notifier: Notifier,
-    enricher: Enricher | None,
-) -> PipelineResult:
-    source_id = source["id"]
-    result = PipelineResult(source_id=source_id)
+    result: PipelineResult,
+    metrics: SourceMetrics,
+) -> list[NormalizedItem] | None:
+    """Fetch the source's top-N and normalise it, or `None` on failure.
 
+    One request, `per_page` from the source's own params: the product intent is the
+    **top** of `created:>=T-30 stars:>1000` ranked by stars, and that ranking is what
+    `limit` selects. Scanning deeper was tried and reverted — it turns the source into
+    "any repo above the star floor we have not seen yet", which delivers the bottom of
+    the list (measured 2026-08-05: `total_count=77`, positions 60+ sit at ~1000 stars).
+
+    `None` means the reason is already on `result.errors`. Counters are written as we
+    go, so a failure still publishes what it managed to measure (§IV)."""
+    source_id = source["id"]
     try:
         data = _fetch_json(
             source["url"],
@@ -175,29 +192,54 @@ def _run_single_source(
     except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
         logger.exception("[%s] fetch failed: %s", source_id, exc)
         result.errors.append(f"fetch failed: {exc}")
-        return result
+        return None
 
     records = _unwrap_records(data, source.get("json_path"))
-
-    sort_key = source.get("sort_by")
-    if sort_key:
-        records.sort(
-            key=lambda r: int(r.get(sort_key) or 0), reverse=source.get("sort_reverse", False)
-        )
+    metrics.fetched = len(records)
 
     extracted = extract_from_json(records, source)
     if not extracted.ok:
         logger.error("[%s] extraction errors: %s", source_id, extracted.errors)
         result.errors.extend(extracted.errors)
-        return result
-    result.items = extracted.items
+        return None
 
+    metrics.extracted = len(extracted.items)
+    return extracted.items
+
+
+def _run_single_source(
+    source: dict[str, Any],
+    storage: Storage,
+    notifier: Notifier,
+    enricher: Enricher | None,
+    result: PipelineResult,
+    metrics: SourceMetrics,
+) -> None:
+    """Run one source, recording everything on the caller's `result`/`metrics`.
+
+    Owns no result of its own on purpose: the caller's per-source catch-all has to
+    be able to publish whatever was counted before an exception escaped."""
+    source_id = source["id"]
     tab = source["sheet_tab"]
+
+    # Storage is read BEFORE extraction so nothing can fail between `extracted`
+    # being counted and the `existing`/`new` split being written from it. Reading
+    # it after left one path — `get_existing_keys` raising `SchemaError` on a tab
+    # with missing columns — publishing `extracted=10 existing=0 new=0`, which
+    # breaks the invariant the operator reads the line against (§IV: a wrong
+    # number is worse than none). Cost of the reorder: a run whose fetch dies now
+    # pays one Sheets read it used to skip — one call, on an already-red run.
     existing = storage.get_existing_keys(tab)
-    new_items = [i for i in result.items if i.dedupe_key not in existing]
+
+    candidates = _extract_candidates(source, result, metrics)
+    if candidates is None:
+        return
+    result.items = candidates
+
+    new_items, metrics.existing, metrics.new = select_new_items(candidates, existing)
     if not new_items:
         logger.info("[%s] no new items", source_id)
-        return result
+        return
 
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
@@ -206,18 +248,18 @@ def _run_single_source(
     template = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
     sent, failed = notifier.send_items(notifications)
+    metrics.sent = len(sent)
 
     if sent:
         sent_ids = {n.id for n in sent}
         items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
         storage.append_rows(tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+        metrics.stored = len(items_to_store)
 
     if failed:
         message = f"{len(failed)} notification(s) failed, will retry next run"
         logger.error("[%s] %s", source_id, message)
         result.errors.append(message)
-
-    return result
 
 
 if __name__ == "__main__":
@@ -244,7 +286,15 @@ if __name__ == "__main__":
 
     prod_results = run_github_popular_pipeline(prod_storage, prod_notifier, enricher=prod_enricher)
 
-    from kinozal_scraper.alerting import alert_config_rejections, report_failures
+    from kinozal_scraper.alerting import (
+        alert_config_rejections,
+        publish_run_summary,
+        report_failures,
+    )
+
+    # Before the exit-code branch below: a failed run is exactly when the counters
+    # are worth reading, and publishing after `sys.exit(1)` would drop them (#459).
+    publish_run_summary(prod_results)
 
     # Evaluate both (no short-circuit) so a config-reject alert fires even when
     # sources all succeeded; either reddens the job (#340).

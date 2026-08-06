@@ -69,6 +69,70 @@ fails after an earlier one already set the marker, the backstop is the **red run
 scope). `telegram_summarizer` keeps its own richer `deliver_results` alert path; `report_failures`
 and the marker helpers share one canonical home in `alerting.py`.
 
+### Run summary: reading the per-source metrics line
+
+Both GitHub steps publish one line per source to the job log and, when
+`GITHUB_STEP_SUMMARY` is set, to the GitHub Actions Step Summary (#459):
+
+```text
+github_new_popular: fetched=10 extracted=10 existing=8 new=2 sent=2 stored=2
+```
+
+- `fetched` — records/rows the source handed us; `extracted` — those that became
+  items. A gap between them means records failed extraction. On
+  `github_new_popular` that is already red (any bad record fails the source); on
+  `github_trending` a *partial* failure stays green — the rows that parsed are
+  worth delivering — but the reasons are printed under the counters (see below),
+  so the gap is never unexplained. The asymmetry is deliberate: trending scrapes a
+  page whose markup shifts cosmetically all the time, while popular reads a
+  versioned JSON API where a record without `full_name` means the response
+  contract changed and no item's identity can be trusted.
+- `existing` — how many of the examined top-N entries were already in
+  `github_projects`. It is *not* the size of the tab.
+- `new` — entries not yet known; every one of them is delivered, so `new == sent`
+  unless delivery itself failed.
+- `stored` — rows written to Sheets, i.e. confirmed deliveries.
+
+Per-source **errors and warnings** are printed under the counters (bounded, then
+collapsed into a count), so the numbers never stand without a reason. Not every
+anomaly shows up as a gap between counters — a fully drifted `metric` column leaves
+them looking perfectly healthy, which is exactly why warnings travel here too:
+
+```text
+github_trending: fetched=10 extracted=8 existing=8 new=0 sent=0 stored=0
+github_trending:   warning: row missing required field(s): dedupe_key='' title=''
+github_trending:   warning: row missing required field(s): dedupe_key='' title=''
+github_trending:   warning: 8 of 8 rows have an empty metric — page layout may have drifted: …
+```
+
+Two rows failed extraction, hence `fetched=10 extracted=8` and one warning each.
+The two lines are identical on purpose, not a typo: `github_trending` reads both
+`dedupe_key` and `title` from the same selector (`h2 a@href`), so every row that
+fails there fails the same way. The drift check runs over the **extracted** items,
+so its denominator is 8, not 10 — a row that never became an item has no field to
+be blank.
+
+Failures also reach Telegram through `report_failures`; the summary is the surface
+that pairs them with the counters of the same run.
+
+**`new=0` is green, and now explains itself.** `existing=10 new=0` means the
+source's top-N was examined and every entry was already known — a normal quiet day,
+which is the expected outcome whenever the top-N did not change. That used to be
+indistinguishable from "the source returned nothing" (#459). An extraction that
+genuinely produced zero items is still red.
+
+The line is published **before** the step computes its exit code, so it survives a
+failed run. A summary file that cannot be written degrades to a WARNING — it is a
+report channel and must not redden an otherwise-successful run.
+
+**Only the two GitHub steps have a run summary at all.** `steam`, `kinozal` and
+`soldout` are separate workflow steps that never call `publish_run_summary`, so the
+absence of a Step Summary there is not the mechanism omitting them — there is
+nothing to omit. Both GitHub sources allocate their counters before any work starts,
+so in practice every source they report has a counter line; the `metrics is None`
+branch is defence for a future pipeline that reports messages without instrumenting
+counters, keeping "nobody counted" distinct from "the source fetched nothing".
+
 ## Soldout: терпеливый ретрай и место шага в прогоне
 
 Единственный источник со **своим** расписанием ретраев. Cloudflare режет датацентровые
@@ -120,8 +184,8 @@ Cloudflare и стоят одной. Отсюда 12 красных ночных
 | Variable | Type | Purpose |
 |---|---|---|
 | `GITHUB_TOKEN` | secret | GitHub API auth (github_popular_pipeline only) |
-| `GH_TOP_LIMIT` | var | max GitHub repos to fetch (github_popular_pipeline only) |
-| `GH_TRENDING_LIMIT` | var | max GitHub trending repos to fetch (github_trending_pipeline; default 10) |
+| `GH_TOP_LIMIT` | var | how deep into the star-ranked search result to look — the top-N of `created:>=T-30 stars:>1000` (github_popular_pipeline only; default 10). Also the `per_page` of the single request |
+| `GH_TRENDING_LIMIT` | var | how many rows off the top of today's trending page to consider (github_trending_pipeline; default 10) |
 | `GOOGLE_API_KEY` | secret | Gemini API for enrichment |
 | `LLM_MODEL` | var | preferred Gemini model |
 

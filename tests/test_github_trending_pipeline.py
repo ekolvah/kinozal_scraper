@@ -531,6 +531,243 @@ class TestDegradedEnrichmentVisibility(unittest.TestCase):
                 )
 
 
+# ── #459: run counters, drift visibility, failure isolation ──────────────────
+
+
+def _row(name: str, *, description: str = "desc", stars: str = "1,000") -> str:
+    return (
+        '<article class="Box-row">'
+        f'<h2><a href="/{name}">{name.replace("/", " / ")}</a></h2>'
+        f"<p>{description}</p>"
+        f'<a href="/{name}/stargazers">{stars}</a>'
+        '<span class="d-inline-block float-sm-right">5 stars today</span>'
+        "</article>"
+    )
+
+
+def _page_html(*names: str) -> str:
+    return "<html><body>" + "".join(_row(n) for n in names) + "</body></html>"
+
+
+class TestTrendingRunVisibility(unittest.TestCase):
+    """#459 keeps the product behaviour (top-N of today's trending) and fixes what
+    the operator could not see: a quiet day, selector rot, and partial extraction."""
+
+    def test_limit_still_selects_the_top_n(self) -> None:
+        # Product intent, pinned: `limit` is the top of the trending list, not a
+        # delivery cap over the whole page. Scanning deeper was tried and reverted.
+        source = {**_TRENDING_SOURCE, "limit": 2}
+        config = {"version": 1, "sources": [source]}
+        _, notifier = _run(html=_page_html("a/1", "a/2", "b/below"), sources_config=config)
+        self.assertEqual([n.id for n in notifier.sent], ["a/1", "a/2"])
+
+    def test_drift_warning_survives_a_fully_known_page(self) -> None:
+        # The steady state is the whole point: when every row is already in
+        # `github_projects` there is nothing to deliver, and a drift check scoped
+        # to delivered items would go silent exactly then — selector rot invisible
+        # on precisely the quiet days #459 exists to make readable.
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = "".join(_row(f"a/{i}", stars="") for i in range(3))
+        html = f"<html><body>{rows}</body></html>"
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
+            _, notifier = _run(
+                html=html,
+                existing_keys={"a/0", "a/1", "a/2"},
+                sources_config=config,
+            )
+        self.assertEqual(notifier.sent, [])
+        joined = "\n".join(caplog.output)
+        self.assertIn("3 of 3 rows have an empty metric", joined)
+        self.assertIn("may have drifted", joined)
+
+    def test_drift_reaches_the_run_summary_not_only_the_log(self) -> None:
+        # Drift leaves no gap between `fetched` and `extracted`, so a summary reader
+        # has no cue to go looking for it — the warning has to travel on the result.
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = "".join(_row(f"a/{i}", stars="") for i in range(3))
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=f"<html><body>{rows}</body></html>",
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+        self.assertTrue(
+            any("may have drifted" in w for w in results[0].warnings),
+            f"expected a drift warning on the result, got: {results[0].warnings}",
+        )
+
+    def test_drift_warning_is_bounded_not_one_line_per_row(self) -> None:
+        # Drift is a property of the page, so the warning is aggregated rather than
+        # emitted per row — otherwise the §IV channel becomes spam.
+        source = {**_TRENDING_SOURCE, "limit": 25}
+        config = {"version": 1, "sources": [source]}
+        html = (
+            "<html><body>"
+            + "".join(_row(f"b/{i}", description="", stars="") for i in range(20))
+            + "</body></html>"
+        )
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
+            _run(html=html, sources_config=config)
+        drift_lines = [line for line in caplog.output if "may have drifted" in line]
+        self.assertEqual(len(drift_lines), 2)  # one per affected field, not per row
+        self.assertIn("more", "\n".join(drift_lines))  # evidence collapsed into a count
+
+    def test_partially_blank_column_does_not_claim_drift(self) -> None:
+        # Repos without a description are routine on the trending page. Asserting
+        # layout drift on them would fire a WARNING nearly every run, and a channel
+        # that cries drift daily stops being read (§IV desensitisation).
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = _row("a/described") + _row("b/blank", description="")
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="INFO") as caplog:
+            _run(html=f"<html><body>{rows}</body></html>", sources_config=config)
+        joined = "\n".join(caplog.output)
+        self.assertNotIn("may have drifted", joined)
+        self.assertIn("1 of 2 rows have an empty description", joined)
+
+    def test_mostly_blank_metric_column_still_claims_drift(self) -> None:
+        # Unlike `description`, every trending row carries a stargazers link, so a
+        # blank `metric` is never routine: requiring a 100%-blank column would let
+        # "24 of 25 rows lost their metric" through at INFO.
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        rows = _row("a/kept") + _row("b/lost", stars="") + _row("c/lost", stars="")
+        with self.assertLogs("kinozal_scraper.github_trending_pipeline", level="WARNING") as caplog:
+            _run(html=f"<html><body>{rows}</body></html>", sources_config=config)
+        joined = "\n".join(caplog.output)
+        self.assertIn("2 of 3 rows have an empty metric", joined)
+        self.assertIn("may have drifted", joined)
+
+    def test_unhandled_error_is_isolated_so_the_summary_still_runs(self) -> None:
+        # Without a per-source catch-all the exception kills the step before
+        # `publish_run_summary`, so neither the counters nor the Telegram alert fire.
+        class _ExplodingNotifier(InMemoryNotifier):
+            def send_items(self, notifications: Any) -> Any:
+                raise RuntimeError("telegram exploded")
+
+        storage = InMemoryStorage()
+        # Blank metric so a drift warning exists to be preserved alongside the counters.
+        html = f"<html><body>{_row('b/new', stars='')}</body></html>"
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=html,
+        ):
+            results = run_github_trending_pipeline(
+                storage, _ExplodingNotifier(), sources_config=_SOURCES_CONFIG
+            )
+
+        self.assertEqual(len(results), 1)
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("unhandled error" in e for e in results[0].errors))
+        # The counters AND the warnings already collected must survive the catch-all —
+        # same contract as github_popular, same reason.
+        metrics = results[0].metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted, metrics.new), (1, 1, 1))
+        self.assertTrue(
+            any("may have drifted" in w for w in results[0].warnings),
+            f"drift warning must survive the catch-all, got: {results[0].warnings}",
+        )
+
+    def test_storage_read_failure_keeps_the_counters_consistent(self) -> None:
+        """Mirror of the popular guard: the storage read must not sit between
+        `extracted` and the split, or the line breaks its own invariant."""
+
+        class _BrokenStorage(InMemoryStorage):
+            def get_existing_keys(self, tab_name: str) -> set[str]:
+                raise RuntimeError("Tab 'github_projects' is missing columns")
+
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=_page_html("a/1", "b/2"),
+        ):
+            results = run_github_trending_pipeline(
+                _BrokenStorage(), notifier, sources_config=_SOURCES_CONFIG
+            )
+
+        result = results[0]
+        self.assertFalse(result.ok)
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
+        self.assertEqual(notifier.sent, [])
+
+    def test_partial_extraction_failure_is_visible_but_green(self) -> None:
+        # `fetched=2 extracted=1` used to be reachable with an entirely clean
+        # result: the per-row extraction errors were dropped on the floor, so the
+        # metrics gap the run summary now prints had nothing behind it (§IV).
+        source = {**_TRENDING_SOURCE, "limit": 5}
+        config = {"version": 1, "sources": [source]}
+        broken_row = '<article class="Box-row"><p>no link at all</p></article>'
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=f"<html><body>{_row('a/good')}{broken_row}</body></html>",
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+
+        result = results[0]
+        self.assertTrue(result.ok, result.errors)  # one bad row must not kill the source
+        self.assertTrue(result.warnings, "partial extraction failure must be surfaced")
+        self.assertEqual([n.id for n in notifier.sent], ["a/good"])
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted), (2, 1))
+
+    def test_metrics_describe_the_top_n_that_was_examined(self) -> None:
+        # `existing=1 new=2` is the whole point: a quiet day (`new=0`) becomes
+        # readable instead of looking like a source that returned nothing.
+        source = {**_TRENDING_SOURCE, "limit": 3}
+        config = {"version": 1, "sources": [source]}
+        storage = InMemoryStorage()
+        storage.seed_existing("github_projects", {"a/1"})
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=_page_html("a/1", "b/2", "b/3"),
+        ):
+            results = run_github_trending_pipeline(storage, notifier, sources_config=config)
+        metrics = results[0].metrics
+        assert metrics is not None
+        self.assertEqual(
+            (metrics.fetched, metrics.extracted, metrics.existing, metrics.new),
+            (3, 3, 1, 2),
+        )
+        self.assertEqual((metrics.sent, metrics.stored), (2, 2))
+
+
+class TestCanonicalRepoKey(unittest.TestCase):
+    """Both GitHub sources write into the shared `github_projects` tab, so one
+    repository must produce one key from either side or cross-source dedupe is a
+    no-op. The code is already correct (`_normalize_items` strips the leading
+    slash); this is the regression guard the invariant never had — it is expected
+    to be GREEN at the RED step (characterization guard, cf. #251)."""
+
+    def test_popular_and_trending_agree_on_owner_repo(self) -> None:
+        from kinozal_scraper.generic_pipeline import extract_from_json
+
+        popular_source = {
+            "id": "github_new_popular",
+            "type": "github_popular",
+            "limit": 10,
+            "dedupe_key": "full_name",
+            "fields": {"title": "full_name", "url": "html_url"},
+        }
+        record = {"full_name": "owner/repo", "html_url": "https://github.com/owner/repo"}
+        popular_key = extract_from_json([record], popular_source).items[0].dedupe_key
+
+        trending = extract_from_html(_page_html("owner/repo"), _TRENDING_SOURCE)
+        trending_key = _normalize_items(trending.items)[0].dedupe_key
+
+        self.assertEqual(popular_key, trending_key)
+        self.assertEqual(trending_key, "owner/repo")
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
     unittest.main()

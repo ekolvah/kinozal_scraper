@@ -13,8 +13,11 @@ from kinozal_scraper.generic_pipeline import (
     ROW_HEADERS,
     NormalizedItem,
     PipelineResult,
+    SourceMetrics,
+    bounded_evidence,
     build_notification,
     extract_from_html,
+    select_new_items,
 )
 from kinozal_scraper.http_fetch import fetch_html
 from kinozal_scraper.pipeline_config import load_sources_config
@@ -30,6 +33,13 @@ logger = logging.getLogger(__name__)
 
 _SOURCE_ID = "github_trending"
 _SHEET_TAB = "github_projects"
+
+# Fields whose blank value is anomalous on its own, so *any* blank earns the drift
+# verdict. Every trending row carries an `a[href$="/stargazers"]` link, so a missing
+# `metric` is never routine — 24 blanks out of 25 is a page-wide drift, and requiring
+# a 100%-blank column would let it through at INFO. `description` is the opposite:
+# repos without one are ordinary, so only an entirely blank column is evidence.
+_DRIFT_ON_ANY_BLANK = frozenset({"metric"})
 
 
 def _digits_only(text: str) -> str:
@@ -89,22 +99,55 @@ def _enrich_with_stars_today(html: str, items: list[NormalizedItem]) -> None:
         item.raw["stars_today"] = by_href.get(key, "")
 
 
-def _warn_on_drift(source_id: str, items: list[NormalizedItem]) -> None:
-    """Surface empty metric/description as WARNINGs so page-layout drift reaches
-    the operator instead of silently shipping blank fields (§IV)."""
-    for item in items:
-        if not item.metric:
-            logger.warning(
-                "[%s] item '%s' has empty metric — page layout may have drifted",
-                source_id,
-                item.dedupe_key,
-            )
-        if not item.description:
-            logger.warning(
-                "[%s] item '%s' has empty description",
-                source_id,
-                item.dedupe_key,
-            )
+def _count_rows(html: str, row_selector: str) -> int:
+    """How many rows the page offered, before the source's `limit` and extraction.
+
+    Counted here rather than threaded out of `extract_from_html` so the extractor
+    keeps one job; one extra parse of a page we already have in memory costs
+    milliseconds once per run."""
+    if not row_selector:
+        return 0
+    return len(BeautifulSoup(html, "html.parser").select(row_selector))
+
+
+def _warn_on_drift(result: PipelineResult, items: list[NormalizedItem]) -> None:
+    """Surface empty metric/description so page-layout drift reaches the operator
+    instead of silently shipping blank fields (§IV).
+
+    Runs over every extracted row **before deduplication**. Scoping it to the items
+    we deliver would go silent exactly in the steady state where the whole top-N is
+    already known — selector rot would then be invisible on precisely the quiet days
+    this visibility work exists for (#459).
+
+    Aggregated rather than one line per row: drift is a property of the page, not of
+    an item, so `all rows have an empty metric` is both a stronger signal and a
+    bounded one. A few keys are named so the operator can open one and look.
+
+    **The drift verdict has a per-field threshold** (`_DRIFT_ON_ANY_BLANK`): one
+    blank `metric` is already anomalous, while a blank `description` is routine and
+    only an entirely blank column is evidence. One shared threshold cannot serve
+    both — "any blank" would cry drift on nearly every run and train the operator
+    to ignore the channel; "all blank" would let 24 of 25 missing metrics through
+    at INFO. Below the threshold the count is still recorded, just without the
+    verdict.
+    """
+    if not items:
+        return
+    for field_name in ("metric", "description"):
+        blank = [i.dedupe_key for i in items if not getattr(i, field_name)]
+        if not blank:
+            continue
+        detail = f"{len(blank)} of {len(items)} rows have an empty {field_name}"
+        if field_name in _DRIFT_ON_ANY_BLANK or len(blank) == len(items):
+            message = f"{detail} — page layout may have drifted: {bounded_evidence(blank)}"
+            # Also on `result.warnings`: drift leaves no gap between `fetched` and
+            # `extracted`, so a summary reader has no cue to go looking for it. The
+            # log alone is the "only trace was a line in the job log" problem the
+            # run summary exists to remove (#459).
+            logger.warning("[%s] %s", result.source_id, message)
+            result.warnings.append(message)
+        else:
+            logger.info("[%s] %s: %s", result.source_id, detail, bounded_evidence(blank))
 
 
 def _enrich_new_items(
@@ -150,41 +193,68 @@ def _process_trending_source(
     storage: Storage,
     notifier: Notifier,
     enricher: Enricher | None,
-) -> PipelineResult | None:
-    """Run one source end-to-end. Returns its PipelineResult, or None for the
-    no-url silent-skip (the source produces no result entry — behaviour
-    preserved byte-for-byte from the pre-split inline `continue`)."""
-    url: str = source.get("url", "")
-    if not url:
-        logger.warning("[%s] no URL configured", source["id"])
-        return None  # None = no-url silent-skip, preserved from pre-refactor
+    result: PipelineResult,
+    metrics: SourceMetrics,
+) -> None:
+    """Run one source end-to-end, recording everything on the caller's
+    `result`/`metrics`.
 
-    result = PipelineResult(source_id=source["id"])
+    Owns no result of its own on purpose — mirror of `github_popular_pipeline`: the
+    caller's per-source catch-all has to be able to publish whatever was counted
+    (and whatever warnings were collected) before an exception escaped."""
+    sheet_tab: str = source["sheet_tab"]
+    # Read BEFORE fetching, mirror of `github_popular_pipeline`: nothing may fail
+    # between `extracted` being counted and the `existing`/`new` split being written
+    # from it, or the published line breaks its own `extracted == existing + new`
+    # invariant (`get_existing_keys` raises `SchemaError` on a tab with missing
+    # columns). One Sheets read on an already-red run is the whole cost.
+    existing = storage.get_existing_keys(sheet_tab)
+
+    url: str = source["url"]
     try:
         html_text = fetch_html(url)
     except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
         logger.exception("[%s] fetch failed: %s", source["id"], exc)
         result.errors.append(f"fetch failed: {exc}")
-        return result
+        return
 
+    # Rows the extractor was handed: the page truncated to the source's own
+    # `limit`, which is the top-N of today's trending list — the product intent.
+    # Reading the whole page instead was tried and reverted: it turns "top 10
+    # trending" into "any 10 rows we have not seen", i.e. positions 11..25.
+    metrics.fetched = min(
+        _count_rows(html_text, source.get("row_selector", "")), int(source["limit"])
+    )
     extracted = extract_from_html(html_text, source)
     if not extracted.items and extracted.errors:
         logger.error("[%s] extraction errors: %s", source["id"], extracted.errors)
         result.errors.extend(extracted.errors)
-        return result
+        return
+    if extracted.errors:
+        # Partial extraction stays green (the rows that parsed are worth delivering),
+        # but it must not stay *silent*: these errors used to be dropped on the
+        # floor, so `fetched=25 extracted=23` looked like a clean run. Warnings,
+        # not errors — reddening the run for two malformed rows out of 25 would
+        # make the whole source unavailable over a cosmetic page change.
+        logger.warning(
+            "[%s] %d of %d row(s) failed extraction: %s",
+            source["id"],
+            len(extracted.errors),
+            metrics.fetched,
+            bounded_evidence(extracted.errors),
+        )
+        result.warnings.extend(extracted.errors)
 
     items = _normalize_items(extracted.items)
     _enrich_with_stars_today(html_text, items)
-    _warn_on_drift(source["id"], items)
+    _warn_on_drift(result, items)
 
     result.items = items
-
-    sheet_tab: str = source["sheet_tab"]
-    existing = storage.get_existing_keys(sheet_tab)
-    new_items = [i for i in items if i.dedupe_key not in existing]
+    metrics.extracted = len(items)
+    new_items, metrics.existing, metrics.new = select_new_items(items, existing)
     if not new_items:
         logger.info("[%s] no new items", source["id"])
-        return result
+        return
 
     enrich_config = source.get("enrich")
     if enrich_config and enricher is not None:
@@ -193,18 +263,19 @@ def _process_trending_source(
     template: str = source["message_template"]
     notifications = [build_notification(item, template) for item in new_items]
     sent, failed = notifier.send_items(notifications)
+    metrics.sent = len(sent)
 
     if sent:
         sent_ids = {n.id for n in sent}
         items_to_store = [i for i in new_items if i.dedupe_key in sent_ids]
         storage.append_rows(sheet_tab, ROW_HEADERS, [i.to_row() for i in items_to_store])
+        metrics.stored = len(items_to_store)
 
     if failed:
         message = f"{len(failed)} notification(s) failed, will retry next run"
         logger.error("[%s] %s", source["id"], message)
         result.errors.append(message)
     logger.info("[%s] sent %d notification(s)", source["id"], len(sent))
-    return result
 
 
 def run_github_trending_pipeline(
@@ -221,9 +292,38 @@ def run_github_trending_pipeline(
         return results
 
     for source in trending_sources:
-        result = _process_trending_source(source, storage, notifier, enricher)
-        if result is not None:  # None = no-url silent-skip, preserved from pre-refactor
-            results.append(result)
+        if not source.get("url"):
+            # No-url skip: no result entry at all, so nothing reaches the run summary
+            # either — preserved byte-for-byte from the pre-split inline `continue`.
+            #
+            # Unreachable today only because this source's `url` is a literal in
+            # `sources.json`. Config validation is NOT the guard: it checks key
+            # *presence* (`_REQUIRED_SOURCE_FIELDS - source.keys()`), so an empty
+            # string passes. `soldout` proves the path is live — its url is
+            # `{{SOLDOUT_URL}}`, which `build_macro_context` defaults to `""`, and it
+            # skips green the same way. (`kinozal` is not a case: it never reads the
+            # config url, and a missing one gives it a red result with a reason.)
+            #
+            # So: parameterising this url would reintroduce a silent green skip, the
+            # exact shape #459 removes. Give it a `PipelineResult` with the reason on
+            # `warnings` if that ever happens.
+            logger.warning("[%s] no URL configured", source["id"])
+            continue
+
+        # Built HERE, so the catch-all cannot discard what was already counted —
+        # including the drift and partial-extraction warnings collected for the
+        # summary. Mirror of `github_popular_pipeline`; the failure surface is the
+        # same (`send_items`/`append_rows`/enricher raising), and it is the path
+        # where delivery may already have happened (§IV).
+        result = PipelineResult(source_id=source["id"])
+        metrics = SourceMetrics()
+        result.metrics = metrics
+        try:
+            _process_trending_source(source, storage, notifier, enricher, result, metrics)
+        except Exception as exc:  # noqa: BLE001 — per-source isolation: logged + surfaced via result.errors
+            logger.exception("[%s] unhandled error: %s", source["id"], exc)
+            result.errors.append(f"unhandled error: {exc}")
+        results.append(result)
 
     return results
 
@@ -277,7 +377,15 @@ if __name__ == "__main__":
         sources_config=sources_config,
     )
 
-    from kinozal_scraper.alerting import alert_config_rejections, report_failures
+    from kinozal_scraper.alerting import (
+        alert_config_rejections,
+        publish_run_summary,
+        report_failures,
+    )
+
+    # Before the exit-code branch below: a failed run is exactly when the counters
+    # are worth reading, and publishing after `sys.exit(1)` would drop them (#459).
+    publish_run_summary(prod_results)
 
     # Evaluate both (no short-circuit) so a config-reject alert fires even when
     # sources all succeeded; either reddens the job (#340).

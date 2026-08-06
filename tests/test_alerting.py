@@ -16,8 +16,13 @@ from types import SimpleNamespace
 import pytest
 
 from kinozal_scraper import alerting
-from kinozal_scraper.alerting import format_pipeline_failures, report_failures
-from kinozal_scraper.generic_pipeline import PipelineResult
+from kinozal_scraper.alerting import (
+    format_metrics_line,
+    format_pipeline_failures,
+    publish_run_summary,
+    report_failures,
+)
+from kinozal_scraper.generic_pipeline import PipelineResult, SourceMetrics
 from kinozal_scraper.telegram_notifier import InMemoryNotifier
 
 
@@ -45,6 +50,20 @@ class TestFormatPipelineFailures:
         text = format_pipeline_failures(results)
         assert "src11" not in text  # 12th failure not individually listed
         assert "ещё 2" in text  # 12 - 10
+
+    def test_source_id_is_not_printed_twice(self) -> None:
+        # Every `extract_from_*` message opens with `[source_id]`, and the alert line
+        # names the source itself — the Telegram surface strips it like the summary.
+        text = format_pipeline_failures(
+            [_failed("github_new_popular", "[github_new_popular] extraction produced zero items")]
+        )
+        assert "- github_new_popular: extraction produced zero items" in text
+        assert "[github_new_popular]" not in text
+
+    def test_message_without_the_prefix_is_untouched(self) -> None:
+        # What makes the strip safe for `fetch failed:` / `unhandled error:` messages.
+        text = format_pipeline_failures([_failed("soldout", "fetch failed: HTTP Error 403")])
+        assert "- soldout: fetch failed: HTTP Error 403" in text
 
     def test_escapes_html_in_error(self) -> None:
         text = format_pipeline_failures([_failed("s", "<b> & </b>")])
@@ -137,3 +156,148 @@ class TestConfigRejectionAlert:
         assert alerting.alert_config_rejections(notifier, object()) is False
         assert notifier.texts == []
         assert not marker.exists()
+
+
+def _measured(source_id: str, **counts: int) -> PipelineResult:
+    result = PipelineResult(source_id=source_id)
+    result.metrics = SourceMetrics(**counts)
+    return result
+
+
+class TestFormatMetricsLine:
+    """#459: `new=0` used to be indistinguishable from "the source broke and
+    returned nothing" — the only trace was an INFO line. The metrics line makes
+    the reason readable without opening the job log."""
+
+    def test_line_matches_operator_format(self) -> None:
+        line = format_metrics_line(
+            "github_new_popular",
+            SourceMetrics(fetched=100, extracted=100, existing=93, new=7, sent=7, stored=7),
+        )
+        assert line == (
+            "github_new_popular: fetched=100 extracted=100 existing=93 new=7 sent=7 stored=7"
+        )
+
+    def test_zero_new_still_reports_how_deep_we_looked(self) -> None:
+        line = format_metrics_line(
+            "github_trending", SourceMetrics(fetched=25, extracted=25, existing=25)
+        )
+        assert "fetched=25" in line
+        assert "new=0" in line
+
+
+class TestPublishRunSummary:
+    def test_appends_line_when_env_var_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        publish_run_summary(
+            [_measured("github_new_popular", fetched=3, extracted=3, new=3, sent=3)]
+        )
+        assert "github_new_popular" in target.read_text(encoding="utf-8")
+
+    def test_no_env_var_logs_and_does_not_raise(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+        with caplog.at_level(logging.INFO, logger="kinozal_scraper.alerting"):
+            publish_run_summary(
+                [_measured("github_trending", fetched=25, extracted=25, existing=25)]
+            )
+        assert any("github_trending" in record.getMessage() for record in caplog.records)
+
+    def test_unwritable_target_warns_and_does_not_raise(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        blocker = tmp_path / "blocker"
+        blocker.write_text("x", encoding="utf-8")
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(blocker / "summary.md"))
+        with caplog.at_level(logging.WARNING, logger="kinozal_scraper.alerting"):
+            publish_run_summary([_measured("github_new_popular", fetched=1)])
+        assert any(record.levelno >= logging.WARNING for record in caplog.records)
+
+    def test_zero_new_still_publishes_line(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        publish_run_summary(
+            [_measured("github_new_popular", fetched=100, extracted=100, existing=100)]
+        )
+        assert "new=0" in target.read_text(encoding="utf-8")
+
+    def test_warnings_ride_along_so_a_metrics_gap_explains_itself(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_trending", fetched=25, extracted=23, existing=23)
+        result.warnings.append("[github_trending] row missing required field(s)")
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "extracted=23" in written
+        assert "row missing required field(s)" in written
+
+    def test_warning_list_is_bounded(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_trending", fetched=25, extracted=5)
+        result.warnings.extend(f"row {i} broke" for i in range(20))
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "and 15 more" in written
+        assert "row 19 broke" not in written
+
+    def test_errors_are_reported_beside_the_counters(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The summary is published before the exit code precisely so a failed run's
+        # numbers survive; six counters with no stated reason is not actionable.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_new_popular", fetched=3, extracted=3)
+        result.errors.append("fetch failed: network down")
+        publish_run_summary([result])
+        assert "fetch failed: network down" in target.read_text(encoding="utf-8")
+
+    def test_warnings_survive_a_result_without_counters(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The `metrics is None` guard is about the counters. Coupling a source's
+        # messages to whether it instruments counters would silence the channel by
+        # accident for the first pipeline that reports one without measuring.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _ok("soldout")
+        result.warnings.append("something degraded")
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "something degraded" in written
+        assert "fetched=" not in written
+
+    def test_source_id_is_not_printed_twice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Every `extract_from_*` message already opens with `[source_id]`, and the
+        # annotation line prefixes the source id itself.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        result = _measured("github_trending", fetched=2, extracted=1)
+        result.warnings.append("[github_trending] row missing required field(s)")
+        publish_run_summary([result])
+        written = target.read_text(encoding="utf-8")
+        assert "warning: row missing required field(s)" in written
+        assert "[github_trending]" not in written
+
+    def test_uninstrumented_result_is_skipped_not_zeroed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # steam/kinozal/soldout do not measure; reporting them as all-zeros would
+        # recreate the very "silence looks like an empty source" ambiguity #459 fixes.
+        target = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(target))
+        publish_run_summary([_ok("steam"), _measured("github_trending", fetched=25)])
+        written = target.read_text(encoding="utf-8")
+        assert "steam" not in written
+        assert "github_trending" in written

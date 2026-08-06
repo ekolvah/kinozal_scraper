@@ -416,9 +416,26 @@ class TestFetchRetry(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
 
-class TestSorting(unittest.TestCase):
-    def test_sort_by_descending(self) -> None:
-        source = {**_GITHUB_SOURCE, "sort_by": "stargazers_count", "sort_reverse": True}
+class TestOrdering(unittest.TestCase):
+    """Candidate order is the API's own (`sort`/`order` search params) — the
+    pipeline never reorders, so `limit` selects the top of GitHub's ranking.
+
+    The former `sort_by`/`sort_reverse` config knob was removed in #459 as dead
+    code: no source in `sources.json` ever set it and no doc mentioned it (§VII)."""
+
+    def test_api_order_is_preserved(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+
+        with _patch_fetch(_GITHUB_RESPONSE):
+            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+
+        stored_keys = [row[0] for row in storage.stored_rows("github_projects")]
+        self.assertEqual(stored_keys, ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"])
+
+    def test_sort_by_key_is_no_longer_honoured(self) -> None:
+        # Ascending `sort_by` would have reversed the response order; it must not.
+        source = {**_GITHUB_SOURCE, "sort_by": "stargazers_count", "sort_reverse": False}
         config: dict[str, Any] = {"version": 1, "sources": [source]}
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -426,17 +443,10 @@ class TestSorting(unittest.TestCase):
         with _patch_fetch(_GITHUB_RESPONSE):
             run_github_popular_pipeline(storage, notifier, sources_config=config)
 
-        stored_keys = [row[0] for row in storage.stored_rows("github_projects")]
-        self.assertEqual(stored_keys, ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"])
-
-    def test_no_sort_by_preserves_order(self) -> None:
-        storage = InMemoryStorage()
-        notifier = InMemoryNotifier()
-
-        with _patch_fetch(_GITHUB_RESPONSE):
-            run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
-
-        self.assertEqual(len(notifier.sent), 3)
+        self.assertEqual(
+            [n.id for n in notifier.sent],
+            ["user/repo-alpha", "org/repo-beta", "dev/repo-gamma"],
+        )
 
 
 # ── Enricher integration tests ─────────────────────────────────────────────────
@@ -576,6 +586,128 @@ class TestEnricherQuotaCircuitBreaker(unittest.TestCase):
         for notif in notifier.sent:
             self.assertIn("[summary unavailable]", notif.text)
         self.assertEqual(len(storage.stored_rows("github_projects")), 3)
+
+
+# ── #459: per-source run counters and failure isolation ──────────────────────
+
+
+def _repo(name: str, stars: int = 100) -> dict[str, Any]:
+    return {
+        "full_name": name,
+        "html_url": f"https://github.com/{name}",
+        "description": "desc",
+        "stargazers_count": stars,
+        "language": "Python",
+    }
+
+
+def _page(*names: str) -> dict[str, Any]:
+    return {"total_count": len(names), "items": [_repo(n) for n in names]}
+
+
+class TestGithubPopularFailureIsolation(unittest.TestCase):
+    """The run summary is published before the exit code, so a red run's counters
+    have to describe what actually happened rather than be lost or zeroed (§IV)."""
+
+    def test_unhandled_error_keeps_the_counters_it_already_had(self) -> None:
+        # The one failure path where delivery may already have happened, so
+        # `sent`/`stored` are what an operator needs before re-running. A red run
+        # with no counters at all is the same defect as one with zeroed counters.
+        class _ExplodingStorage(InMemoryStorage):
+            def append_rows(self, tab_name: str, headers: list[str], rows: list[Any]) -> None:
+                raise RuntimeError("sheets exploded")
+
+        storage = _ExplodingStorage()
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_GITHUB_RESPONSE):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+
+        result = results[0]
+        self.assertFalse(result.ok)
+        self.assertTrue(any("unhandled error" in e for e in result.errors))
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted, metrics.new), (3, 3, 3))
+        self.assertEqual(metrics.sent, 3)
+        self.assertEqual(metrics.stored, 0)  # the write is what blew up
+
+    def test_storage_read_failure_keeps_the_counters_consistent(self) -> None:
+        """`get_existing_keys` raises `SchemaError` by design on a tab with missing
+        columns. It must not land between `extracted` and the split, or the published
+        line reads `extracted=10 existing=0 new=0` — breaking the very invariant the
+        operator checks it against."""
+
+        class _BrokenStorage(InMemoryStorage):
+            def get_existing_keys(self, tab_name: str) -> set[str]:
+                raise RuntimeError("Tab 'github_projects' is missing columns")
+
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_GITHUB_RESPONSE):
+            results = run_github_popular_pipeline(
+                _BrokenStorage(), notifier, sources_config=_CONFIG
+            )
+
+        result = results[0]
+        self.assertFalse(result.ok)
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
+        self.assertEqual(notifier.sent, [])
+
+    def test_one_bad_record_among_many_voids_the_source(self) -> None:
+        # Fail-closed on purpose: this source reads a versioned JSON API where
+        # `full_name` is guaranteed, so a record without one means the response
+        # contract changed and no item's dedupe identity can be trusted.
+        good = _page("b/1", "b/2", "b/3")["items"]
+        page = {"total_count": 4, "items": [*good, {"html_url": "x"}]}
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with _patch_fetch(page):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+        self.assertFalse(results[0].ok)
+        self.assertEqual(notifier.sent, [])
+
+
+class TestGithubPopularMetrics(unittest.TestCase):
+    """Metrics must survive every exit path — a summary that reports zeros for a
+    run that actually failed is the same silent-success defect one level up."""
+
+    def test_metrics_reported_on_success(self) -> None:
+        storage = InMemoryStorage()
+        storage.seed_existing("github_projects", {"a/1", "a/2"})
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_page("a/1", "a/2", "b/new")):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+        metrics = results[0].metrics
+        assert metrics is not None
+        self.assertEqual(
+            (metrics.fetched, metrics.extracted, metrics.existing, metrics.new),
+            (3, 3, 2, 1),
+        )
+        self.assertEqual((metrics.sent, metrics.stored), (1, 1))
+        self.assertEqual(len(storage.stored_rows("github_projects")), 1)
+
+    def test_metrics_reported_when_fetch_fails(self) -> None:
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_popular_pipeline._fetch_json",
+            side_effect=ConnectionError("network down"),
+        ):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+        self.assertFalse(results[0].ok)
+        self.assertIsNotNone(results[0].metrics)
+
+    def test_metrics_reported_when_extraction_fails(self) -> None:
+        broken = {"total_count": 2, "items": [{"html_url": "x"}, {"html_url": "y"}]}
+        storage = InMemoryStorage()
+        notifier = InMemoryNotifier()
+        with _patch_fetch(broken):
+            results = run_github_popular_pipeline(storage, notifier, sources_config=_CONFIG)
+        self.assertFalse(results[0].ok)
+        metrics = results[0].metrics
+        assert metrics is not None
+        self.assertEqual((metrics.fetched, metrics.extracted), (2, 0))
 
 
 if __name__ == "__main__":

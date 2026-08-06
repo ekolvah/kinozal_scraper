@@ -11,9 +11,12 @@ from kinozal_scraper.generic_pipeline import (
     NormalizedItem,
     PipelineResult,
     _selector_css_part,
+    bounded_evidence,
     build_notification,
     extract_from_html,
     extract_from_json,
+    select_new_items,
+    without_source_prefix,
 )
 
 _JSON_CONFIG = {
@@ -327,6 +330,67 @@ class TestSelectorCssPart(unittest.TestCase):
 
     def test_none_returns_none(self) -> None:
         self.assertIsNone(_selector_css_part(None))
+
+
+class TestSelectNewItems(unittest.TestCase):
+    """Extraction already applied the source's `limit`, so this only splits the
+    top-N against storage — that split is what the operator summary reports."""
+
+    def _items(self, *keys: str) -> list[NormalizedItem]:
+        return [NormalizedItem(dedupe_key=k, title=k, source_id="s") for k in keys]
+
+    def test_known_keys_are_filtered_out(self) -> None:
+        selected, existing, new = select_new_items(self._items("a", "b", "c"), {"a"})
+        self.assertEqual([i.dedupe_key for i in selected], ["b", "c"])
+        self.assertEqual((existing, new), (1, 2))
+
+    def test_extracted_equals_existing_plus_new(self) -> None:
+        candidates = self._items("a", "b", "c", "d", "e")
+        _, existing, new = select_new_items(candidates, {"b", "e"})
+        self.assertEqual(existing + new, len(candidates))
+
+    def test_collapses_intra_batch_duplicates(self) -> None:
+        # The same key twice in one batch must not be delivered twice.
+        selected, existing, new = select_new_items(self._items("a", "a", "b"), set())
+        self.assertEqual([i.dedupe_key for i in selected], ["a", "b"])
+        self.assertEqual((existing, new), (1, 2))
+
+
+class TestBoundedEvidence(unittest.TestCase):
+    """Shared bound behind every operator-facing report (#459): a page-wide
+    breakage involves as many items as the page has rows, and quoting all of them
+    is not more readable than a count."""
+
+    def test_short_list_is_quoted_whole(self) -> None:
+        self.assertEqual(bounded_evidence(["a", "b"]), "a, b")
+
+    def test_long_list_collapses_the_remainder(self) -> None:
+        result = bounded_evidence([str(i) for i in range(8)])
+        self.assertTrue(result.startswith("0, 1, 2, 3, 4"))
+        self.assertIn("+3 more", result)
+
+
+class TestWithoutSourcePrefix(unittest.TestCase):
+    """Shared by both reporting surfaces (run summary + Telegram alert), so the
+    pass-through contract is what makes it safe to apply to every message."""
+
+    def test_strips_the_leading_source_prefix(self) -> None:
+        self.assertEqual(
+            without_source_prefix("github_trending", "[github_trending] row missing"),
+            "row missing",
+        )
+
+    def test_message_without_the_prefix_passes_through(self) -> None:
+        self.assertEqual(
+            without_source_prefix("soldout", "fetch failed: HTTP Error 403"),
+            "fetch failed: HTTP Error 403",
+        )
+
+    def test_another_sources_prefix_is_left_alone(self) -> None:
+        self.assertEqual(
+            without_source_prefix("steam", "[github_trending] row missing"),
+            "[github_trending] row missing",
+        )
 
 
 if __name__ == "__main__":
