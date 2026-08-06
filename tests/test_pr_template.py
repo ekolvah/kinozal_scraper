@@ -38,3 +38,7 @@ class TestPrTemplate:
         text = _template_text()
         missing = [name for name in REQUIRED_PR_SECTIONS if f"## {name}" not in text]
         assert not missing, f"PR template missing required H2 sections: {missing}"
+
+    def test_agent_record_prompts_for_the_review_gate_verdict(self) -> None:
+        """A skipped gate stays invisible unless its verdict is recorded (#467)."""
+        assert "Review gate verdict:" in _template_text()
