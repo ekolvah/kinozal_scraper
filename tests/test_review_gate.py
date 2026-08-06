@@ -25,11 +25,14 @@ from scripts.review_gate import (
     main,
 )
 
-# Real heads of PR #465, in push order: round 1 was `blocking`, rounds 2-4 green.
-_ROUND_1 = "3312ff63a4b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5"
-_ROUND_2 = "a54549ac1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e"
-_ROUND_3 = "38a03bfc2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f"
-_ROUND_4 = "58f1c071012eac15bb122ffdcbbaa19de4d08942"
+# The four heads of PR #465, in push order: round 1 was `blocking`, rounds 2-4
+# green — the run the gate would have stopped two rounds earlier. Only the
+# short prefixes are the real ones; the tails are padding to 40 hex chars,
+# because nothing here depends on a SHA resolving.
+_ROUND_1 = "3312ff63a4b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5"  # pragma: allowlist secret
+_ROUND_2 = "a54549ac1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e"  # pragma: allowlist secret
+_ROUND_3 = "38a03bfc2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f"  # pragma: allowlist secret
+_ROUND_4 = "58f1c071012eac15bb122ffdcbbaa19de4d08942"  # pragma: allowlist secret
 _PR_URL = "https://github.com/ekolvah/kinozal_scraper/pull/465"
 _RUN_URL = "https://github.com/ekolvah/kinozal_scraper/actions/runs/31105364746"
 
