@@ -672,6 +672,30 @@ class TestTrendingRunVisibility(unittest.TestCase):
             f"drift warning must survive the catch-all, got: {results[0].warnings}",
         )
 
+    def test_storage_read_failure_keeps_the_counters_consistent(self) -> None:
+        """Mirror of the popular guard: the storage read must not sit between
+        `extracted` and the split, or the line breaks its own invariant."""
+
+        class _BrokenStorage(InMemoryStorage):
+            def get_existing_keys(self, tab_name: str) -> set[str]:
+                raise RuntimeError("Tab 'github_projects' is missing columns")
+
+        notifier = InMemoryNotifier()
+        with unittest.mock.patch(
+            "kinozal_scraper.github_trending_pipeline.fetch_html",
+            return_value=_page_html("a/1", "b/2"),
+        ):
+            results = run_github_trending_pipeline(
+                _BrokenStorage(), notifier, sources_config=_SOURCES_CONFIG
+            )
+
+        result = results[0]
+        self.assertFalse(result.ok)
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
+        self.assertEqual(notifier.sent, [])
+
     def test_partial_extraction_failure_is_visible_but_green(self) -> None:
         # `fetched=2 extracted=1` used to be reachable with an entirely clean
         # result: the per-row extraction errors were dropped on the floor, so the

@@ -222,12 +222,20 @@ def _run_single_source(
     source_id = source["id"]
     tab = source["sheet_tab"]
 
+    # Storage is read BEFORE extraction so nothing can fail between `extracted`
+    # being counted and the `existing`/`new` split being written from it. Reading
+    # it after left one path — `get_existing_keys` raising `SchemaError` on a tab
+    # with missing columns — publishing `extracted=10 existing=0 new=0`, which
+    # breaks the invariant the operator reads the line against (§IV: a wrong
+    # number is worse than none). Cost of the reorder: a run whose fetch dies now
+    # pays one Sheets read it used to skip — one call, on an already-red run.
+    existing = storage.get_existing_keys(tab)
+
     candidates = _extract_candidates(source, result, metrics)
     if candidates is None:
         return
     result.items = candidates
 
-    existing = storage.get_existing_keys(tab)
     new_items, metrics.existing, metrics.new = select_new_items(candidates, existing)
     if not new_items:
         logger.info("[%s] no new items", source_id)

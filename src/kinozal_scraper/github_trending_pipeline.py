@@ -202,6 +202,14 @@ def _process_trending_source(
     Owns no result of its own on purpose — mirror of `github_popular_pipeline`: the
     caller's per-source catch-all has to be able to publish whatever was counted
     (and whatever warnings were collected) before an exception escaped."""
+    sheet_tab: str = source["sheet_tab"]
+    # Read BEFORE fetching, mirror of `github_popular_pipeline`: nothing may fail
+    # between `extracted` being counted and the `existing`/`new` split being written
+    # from it, or the published line breaks its own `extracted == existing + new`
+    # invariant (`get_existing_keys` raises `SchemaError` on a tab with missing
+    # columns). One Sheets read on an already-red run is the whole cost.
+    existing = storage.get_existing_keys(sheet_tab)
+
     url: str = source["url"]
     try:
         html_text = fetch_html(url)
@@ -243,9 +251,6 @@ def _process_trending_source(
 
     result.items = items
     metrics.extracted = len(items)
-
-    sheet_tab: str = source["sheet_tab"]
-    existing = storage.get_existing_keys(sheet_tab)
     new_items, metrics.existing, metrics.new = select_new_items(items, existing)
     if not new_items:
         logger.info("[%s] no new items", source["id"])

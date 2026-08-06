@@ -418,12 +418,10 @@ class TestFetchRetry(unittest.TestCase):
 
 class TestOrdering(unittest.TestCase):
     """Candidate order is the API's own (`sort`/`order` search params) — the
-    pipeline never reorders, so the delivery cap applies to GitHub's ranking.
+    pipeline never reorders, so `limit` selects the top of GitHub's ranking.
 
-    The former `sort_by`/`sort_reverse` config knob was removed in #459: paging
-    turned it into a *per-page* sort, which is not a meaningful order for anything
-    downstream, and no source ever set it (§VII — a dead knob whose contract had
-    quietly changed is worse than no knob)."""
+    The former `sort_by`/`sort_reverse` config knob was removed in #459 as dead
+    code: no source in `sources.json` ever set it and no doc mentioned it (§VII)."""
 
     def test_api_order_is_preserved(self) -> None:
         storage = InMemoryStorage()
@@ -632,6 +630,29 @@ class TestGithubPopularFailureIsolation(unittest.TestCase):
         self.assertEqual((metrics.fetched, metrics.extracted, metrics.new), (3, 3, 3))
         self.assertEqual(metrics.sent, 3)
         self.assertEqual(metrics.stored, 0)  # the write is what blew up
+
+    def test_storage_read_failure_keeps_the_counters_consistent(self) -> None:
+        """`get_existing_keys` raises `SchemaError` by design on a tab with missing
+        columns. It must not land between `extracted` and the split, or the published
+        line reads `extracted=10 existing=0 new=0` — breaking the very invariant the
+        operator checks it against."""
+
+        class _BrokenStorage(InMemoryStorage):
+            def get_existing_keys(self, tab_name: str) -> set[str]:
+                raise RuntimeError("Tab 'github_projects' is missing columns")
+
+        notifier = InMemoryNotifier()
+        with _patch_fetch(_GITHUB_RESPONSE):
+            results = run_github_popular_pipeline(
+                _BrokenStorage(), notifier, sources_config=_CONFIG
+            )
+
+        result = results[0]
+        self.assertFalse(result.ok)
+        metrics = result.metrics
+        assert metrics is not None
+        self.assertEqual(metrics.extracted, metrics.existing + metrics.new)
+        self.assertEqual(notifier.sent, [])
 
     def test_one_bad_record_among_many_voids_the_source(self) -> None:
         # Fail-closed on purpose: this source reads a versioned JSON API where
