@@ -289,6 +289,11 @@ class TestHealth:
     def test_no_files_is_not_an_anomaly(self) -> None:
         assert health_anomalies([], [], files_seen=0) == []
 
+    def test_empty_model_is_an_unknown_weight(self) -> None:
+        """Пустая модель получает нейтральный вес — единственный неизвестный вес без сигнала."""
+        records = [UsageRecord("t", "s", "b", "", False, 1, 0, 0, 0, 0)]
+        assert [a.kind for a in health_anomalies(records, [], files_seen=1)] == ["unknown_model"]
+
     def test_high_share_of_broken_lines_is_anomaly(self) -> None:
         records = [UsageRecord("t", "s", "b", "m", False, 1, 0, 0, 0, 0)]
         broken = [Anomaly("malformed_line", str(i)) for i in range(10)]
@@ -515,6 +520,19 @@ class TestHookMode:
         run_hook({"source": "startup"}, transcripts, ledger)
         assert "no_usage_records" not in run_hook({"source": "startup"}, transcripts, ledger)
 
+    def test_slow_collect_surfaces_anomaly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Хук убивается по `timeout` без следа, и `write_ledger` (он после парсинга) не успеет.
+
+        Метрика встала бы навсегда и молча, поэтому приближение к лимиту — видимая аномалия.
+        """
+        transcripts = self._dir_with(tmp_path, [_line()])
+        monkeypatch.setattr(token_trend, "HOOK_TIMEOUT_SECONDS", 0)
+        assert "slow_collect" in run_hook(
+            {"source": "startup"}, transcripts, tmp_path / "ledger.jsonl"
+        )
+
     def test_vanished_file_does_not_crash_collect(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -566,6 +584,52 @@ class TestEmit:
         assert stream.getvalue() == "ok\n"
 
 
+class TestLedgerLocation:
+    """Hook и report должны смотреть в один каталог, иначе история делится надвое."""
+
+    @staticmethod
+    def _run_hook_main(transcripts: Path, monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps(payload)))
+        assert token_trend.main() == 0
+
+    def test_hook_writes_ledger_beside_payload_transcripts(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Проводка `resolve_transcripts` в `main`: ledger ложится к тем же транскриптам."""
+        transcripts = tmp_path / "projects" / "slug"
+        transcripts.mkdir(parents=True)
+        (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
+        self._run_hook_main(
+            transcripts,
+            monkeypatch,
+            {"source": "startup", "transcript_path": str(transcripts / "a.jsonl")},
+        )
+        assert (transcripts / token_trend.LEDGER_NAME).exists()
+
+    def test_diverging_dirs_surface_anomaly(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Каталог из payload разошёлся со slug-правилом — оператора нельзя вести в пустоту.
+
+        `--report` (единственная инструкция, которую печатает алерт) читает по slug-правилу:
+        промолчав, мы отправили бы его в `нет каталога транскриптов` с кодом 1.
+        """
+        real = tmp_path / "projects" / "real"
+        real.mkdir(parents=True)
+        (real / "a.jsonl").write_text(_line(), encoding="utf-8")
+        stale = tmp_path / "projects" / "stale-slug"
+        stale.mkdir(parents=True)
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: stale)
+        self._run_hook_main(
+            real, monkeypatch, {"source": "startup", "transcript_path": str(real / "a.jsonl")}
+        )
+        out = capsys.readouterr().out
+        assert "transcripts_dir_mismatch" in out
+        assert str(real) in out
+
+
 class TestResolveTranscripts:
     """`SessionStart` приносит `transcript_path` — самый частый путь не должен зависеть от slug'а."""
 
@@ -607,6 +671,11 @@ class TestHookRegistration:
         """Разбор окна транскриптов — плата wall-clock в каждой сессии: ограничена явно."""
         ours = [h for h in self._session_start_hooks() if "token_trend.py" in h.get("command", "")]
         assert ours and all(isinstance(hook.get("timeout"), int) for hook in ours)
+
+    def test_declared_timeout_matches_the_code(self) -> None:
+        """Скрипт предупреждает о приближении к лимиту — значит должен знать его величину."""
+        ours = [h for h in self._session_start_hooks() if "token_trend.py" in h.get("command", "")]
+        assert all(h["timeout"] == token_trend.HOOK_TIMEOUT_SECONDS for h in ours)
 
     def test_session_start_hook_registered(self) -> None:
         assert any("token_trend.py" in command for command in self._session_start_commands())
@@ -667,6 +736,27 @@ class TestFormatReport:
             )
         ]
         assert "sidechain" in format_report(stats, detect_growth(stats), []).lower()
+
+    def test_turnless_branch_shows_dash_not_zero(self) -> None:
+        """`per-turn 0.0k` рядом с непустым `effective` читается как «ветка бесплатная»."""
+        stats = [
+            BranchStats(
+                branch="issue-subagents-only",
+                turns=0,
+                first_seen="2026-08-01",
+                last_seen="2026-08-01",
+                effective=100_000.0,
+                input_tokens=0,
+                output_tokens=0,
+                cache_read=0,
+                cache_write=0,
+                sidechain_effective=100_000.0,
+            )
+        ]
+        lines = format_report(stats, detect_growth(stats), []).splitlines()
+        header = lines[0].split()
+        row = next(line for line in lines if "issue-subagents-only" in line).split()
+        assert row[header.index("per-turn")] == "—"
 
     def test_anomalies_reach_the_report(self) -> None:
         text = format_report([], detect_growth([]), [Anomaly("no_usage_records", "0 файлов")])
@@ -734,31 +824,65 @@ class TestExitCodes:
         monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
         assert token_trend.main() == 0
 
-    def test_hook_exits_zero_on_ledger_with_wrong_field_types(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    def test_ledger_with_wrong_field_types_is_an_anomaly_and_gets_repaired(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """`"turns": "12"` проходит конструктор, но роняет сравнение в `merge_ledger`."""
+        """`"turns": "12"` проходил конструктор и ронял `merge_ledger` — до `write_ledger`.
+
+        Значит файл не переписывался никогда: метрика умирала навсегда. Битая запись должна
+        быть штатной аномалией, тогда ledger лечится сам на следующем же старте.
+        """
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
         (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
-        broken = dict(
-            schema=token_trend.LEDGER_SCHEMA,
-            branch="issue-1-a",
-            turns="12",
-            first_seen="2026-08-01",
-            last_seen="2026-08-01",
-            effective=1.0,
-            input_tokens=0,
-            output_tokens=0,
-            cache_read=0,
-            cache_write=0,
-            sidechain_effective=0.0,
-        )
-        (transcripts / token_trend.LEDGER_NAME).write_text(json.dumps(broken), encoding="utf-8")
+        broken = {
+            "schema": token_trend.LEDGER_SCHEMA,
+            "branch": "issue-1-a",
+            "turns": "12",
+            "first_seen": "2026-08-01",
+            "last_seen": "2026-08-01",
+            "effective": 1.0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read": 0,
+            "cache_write": 0,
+            "sidechain_effective": 0.0,
+        }
+        ledger = transcripts / token_trend.LEDGER_NAME
+        ledger.write_text(json.dumps(broken), encoding="utf-8")
         monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
         monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
         monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
+
         assert token_trend.main() == 0
+        assert "ledger_schema" in capsys.readouterr().out
+        restored, anomalies = parse_ledger(ledger.read_text(encoding="utf-8").splitlines())
+        assert anomalies == []
+        assert restored["issue-1-a"].turns == 1
+
+    def test_parse_ledger_rejects_wrong_field_types(self) -> None:
+        line = json.dumps({"schema": LEDGER_SCHEMA, "branch": "b", "turns": "12"})
+        stats, anomalies = parse_ledger([line])
+        assert stats == {}
+        assert [a.kind for a in anomalies] == ["ledger_schema"]
+
+    def test_unexpected_failure_is_reported_to_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """На exit 0 канал в контекст — stdout; stderr пользователь увидит только на ошибке."""
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
+
+        def boom(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("детектор сломался")
+
+        monkeypatch.setattr(token_trend, "detect_growth", boom)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
+        monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
+        assert token_trend.main() == 0
+        assert "детектор сломался" in capsys.readouterr().out
 
     def test_hook_exits_zero_when_stdout_is_closed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

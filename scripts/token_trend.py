@@ -75,6 +75,12 @@ NO_BRANCH_BUCKET = "(no-branch)"
 LEDGER_NAME = "token_ledger.jsonl"
 LEDGER_SCHEMA = 1
 
+# Прунинг ledger'а сознательно не заводим: строка на ветку — это ~200 B, то есть 72 бакета
+# текущей истории весят меньше 15 КБ, а растёт файл со скоростью нескольких веток в неделю.
+# Порог, за которым разбор станет заметен, отстоит на годы, и вводить сейчас политику
+# устаревания — гадать о правильном окне без данных. Наблюдаемый триггер пересмотра —
+# `timeout` хука начнёт срабатывать (тогда же и появятся цифры, по которым выбирать окно).
+
 # Машинный канон интерфейса: алерт печатается в контекст и предлагает оператору флаг, поэтому
 # расхождение текста с `argparse` отправляло бы его в `unrecognized arguments` ровно в тот
 # момент, ради которого метрика заведена. Гейтится `TestReportMode`.
@@ -93,6 +99,12 @@ DEFAULT_ABS_FLOOR = 20_000.0
 # Окно чтения транскриптов шире ретенции Claude Code (30 дней): всё, что старше, уже живёт
 # в ledger'е, и перечитывать его каждый старт незачем.
 DEFAULT_MTIME_DAYS = 45
+
+# Дублирует `timeout` хука в `.claude/settings.json` (сверяется тестом). Нужен здесь, чтобы
+# предупредить до того, как хук начнут убивать: убитый хук не доходит до `write_ledger`,
+# то есть метрика встала бы навсегда и без следа.
+HOOK_TIMEOUT_SECONDS = 20
+_SLOW_COLLECT_SHARE = 0.6
 
 
 @dataclass(frozen=True)
@@ -276,7 +288,9 @@ def health_anomalies(
                 "high_anomaly_rate", f"нераспарсенных строк {share:.0%} ({len(parse_anomalies)})"
             )
         )
-    unknown = sorted({r.model for r in records if r.model and not is_known_model(r.model)})
+    # Пустая модель тоже получает нейтральный вес, поэтому попадает сюда наравне с новой:
+    # иначе это был бы единственный неизвестный вес без сигнала.
+    unknown = sorted({r.model or "(пусто)" for r in records if not is_known_model(r.model)})
     if unknown:
         anomalies.append(
             Anomaly("unknown_model", f"нет в таблице весов: {', '.join(unknown)} — цифры занижены")
@@ -400,8 +414,33 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
         except TypeError as exc:
             anomalies.append(Anomaly("ledger_schema", f"ledger line {index + 1}: {exc}"))
             continue
+        if not _fields_well_typed(entry):
+            # `"turns": "12"` проходит конструктор и падает уже в `merge_ledger` — до
+            # `write_ledger`, то есть файл не переписался бы никогда и метрика умерла бы
+            # навсегда. Как штатная аномалия битая запись просто отбрасывается, и ledger
+            # лечится сам на следующем старте.
+            anomalies.append(
+                Anomaly("ledger_schema", f"ledger line {index + 1}: неверные типы полей")
+            )
+            continue
         stats[entry.branch] = entry
     return stats, anomalies
+
+
+def _fields_well_typed(entry: BranchStats) -> bool:
+    """Типы полей ledger'а: `schema`-версия стережёт состав, но не типы."""
+    return (
+        isinstance(entry.branch, str)
+        and isinstance(entry.turns, int)
+        and isinstance(entry.first_seen, str)
+        and isinstance(entry.last_seen, str)
+        and isinstance(entry.effective, int | float)
+        and isinstance(entry.input_tokens, int)
+        and isinstance(entry.output_tokens, int)
+        and isinstance(entry.cache_read, int)
+        and isinstance(entry.cache_write, int)
+        and isinstance(entry.sidechain_effective, int | float)
+    )
 
 
 def ledger_lines(stats: dict[str, BranchStats]) -> list[str]:
@@ -457,9 +496,12 @@ def format_report(stats: Iterable[BranchStats], verdict: Verdict, anomalies: lis
         f"{'cache_read':>12} {'sidechain':>11}"
     ]
     for entry in rows:
+        # Прочерк, а не `0.0k`: у бакета без основных turn'ов нет знаменателя, и ноль рядом
+        # с непустым `effective` читался бы как «ветка бесплатная».
+        per_turn = _k(entry.per_turn) if entry.turns else "—"
         lines.append(
             f"{entry.branch[:48]:<48} {entry.turns:>6} {_k(entry.effective):>12} "
-            f"{_k(entry.per_turn):>10} {_k(entry.cache_read):>12} "
+            f"{per_turn:>10} {_k(entry.cache_read):>12} "
             f"{_k(entry.sidechain_effective):>11}"
         )
     lines.append("")
@@ -574,8 +616,18 @@ def run_hook(payload: dict, transcripts: Path, ledger_path: Path) -> str:
             Verdict("insufficient_data", 0.0, 0.0, (), ()),
             [Anomaly("transcripts_not_found", f"нет каталога {transcripts} — slug-правило уехало")],
         )
+    started = time.monotonic()
     records, parse_anomalies, files_seen = collect(transcripts)
+    elapsed = time.monotonic() - started
     anomalies = health_anomalies(records, parse_anomalies, files_seen=files_seen)
+    if elapsed >= HOOK_TIMEOUT_SECONDS * _SLOW_COLLECT_SHARE:
+        anomalies.append(
+            Anomaly(
+                "slow_collect",
+                f"разбор занял {elapsed:.1f}s при лимите хука {HOOK_TIMEOUT_SECONDS}s — "
+                "сузить окно чтения или проредить ledger",
+            )
+        )
     ledger, ledger_anomalies = parse_ledger(_read_ledger_lines(ledger_path))
     merged = merge_ledger(ledger, aggregate_by_branch(records))
     write_ledger(ledger_path, merged)
@@ -589,8 +641,14 @@ def write_ledger(ledger_path: Path, stats: dict[str, BranchStats]) -> None:
     оставили бы метрику без истории — ровно тот отказ, ради которого ledger и заведён.
     """
     tmp = ledger_path.with_name(ledger_path.name + f".{os.getpid()}.tmp")
-    tmp.write_text("\n".join(ledger_lines(stats)) + "\n", encoding="utf-8")
-    os.replace(tmp, ledger_path)
+    try:
+        tmp.write_text("\n".join(ledger_lines(stats)) + "\n", encoding="utf-8")
+        os.replace(tmp, ledger_path)
+    except BaseException:
+        # Не оставлять хвост в каталоге, если запись прервалась. На цифры он не влияет
+        # (в глоб `*.jsonl` не попадает), но мусор копился бы молча.
+        tmp.unlink(missing_ok=True)
+        raise
 
 
 def _read_ledger_lines(ledger_path: Path) -> list[str]:
@@ -612,7 +670,8 @@ def resolve_transcripts(payload: dict) -> Path:
 
     `transcript_path` приходит от самого Claude Code, поэтому в hook-режиме снимает весь
     класс отказа «правило нормализации slug'а уехало». Вывод slug'а остаётся для `--report`,
-    где payload'а нет.
+    где payload'а нет — и именно поэтому расхождение двух путей нельзя проглатывать
+    (см. `divergence_anomaly`).
     """
     raw = payload.get("transcript_path")
     if isinstance(raw, str) and raw:
@@ -620,6 +679,26 @@ def resolve_transcripts(payload: dict) -> Path:
         if candidate.is_dir():
             return candidate
     return transcript_dir()
+
+
+def divergence_anomaly(resolved: Path) -> list[Anomaly]:
+    """Аномалия, если payload и slug-правило указывают на разные каталоги.
+
+    Хук пишет ledger туда, куда указал payload, а `--report` — единственная инструкция,
+    которую печатает алерт — читает по slug-правилу. Промолчав, мы отправили бы оператора
+    в `нет каталога транскриптов` с кодом 1 ровно в тот момент, ради которого метрика
+    заведена; а при запуске из подкаталога репо история молча делилась бы надвое, и каждая
+    половина выглядела бы дешевле целого.
+    """
+    expected = transcript_dir()
+    if resolved == expected:
+        return []
+    return [
+        Anomaly(
+            "transcripts_dir_mismatch",
+            f"сессия пишет в {resolved}, а `--report` читает {expected} — история разъедется",
+        )
+    ]
 
 
 def emit(text: str, stream: TextSink | None = None) -> None:
@@ -651,21 +730,29 @@ def main() -> int:
             payload = read_payload(sys.stdin.read())
             transcripts = resolve_transcripts(payload)
             text = run_hook(payload, transcripts, transcripts / LEDGER_NAME)
+            if payload.get("source") == "startup":
+                mismatch = format_alert(
+                    Verdict("insufficient_data", 0.0, 0.0, (), ()),
+                    divergence_anomaly(transcripts),
+                )
+                text = "\n".join(part for part in (text, mismatch) if part)
             if text:
                 emit(text)
         except Exception as exc:  # noqa: BLE001 - контракт «hook всегда exit 0», см. ниже
             # Любое исключение, не только `OSError`: на ненулевом коде `SessionStart`
             # выбрасывает stdout, и вместо содержательной аномалии юзер видит голое
-            # «hook error» — каждую сессию, без шанса на самолечение. Сбой остаётся
-            # видимым (stderr), но код нулевой. `emit` внутри try по той же причине.
+            # «hook error» — каждую сессию, без шанса на самолечение.
+            # Канал — stdout, а не stderr: при нулевом коде в контекст уходит именно он,
+            # а stderr показывается только на ненулевом. Иначе сбой был бы тих (§IV).
             with contextlib.suppress(Exception):
-                emit(f"token-trend аномалия [{type(exc).__name__}]: {exc}", sys.stderr)
+                emit(f"token-trend аномалия [{type(exc).__name__}]: {exc}")
         return 0
 
     transcripts = transcript_dir()
     ledger_path = transcripts / LEDGER_NAME
     if not transcripts.is_dir():
-        emit(f"нет каталога транскриптов: {transcripts}", sys.stderr)
+        with contextlib.suppress(OSError):
+            emit(f"нет каталога транскриптов: {transcripts}", sys.stderr)
         return 1
     records, parse_anomalies, files_seen = collect(transcripts)
     anomalies = health_anomalies(records, parse_anomalies, files_seen=files_seen)
