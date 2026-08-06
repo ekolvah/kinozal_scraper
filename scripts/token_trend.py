@@ -24,7 +24,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
+import os
 import re
 import statistics
 import sys
@@ -51,6 +53,9 @@ _RATIO_CACHE_WRITE_5M = 1.25
 _RATIO_CACHE_WRITE_1H = 2.0
 
 # Базовая цена input-токена относительно Opus 5 ($5/Mtok = 1.0). Ключ — подстрока в `model`.
+# Сопоставление по семейству, а не по точному id, — сознательный выбор: новая версия семейства
+# (`claude-opus-6`) унаследует вес семейства молча, зато аномалия не поднимается на каждый
+# релиз. Граница: смену цены **внутри** семейства метрика не заметит — сверять при бампе весов.
 _MODEL_SCALE: dict[str, float] = {
     "fable": 2.0,
     "opus": 1.0,
@@ -69,6 +74,11 @@ NO_BRANCH_BUCKET = "(no-branch)"
 
 LEDGER_NAME = "token_ledger.jsonl"
 LEDGER_SCHEMA = 1
+
+# Машинный канон интерфейса: алерт печатается в контекст и предлагает оператору флаг, поэтому
+# расхождение текста с `argparse` отправляло бы его в `unrecognized arguments` ровно в тот
+# момент, ради которого метрика заведена. Гейтится `TestReportMode`.
+CLI_FLAGS = ("--hook", "--report")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
@@ -274,6 +284,24 @@ def health_anomalies(
     return anomalies
 
 
+def counts_as_turn(record: UsageRecord) -> bool:
+    """Идёт ли запись в знаменатель `per_turn`.
+
+    Turn — шаг **основного** цикла агента. Sidechain-записи (субагенты) дешёвые и
+    многочисленные, а spawn субагента — рекомендованная тактика (`mindset.md §(2)`):
+    в знаменателе они разбавляли бы `per_turn` и детектор выдавал бы `steady` на растущей
+    плате. Плату они при этом вносят — она видна в `effective` и отдельной колонкой.
+    Служебные `<synthetic>`-записи не биллятся вовсе, поэтому turn'ами тоже не считаются.
+    """
+    return not record.is_sidechain and model_scale(record.model) > 0
+
+
+def _earliest(current: str, candidate: str) -> str:
+    """Минимальный непустой timestamp: пустой иначе навсегда пиннит ветку в начало окна."""
+    known = [value for value in (current, candidate) if value]
+    return min(known) if known else ""
+
+
 def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats]:
     """Свернуть записи в агрегат по ветке; записи без ветки — в отдельный бакет, не выброс."""
     stats: dict[str, BranchStats] = {}
@@ -283,7 +311,7 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
         if current is None:
             stats[record.branch] = BranchStats(
                 branch=record.branch,
-                turns=1,
+                turns=int(counts_as_turn(record)),
                 first_seen=record.timestamp,
                 last_seen=record.timestamp,
                 effective=cost,
@@ -296,8 +324,8 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
             continue
         stats[record.branch] = BranchStats(
             branch=current.branch,
-            turns=current.turns + 1,
-            first_seen=min(current.first_seen, record.timestamp) or current.first_seen,
+            turns=current.turns + int(counts_as_turn(record)),
+            first_seen=_earliest(current.first_seen, record.timestamp),
             last_seen=max(current.last_seen, record.timestamp),
             effective=current.effective + cost,
             input_tokens=current.input_tokens + record.input_tokens,
@@ -319,9 +347,19 @@ def issue_branches(stats: Iterable[BranchStats]) -> list[BranchStats]:
 def merge_ledger(
     ledger: dict[str, BranchStats], fresh: dict[str, BranchStats]
 ) -> dict[str, BranchStats]:
-    """Объединить историю с текущими транскриптами: свежий агрегат замещает, не суммируется."""
+    """Объединить историю с текущими транскриптами: свежий агрегат замещает, не суммируется.
+
+    Замещение верно, только пока свежий агрегат **полнее** исторического. У ветки старше окна
+    чтения (`DEFAULT_MTIME_DAYS`) или ретенции Claude Code часть транскриптов уже исчезла,
+    поэтому пересчёт по ней неполон: приняв его, ветка «худела» бы молча, а недосчёт читался
+    бы как падение расхода — ровно тот отказ, ради которого ledger и заведён. Первыми
+    страдали бы долгоживущие бакеты (`main` — 37 % turn'ов по замеру).
+    """
     merged = dict(ledger)
-    merged.update(fresh)
+    for branch, entry in fresh.items():
+        known = merged.get(branch)
+        if known is None or entry.turns >= known.turns:
+            merged[branch] = entry
     return merged
 
 
@@ -402,11 +440,15 @@ def _k(value: float) -> str:
 def format_report(stats: Iterable[BranchStats], verdict: Verdict, anomalies: list[Anomaly]) -> str:
     """Полная таблица по веткам + вердикт."""
     rows = sorted(stats, key=lambda s: (s.first_seen, s.branch))
-    lines = [f"{'branch':<48} {'turns':>6} {'effective':>12} {'per-turn':>10} {'cache_read':>12}"]
+    lines = [
+        f"{'branch':<48} {'turns':>6} {'effective':>12} {'per-turn':>10} "
+        f"{'cache_read':>12} {'sidechain':>11}"
+    ]
     for entry in rows:
         lines.append(
             f"{entry.branch[:48]:<48} {entry.turns:>6} {_k(entry.effective):>12} "
-            f"{_k(entry.per_turn):>10} {_k(entry.cache_read):>12}"
+            f"{_k(entry.per_turn):>10} {_k(entry.cache_read):>12} "
+            f"{_k(entry.sidechain_effective):>11}"
         )
     lines.append("")
     if verdict.status == "insufficient_data":
@@ -455,8 +497,29 @@ def read_payload(stdin_text: str) -> dict:
 
 def _iter_lines(paths: Iterable[Path]) -> Iterator[str]:
     for path in paths:
-        with path.open(encoding="utf-8", errors="replace") as handle:
+        try:
+            handle = path.open(encoding="utf-8", errors="replace")
+        except OSError:
+            # Файл исчез между отбором и чтением — сессия удалена, ретенция сработала.
+            continue
+        with handle:
             yield from handle
+
+
+def _recent_paths(transcripts: Path, cutoff: float) -> list[Path]:
+    """Файлы транскриптов в окне по mtime; ledger — не транскрипт и сюда не попадает."""
+    paths = []
+    for path in transcripts.glob("*.jsonl"):
+        if path.name == LEDGER_NAME:
+            continue
+        try:
+            fresh = path.stat().st_mtime >= cutoff
+        except OSError:
+            # Между `glob` и `stat` файл может исчезнуть: в report-режиме это был бы traceback.
+            continue
+        if fresh:
+            paths.append(path)
+    return sorted(paths)
 
 
 def collect(
@@ -466,9 +529,13 @@ def collect(
 
     Дедупликация — сквозная по всем файлам: `resume`/`fork` копируют историю в новый
     транскрипт, и пофайловый разбор дал бы двойной счёт.
+
+    Ledger лежит в этом же каталоге и переписывается каждую сессию, поэтому всегда свежий
+    по mtime. Считая его транскриптом, после ретенции (файлы вычищены, ledger остался) мы
+    получали бы `files_seen=1, records=0` — вечную ложную «schema drift» в контексте.
     """
     cutoff = time.time() - days * 86_400
-    paths = sorted(p for p in transcripts.glob("*.jsonl") if p.stat().st_mtime >= cutoff)
+    paths = _recent_paths(transcripts, cutoff)
     records, anomalies = parse_lines(_iter_lines(paths))
     return records, anomalies, len(paths)
 
@@ -484,15 +551,34 @@ def run_hook(payload: dict, transcripts: Path, ledger_path: Path) -> str:
     if payload.get("source") != "startup":
         return ""
     if not transcripts.is_dir():
-        # Чужая среда (cloud-ревьюер, другая машина): `.claude/settings.json` лежит в репо,
-        # и видимая ошибка здесь попадала бы в контекст каждой ревью-сессии навсегда.
-        return ""
+        if not transcripts.parent.is_dir():
+            # Чужая среда: транскриптов Claude Code тут нет вовсе (cloud-ревьюер, другая
+            # машина). `.claude/settings.json` лежит в репо, и видимая ошибка попадала бы
+            # в контекст каждой ревью-сессии навсегда.
+            return ""
+        # Своя машина, но каталога этого репо нет: апстрим сменил правило slug'а, репо
+        # переехало. Промолчать здесь — дать метрике умереть навсегда и тихо (§IV).
+        return format_alert(
+            Verdict("insufficient_data", 0.0, 0.0, (), ()),
+            [Anomaly("transcripts_not_found", f"нет каталога {transcripts} — slug-правило уехало")],
+        )
     records, parse_anomalies, files_seen = collect(transcripts)
     anomalies = health_anomalies(records, parse_anomalies, files_seen=files_seen)
     ledger, ledger_anomalies = parse_ledger(_read_ledger_lines(ledger_path))
     merged = merge_ledger(ledger, aggregate_by_branch(records))
-    ledger_path.write_text("\n".join(ledger_lines(merged)) + "\n", encoding="utf-8")
+    write_ledger(ledger_path, merged)
     return format_alert(detect_growth(merged.values()), anomalies + ledger_anomalies)
+
+
+def write_ledger(ledger_path: Path, stats: dict[str, BranchStats]) -> None:
+    """Записать ledger атомарно: усечённый файл — потеря всей базы сравнения.
+
+    `write_text` сначала обнуляет файл, поэтому краш или две одновременно стартующие сессии
+    оставили бы метрику без истории — ровно тот отказ, ради которого ledger и заведён.
+    """
+    tmp = ledger_path.with_name(ledger_path.name + f".{os.getpid()}.tmp")
+    tmp.write_text("\n".join(ledger_lines(stats)) + "\n", encoding="utf-8")
+    os.replace(tmp, ledger_path)
 
 
 def _read_ledger_lines(ledger_path: Path) -> list[str]:
@@ -519,9 +605,10 @@ def emit(text: str, stream: TextSink | None = None) -> None:
 
 
 def main() -> int:
-    """CLI: `--hook` (тихий, всегда exit 0) и `--report` (таблица)."""
+    """CLI: `--hook` (тихий, всегда exit 0) и `--report` (таблица, режим по умолчанию)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hook", action="store_true", help="режим SessionStart: тихий, exit 0")
+    parser.add_argument("--report", action="store_true", help="таблица по веткам (по умолчанию)")
     args = parser.parse_args()
 
     transcripts = transcript_dir()
@@ -530,12 +617,14 @@ def main() -> int:
     if args.hook:
         try:
             text = run_hook(read_payload(sys.stdin.read()), transcripts, ledger_path)
+            if text:
+                emit(text)
         except OSError as exc:
             # Сам сбой метрики виден, но код остаётся нулевым: иначе `SessionStart`
             # выбросит stdout и юзер увидит только «hook error» без содержания.
-            text = f"token-trend аномалия [io]: {exc}"
-        if text:
-            emit(text)
+            # `emit` внутри try по той же причине — закрытый stdout не должен ронять хук.
+            with contextlib.suppress(OSError):
+                emit(f"token-trend аномалия [io]: {exc}", sys.stderr)
         return 0
 
     if not transcripts.is_dir():

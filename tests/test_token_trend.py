@@ -19,6 +19,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import re
 from pathlib import Path
 
 import pytest
@@ -36,6 +37,7 @@ from scripts.token_trend import (
     detect_growth,
     effective_tokens,
     format_alert,
+    format_report,
     health_anomalies,
     issue_branches,
     ledger_lines,
@@ -226,6 +228,47 @@ class TestAggregate:
         ordered = issue_branches(aggregate_by_branch(records).values())
         assert [s.branch for s in ordered] == ["issue-1-a", "issue-2-b"]
 
+    def test_sidechain_turns_excluded_from_denominator(self) -> None:
+        """Субагенты — дешёвые turn'ы: в знаменателе они маскировали бы реальный рост.
+
+        Spawn субагента — рекомендованная тактика (`mindset.md §(2)`), так что ветка с ними
+        разбавляла бы `per_turn` и детектор выдавал бы `steady` на растущей плате.
+        """
+        records, _ = parse_lines(
+            [
+                _line(request_id="a", output_tokens=100),
+                _line(request_id="b", sidechain=True, output_tokens=100),
+            ]
+        )
+        stats = aggregate_by_branch(records)["issue-1-a"]
+        assert stats.turns == 1
+        assert stats.per_turn == pytest.approx(stats.effective)
+
+    def test_synthetic_records_excluded_from_denominator(self) -> None:
+        """Служебные записи не биллятся: turn'ом они не являются, а `per_turn` занижали бы."""
+        records, _ = parse_lines(
+            [
+                _line(request_id="a", output_tokens=100),
+                _line(request_id="b", model="<synthetic>"),
+            ]
+        )
+        assert aggregate_by_branch(records)["issue-1-a"].turns == 1
+
+    def test_branch_of_only_sidechain_records_has_no_zero_division(self) -> None:
+        records, _ = parse_lines([_line(sidechain=True, output_tokens=10)])
+        stats = aggregate_by_branch(records)["issue-1-a"]
+        assert (stats.turns, stats.per_turn) == (0, 0.0)
+
+    def test_empty_timestamp_does_not_pin_first_seen(self) -> None:
+        """Пустой timestamp иначе навсегда оставлял бы ветку в начале baseline-окна."""
+        records, _ = parse_lines(
+            [
+                _line(request_id="a", timestamp="", branch="issue-9-x"),
+                _line(request_id="b", timestamp="2026-08-03T00:00:00.000Z", branch="issue-9-x"),
+            ]
+        )
+        assert aggregate_by_branch(records)["issue-9-x"].first_seen == "2026-08-03T00:00:00.000Z"
+
     def test_sidechain_kept_as_separate_line(self) -> None:
         records, _ = parse_lines(
             [
@@ -265,6 +308,17 @@ class TestLedger:
         ledger = {"issue-1-a": _stats("issue-1-a", turns=5)}
         fresh = {"issue-1-a": _stats("issue-1-a", turns=9)}
         assert merge_ledger(ledger, fresh)["issue-1-a"].turns == 9
+
+    def test_partial_recount_does_not_shrink_history(self) -> None:
+        """Ветка старше окна чтения: часть транскриптов вычищена ретенцией.
+
+        Свежий агрегат по ней неполон, и замещение стёрло бы полную запись — ветка «худела»
+        бы молча, а недосчёт читался бы как падение расхода. Долгоживущие бакеты (`main` —
+        37 % turn'ов по замеру) страдали бы первыми.
+        """
+        ledger = {"main": _stats("main", turns=900)}
+        fresh = {"main": _stats("main", turns=12)}
+        assert merge_ledger(ledger, fresh)["main"].turns == 900
 
     def test_history_outlived_by_ledger_when_transcript_gone(self) -> None:
         """Ветка, стёртая ретенцией транскриптов, остаётся в базе сравнения."""
@@ -373,10 +427,16 @@ class TestHookMode:
         transcripts = self._dir_with(tmp_path, lines)
         assert run_hook({"source": "startup"}, transcripts, tmp_path / "ledger.jsonl") != ""
 
-    def test_absent_transcript_dir_is_silent_noop(self, tmp_path: Path) -> None:
+    def test_absent_projects_root_is_silent_noop(self, tmp_path: Path) -> None:
         """Чужая среда (cloud-ревьюер, другая машина) не шумит в контекст каждой сессии."""
-        missing = tmp_path / "nope"
+        missing = tmp_path / "no-claude" / "projects" / "slug"
         assert run_hook({"source": "startup"}, missing, tmp_path / "ledger.jsonl") == ""
+
+    def test_missing_slug_dir_surfaces_error(self, tmp_path: Path) -> None:
+        """Своя машина, но каталога репо нет: slug-правило уехало — метрика умерла бы молча."""
+        projects = tmp_path / "projects"
+        projects.mkdir()
+        assert run_hook({"source": "startup"}, projects / "slug", tmp_path / "ledger.jsonl") != ""
 
     def test_empty_dir_surfaces_error(self, tmp_path: Path) -> None:
         """Своя среда, но записей нет — метрика сломалась, и это должно быть видно."""
@@ -410,6 +470,56 @@ class TestHookMode:
         assert files_seen == 1
         assert {r.branch for r in records} == {"issue-1-a"}
 
+    def test_ledger_in_transcript_dir_not_read_as_transcript(self, tmp_path: Path) -> None:
+        """Ledger живёт рядом с транскриптами и переписывается каждую сессию.
+
+        Если бы `collect` глобил и его, то после ретенции (транскрипты вычищены, ledger
+        остался) выходило бы `files_seen=1, records=0` — вечная ложная «schema drift»
+        в контексте каждой сессии.
+        """
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / token_trend.LEDGER_NAME).write_text(
+            "\n".join(ledger_lines({"issue-1-a": _stats("issue-1-a")})), encoding="utf-8"
+        )
+        records, _, files_seen = collect(transcripts)
+        assert (files_seen, records) == (0, [])
+
+    def test_ledger_beside_transcripts_does_not_trigger_drift_alert(self, tmp_path: Path) -> None:
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        ledger = transcripts / token_trend.LEDGER_NAME
+        (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
+        run_hook({"source": "startup"}, transcripts, ledger)
+        assert "no_usage_records" not in run_hook({"source": "startup"}, transcripts, ledger)
+
+    def test_vanished_file_does_not_crash_collect(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Файл может исчезнуть между `glob` и `stat` — в report-режиме это был бы traceback."""
+        transcripts = self._dir_with(tmp_path, [_line()])
+        original = Path.stat
+
+        def flaky(self: Path, *args: object, **kwargs: object) -> object:
+            if self.name == "a.jsonl":
+                raise FileNotFoundError(self)
+            return original(self, *args, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(Path, "stat", flaky)
+        records, _, files_seen = collect(transcripts)
+        assert (files_seen, records) == (0, [])
+
+    def test_ledger_survives_repeated_writes(self, tmp_path: Path) -> None:
+        """Запись ledger'а атомарна: усечённый файл — потеря всей базы сравнения."""
+        transcripts = self._dir_with(tmp_path, [_line()])
+        ledger = tmp_path / "ledger.jsonl"
+        run_hook({"source": "startup"}, transcripts, ledger)
+        run_hook({"source": "startup"}, transcripts, ledger)
+        restored, anomalies = parse_ledger(ledger.read_text(encoding="utf-8").splitlines())
+        assert anomalies == []
+        assert "issue-1-a" in restored
+        assert not list(ledger.parent.glob("*.tmp"))
+
 
 class TestEmit:
     """Вывод кириллицы не должен зависеть от кодовой страницы консоли (`CLAUDE.md` §Среда)."""
@@ -438,17 +548,26 @@ class TestHookRegistration:
     """Гард против мёртвого кода: метрика без автотриггера повторит судьбу eval'а (#361)."""
 
     @staticmethod
-    def _session_start_commands() -> list[str]:
+    def _session_start_hooks() -> list[dict]:
         settings = json.loads(
             (Path(__file__).resolve().parent.parent / ".claude" / "settings.json").read_text(
                 encoding="utf-8"
             )
         )
         return [
-            hook.get("command", "")
+            hook
             for group in settings.get("hooks", {}).get("SessionStart", [])
             for hook in group.get("hooks", [])
         ]
+
+    @classmethod
+    def _session_start_commands(cls) -> list[str]:
+        return [hook.get("command", "") for hook in cls._session_start_hooks()]
+
+    def test_hook_declares_timeout(self) -> None:
+        """Разбор окна транскриптов — плата wall-clock в каждой сессии: ограничена явно."""
+        ours = [h for h in self._session_start_hooks() if "token_trend.py" in h.get("command", "")]
+        assert ours and all(isinstance(hook.get("timeout"), int) for hook in ours)
 
     def test_session_start_hook_registered(self) -> None:
         assert any("token_trend.py" in command for command in self._session_start_commands())
@@ -459,12 +578,119 @@ class TestHookRegistration:
         assert all("--hook" in command for command in commands)
 
 
+def _alerting_lines() -> list[str]:
+    """Набор веток, на котором детектор обязан сказать `grown`."""
+    lines = []
+    for i in range(5):
+        lines.append(
+            _line(
+                request_id=f"o{i}",
+                branch=f"issue-o{i}",
+                timestamp=f"2026-07-0{i + 1}T00:00:00.000Z",
+                cache_read=1_000,
+            )
+        )
+    for i in range(5):
+        lines.append(
+            _line(
+                request_id=f"n{i}",
+                branch=f"issue-n{i}",
+                timestamp=f"2026-08-0{i + 1}T00:00:00.000Z",
+                cache_read=100_000_000,
+            )
+        )
+    return lines
+
+
+class TestFormatReport:
+    """Главный человекочитаемый выход метрики — под тестом, а не «тонкий I/O»."""
+
+    def test_lists_branches_and_verdict(self) -> None:
+        stats = [_stats("issue-1-a", turns=4, per_turn=25_000)]
+        text = format_report(stats, detect_growth(stats), [])
+        assert "issue-1-a" in text
+        assert "вердикт" in text
+
+    def test_shows_sidechain_share(self) -> None:
+        """Субагенты — отдельная строка расхода, иначе непонятно, что чинить."""
+        stats = [
+            BranchStats(
+                branch="issue-1-a",
+                turns=4,
+                first_seen="2026-08-01",
+                last_seen="2026-08-02",
+                effective=100_000.0,
+                input_tokens=1,
+                output_tokens=1,
+                cache_read=1,
+                cache_write=1,
+                sidechain_effective=40_000.0,
+            )
+        ]
+        assert "sidechain" in format_report(stats, detect_growth(stats), []).lower()
+
+    def test_anomalies_reach_the_report(self) -> None:
+        text = format_report([], detect_growth([]), [Anomaly("no_usage_records", "0 файлов")])
+        assert "no_usage_records" in text
+
+
+class TestReportMode:
+    """`--report` обещан оператору в алерте: неизвестный флаг отправил бы его в тупик."""
+
+    def test_report_flag_accepted(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--report"])
+        assert token_trend.main() == 0
+        assert "issue-1-a" in capsys.readouterr().out
+
+    def test_alert_names_a_flag_the_cli_accepts(self) -> None:
+        """Гард против расхождения текста алерта и реального интерфейса.
+
+        В момент, ради которого метрика заведена, алерт не должен отправлять оператора
+        в `unrecognized arguments`.
+        """
+        old = [_stats(f"issue-o{i}", per_turn=1_000, first=f"2026-07-0{i + 1}") for i in range(5)]
+        new = [_stats(f"issue-n{i}", per_turn=500_000, first=f"2026-08-0{i + 1}") for i in range(5)]
+        verdict = detect_growth(old + new)
+        assert verdict.status == "grown"
+        text = format_report(old + new, verdict, []) + "\n" + format_alert(verdict, [])
+        flags = set(re.findall(r"--[a-z-]+", text))
+        assert flags
+        assert flags <= set(token_trend.CLI_FLAGS)
+
+
 class TestExitCodes:
     def test_hook_exits_zero_even_when_alerting(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """`SessionStart` отдаёт stdout в контекст только на exit 0 — ненулевой код съел бы алерт."""
-        monkeypatch.setattr(token_trend, "transcript_dir", lambda: tmp_path / "missing")
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / "a.jsonl").write_text("\n".join(_alerting_lines()), encoding="utf-8")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
         monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
         monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
+        assert token_trend.main() == 0
+        assert "вырос" in capsys.readouterr().out
+
+    def test_hook_exits_zero_when_stdout_is_closed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Закрытый stdout — тот же режим отказа, что описан в докстринге `emit`."""
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir()
+        (transcripts / "a.jsonl").write_text("\n".join(_alerting_lines()), encoding="utf-8")
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: transcripts)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--hook"])
+        monkeypatch.setattr("sys.stdin", io.StringIO('{"source": "startup"}'))
+
+        def exploding(_text: str, _stream: object = None) -> None:
+            raise OSError("stdout closed")
+
+        monkeypatch.setattr(token_trend, "emit", exploding)
         assert token_trend.main() == 0
