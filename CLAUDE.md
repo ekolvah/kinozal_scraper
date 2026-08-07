@@ -13,7 +13,7 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 - **PowerShell ≠ bash**: `$null` (не `/dev/null`), `$env:VAR` (не `$VAR`), backtick для line continuation. Для POSIX-скриптов вызывай Bash tool явно.
 - **`subprocess.run`, захватывающий вывод**: всегда `encoding="utf-8"`, и **никаких `or ""` на `stdout`/`stderr`** — `None` означает сломанный захват (поток-читатель умер на декодировании), и дефолт подменяет отказ пустотой. Оба правила энфорсит `tests/test_subprocess_encoding.py` (#364, #410). Если ребёнок — Python, ему нужен ещё `PYTHONUTF8=1`/`-X utf8`; это гард не ловит.
 - **Спорадические file-lock / AV-сканер** на длинных `git`/`pytest`: перед root-cause hunt — 1 retry. Если воспроизводится — тогда копай.
-- **`ci_check.py` / `git push` с pre-push хуком идут минуты** (тайминг — канон в [CI doc](docs/architecture/ci.md#local-pre-commit)): вывод замирает после `pytest` на шаге `pip-audit` — это **сетевой шаг, а не hang**. Не убивать процесс, не поллить — один foreground-вызов с `timeout: 600000` ([mindset §(2)](.claude/rules/mindset.md)).
+- **`ci_check.py` / `git push` с pre-push хуком идут минуты** (тайминг — канон в [CI doc](docs/architecture/ci.md#local-pre-commit)): вывод замирает после `pytest` на шаге `pip-audit` — это **сетевой шаг, а не hang**. Не убивать процесс, не поллить — один foreground-вызов с `timeout: 600000` ([mindset](.claude/rules/mindset.md)).
 - **`tasklist` в agent-песочнице (Bash-тул на Windows-машине мейнтейнера) возвращает пустой вывод** (0 строк даже без фильтра); в обычном терминале работает. Делать по нему вывод «процесс умер» нельзя — прецедент: так был ошибочно запущен второй экземпляр `ci_check`.
 
 ## Debugging
@@ -43,4 +43,4 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 
 - **[Principles](docs/architecture/principles.md)** — source of truth: принципы §I–VII + quality gates + governance. При конфликте с этим файлом выигрывает `principles.md`.
 - [Project map](docs/architecture/project-map.md) — **полное оглавление навигации** (какой файл на какой вопрос отвечает) + IA-policy (tier-модель, canonical-home). Отдельные доки сюда поштучно **не дублируем** — спускаемся через этот индекс.
-- [Mindset](.claude/rules/mindset.md) — операционный режим агента (токен-тактики + указатели на цель-функцию/принципы/workflow), always-load
+- [Mindset](.claude/rules/mindset.md) — токен-тактики Claude-харнесса + указатели на цель-функцию/принципы/процесс, always-load

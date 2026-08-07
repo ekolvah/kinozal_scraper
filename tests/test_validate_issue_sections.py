@@ -170,7 +170,7 @@ class TestAdrSection:
     поэтому гейтится **наличие решения**, а не его правильность. Без секции шаг
     оставался прозой в `plan.md`, а проза в длинном pipeline пропускается —
     то, что «не забыть сделать X», обязано становиться exit-code'ом
-    (`mindset.md` §«Скрипты > инструкции»).
+    (`principles.md` §Scripts over instructions).
     """
 
     def test_adr_section_required(self) -> None:

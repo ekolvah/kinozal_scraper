@@ -20,7 +20,16 @@ import yaml
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _DEFAULT_CATALOG = _REPO_ROOT / ".agents" / "orchestration" / "roles.yaml"
 _REQUIRED_ROLE_FIELDS = frozenset(
-    {"adapter", "authority", "entry_evidence", "completion_evidence", "activation", "max_runs"}
+    {
+        "contract",
+        "adapters",
+        "adapter",
+        "authority",
+        "entry_evidence",
+        "completion_evidence",
+        "activation",
+        "max_runs",
+    }
 )
 _REQUIRED_INITIAL_ROLES = frozenset(
     {"planner", "architect_reviewer", "implementer", "pr_reviewer", "fixer", "human_merge"}
@@ -61,6 +70,7 @@ class RouteDecision:
     missing_evidence: tuple[str, ...]
     completed_roles: tuple[str, ...]
     adapter: str
+    contract: str
     next_action: str
 
 
@@ -82,6 +92,9 @@ def load_catalog(path: Path | None = None) -> dict[str, Any]:
             raise ValueError(f"role {name!r} has an incomplete contract")
         if not isinstance(role["max_runs"], int) or role["max_runs"] < 1:
             raise ValueError(f"role {name!r} must have a positive max_runs")
+        adapters = role["adapters"]
+        if not isinstance(adapters, list) or role["adapter"] not in adapters:
+            raise ValueError(f"role {name!r} selects an adapter outside its declared entry points")
     return payload
 
 
@@ -126,6 +139,7 @@ def _decision(
             missing_evidence=missing,
             completed_roles=completed_roles,
             adapter="deterministic local command",
+            contract="",
             next_action=action or role,
         )
     return RouteDecision(
@@ -134,6 +148,7 @@ def _decision(
         missing_evidence=missing,
         completed_roles=completed_roles,
         adapter=str(role_data["adapter"]),
+        contract=str(role_data["contract"]),
         next_action=action or str(role_data["adapter"]),
     )
 

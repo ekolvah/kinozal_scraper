@@ -8,7 +8,7 @@ Why a script and not prose: an issue's priority lives as the single-select
 two `gh project` calls (add the issue to the project, then edit the field). That
 deterministic multi-step gh sequence used to live only in private agent memory —
 a violation of the Memory↔repo policy (`docs/architecture/project-map.md`) and of
-the `mindset.md` "Скрипты > инструкции" canon (prose steps get skipped in long
+the `principles.md` "Scripts over instructions" canon (prose steps get skipped in long
 pipelines). The agent process binds it: on issue creation the
 agent asks the user for the priority, then runs this script.
 

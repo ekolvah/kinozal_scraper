@@ -263,7 +263,7 @@ Not every regression deserves a test. Decide by what the regression actually bre
 - **Resource-only regression (CI minutes, tokens) → no guard test; use a forcing-function
   instead** (a doc note, a deny-list, a config gate). A test here costs maintenance plus CI
   time to guard something that, if it regresses, only ever wastes CI time — net negative
-  (goal-function priority (2), [mindset.md](../../.claude/rules/mindset.md)).
+  (goal-function priority (2), [principles.md](principles.md#goal-function)).
 
 **Precedent (#207):** a duplicate CI run (one `quality` job fired by both `pull_request`
 and a `push: issue-*` event for the same commit) wasted CI minutes. The fix was a one-line

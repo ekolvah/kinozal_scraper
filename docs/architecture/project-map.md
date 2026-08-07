@@ -65,7 +65,14 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 
 > **У каждого факта — ровно один дом. Прочие упоминания — только ссылка, никогда не перефраз.**
 
-- **Операционные процедурные правила** (workflow) → в `.claude/rules/` **целиком — правило и
+- **Общие правила для агентов** (процедура, контракты ролей, цель-функция, гейты) → в
+  `docs/architecture/` — их читает любой адаптер, а не только тот, чей каталог их держит.
+  Provider-специфичный файл (`.claude/**`, `.agents/skills/**`, `AGENTS.md`) несёт **только
+  интерфейс и permissions**: как приходит номер issue, чем вызывается сабагент, чем пишется
+  body. Гард — `tests/test_agent_process.py::test_provider_specific_adapter_files_do_not_define_shared_gates`
+  (денилист определений: таксономия severity, лимиты runbook'а, приоритеты цель-функции);
+  имена скриптов и команд в адаптере легитимны — запрещено определение, не указатель (#452).
+- **Операционные процедурные правила** (workflow) держатся **целиком — правило и
   rationale вместе**, не расщепляются (расщепление само воссоздаёт дубль). Старое место → указатель.
   **Rationale ≠ нарратив** (#375): остаётся решение + одна фраза «почему оно до сих пор верно»
   (без неё правило выглядит ритуалом и его снесёт следующий «упрощатель»); уезжает нарратив
@@ -247,7 +254,7 @@ orientation, которого в per-file docstring нет.
 **Гейт вместо прозы (#353).** Эта политика — сама была прозой и нарушалась дважды за одну сессию
 (process-факты про приоритет и про open_pr link-lag клались в память вместо репо). **Root-cause:**
 детерминируемый триггер (запись файла в memory-каталог) при уже существующей hook-инфраструктуре
-оставили неэнфорснутым — прямое нарушение `mindset.md` «Скрипты > инструкции». Полностью загейтить
+оставили неэнфорснутым — прямое нарушение [`principles.md` §Scripts over instructions](principles.md#scripts-over-instructions). Полностью загейтить
 «эта проза должна быть скриптом» нельзя (семантическое суждение, класс semantic-dup — не строим), но
 частный случай — запись в `.claude/projects/<slug>/memory/` — гейтится тривиально: `scripts/hooks.py`
 (`_is_memory_write` → `memory_write_signal`, PostToolUse exit 2) выдаёт **checkpoint-reminder** «это
@@ -267,10 +274,11 @@ false-positive-by-design, для редких memory-записей цена п�
 | `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
 | `docs/architecture/agent-process.md` | Agent-neutral roles, issue hand-off, deterministic gates, and adapter contract | ✅ |
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
-| `.claude/rules/mindset.md` | Операционный mindset main-сессии: **канон цель-функции** (3 приоритета) + операционные токен-тактики main-сессии + указатели на §I,§IV,§V/workflow — always-load | ✅ |
-| `.claude/commands/plan.md` | Claude planner adapter: fills the nine-section issue contract and hands off | ✅ |
+| `.claude/rules/mindset.md` | Токен-тактики Claude-харнесса в main-сессии + указатели на цель-функцию/принципы/процесс (канона не держит) — always-load | ✅ |
+| `.claude/commands/plan.md` | Claude planner adapter: интерфейс к [`agent-process.md` §Planner runbook](agent-process.md#planner-runbook) (шагов не дублирует) | ✅ |
+| `.agents/skills/plan-issue/` | Codex planner adapter, invoked as `$plan-issue #N`; тот же runbook, architect review выполняет сам | ✅ |
 | `.agents/skills/implement-issue/` | Codex implementer/fixer adapter, invoked as `$implement-issue #N` | ✅ |
-| `.claude/agents/architect-reviewer.md` | Персона ревьюера плана + что проверять + формат findings (coverage-first: градация, не фильтрация — #392); цель-функцию **читает из канона** `mindset.md §Цель-функция` (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |
+| `.claude/agents/architect-reviewer.md` | Персона ревьюера плана; контракт (что проверять, формат findings — coverage-first: градация, не фильтрация, #392) и цель-функцию **читает из канона** [`agent-process.md` §Architect review contract](agent-process.md#architect-review-contract) (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |
 | `.claude/settings.json`, `.codex/hooks.json`, `scripts/agent_policy.py` | Local deny policy for Claude and Codex; branch protection remains final | ✅ |
 | `.claude/settings.local.json` (gitignored) | Личный режим + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, личный) |
 
@@ -302,7 +310,7 @@ false-positive-by-design, для редких memory-записей цена п�
 |---|---|
 | `scripts/validate_issue_sections.py` | Verifies all nine issue sections, including `Agent handoff`; gate for planner and implementer adapters |
 | `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: единый каталог ролей, evidence-based next action и bounded escalation; не вызывает провайдеров и не заменяет required gates |
-| `scripts/review_gate.py` | Продолжается ли review/fix-цикл по PR: читает required-контексты на текущем head, controller-классификацию и число уже отревьюенных head'ов — и отдаёт вердикт exit-кодом (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` — отказ `gh`/захвата, не вердикт). Ничего не меняет и не постит. Правило «чиним только blocking, `should-fix` — решение мейнтейнера» дважды проигнорировали как прозу (#458, #465), поэтому у него теперь exit-код, а не пункт списка ([mindset §(2)](../../.claude/rules/mindset.md)). Severity берётся из уже посчитанного `claude-review` check-run, тело ревью не парсится; бюджет — `fixer.max_runs` из каталога ролей. Прозаический дом — [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
+| `scripts/review_gate.py` | Продолжается ли review/fix-цикл по PR: читает required-контексты на текущем head, controller-классификацию и число уже отревьюенных head'ов — и отдаёт вердикт exit-кодом (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` — отказ `gh`/захвата, не вердикт). Ничего не меняет и не постит. Правило «чиним только blocking, `should-fix` — решение мейнтейнера» дважды проигнорировали как прозу (#458, #465), поэтому у него теперь exit-код, а не пункт списка ([principles.md §Scripts over instructions](principles.md#scripts-over-instructions)). Severity берётся из уже посчитанного `claude-review` check-run, тело ревью не парсится; бюджет — `fixer.max_runs` из каталога ролей. Прозаический дом — [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
 | `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project 1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; вызывается агентом по контракту `agent-process.md` (спросил приоритет → скрипт). Механика переехала memory→repo (#351) |
 | `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
