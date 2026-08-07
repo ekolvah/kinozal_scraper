@@ -50,7 +50,13 @@ import pytest
 import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
-_AGENTS_DIR = Path(__file__).resolve().parent.parent / ".claude" / "agents"
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_AGENTS_DIR = _REPO_ROOT / ".claude" / "agents"
+
+# Дом контракта findings после #452: он общий для ролей, поэтому переехал из промпта
+# Claude-сабагента в provider-neutral канон. Гард обязан ехать за каноном — иначе он
+# стережёт копию, а не правило.
+_CANONICAL_FINDINGS_HOME = _REPO_ROOT / "docs" / "architecture" / "agent-process.md"
 
 # Формулировки, снятые в #392 как скрытый severity-фильтр. Гард на ИЗВЕСТНУЮ форму
 # дефекта — тот же жанр, что проверка gag-строки `no blocking issues` в
@@ -66,15 +72,17 @@ _REMOVED_SUPPRESSION = ("не раздувай", "беспощаден", "кра
 _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
-# Секция, которой агент объявляет, что возвращает findings по корзинам severity.
+# Секция, которой файл объявляет, что описывает findings по корзинам severity.
 # Именно её наличие делает coverage-first контракт осмысленным — поэтому зачисление
-# идёт по ней, а не по имени файла (см. `TestFindingsContractScope`).
-_FINDINGS_SECTION = "## Формат ответа"
+# идёт по ней, а не по имени файла (см. `TestFindingsContractScope`). Набор маркеров
+# закрыт и двуязычен по той же причине, что в `test_doc_headers.py`: канон переехал
+# в англоязычный `agent-process.md`, а промпт сабагента остался русским (#452).
+_FINDINGS_SECTIONS = ("## Формат ответа", "### Findings format")
 
 
 def declares_findings_contract(body: str) -> bool:
-    """Декларирует ли агент, что возвращает findings (и значит связан контрактом)."""
-    return _FINDINGS_SECTION in body
+    """Декларирует ли файл, что описывает контракт findings (и значит связан им)."""
+    return any(section in body for section in _FINDINGS_SECTIONS)
 
 
 def _agent_files() -> list[Path]:
@@ -86,12 +94,32 @@ def _agent_files() -> list[Path]:
 
 
 def _body(path: Path) -> str:
-    return path.read_text(encoding="utf-8").partition("---")[2].partition("\n---")[2]
+    """Тело промпта без frontmatter — либо весь файл, если frontmatter'а нет.
+
+    Канонический док (`_CANONICAL_FINDINGS_HOME`) frontmatter не несёт, и старая
+    безусловная `partition` вернула бы на нём пустую строку: файл молча выпал бы
+    из обеих проверок ниже, оставив их зелёными (§IV).
+    """
+    text = path.read_text(encoding="utf-8")
+    if not text.startswith("---"):
+        return text
+    return text.partition("---")[2].partition("\n---")[2]
+
+
+def _suppression_scope() -> list[Path]:
+    """Denylist снятых формулировок — по КАЖДОМУ исполняемому промпту плюс канон.
+
+    Расширение denylist'а строго консервативно: он может только отвергнуть лишнее.
+    Скоуп нельзя сужать до «файлов, декларирующих контракт»: после переезда контракта
+    (#452) промпт сабагента его не декларирует, и «будь краток» вернулось бы в
+    исполняемый файл, не покраснив ничего (#392).
+    """
+    return [*_agent_files(), _CANONICAL_FINDINGS_HOME]
 
 
 def _findings_agents() -> list[Path]:
-    """Агенты, связанные промпт-контрактом, — подмножество, не все (#407)."""
-    return [path for path in _agent_files() if declares_findings_contract(_body(path))]
+    """Файлы, связанные контрактом findings, — подмножество, не все (#407)."""
+    return [path for path in _suppression_scope() if declares_findings_contract(_body(path))]
 
 
 def _frontmatter(path: Path) -> dict[str, Any]:
@@ -169,20 +197,37 @@ class TestCoverageFirstPrompt:
     правки — именно переписанный промпт; без этих тестов поведенческое изменение
     ехало бы вообще без покрытия.
 
-    **Скоуп — подмножество агентов** (`_findings_agents`, #407), в отличие от
-    frontmatter-инвариантов выше: требовать `confidence`/`blocking` от агента,
-    который findings не возвращает, значит заставить контрибьютора ослабить тест."""
+    **Два скоупа внутри класса** (#452). Grading-контракт (`confidence`/`blocking`) —
+    к файлу, который контракт **декларирует**: требовать его от промпта, который
+    findings не описывает, значит заставить контрибьютора ослабить тест. Denylist
+    снятых формулировок — к `_suppression_scope()`, то есть ко всем исполняемым
+    промптам плюс канону: он может только отвергнуть лишнее, и сужать его до
+    декларантов значило бы выпустить «будь краток» обратно в промпт сабагента."""
 
     def test_scope_is_not_empty(self) -> None:
         """§IV на суженном списке: сузить — не значит позволить ему тихо схлопнуться
         в ноль. Без этого переименование секции формата обнуляет весь класс, и
         «никого не проверяем» становится неотличимо от «все прошли»."""
         assert _findings_agents(), (
-            "no agent declares a findings contract — either the section header "
-            f"({_FINDINGS_SECTION!r}) drifted or the scope collapsed silently (#407)"
+            "nothing declares a findings contract — either a section header "
+            f"({_FINDINGS_SECTIONS}) drifted or the scope collapsed silently (#407)"
         )
 
-    @pytest.mark.parametrize("path", _findings_agents(), ids=lambda p: p.name)
+    def test_findings_contract_scope_covers_the_canonical_home(self) -> None:
+        """Гард едет за каноном, а не остаётся стеречь опустевший промпт (#452).
+
+        После переезда контракта в `agent-process.md` исполняемый промпт сабагента
+        перестал его декларировать. Если бы denylist ехал только по декларантам,
+        снятая формулировка вернулась бы в промпт молча, а `test_scope_is_not_empty`
+        зеленел бы за счёт дока — дыра под галочкой."""
+        assert _CANONICAL_FINDINGS_HOME in _findings_agents(), (
+            f"{_CANONICAL_FINDINGS_HOME.name} no longer declares the findings contract"
+        )
+        assert set(_agent_files()) <= set(_suppression_scope()), (
+            "an executed agent prompt dropped out of the suppression denylist"
+        )
+
+    @pytest.mark.parametrize("path", _suppression_scope(), ids=lambda p: p.name)
     def test_removed_suppression_phrases_stay_out(self, path: Path) -> None:
         body = _body(path).lower()
         present = [phrase for phrase in _REMOVED_SUPPRESSION if phrase in body]
