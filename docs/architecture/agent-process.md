@@ -316,13 +316,22 @@ the known entry points in `adapters:` and the currently selected one in
 `adapter:`, so naming a provider is a default, not a restriction:
 
 - Claude `/plan #N` runs the planner runbook and invokes the local
-  `architect-reviewer` subagent. It plans and hands off; it does not implement.
+  `architect-reviewer` subagent.
 - Codex `$plan-issue #N` runs the same runbook through the repository skill in
   `.agents/skills/plan-issue/`. Having no local reviewer subagent, it performs
   the architect review itself against the contract above.
 - Codex `$implement-issue #N` runs the delivery flow through the skill in
   `.agents/skills/implement-issue/`. It implements and fixes; it does not
   invent a replacement plan.
+- Claude `/implement #N` runs the same delivery flow through
+  `.claude/commands/implement.md`, so one agent can carry an issue from plan to
+  PR. It is a declared entry point, not the selected default; `adapter:` in the
+  catalogue still names Codex for `implementer` and `fixer`.
+
+Every entry point above is declared in `adapter_files:` alongside `adapters:`,
+mapping each adapter to its carrier file or to an explicit `null` where the
+carrier is a GitHub Action or a person. That is what makes a role covered by one
+provider and not another a visible fact rather than a silent one (#473).
 
 To add another agent, add an adapter that points to this document, records its
 role in the hand-off or PR record, and passes the same issue, RED, CI, PR-link,
