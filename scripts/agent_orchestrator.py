@@ -23,6 +23,7 @@ _REQUIRED_ROLE_FIELDS = frozenset(
     {
         "contract",
         "adapters",
+        "adapter_routes",
         "adapter",
         "authority",
         "entry_evidence",
@@ -52,6 +53,7 @@ class WorkflowState:
     planner_runs: int = 0
     architect_runs: int = 0
     implementer_runs: int = 0
+    route: str | None = None
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,7 @@ class RouteDecision:
     adapter: str
     contract: str
     next_action: str
+    route: str | None
 
 
 def load_catalog(path: Path | None = None) -> dict[str, Any]:
@@ -95,7 +98,59 @@ def load_catalog(path: Path | None = None) -> dict[str, Any]:
         adapters = role["adapters"]
         if not isinstance(adapters, list) or role["adapter"] not in adapters:
             raise ValueError(f"role {name!r} selects an adapter outside its declared entry points")
+        _validate_adapter_routes(name, role, adapters)
     return payload
+
+
+def _validate_adapter_routes(name: str, role: Mapping[str, Any], adapters: list[Any]) -> None:
+    """A role with alternatives maps each one to exactly one route; the rest declare `null`.
+
+    Full coverage is what keeps the map and the default from drifting apart: the
+    selected ``adapter`` is already one of ``adapters``, so it stays reachable by
+    some route by construction.
+    """
+    routes = role["adapter_routes"]
+    if len(adapters) == 1:
+        if routes is not None:
+            raise ValueError(
+                f"role {name!r} has one route-independent adapter, so adapter_routes must be null"
+            )
+        return
+    if not isinstance(routes, dict) or not all(
+        isinstance(route, str) and isinstance(adapter, str) for route, adapter in routes.items()
+    ):
+        raise ValueError(f"role {name!r} must declare adapter_routes as a route-to-adapter map")
+    if sorted(routes.values()) != sorted(adapters):
+        raise ValueError(
+            f"role {name!r} adapter_routes must cover every declared adapter exactly once"
+        )
+
+
+def _catalogue_routes(catalogue: Mapping[str, Any]) -> list[str]:
+    known: set[str] = set()
+    for role in catalogue["roles"].values():
+        routes = role.get("adapter_routes")
+        if isinstance(routes, dict):
+            known.update(routes)
+    return sorted(known)
+
+
+def _role_adapter(name: str, role: Mapping[str, Any], route: str | None) -> str:
+    """The entry point this run reaches the role through.
+
+    A role with a single carrier — a GitHub Action, a human — is not a provider's
+    variant of anything, so it answers every known route with that carrier. That is
+    not a silent fallback: an unknown route never gets this far (see ``decide``).
+    """
+    routes = role.get("adapter_routes")
+    if route is None or routes is None:
+        return str(role["adapter"])
+    if route not in routes:
+        raise ValueError(
+            f"role {name!r} has no adapter for route {route!r}; "
+            f"its declared routes are {sorted(routes)}"
+        )
+    return str(routes[route])
 
 
 def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
@@ -141,15 +196,18 @@ def _decision(
             adapter="deterministic local command",
             contract="",
             next_action=action or role,
+            route=state.route,
         )
+    adapter = _role_adapter(role, role_data, state.route)
     return RouteDecision(
         next_role=role,
         status=status,
         missing_evidence=missing,
         completed_roles=completed_roles,
-        adapter=str(role_data["adapter"]),
+        adapter=adapter,
         contract=str(role_data["contract"]),
-        next_action=action or str(role_data["adapter"]),
+        next_action=action or adapter,
+        route=state.route,
     )
 
 
@@ -265,6 +323,12 @@ def _review_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDe
 
 def decide(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision:
     """Return the next bounded route step without performing it."""
+    if state.route is not None:
+        known = _catalogue_routes(catalogue)
+        if state.route not in known:
+            # Checked here rather than per role: a single-carrier step answers any
+            # route, so a typo would otherwise resolve into a confident wrong name.
+            raise ValueError(f"unknown run route {state.route!r}; declared routes are {known}")
     return (
         _planning_decision(state, catalogue)
         or _implementation_decision(state, catalogue)
@@ -313,6 +377,7 @@ def _state_from_json(payload: Mapping[str, Any]) -> WorkflowState:
             planner_runs=nonnegative_integer("planner_runs"),
             architect_runs=nonnegative_integer("architect_runs"),
             implementer_runs=nonnegative_integer("implementer_runs"),
+            route=optional_string("route"),
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid workflow state: {exc}") from exc

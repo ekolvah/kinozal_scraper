@@ -163,6 +163,179 @@ class TestRoleCatalogue:
             load_catalog(zero_budget_catalogue)
 
 
+_READY_FOR_REVIEW: dict[str, Any] = {
+    "architect_completed": True,
+    "implementation_completed": True,
+    "ci_passed": True,
+    "head_sha": "d" * 40,
+    "reviewed_heads": ("d" * 40,),
+}
+
+
+class TestRunRoute:
+    """`route` picks the adapter per run; the catalogue default stays the fallback (#475)."""
+
+    @pytest.mark.parametrize(
+        ("role", "overrides", "claude_adapter", "codex_adapter"),
+        [
+            (
+                "planner",
+                {"plan_completed": False},
+                "Claude /plan #N",
+                "Codex $plan-issue #N",
+            ),
+            (
+                "architect_reviewer",
+                {},
+                "Claude architect-reviewer subagent",
+                "Codex $plan-issue #N self-review",
+            ),
+            (
+                "implementer",
+                {"architect_completed": True},
+                "Claude /implement #N",
+                "Codex $implement-issue #N",
+            ),
+            (
+                "fixer",
+                {**_READY_FOR_REVIEW, "review_outcome": "rework"},
+                "Claude /implement #N review/fix loop",
+                "Codex $implement-issue #N review/fix loop",
+            ),
+        ],
+    )
+    def test_route_names_the_running_agent_and_leaves_the_contract_neutral(
+        self,
+        role: str,
+        overrides: dict[str, Any],
+        claude_adapter: str,
+        codex_adapter: str,
+    ) -> None:
+        catalogue = load_catalog()
+
+        claude = decide(_state(route="claude", **overrides), catalogue)
+        codex = decide(_state(route="codex", **overrides), catalogue)
+
+        assert claude.next_role == codex.next_role == role
+        assert (claude.adapter, claude.next_action) == (claude_adapter, claude_adapter)
+        assert (codex.adapter, codex.next_action) == (codex_adapter, codex_adapter)
+        # The role contract is provider-neutral; only its executor moves (#452).
+        assert claude.contract == codex.contract
+        assert (claude.route, codex.route) == ("claude", "codex")
+
+    def test_an_unset_route_keeps_the_catalogue_default(self) -> None:
+        catalogue = load_catalog()
+
+        decision = decide(_state(architect_completed=True), catalogue)
+
+        assert decision.adapter == catalogue["roles"]["implementer"]["adapter"]
+        assert decision.next_action == decision.adapter
+        assert decision.route is None
+
+    @pytest.mark.parametrize(
+        ("overrides", "role", "adapter"),
+        [
+            ({**_READY_FOR_REVIEW, "reviewed_heads": ()}, "pr_reviewer", "Claude code-review"),
+            ({**_READY_FOR_REVIEW, "review_outcome": "clean"}, "human_merge", "Human reviewer"),
+        ],
+    )
+    def test_a_single_carrier_role_is_route_independent(
+        self, overrides: dict[str, Any], role: str, adapter: str
+    ) -> None:
+        """A GitHub Action and a human are not a provider's variant of anything."""
+        decision = decide(_state(route="codex", **overrides), load_catalog())
+
+        assert decision.next_role == role
+        assert decision.adapter.startswith(adapter)
+        assert decision.route == "codex"
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {"plan_completed": False},
+            # A typo must not resolve silently at a single-carrier step either.
+            {**_READY_FOR_REVIEW, "reviewed_heads": ()},
+        ],
+    )
+    def test_a_route_unknown_to_the_catalogue_is_a_visible_error(
+        self, overrides: dict[str, Any]
+    ) -> None:
+        with pytest.raises(ValueError, match="unknown run route 'codx'") as failure:
+            decide(_state(route="codx", **overrides), load_catalog())
+
+        assert "claude" in str(failure.value) and "codex" in str(failure.value)
+
+    def test_a_role_without_the_requested_route_names_itself_and_its_routes(
+        self, tmp_path: Path
+    ) -> None:
+        """Asymmetric catalogues are the case the per-role check guards (#475)."""
+        catalogue = load_catalog()
+        planner = catalogue["roles"]["planner"]
+        planner["adapters"].append("Gemini /plan #N")
+        planner["adapter_routes"]["gemini"] = "Gemini /plan #N"
+        asymmetric = tmp_path / "roles.yaml"
+        asymmetric.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+        loaded = load_catalog(asymmetric)
+
+        assert decide(_state(plan_completed=False, route="gemini"), loaded).adapter.startswith(
+            "Gemini"
+        )
+        with pytest.raises(ValueError, match="'implementer'") as failure:
+            decide(_state(architect_completed=True, route="gemini"), loaded)
+
+        assert "claude" in str(failure.value) and "codex" in str(failure.value)
+
+    @pytest.mark.parametrize(
+        ("role", "mutation", "message"),
+        [
+            ("planner", {"adapter_routes": None}, "adapter_routes"),
+            ("planner", {"adapter_routes": {"claude": "Claude /plan #N"}}, "adapter_routes"),
+            (
+                "pr_reviewer",
+                {"adapter_routes": {"claude": "Claude code-review GitHub Action"}},
+                "route-independent",
+            ),
+        ],
+    )
+    def test_a_route_map_that_does_not_cover_the_adapters_fails_validation(
+        self, tmp_path: Path, role: str, mutation: dict[str, Any], message: str
+    ) -> None:
+        catalogue = load_catalog()
+        catalogue["roles"][role].update(mutation)
+        broken = tmp_path / "roles.yaml"
+        broken.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match=message):
+            load_catalog(broken)
+
+    def test_a_missing_route_map_is_an_incomplete_contract(self, tmp_path: Path) -> None:
+        catalogue = load_catalog()
+        del catalogue["roles"]["planner"]["adapter_routes"]
+        without_routes = tmp_path / "roles.yaml"
+        without_routes.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="incomplete contract"):
+            load_catalog(without_routes)
+
+    def test_cli_carries_the_route_from_the_state_file_to_stdout(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        state_file = tmp_path / "state.json"
+        state_file.write_text(
+            json.dumps(
+                {"plan_completed": True, "issue_kind": "nontrivial", "route": "codex"},
+            ),
+            encoding="utf-8",
+        )
+
+        main([str(state_file)])
+
+        result = json.loads(capsys.readouterr().out)
+        assert result["route"] == "codex"
+        assert result["adapter"] == "Codex $plan-issue #N self-review"
+        assert result["next_action"] == result["adapter"]
+
+
 class TestRouteResolution:
     def test_nontrivial_issue_routes_through_architect_then_implementer(self) -> None:
         catalogue = load_catalog()
@@ -418,6 +591,7 @@ class TestBlockedRoutes:
                 {"plan_completed": True, "issue_kind": "nontrivial", "fixer_revisions": -1},
                 "non-negative integer",
             ),
+            ({"plan_completed": True, "issue_kind": "nontrivial", "route": 7}, "route"),
         ],
     )
     def test_boolean_and_counter_state_errors_are_visible(
