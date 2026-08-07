@@ -5,6 +5,14 @@
 # `adapters`: a repository path, or an explicit `null` where the carrier is not a
 # file (a GitHub Action, a person). A missing key is a failure, not a skip — see
 # `tests/test_agent_process.py::test_every_declared_role_adapter_resolves_to_its_contract`.
+# `adapter_routes` maps a run route onto the entry point that runs it, so the
+# control plane can name the agent of *this* run instead of the file constant
+# (#475). Matching is literal and case-sensitive. A role with several adapters
+# maps every one of them to exactly one route, which makes `adapters` derivable
+# from it — kept anyway, because `adapter_files` is keyed on it and because a
+# single-carrier role has no route key at all. Such a role declares an explicit
+# `null`: its carrier is route-independent (a GitHub Action, a person), and a
+# missing key stays a failure, exactly as for `adapter_files`.
 roles:
   planner:
     contract: "docs/architecture/agent-process.md#planner-runbook"
@@ -14,6 +22,9 @@ roles:
     adapter_files:
       "Claude /plan #N": ".claude/commands/plan.md"
       "Codex $plan-issue #N": ".agents/skills/plan-issue/SKILL.md"
+    adapter_routes:
+      claude: "Claude /plan #N"
+      codex: "Codex $plan-issue #N"
     adapter: "Claude /plan #N"
     authority: "May edit the issue body; may not create an implementation branch or change production code."
     entry_evidence: "Open issue and repository context."
@@ -28,6 +39,9 @@ roles:
     adapter_files:
       "Claude architect-reviewer subagent": ".claude/agents/architect-reviewer.md"
       "Codex $plan-issue #N self-review": ".agents/skills/plan-issue/SKILL.md"
+    adapter_routes:
+      claude: "Claude architect-reviewer subagent"
+      codex: "Codex $plan-issue #N self-review"
     adapter: "Claude architect-reviewer subagent"
     authority: "Read-only plan review."
     entry_evidence: "Completed plan for a nontrivial change."
@@ -42,6 +56,9 @@ roles:
     adapter_files:
       "Codex $implement-issue #N": ".agents/skills/implement-issue/SKILL.md"
       "Claude /implement #N": ".claude/commands/implement.md"
+    adapter_routes:
+      claude: "Claude /implement #N"
+      codex: "Codex $implement-issue #N"
     adapter: "Codex $implement-issue #N"
     authority: "May create the issue branch, commit, push, and open a PR."
     entry_evidence: "Validated plan and architect-review evidence."
@@ -54,6 +71,7 @@ roles:
       - "Claude code-review GitHub Action"
     adapter_files:
       "Claude code-review GitHub Action": null
+    adapter_routes: null
     adapter: "Claude code-review GitHub Action"
     authority: "May publish review evidence; may not merge."
     entry_evidence: "Passing deterministic CI and a PR head SHA."
@@ -70,6 +88,9 @@ roles:
     adapter_files:
       "Codex $implement-issue #N review/fix loop": ".agents/skills/implement-issue/SKILL.md"
       "Claude /implement #N review/fix loop": ".claude/commands/implement.md"
+    adapter_routes:
+      claude: "Claude /implement #N review/fix loop"
+      codex: "Codex $implement-issue #N review/fix loop"
     adapter: "Codex $implement-issue #N review/fix loop"
     authority: "May make the minimal correction and push a fixer commit."
     entry_evidence: "Current-head rework or blocking review outcome."
@@ -82,6 +103,7 @@ roles:
       - "Human reviewer"
     adapter_files:
       "Human reviewer": null
+    adapter_routes: null
     adapter: "Human reviewer"
     authority: "May approve and merge after all required gates pass."
     entry_evidence: "Current-head clean review and passing required checks."
