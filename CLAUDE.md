@@ -26,7 +26,7 @@ Windows + git-bash. Все грабли ниже повторялись ≥2 р�
 
 ## PR Workflow
 
-Процедурные правила workflow (роли, ветка, PR-дисциплина, labels, гейты) — канон в **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Claude выполняет planner/reviewer через `/plan #N`; реализацию передаёт Codex через `$implement-issue #N`. Здесь не дублируем.
+Процедурные правила workflow (роли, ветка, PR-дисциплина, labels, гейты) — канон в **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Claude выполняет planner/reviewer через `/plan #N`, implementer/fixer — через `/implement #N`; дефолт каталога для них — Codex `$implement-issue #N`, маршрут выбирает user. Здесь не дублируем.
 
 ## Зависимости
 

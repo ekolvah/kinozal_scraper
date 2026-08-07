@@ -66,6 +66,15 @@ _PLANNER_RUNBOOK_MARKERS = (
 _SHARED_GATE_DEFINITIONS = (
     ("SHOULD-FIX", "docs/architecture/agent-process.md"),
     ("NICE-TO-HAVE", "docs/architecture/agent-process.md"),
+    # Preventive scope for the Claude implementer shim (#473), green on add: both
+    # strings live only in the canonical flow today. They replace the deleted
+    # `test_claude_implement_command_is_removed`, which guarded the absence of
+    # `.claude/commands/implement.md` because the fat 25-line copy removed in #444
+    # duplicated exactly these. The invariant worth keeping is the shim's *form*,
+    # not its absence, so it moves here where `_provider_files()` already covers
+    # `.claude/commands/**` by glob.
+    ("no blocking finding and every required check passes", "docs/architecture/agent-process.md"),
+    ("three improving iterations", "docs/architecture/agent-process.md"),
     ("at most three clarifying questions", "docs/architecture/agent-process.md"),
     ("three planning iterations", "docs/architecture/agent-process.md"),
     ("for a need that does not exist yet", "docs/architecture/agent-process.md"),
@@ -100,18 +109,6 @@ class TestAgentProcess:
     def test_issue_contract_has_nine_sections_and_handoff_last(self) -> None:
         assert len(REQUIRED_SECTIONS) == 9
         assert REQUIRED_SECTIONS[-1] == "Agent handoff"
-
-    def test_claude_and_codex_adapters_link_to_the_same_contract(self) -> None:
-        contract = "agent-process.md"
-        claude_plan = (_REPO / ".claude" / "commands" / "plan.md").read_text(encoding="utf-8")
-        codex_skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
-            encoding="utf-8"
-        )
-        assert contract in claude_plan
-        assert contract in codex_skill
-
-    def test_claude_implement_command_is_removed(self) -> None:
-        assert not (_REPO / ".claude" / "commands" / "implement.md").exists()
 
     def test_pr_template_records_agent_provenance(self) -> None:
         template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
@@ -252,6 +249,40 @@ class TestAgentProcess:
                 assert marker in process, f"canonical runbook lost {marker!r}"
                 assert marker not in text, f"{name} restates the runbook bound {marker!r}"
 
+    def test_every_declared_role_adapter_resolves_to_its_contract(self) -> None:
+        """Adapter coverage stays symmetric per role, or the gap is named (#473).
+
+        Keyed on declared file-ness — `adapter_files` — rather than on how many
+        adapters a role has. `pr_reviewer` and `human_merge` carry entry points that
+        are a GitHub Action and a person; a count-based predicate would red them the
+        moment either gained a second adapter, with no legal fix available. An
+        explicit `null` says "this entry point is not a file"; a missing key is a
+        failure, so a new adapter cannot arrive unresolved.
+        """
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+        )
+
+        for name, role in catalogue["roles"].items():
+            declared = role.get("adapter_files")
+            assert isinstance(declared, dict), f"role {name!r} declares no adapter_files mapping"
+            assert set(declared) == set(role["adapters"]), (
+                f"role {name!r}: adapter_files keys {sorted(declared)} do not match "
+                f"adapters {sorted(role['adapters'])}"
+            )
+
+            # "docs/architecture/agent-process.md#planner-runbook" -> the link fragment
+            # an adapter must carry; a link to the whole document is not a contract.
+            anchor = role["contract"].rsplit("/", maxsplit=1)[-1]
+            for adapter, relative in declared.items():
+                if relative is None:
+                    continue
+                path = _REPO / relative
+                assert path.exists(), f"role {name!r}: adapter {adapter!r} names missing {relative}"
+                assert anchor in path.read_text(encoding="utf-8"), (
+                    f"role {name!r}: {relative} does not point at its contract {anchor!r}"
+                )
+
     def test_provider_specific_adapter_files_do_not_define_shared_gates(self) -> None:
         """A provider file exposes an interface; the gate it obeys is defined elsewhere.
 
@@ -317,6 +348,10 @@ class TestAgentProcess:
             "agent-process.md": _REPO / "docs" / "architecture" / "agent-process.md",
             "SKILL.md": _REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md",
             "AGENTS.md": _REPO / "AGENTS.md",
+            # Every `fixer` adapter is a home for the loop decision, not only the
+            # Codex one — an unenrolled adapter is free to end the loop on its own
+            # reading of the findings, which is the #458/#465 recurrence (#473).
+            "implement.md": _REPO / ".claude" / "commands" / "implement.md",
         }
         texts = {name: path.read_text(encoding="utf-8") for name, path in homes.items()}
 

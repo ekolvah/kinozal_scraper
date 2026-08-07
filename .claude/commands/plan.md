@@ -17,4 +17,5 @@ Claude-интерфейс к роли `planner`. Шаги, лимиты и ко�
 2. Architect review на шаге 3 runbook'а выполняет **субагент `architect-reviewer`**
    (персона — `.claude/agents/architect-reviewer.md`), а не сама сессия.
 3. Запись body — `gh issue edit $ARGUMENTS --body "<полный текст со всеми 9 секциями>"`.
-4. На выходе: ссылка на issue + предложение запустить Codex `$implement-issue #$ARGUMENTS`.
+4. На выходе: ссылка на issue + передача `implementer`'у. Точку входа выбирает user: Codex
+   `$implement-issue #$ARGUMENTS` (дефолт каталога) либо `/implement $ARGUMENTS` в этой же сессии.

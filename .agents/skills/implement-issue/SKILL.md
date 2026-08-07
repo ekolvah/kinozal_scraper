@@ -6,8 +6,12 @@ description: Implement a reviewed GitHub issue in this repository. Use when the 
 # Implement issue
 
 Treat [the agent process](../../../docs/architecture/agent-process.md) as the
-workflow contract. This skill is the Codex adapter for the `implementer` and
-`fixer` roles; do not replace a missing plan with an invented implementation.
+workflow contract. This skill is the Codex adapter for the `implementer` role,
+whose contract is
+[the deterministic delivery flow](../../../docs/architecture/agent-process.md#deterministic-delivery-flow),
+and for the `fixer` role, whose contract is
+[the review-gate verdicts](../../../docs/architecture/agent-process.md#review-gate-verdicts).
+Do not replace a missing plan with an invented implementation.
 
 1. Run `python scripts/validate_issue_sections.py <N>`. If it fails, stop and
    direct the task to a `planner`; do not create a branch or edit production

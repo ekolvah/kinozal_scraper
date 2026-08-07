@@ -26,7 +26,7 @@
 - **Reference (canonical-home ссылки)** — кто на чей канон-факт ссылается (`§II`, `#bug-taxonomy`,
   `permissions.deny`). Слой **намеренно НЕ древовидный**: один факт нужен из нескольких контекстов
   (напр. `principles.md §II` — из `testing.md`, `.claude/rules/testing.md`, `architect-reviewer.md`,
-  `implement.md`), поэтому keyed-ссылки идут «вверх/вбок». Сделать их деревом нельзя — пришлось бы
+  `.importlinter`), поэтому keyed-ссылки идут «вверх/вбок». Сделать их деревом нельзя — пришлось бы
   либо дублировать факт в каждую ветку (перефраз-дрейф, нарушение canonical-home), либо лишить
   потребителя указателя на канон.
 
@@ -42,7 +42,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
 |---|---|---|
 | `CLAUDE.md` (root) | Тонкий роутер: что за app + env-граблии + указатели. **Цель < 200 строк** | каждую сессию, целиком |
 | `.claude/rules/*.md` | Операционные инструкции, **один файл = одна тема**; можно path-scoped через frontmatter `paths:` | каждую сессию (или только при работе с matching-путями) |
-| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral role catalogue: Codex skill, Claude planner/reviewer, control plane, and local hook policies | по вызову / при старте |
+| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral role catalogue: Codex and Claude adapters for planner/implementer/fixer, the Claude reviewer subagent, control plane, and local hook policies | по вызову / при старте |
 | `docs/architecture/*.md` | Reference: как устроен код (runtime/pipeline/storage/gemini/…) + этот project-map + `principles.md` | по требованию |
 | `docs/adr/*.md` | Explanation: почему решение принято именно такое и какие альтернативы отвергнуты (MADR 4.0.0, append-only) | по ссылке из state-дока |
 | `~/.claude/projects/<repo>/memory/` | Auto-memory: **только машинно/процессно-специфичное** (см. ниже) | `MEMORY.md` индекс — каждую сессию |
@@ -103,7 +103,7 @@ Claude Code задаёт не имена `docs/*` (их стандарт не р
   решение записи — это cost-of-change суждение; он гарантирует, что вопрос **задан**, ровно как
   `## Architect review` гарантирует не качество ревью, а его сознательность (#150).
 - **Формулировки принципов §I–VII** → канон в [`principles.md`](principles.md), ссылка по номеру
-  (`architect-reviewer.md`, `implement.md`); **нумерацию не трогать**.
+  (`architect-reviewer.md`, `mindset.md`); **нумерацию не трогать**.
 - **Энфорс-факты** (git-запреты) → канон = `.claude/settings.json` `permissions.deny` (+ синхрон-тест
   `tests/test_settings_deny.py`). **Mirror-файлов не создавать** — дубль по определению.
 - `.claude/rules/`-файл **не** содержит перефраз принципа или строки deny — только ссылку либо
@@ -276,6 +276,7 @@ false-positive-by-design, для редких memory-записей цена п�
 | `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
 | `.claude/rules/mindset.md` | Токен-тактики Claude-харнесса в main-сессии + указатели на цель-функцию/принципы/процесс (канона не держит) — always-load | ✅ |
 | `.claude/commands/plan.md` | Claude planner adapter: интерфейс к [`agent-process.md` §Planner runbook](agent-process.md#planner-runbook) (шагов не дублирует) | ✅ |
+| `.claude/commands/implement.md` | Claude implementer/fixer adapter, вызывается как `/implement N`: интерфейс к [`agent-process.md` §Deterministic delivery flow](agent-process.md#deterministic-delivery-flow) и [§Review-gate verdicts](agent-process.md#review-gate-verdicts). Несёт **только** харнесс-специфику (foreground-вызов долгих команд, `Edit`/`Write` вместо heredoc); шагов, exit-кодов и git-запретов не дублирует — предыдущая жирная версия была удалена именно за дубль, поэтому форму шима стережёт `_SHARED_GATE_DEFINITIONS` (#444, #473) | ✅ |
 | `.agents/skills/plan-issue/` | Codex planner adapter, invoked as `$plan-issue #N`; тот же runbook, architect review выполняет сам | ✅ |
 | `.agents/skills/implement-issue/` | Codex implementer/fixer adapter, invoked as `$implement-issue #N` | ✅ |
 | `.claude/agents/architect-reviewer.md` | Персона ревьюера плана; контракт (что проверять, формат findings — coverage-first: градация, не фильтрация, #392) и цель-функцию **читает из канона** [`agent-process.md` §Architect review contract](agent-process.md#architect-review-contract) (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |
