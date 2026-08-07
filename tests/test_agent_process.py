@@ -145,6 +145,18 @@ class TestAgentProcess:
         ):
             assert f"| `{role}` | {catalogue['roles'][role]['max_runs']} |" in process
 
+    def test_documented_carrier_selection_modes_match_the_catalogue(self) -> None:
+        """A selection mode nobody documented is a rule only the validator knows (#478)."""
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+        )
+
+        modes = {str(role["carrier_selection"]) for role in catalogue["roles"].values()}
+        assert "ci_failover" in modes, "no role declares the runtime-selected carrier mode"
+        for mode in modes:
+            assert f"`{mode}`" in process, f"selection mode {mode!r} is undocumented"
+
     def test_documented_control_plane_output_matches_route_decision(self) -> None:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
 
