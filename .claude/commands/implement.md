@@ -21,4 +21,6 @@ Claude-интерфейс к ролям `implementer` и `fixer`. Шаги, ге
 2. Правки файлов — `Edit`/`Write`, не heredoc-скрипт ([mindset](../rules/mindset.md)).
 3. `ci_check.py` и `git push` идут минуты — **один foreground-вызов с поднятым `timeout`**,
    без фона и без polling-цикла (тайминги и грабли — `CLAUDE.md` §Среда).
-4. На выходе: ссылка на PR, вердикт `review_gate` и явное «merge — твой шаг».
+4. Цикл заканчивает **exit-код `python -m scripts.review_gate <PR>`**, а не твоё чтение
+   findings. Всё, кроме «продолжай» и «готово», оставляет PR `not ready` — эскалируй.
+5. На выходе: ссылка на PR, вердикт гейта и явное «merge — твой шаг».

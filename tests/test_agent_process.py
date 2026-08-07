@@ -348,6 +348,10 @@ class TestAgentProcess:
             "agent-process.md": _REPO / "docs" / "architecture" / "agent-process.md",
             "SKILL.md": _REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md",
             "AGENTS.md": _REPO / "AGENTS.md",
+            # Every `fixer` adapter is a home for the loop decision, not only the
+            # Codex one — an unenrolled adapter is free to end the loop on its own
+            # reading of the findings, which is the #458/#465 recurrence (#473).
+            "implement.md": _REPO / ".claude" / "commands" / "implement.md",
         }
         texts = {name: path.read_text(encoding="utf-8") for name, path in homes.items()}
 
