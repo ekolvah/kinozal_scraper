@@ -231,7 +231,7 @@ class TestAggregate:
     def test_sidechain_turns_excluded_from_denominator(self) -> None:
         """Субагенты — дешёвые turn'ы: в знаменателе они маскировали бы реальный рост.
 
-        Spawn субагента — рекомендованная тактика (`mindset.md §(2)`), так что ветка с ними
+        Spawn субагента — рекомендованная тактика (`mindset.md`), так что ветка с ними
         разбавляла бы `per_turn` и детектор выдавал бы `steady` на растущей плате.
         """
         records, _ = parse_lines(

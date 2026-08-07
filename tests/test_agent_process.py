@@ -48,6 +48,52 @@ _AGENT_RECORD_FIELD_LABELS = (
     "fixer revisions",
     "skip/escalation",
 )
+# Anchors an adapter points at instead of restating the runbook it names.
+_PLANNER_RUNBOOK_ANCHOR = "agent-process.md#planner-runbook"
+_ARCHITECT_CONTRACT_ANCHOR = "agent-process.md#architect-review-contract"
+# Substance of the planner runbook: the numbers an adapter must not re-decide.
+_PLANNER_RUNBOOK_MARKERS = (
+    "at most three clarifying questions",
+    "three planning iterations",
+)
+# A shared gate is *defined* by an enumeration or a bound, never by naming a script:
+# `test_canonical_contract_and_codex_skill_keep_all_implementer_gates` deliberately
+# requires command names inside the adapters, so a blanket "no gates here" rule would
+# contradict it. The genre is `test_codex_adapter_defers_the_agent_record_contract...`:
+# what may not travel is the definition, not the pointer. Matching is case-sensitive on
+# purpose — an adapter saying `should-fix` findings do not gate its loop states an
+# interface fact, while `SHOULD-FIX` reproduces the severity taxonomy (#452).
+_SHARED_GATE_DEFINITIONS = (
+    ("SHOULD-FIX", "docs/architecture/agent-process.md"),
+    ("NICE-TO-HAVE", "docs/architecture/agent-process.md"),
+    ("at most three clarifying questions", "docs/architecture/agent-process.md"),
+    ("three planning iterations", "docs/architecture/agent-process.md"),
+    ("for a need that does not exist yet", "docs/architecture/agent-process.md"),
+    ("Minimize future bug-fixing and support", "docs/architecture/principles.md"),
+    ("Optimize token spend", "docs/architecture/principles.md"),
+    ("Preserve predictability and user control", "docs/architecture/principles.md"),
+    ("a script with an exit code and unit tests", "docs/architecture/principles.md"),
+)
+
+
+def _provider_files() -> list[Path]:
+    """Files whose path already names a provider: adapters, not canon (#452).
+
+    Derived from globs rather than a list, so the next Claude rule or Codex skill
+    falls under the invariant without anyone remembering to enrol it — the same
+    reason `test_doc_headers.py` scopes by `rglob`.
+    """
+    return [
+        *sorted((_REPO / ".claude" / "commands").rglob("*.md")),
+        *sorted((_REPO / ".claude" / "agents").rglob("*.md")),
+        *sorted((_REPO / ".claude" / "rules").rglob("*.md")),
+        *sorted((_REPO / ".agents" / "skills").rglob("SKILL.md")),
+        _REPO / "AGENTS.md",
+    ]
+
+
+def _codex_skills() -> list[Path]:
+    return sorted(path for path in (_REPO / ".agents" / "skills").glob("*") if path.is_dir())
 
 
 class TestAgentProcess:
@@ -162,13 +208,100 @@ class TestAgentProcess:
         for label in _AGENT_RECORD_FIELD_LABELS:
             assert label not in skill, f"Codex adapter restated {label!r}"
 
-    def test_codex_skill_is_finished_adapter_not_scaffold(self) -> None:
-        skill_dir = _REPO / ".agents" / "skills" / "implement-issue"
-        skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
-        manifest = (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
-        assert "TODO:" not in skill
-        assert "## Structuring This Skill" not in skill
-        assert "implement-issue" in manifest
+    def test_every_codex_skill_is_a_finished_adapter(self) -> None:
+        """Both Codex entry points, not only the first one that was written (#452).
+
+        The check was hardcoded to `implement-issue`, so a second skill would have
+        arrived without the single guard that separates an adapter from a scaffold.
+        The planner and implementer skills are pinned by name because their absence
+        is the failure this test exists to report: a scope derived purely from the
+        glob would go green on an empty directory.
+        """
+        skills = {path.name: path for path in _codex_skills()}
+        assert {"implement-issue", "plan-issue"} <= skills.keys(), (
+            f"a Codex role adapter is missing; found {sorted(skills)}"
+        )
+
+        for name, skill_dir in skills.items():
+            skill = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+            manifest = (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
+            assert "TODO:" not in skill, f"{name}: unfinished scaffold marker"
+            assert "## Structuring This Skill" not in skill, f"{name}: template section left in"
+            assert name in manifest, f"{name}: manifest does not name its own skill"
+
+    def test_planner_adapters_share_the_canonical_runbook(self) -> None:
+        """Both planner entry points point at one runbook instead of carrying a copy.
+
+        Mirrors how the implementer role already works: `## Deterministic delivery
+        flow` is canon and `implement-issue/SKILL.md` points at it (#452).
+        """
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert "## Planner runbook" in process, "the canonical planner runbook is missing"
+
+        adapters = {
+            "Claude /plan": _REPO / ".claude" / "commands" / "plan.md",
+            "Codex plan-issue": _REPO / ".agents" / "skills" / "plan-issue" / "SKILL.md",
+        }
+        for name, path in adapters.items():
+            assert path.exists(), f"{name}: planner adapter is missing"
+            text = path.read_text(encoding="utf-8")
+            assert _PLANNER_RUNBOOK_ANCHOR in text, (
+                f"{name} does not point at {_PLANNER_RUNBOOK_ANCHOR}"
+            )
+            for marker in _PLANNER_RUNBOOK_MARKERS:
+                assert marker in process, f"canonical runbook lost {marker!r}"
+                assert marker not in text, f"{name} restates the runbook bound {marker!r}"
+
+    def test_provider_specific_adapter_files_do_not_define_shared_gates(self) -> None:
+        """A provider file exposes an interface; the gate it obeys is defined elsewhere.
+
+        Both halves are asserted: the definition is present in its canonical home and
+        absent from every provider file. Checking only the absence would go green when
+        a definition is deleted rather than moved (#452).
+        """
+        provider_files = _provider_files()
+        assert provider_files, "the provider-file scope collapsed to nothing"
+
+        offenders: list[str] = []
+        for marker, canonical in _SHARED_GATE_DEFINITIONS:
+            home = (_REPO / canonical).read_text(encoding="utf-8")
+            assert marker in home, f"{canonical} lost the definition of {marker!r}"
+            offenders += [
+                f"{path.relative_to(_REPO).as_posix()} defines {marker!r} (canon: {canonical})"
+                for path in provider_files
+                if marker in path.read_text(encoding="utf-8")
+            ]
+        assert not offenders, "shared gates defined in provider files: " + "; ".join(offenders)
+
+    def test_canonical_process_defines_the_architect_review_contract(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert "## Architect review contract" in process
+        assert "### Findings format" in process
+        for word in ("BLOCKING", "SHOULD-FIX", "NICE-TO-HAVE", "confidence"):
+            assert word in process, f"the canonical findings contract lost {word!r}"
+
+        reviewer = (_REPO / ".claude" / "agents" / "architect-reviewer.md").read_text(
+            encoding="utf-8"
+        )
+        assert _ARCHITECT_CONTRACT_ANCHOR in reviewer, (
+            "the Claude reviewer adapter stopped pointing at the canonical contract"
+        )
+
+    def test_goal_function_canon_lives_in_the_principles_document(self) -> None:
+        """The shared goal function is readable without opening a provider directory.
+
+        The architect-review contract tells a reviewer to read it, so leaving the
+        canon under `.claude/` would keep exactly the Claude-only dependency this
+        change removes (#452).
+        """
+        principles = (_REPO / "docs" / "architecture" / "principles.md").read_text(encoding="utf-8")
+        assert "## Goal function" in principles
+        assert "### Scripts over instructions" in principles
+
+        mindset = (_REPO / ".claude" / "rules" / "mindset.md").read_text(encoding="utf-8")
+        assert "principles.md#goal-function" in mindset, (
+            "the Claude rules file no longer points at the goal-function canon"
+        )
 
     def test_codex_adapter_ends_the_loop_on_the_gate_verdict(self) -> None:
         skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(

@@ -12,6 +12,38 @@ labels, role hand-offs, the architect-review gate) is delegated to
 each gate is implemented and configured → [`ci.md`](ci.md). Which coverage gaps are
 consciously accepted → [`coverage-gaps.md`](coverage-gaps.md).
 
+## Goal function
+
+Every agent working in this repository optimises the same three goals, in this
+strict order. They are the *why* behind §I–§VII: when two principles pull in
+different directions, the higher goal decides.
+
+1. **Minimize future bug-fixing and support.** Root cause before fix — no
+   workaround or shim until the cause is named (§V). A visible anomaly beats a
+   silent skip: degradation reaches the operator as a marker, not as silence
+   (§IV). Bug fixes are test-first: failing test → code → green (§I).
+2. **Optimize token spend**, both development and runtime. Do not produce
+   artefacts, scripts, or infrastructure a task does not need (§VII); before an
+   expensive step — a subagent, a web search, a wide grep — weigh whether it
+   pays for itself. Watch for work for work.
+3. **Preserve predictability and user control.** One PR is one logical unit;
+   risky or shared-state actions are confirmed with the user even when they are
+   technically permitted. The procedural half of this goal lives in
+   [the agent process](agent-process.md).
+
+### Scripts over instructions
+
+A deterministic step of any multi-step workflow ("check X", "make sure Y",
+"extract Z") becomes **a script with an exit code and unit tests** on its pure
+functions, not a line of prose. Prohibitions become a deny-list, a hook, or
+branch protection — never "remember not to do X". Trigger heuristic: the moment
+a rule is phrased as "must not forget about X", X belongs in a script or a gate.
+
+**Rationale:** in long pipelines an agent skips prose items, while `exit 0/1`
+always runs (precedent: the follow-up fix that #121 needed after #120). This
+serves both higher goals at once — less future bug-fixing (goal 1) and less
+context that would not have worked anyway (goal 2).
+
 ## Core Principles
 
 ### I. Test-First (NON-NEGOTIABLE)
@@ -160,15 +192,13 @@ and existing repo packages.
 
 Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
 deliberately declines to script (see [`project-map.md`](project-map.md)). It is enforced at
-**plan stage** by the architect-review gate ([the agent process](agent-process.md)
-§9), whose reviewer persona reads the goal function from
-[`.claude/rules/mindset.md`](../../.claude/rules/mindset.md); the cloud `Claude code review`
+**plan stage** by the [architect review contract](agent-process.md#architect-review-contract),
+whose reviewer reads the [goal function](#goal-function) above; the cloud `Claude code review`
 workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
 
 **Rationale:** over-engineering is a systematic LLM-agent failure mode, cheapest to prevent
-as a standing default in the always-loaded operating context rather than as an after-the-fact
-"simplify" request. More code is more bug/support surface (goal-function priority 1) and more
-dev + runtime tokens (priority 2). The formulation follows official
+as a standing default than as an after-the-fact "simplify" request. More code is more
+bug/support surface (goal 1) and more dev + runtime tokens (goal 2). The formulation follows official
 [Claude Code best practices](https://code.claude.com/docs/en/best-practices) and Karpathy's
 CLAUDE.md (de-facto industry canon); it is **not** adopted as a third-party plugin/skill
 because that package's own review agent and pre-commit hook would duplicate the existing
@@ -212,11 +242,11 @@ implementation-detail references — kept short, kept linked, never the source
 of truth on principles.
 
 **Delegation of operational procedures.** This constitution retains the
-**principles §I–VII**, the **Quality Gates**, and this **Governance** section as
-its canon. The *operational procedural rules* (the former §Development Workflow)
-are delegated to [the agent process](agent-process.md) —
-the always-loaded operational tier in Claude Code's knowledge-carrier hierarchy
-(see [`project-map.md`](project-map.md)). Delegation does **not** weaken their
+**goal function**, the **principles §I–VII**, the **Quality Gates**, and this
+**Governance** section as its canon. The *operational procedural rules* (the
+former §Development Workflow) are delegated to
+[the agent process](agent-process.md) — the agent-neutral
+operational tier (see [`project-map.md`](project-map.md)). Delegation does **not** weaken their
 authority: those rules bind equally and `agent-process.md` is their
 single source of truth (other mentions are links only). Amending them happens
 in that file; amending the *delegation itself* (what is canon vs. delegated) is
@@ -237,4 +267,4 @@ reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
 
-**Version**: 2.3.2
+**Version**: 2.4.0

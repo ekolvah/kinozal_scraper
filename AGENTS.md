@@ -6,6 +6,8 @@ Claude or Codex adapter is the only permitted executor.
 
 ## Codex adapter
 
+- Plan an issue with `$plan-issue #N`; it runs the same planner runbook as any
+  other planner adapter and performs the architect review itself.
 - Implement a planned issue with `$implement-issue #N`.
 - Run `python scripts/validate_issue_sections.py N` before creating a branch.
   If it fails, stop and hand the issue back to a planner.

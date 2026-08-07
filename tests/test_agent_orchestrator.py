@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 import yaml
+from test_doc_links import slugify  # the repo's single GitHub-anchor implementation
 
 from scripts.agent_orchestrator import (
     WorkflowState,
@@ -36,9 +37,8 @@ def _state(**overrides: object) -> WorkflowState:
     return WorkflowState(**values)
 
 
-_EXAMPLE_STATE = (
-    Path(__file__).resolve().parent.parent / ".agents" / "orchestration" / "state.example.json"
-)
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+_EXAMPLE_STATE = _REPO_ROOT / ".agents" / "orchestration" / "state.example.json"
 
 
 class TestRoleCatalogue:
@@ -69,6 +69,63 @@ class TestRoleCatalogue:
                 "activation",
                 "max_runs",
             }
+
+    def test_catalogue_records_role_and_adapter_separately(self) -> None:
+        """Role identity and selected executor are two facts, not one string (#452).
+
+        `contract` is a resolvable pointer at the canonical section, not a fifth
+        prose field: `completion_evidence` already says what the role must produce,
+        and a second wording of it is what drifts.
+        """
+        catalogue = load_catalog()
+
+        for name, role in catalogue["roles"].items():
+            contract = str(role["contract"])
+            doc, _, anchor = contract.partition("#")
+            path = _REPO_ROOT / doc
+            assert path.exists(), f"role {name!r} points at a missing contract {contract!r}"
+            assert anchor, f"role {name!r} contract must name a section anchor"
+            headings = {
+                slugify(line.lstrip("# ").strip())
+                for line in path.read_text(encoding="utf-8").splitlines()
+                if line.startswith("#")
+            }
+            assert anchor in headings, f"role {name!r} contract anchor {anchor!r} does not resolve"
+            named = [
+                provider
+                for provider in ("Claude", "Codex")
+                if provider in contract or provider in str(role["completion_evidence"])
+            ]
+            assert not named, f"role {name!r} names {named} in its provider-neutral contract"
+
+    def test_selected_adapter_is_one_of_the_declared_entry_points(self) -> None:
+        """`adapter` is the default, `adapters` is the permitted set (#452)."""
+        catalogue = load_catalog()
+
+        for name, role in catalogue["roles"].items():
+            assert role["adapter"] in role["adapters"], (
+                f"role {name!r} selects an adapter that is not a declared entry point"
+            )
+        assert len(catalogue["roles"]["planner"]["adapters"]) > 1, (
+            "the planner catalogue entry still describes a single permitted executor"
+        )
+
+    def test_incomplete_role_contract_is_a_visible_validation_error(self, tmp_path: Path) -> None:
+        catalogue = load_catalog()
+        del catalogue["roles"]["planner"]["contract"]
+        without_contract = tmp_path / "roles.yaml"
+        without_contract.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="incomplete contract"):
+            load_catalog(without_contract)
+
+        mismatched = load_catalog()
+        mismatched["roles"]["planner"]["adapter"] = "Some other agent"
+        mismatched_path = tmp_path / "mismatched.yaml"
+        mismatched_path.write_text(yaml.safe_dump(mismatched), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="declared entry points"):
+            load_catalog(mismatched_path)
 
     def test_catalogue_reports_malformed_yaml_as_a_validation_error(self, tmp_path: Path) -> None:
         broken_catalogue = tmp_path / "roles.yaml"

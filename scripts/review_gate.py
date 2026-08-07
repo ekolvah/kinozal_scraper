@@ -7,7 +7,7 @@ Run it as a module so the cross-script imports resolve:
 The stop rule («fix blocking findings; `should-fix` is the maintainer's call and
 does not gate the loop») was prose in a long document, and prose was skipped
 twice: ten review rounds on PR #462 (#458) and four on #465, where rounds 3-4
-only fixed defects introduced by round 2's own fix. `mindset.md` §(2) names the
+only fixed defects introduced by round 2's own fix. `principles.md` §Scripts over instructions names the
 remedy — a deterministic step becomes a script with an exit code, not another
 bullet. This gate replaces the existing «inspect the reviewer outcome» step; it
 adds no round trip.

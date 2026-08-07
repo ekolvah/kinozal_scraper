@@ -2,7 +2,7 @@
 
 Приоритет issue живёт как single-select поле Priority в GitHub Project 1. Механика
 («добавь в проект + выставь поле») — детерминированный gh-вызов, который по канону
-`mindset.md` «Скрипты > инструкции» вынесен в скрипт с exit-code вместо прозы/памяти.
+`principles.md` §Scripts over instructions вынесен в скрипт с exit-code вместо прозы/памяти.
 
 `gh` — единственная внешняя граница, мокается через `subprocess.run` seam (§II — не
 мок внутренней логики), как `scripts/open_pr.py`. Захардкоженные option-ID — главный

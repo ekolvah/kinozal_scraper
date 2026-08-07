@@ -6,7 +6,7 @@
 индекс. Для `.py` presence этого канона уже загейчен — ruff `D100`/`D104`/`D419` в
 `check_lint` (#253, бывший bespoke `scripts/check_headers.py`). Для `.md` аналога не было:
 правило жило прозой с #164 и за это время соблюдалось меньше чем наполовину. Это ровно
-случай `mindset.md` §«Скрипты > инструкции» — детерминируемый шаг «убедись, что header
+случай `principles.md` §Scripts over instructions — детерминируемый шаг «убедись, что header
 есть» становится exit-code'ом.
 
 **Почему тест, а не запись в `CHECKS`.** `tests/test_ci_check.py::TestStepParity` требует

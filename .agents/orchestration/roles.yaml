@@ -1,5 +1,12 @@
+# `contract` points at the canonical section a role owes; `adapters` lists the
+# known entry points that satisfy it and `adapter` is the currently selected
+# default. Naming a provider is therefore a default, not a restriction.
 roles:
   planner:
+    contract: "docs/architecture/agent-process.md#planner-runbook"
+    adapters:
+      - "Claude /plan #N"
+      - "Codex $plan-issue #N"
     adapter: "Claude /plan #N"
     authority: "May edit the issue body; may not create an implementation branch or change production code."
     entry_evidence: "Open issue and repository context."
@@ -7,6 +14,10 @@ roles:
     activation: "The issue has no validated plan."
     max_runs: 1
   architect_reviewer:
+    contract: "docs/architecture/agent-process.md#architect-review-contract"
+    adapters:
+      - "Claude architect-reviewer subagent"
+      - "Codex $plan-issue #N self-review"
     adapter: "Claude architect-reviewer subagent"
     authority: "Read-only plan review."
     entry_evidence: "Completed plan for a nontrivial change."
@@ -14,6 +25,9 @@ roles:
     activation: "Nontrivial issue after planning."
     max_runs: 1
   implementer:
+    contract: "docs/architecture/agent-process.md#deterministic-delivery-flow"
+    adapters:
+      - "Codex $implement-issue #N"
     adapter: "Codex $implement-issue #N"
     authority: "May create the issue branch, commit, push, and open a PR."
     entry_evidence: "Validated plan and architect-review evidence."
@@ -21,6 +35,9 @@ roles:
     activation: "Plan and architecture gate are complete."
     max_runs: 1
   pr_reviewer:
+    contract: "docs/architecture/agent-process.md#roles-and-hand-offs"
+    adapters:
+      - "Claude code-review GitHub Action"
     adapter: "Claude code-review GitHub Action"
     authority: "May publish review evidence; may not merge."
     entry_evidence: "Passing deterministic CI and a PR head SHA."
@@ -30,6 +47,9 @@ roles:
     # describes that contract rather than a repository-wide invocation counter.
     max_runs: 1
   fixer:
+    contract: "docs/architecture/agent-process.md#review-gate-verdicts"
+    adapters:
+      - "Codex $implement-issue #N review/fix loop"
     adapter: "Codex $implement-issue #N review/fix loop"
     authority: "May make the minimal correction and push a fixer commit."
     entry_evidence: "Current-head rework or blocking review outcome."
@@ -37,6 +57,9 @@ roles:
     activation: "Only after actionable PR-review feedback."
     max_runs: 3
   human_merge:
+    contract: "docs/architecture/agent-process.md#review-gate-verdicts"
+    adapters:
+      - "Human reviewer"
     adapter: "Human reviewer"
     authority: "May approve and merge after all required gates pass."
     entry_evidence: "Current-head clean review and passing required checks."

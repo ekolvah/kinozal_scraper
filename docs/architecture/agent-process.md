@@ -57,6 +57,83 @@ Issues planned before this contract had eight sections. A planner adds
 `Agent handoff` before implementation; an implementer that sees the missing
 section stops and returns the issue to a planner rather than guessing it.
 
+## Planner runbook
+
+These steps belong to the `planner` role, not to an adapter. Every planner entry
+point runs them; an adapter adds only its own interface — how the issue number
+arrives, how a reviewer is invoked, how the body is written back.
+
+1. Run `python scripts/validate_issue_sections.py <N>`. A passing issue is
+   already planned: report that and stop.
+2. Close the reported gaps from the repository first — read and search the code
+   and documents before asking anyone. Ask at most three clarifying questions
+   per session, and only about decisions the repository cannot answer, such as
+   priority or product intent.
+3. Obtain the architect review defined below and record it in
+   `## Architect review`. Weave every BLOCKING finding into the other sections
+   before writing the body.
+4. Fill `## Agent handoff`, then write the complete body back to the issue.
+   Never discard existing text: restructure and extend it.
+5. Re-run the validator and iterate on what it reports. Stop after
+   three planning iterations; an issue still failing then goes back to the user
+   with the reason, rather than to an implementer.
+
+`## Test plan` names executable test nodes, because they are the contract of the
+RED step. `## Docs to update` lists documents or states explicitly that
+behaviour does not change. `## ADR` follows the cost-of-change filter in
+[`project-map.md`](project-map.md) §Canonical-home; the bar is deliberately
+narrow, so `none: <reason>` is a routine answer rather than an emergency one,
+and a record that is created also joins `## Docs to update`. A planner does not
+write implementation code, create the issue branch, or change labels — those
+belong to the implementer and to the issue templates.
+
+## Architect review contract
+
+An architect review reads a plan or issue body **before** execution; a finished
+diff belongs to the PR reviewer. It is read-only: it returns findings, and the
+planner applies them.
+
+It is required for every substantive change. A trivial one — a typo, a one-line
+non-behavioural edit — records `skipped: <reason>` in the issue section instead.
+One pass, never a loop.
+
+The reviewer reads the [goal function](principles.md#goal-function) and the
+principles themselves rather than working from memory, then checks the plan
+against §I–§VII and for:
+
+- **Scope creep** — documentation, refactor, and feature mixed into one PR.
+- **Work for work** — a script, agent, or abstraction created
+  for a need that does not exist yet, or duplicating what `ci_check`, the PR
+  review, or an existing test already does.
+- **A workaround with no named root cause** (§V).
+- **Avoidable tokens** — an expensive pass where a deterministic script would
+  do, or a model call a cheap pre-filter would answer.
+- **A test-first loophole** — a behavioural change declared an exception while a
+  deterministic part of it deserves RED → GREEN.
+- **A decision with no home** — high cost of change, several modules or
+  documents affected, and its rationale recorded nowhere.
+
+### Findings format
+
+Grade findings; do not filter them. A finding left unwritten is
+indistinguishable from a review that never ran (§IV), and the marginal one is
+always the cheapest to drop, so the rule is to shorten each finding rather than
+to report fewer of them. Filtering is the planner's job.
+
+Each finding is concrete and actionable, and carries a confidence — high,
+medium, or low — wherever the reviewer is unsure of the finding itself:
+
+- **BLOCKING** — a named §I–§VII violation, a design defect that would have to
+  be redone after execution, a symptom fix over an unnamed cause, or an
+  unverified assumption about an external API that the plan rests on.
+- **SHOULD-FIX** — a marked improvement to future support cost or token spend.
+- **NICE-TO-HAVE** — everything below those two bars. It moves down, it does not
+  disappear.
+- **OK** — what the plan already gets right.
+
+Bloat and self-justification in the plan are the review's *subject*, never an
+instruction to shorten its own output.
+
 ## Deterministic delivery flow
 
 1. Before creating an issue, fetch `origin/main` and inspect recent closed
@@ -221,6 +298,7 @@ role. In particular, `deterministic_ci` is a deliberate non-catalogue step.
 | `missing_evidence` | The exact evidence fields preventing the route from proceeding; empty for `next` and `escalate`. |
 | `completed_roles` | Snapshot of roles whose current completion evidence is satisfied; it is not an invocation history. When the selected route is `blocked`, that selected role is omitted even if it had prior completion evidence, because more evidence is now required. |
 | `adapter` | The existing human-launched adapter or deterministic command for `next_role`. |
+| `contract` | Pointer to the canonical section this role owes, so the output names the role contract and not only a provider command; empty for the non-catalogue `deterministic_ci` step. |
 | `next_action` | The concrete action to take, including a human-decision action for blocked or escalated routes. |
 
 | Role | Max runs | Scope |
@@ -232,12 +310,18 @@ role. In particular, `deterministic_ci` is a deliberate non-catalogue step.
 | `fixer` | 3 | per PR review/fix loop |
 | `human_merge` | 1 | terminal hand-off; descriptive, not a retry counter |
 
-An adapter supplies a role's user interface and platform-specific permissions:
+An adapter supplies a role's user interface and platform-specific permissions;
+the role contract itself is a section of this document. The catalogue records
+the known entry points in `adapters:` and the currently selected one in
+`adapter:`, so naming a provider is a default, not a restriction:
 
-- The Claude adapter exposes `/plan #N` and invokes the local architect
-  reviewer. It plans and hands off; it does not implement.
-- The Codex adapter exposes `$implement-issue #N` through the repository skill
-  in `.agents/skills/implement-issue/`. It implements and fixes; it does not
+- Claude `/plan #N` runs the planner runbook and invokes the local
+  `architect-reviewer` subagent. It plans and hands off; it does not implement.
+- Codex `$plan-issue #N` runs the same runbook through the repository skill in
+  `.agents/skills/plan-issue/`. Having no local reviewer subagent, it performs
+  the architect review itself against the contract above.
+- Codex `$implement-issue #N` runs the delivery flow through the skill in
+  `.agents/skills/implement-issue/`. It implements and fixes; it does not
   invent a replacement plan.
 
 To add another agent, add an adapter that points to this document, records its
