@@ -72,15 +72,19 @@ section stops and returns the issue to a planner rather than guessing it.
 4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
    closing reference. Fix CI findings up to three improving iterations and
    enter the review/fix loop. After every push, run `gh pr checks <PR> --watch`,
-   inspect a failed CI run with `gh run view <run-id> --log-failed`, and wait for
-   the current-head
-   reviewer outcome and all required checks. Fix every **blocking** finding in a
-   separate fixer commit, push it, then repeat. `should-fix` findings are
-   published in the PR and are the maintainer's decision — they do not gate the
-   loop. Chasing them is how one delivery PR reached ten review rounds with the
-   last four purely cosmetic (#458). The implementer reports the PR ready once the
-   current head has no blocking finding and every required check passes; a
-   `rework` outcome with its warning is a ready PR, not an unfinished one.
+   inspect a failed CI run with `gh run view <run-id> --log-failed`, then ask
+   `python -m scripts.review_gate <PR>` whether the loop continues. Its verdict
+   decides, not the agent's reading of the findings; the exit code is the
+   carrier. `should-fix` findings are published in the PR and are the
+   maintainer's decision — they do not gate the loop. Chasing them is how one
+   delivery PR reached ten review rounds with the last four purely cosmetic
+   (#458), and how another spent two of its four rounds fixing defects its own
+   previous fix had introduced (#465). Stated as a condition, the rule was
+   skipped both times, so it became an exit code (#467). A PR is ready once the
+   current head has
+   no blocking finding and every required check passes — that is what
+   `ready-for-human` reports, and a `rework` outcome with its warning is a ready
+   PR, not an unfinished one.
 
 One PR is one logical unit. Do not bypass hooks, push to `main`, force-push,
 reset hard, delete branches forcefully, self-merge, or replace these gates with
@@ -91,6 +95,30 @@ clean review. It leaves the PR `not ready`. GitHub cannot resume a local agent
 after its session ends; a session-driven adapter must stay active through this
 loop, while a fully autonomous loop needs separately operated runner and
 credential infrastructure.
+
+### Review-gate verdicts
+
+`python -m scripts.review_gate <PR>` reads the live PR — the required contexts
+on the current head, the review-controller classification, and how many distinct
+heads `claude-review` has already reviewed. It changes nothing and posts
+nothing.
+
+| Verdict | Exit code | Meaning |
+| --- | --- | --- |
+| `ready-for-human` | `0` | Loop over. Report the PR ready; remaining findings are the maintainer's call. |
+| `fix-blocking` | `10` | One minimal fixer commit, push, run the gate again. |
+| `escalate` | `20` | Loop over with a named anomaly: fixer budget spent, or a controller PR whose green check does not prove a review ran. |
+| `review-pending` | `30` | Evidence is not final. Wait once with `gh pr checks <PR> --watch`, then re-run the gate; a second `review-pending` goes to the maintainer, never a polling loop. |
+
+Exit `2` is not a verdict: it is a `gh`, argument, or capture failure, and it
+leaves the PR `not ready` the same way a missing review does. A red
+`claude-review` cannot distinguish blocking findings from an unavailable review
+— the check-run conclusion collapses both — so the gate names the ambiguity and
+the agent reads the run before changing anything. The fixer budget comes from
+`fixer.max_runs` in the role catalogue; the count is a proxy — distinct heads
+reviewed, minus the first — so a review re-run on an unchanged head spends none
+of it. The verdict goes into `## Agent record`, which is how a skipped gate
+becomes visible at merge time.
 
 ## Review-controller manual review
 

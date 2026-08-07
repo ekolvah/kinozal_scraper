@@ -29,18 +29,23 @@ workflow contract. This skill is the Codex adapter for the `implementer` and
    not restate it. The provider-neutral control plane in
    `.agents/orchestration/roles.yaml` may report the next bounded action; it
    does not replace the checks below or invoke a provider.
-7. Stay active through the review/fix loop. After every push, wait for all PR
-   checks with `gh pr checks <PR> --watch`. For a red CI check, inspect its
-   root cause with `gh run view <run-id> --log-failed`, fix it in a separate
-   fixer commit, push, and repeat. Inspect the reviewer outcome and threads for
-   the current head too; fix every actionable **blocking** finding in a separate
-   fixer commit, push, and repeat. `should-fix` findings are published for the
-   maintainer to decide on and do not gate the loop (#458). Do not report the PR
-   ready for merge until the current head has
-   no blocking finding and every required check passes; a `rework` outcome with
-   its warning is ready, not unfinished. A skipped, missing,
-   malformed, or pending review means `not ready`, not `clean`; report that
-   external blocker instead of handing off the merge decision.
+7. Stay active through the review/fix loop, and let
+   `python -m scripts.review_gate <PR>` end it — not your own reading of the
+   findings. After every push:
+   - `gh pr checks <PR> --watch` — wait for the checks to finish.
+   - `python -m scripts.review_gate <PR>` — its exit code is the decision.
+     - `0` (`ready-for-human`): stop, report the PR ready. Any `should-fix` or
+       `nice-to-have` finding is published for the maintainer to decide on and
+       is not another round (#458).
+     - `10` (`fix-blocking`): inspect the root cause — `gh run view <run-id>
+       --log-failed` for a red CI check, the review run for a red
+       `claude-review` — fix it in a separate fixer commit, push, go back to the
+       first bullet.
+     - `20` (`escalate`) / `30` (`review-pending`) / `2` (gh or capture
+       failure): the PR is `not ready`. Report the named blocker to the
+       maintainer instead of handing off the merge decision; for
+       `review-pending`, re-run the gate once first, never in a polling loop.
+   Record the final verdict in the PR's `## Agent record`.
 
 Never bypass hooks, force-push, push to `main`, self-merge, or use an agent
 statement in place of a required script or GitHub check.

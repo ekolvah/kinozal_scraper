@@ -359,6 +359,14 @@ not merge authority, so ordinary PRs neither poll GitHub comments nor start a se
 Transport or quota failure is therefore red and is re-run after the provider recovers; it is never
 silently treated as `clean`.
 
+Because that conclusion already separates blocking from non-blocking
+deterministically, the agent-side loop reads it rather than the review body:
+`python -m scripts.review_gate <PR>` turns the check's state on the current head
+into an exit code, so «only `blocking` blocks» stops being a sentence an agent
+can skip. Its verdicts are documented in
+[agent-process.md](agent-process.md#review-gate-verdicts); the gate is read-only
+and is not a CI job.
+
 An ordinary fork PR has no Claude OAuth secret and remains red for its missing
 outcome; a maintainer moves it onto a repository branch to run the required
 review. Separately, no required context is trusted evidence on any fork: all

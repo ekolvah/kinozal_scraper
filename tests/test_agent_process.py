@@ -8,9 +8,12 @@ from pathlib import Path
 import yaml
 
 from scripts.agent_orchestrator import RouteDecision, WorkflowState
+from scripts.review_gate import VERDICT_EXIT_CODES
 from scripts.validate_issue_sections import REQUIRED_SECTIONS
 
 _REPO = Path(__file__).resolve().parent.parent
+# The readiness condition itself: canonical in agent-process.md, nowhere else.
+_STOP_CONDITION = "no blocking finding and every required check passes"
 _IMPLEMENTER_CONTRACT_MARKERS = (
     "validate_issue_sections.py",
     "issue_branch.py",
@@ -20,7 +23,9 @@ _IMPLEMENTER_CONTRACT_MARKERS = (
     "gh pr checks",
     "gh run view",
     "review/fix loop",
-    "no blocking finding and every required check passes",
+    # The stop condition is no longer restated per adapter — every home routes the
+    # decision through the one gate with an exit code (#467).
+    "scripts.review_gate",
     "`not ready`",
 )
 # The record fields as the canonical section words them; adapters point here instead of copying.
@@ -165,13 +170,35 @@ class TestAgentProcess:
         assert "## Structuring This Skill" not in skill
         assert "implement-issue" in manifest
 
-    def test_codex_adapter_requires_clean_review_before_merge_handoff(self) -> None:
+    def test_codex_adapter_ends_the_loop_on_the_gate_verdict(self) -> None:
         skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
             encoding="utf-8"
         )
         assert "review/fix loop" in skill
-        assert "no blocking finding and every required check passes" in skill
+        assert "python -m scripts.review_gate" in skill
         assert "not ready" in skill
+
+    def test_review_fix_loop_stop_rule_lives_only_in_the_gate(self) -> None:
+        """The condition failed twice as prose (#458, #465); it gets one home now (#467)."""
+        homes = {
+            "agent-process.md": _REPO / "docs" / "architecture" / "agent-process.md",
+            "SKILL.md": _REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md",
+            "AGENTS.md": _REPO / "AGENTS.md",
+        }
+        texts = {name: path.read_text(encoding="utf-8") for name, path in homes.items()}
+
+        restating = [name for name, text in texts.items() if _STOP_CONDITION in text]
+        assert restating == ["agent-process.md"], f"stop condition restated in {restating}"
+        for name, text in texts.items():
+            assert "scripts/review_gate.py" in text or "scripts.review_gate" in text, (
+                f"{name} does not route the loop decision through the gate"
+            )
+
+    def test_documented_review_gate_verdicts_match_the_implementation(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        for verdict, exit_code in VERDICT_EXIT_CODES.items():
+            assert f"| `{verdict}` | `{exit_code}` |" in process
 
     def test_canonical_contract_and_codex_skill_keep_all_implementer_gates(self) -> None:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
@@ -184,11 +211,7 @@ class TestAgentProcess:
 
     def test_permanent_codex_rules_preserve_post_pr_readiness_gate(self) -> None:
         agents = (_REPO / "AGENTS.md").read_text(encoding="utf-8")
-        for marker in (
-            "review/fix loop",
-            "`not ready`",
-            "no blocking finding and every required check passes",
-        ):
+        for marker in ("review/fix loop", "`not ready`", "scripts.review_gate"):
             assert marker in agents, f"AGENTS.md lost {marker!r}"
 
     def test_review_controller_policy_requires_manual_ide_review(self) -> None:
