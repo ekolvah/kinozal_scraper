@@ -12,6 +12,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 from typing import Any
 
@@ -23,6 +24,7 @@ from scripts.set_issue_priority import (
     item_id_from_add_json,
     main,
     option_id_for_level,
+    priority_from_project_json,
 )
 
 
@@ -59,13 +61,73 @@ class TestItemIdFromAddJson:
             item_id_from_add_json(bad)
 
 
+class TestPriorityFromProjectJson:
+    ISSUE_URL = "https://github.com/ekolvah/kinozal_scraper/issues/376"
+
+    def test_reads_priority_for_matching_issue_url(self) -> None:
+        payload = json.dumps(
+            {
+                "items": [
+                    {
+                        "content": {"url": self.ISSUE_URL, "number": 376},
+                        "priority": "High",
+                    }
+                ]
+            }
+        )
+
+        assert priority_from_project_json(payload, self.ISSUE_URL) == "High"
+
+    def test_missing_project_item_returns_none(self) -> None:
+        payload = json.dumps(
+            {
+                "items": [
+                    {
+                        "content": {
+                            "url": "https://github.com/ekolvah/other/issues/376",
+                            "number": 376,
+                        },
+                        "priority": "High",
+                    }
+                ]
+            }
+        )
+
+        assert priority_from_project_json(payload, self.ISSUE_URL) is None
+
+    def test_missing_priority_returns_none(self) -> None:
+        payload = json.dumps({"items": [{"content": {"url": self.ISSUE_URL}}]})
+
+        assert priority_from_project_json(payload, self.ISSUE_URL) is None
+
+    def test_rejects_malformed_payload(self) -> None:
+        with pytest.raises(ValueError):
+            priority_from_project_json("not json", self.ISSUE_URL)
+
+    def test_rejects_unknown_priority(self) -> None:
+        payload = json.dumps(
+            {
+                "items": [
+                    {
+                        "content": {"url": self.ISSUE_URL},
+                        "priority": "Urgent",
+                    }
+                ]
+            }
+        )
+
+        with pytest.raises(ValueError, match="unsupported Priority"):
+            priority_from_project_json(payload, self.ISSUE_URL)
+
+
 class _GhDispatcher:
     """Дубль внешней границы `gh`: диспатчит `subprocess.run` по argv, пишет вызовы
     в `calls`. Позволяет проверить оркестрацию `main()` (какие команды и с какими
     флагами), не трогая сеть/GitHub."""
 
-    def __init__(self, *, edit_fails: bool = False) -> None:
+    def __init__(self, *, edit_fails: bool = False, project_payload: str | None = None) -> None:
         self.edit_fails = edit_fails
+        self.project_payload = project_payload
         self.calls: list[list[str]] = []
 
     def __call__(
@@ -77,11 +139,17 @@ class _GhDispatcher:
             return subprocess.CompletedProcess(cmd, code, out, "boom" if code else "")
 
         if cmd[:3] == ["gh", "issue", "view"]:
-            return done(0, '{"url":"https://github.com/ekolvah/kinozal_scraper/issues/351"}')
+            return done(
+                0,
+                json.dumps({"url": f"https://github.com/ekolvah/kinozal_scraper/issues/{cmd[3]}"}),
+            )
         if cmd[:3] == ["gh", "project", "item-add"]:
             return done(0, '{"id":"PVTI_item"}')
         if cmd[:3] == ["gh", "project", "item-edit"]:
             return done(1 if self.edit_fails else 0, "")
+        if cmd[:3] == ["gh", "project", "item-list"]:
+            assert self.project_payload is not None
+            return done(0, self.project_payload)
         raise AssertionError(f"unexpected command: {cmd}")
 
     def cmds(self) -> list[str]:
@@ -123,6 +191,51 @@ class TestMain:
             main(["351", "High"])
         assert exc.value.code != 0
         assert capsys.readouterr().err.strip() != ""
+
+
+class TestCheckMode:
+    def test_priority_present_exits_zero_without_mutation(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        payload = json.dumps(
+            {
+                "items": [
+                    {
+                        "content": {"url": "https://github.com/ekolvah/kinozal_scraper/issues/376"},
+                        "priority": "High",
+                    }
+                ]
+            }
+        )
+        disp = _GhDispatcher(project_payload=payload)
+        monkeypatch.setattr(subprocess, "run", disp)
+
+        main(["376", "--check"])
+
+        assert "priority is High" in capsys.readouterr().out
+        assert all(
+            cmd[:3] not in (["gh", "project", "item-add"], ["gh", "project", "item-edit"])
+            for cmd in disp.calls
+        )
+
+    def test_missing_priority_exits_nonzero_with_actionable_error(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        payload = json.dumps(
+            {
+                "items": [
+                    {"content": {"url": "https://github.com/ekolvah/kinozal_scraper/issues/376"}}
+                ]
+            }
+        )
+        disp = _GhDispatcher(project_payload=payload)
+        monkeypatch.setattr(subprocess, "run", disp)
+
+        with pytest.raises(SystemExit) as exc:
+            main(["376", "--check"])
+
+        assert exc.value.code != 0
+        assert "has no Priority" in capsys.readouterr().err
 
 
 if __name__ == "__main__":

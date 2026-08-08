@@ -16,6 +16,7 @@ _REPO = Path(__file__).resolve().parent.parent
 _STOP_CONDITION = "no blocking finding and every required check passes"
 _IMPLEMENTER_CONTRACT_MARKERS = (
     "validate_issue_sections.py",
+    "set_issue_priority.py",
     "issue_branch.py",
     "check_red.py",
     "ci_check.py",
@@ -388,6 +389,22 @@ class TestAgentProcess:
         for marker in _IMPLEMENTER_CONTRACT_MARKERS:
             assert marker in process, f"canonical process lost {marker!r}"
             assert marker in skill, f"Codex adapter lost {marker!r}"
+
+    def test_priority_gate_is_required_before_issue_branch(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        delivery = process.split("## Deterministic delivery flow", maxsplit=1)[1]
+        skill = (_REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        agents = (_REPO / "AGENTS.md").read_text(encoding="utf-8")
+        command = "set_issue_priority.py <N> --check"
+
+        for name, text in (("canonical flow", delivery), ("Codex skill", skill)):
+            assert command in text, f"{name} lost the priority pre-flight"
+            assert text.index(command) < text.index("issue_branch.py"), (
+                f"{name} checks Priority only after branch creation"
+            )
+        assert "set_issue_priority.py N --check" in agents
 
     def test_permanent_codex_rules_preserve_post_pr_readiness_gate(self) -> None:
         agents = (_REPO / "AGENTS.md").read_text(encoding="utf-8")
