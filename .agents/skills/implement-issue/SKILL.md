@@ -16,24 +16,26 @@ Do not replace a missing plan with an invented implementation.
 1. Run `python scripts/validate_issue_sections.py <N>`. If it fails, stop and
    direct the task to a `planner`; do not create a branch or edit production
    code.
-2. Read the issue and the repository areas it names. Create the branch only
+2. Run `python scripts/set_issue_priority.py <N> --check`. If it fails, stop
+   before branch creation and have the maintainer set the issue Priority.
+3. Read the issue and the repository areas it names. Create the branch only
    with `python scripts/issue_branch.py <N>`.
-3. Write the exact tests named in `## Test plan`, then run
+4. Write the exact tests named in `## Test plan`, then run
    `python scripts/check_red.py <test paths>`. Commit successful RED evidence
    as `test: failing tests for #<N>`. A signature-only stub is permitted only
    when necessary for a test to import.
-4. Implement `## Implementation outline`, running focused tests until they are
+5. Implement `## Implementation outline`, running focused tests until they are
    green. Update `## Docs to update` and any ADR named by the issue.
-5. Run `python scripts/ci_check.py` once in the foreground. Fix root causes,
+6. Run `python scripts/ci_check.py` once in the foreground. Fix root causes,
    not symptoms.
-6. Create the PR with `python scripts/open_pr.py`, using the repository
+7. Create the PR with `python scripts/open_pr.py`, using the repository
    template. Fill `## Agent record` exactly as
    [agent records and adapters](../../../docs/architecture/agent-process.md#agent-records-and-adapters)
    defines it; that section is the canonical field list, and this skill does
    not restate it. The provider-neutral control plane in
    `.agents/orchestration/roles.yaml` may report the next bounded action; it
    does not replace the checks below or invoke a provider.
-7. Stay active through the review/fix loop, and let
+8. Stay active through the review/fix loop, and let
    `python -m scripts.review_gate <PR>` end it — not your own reading of the
    findings. After every push:
    - `gh pr checks <PR> --watch` — wait for the checks to finish.

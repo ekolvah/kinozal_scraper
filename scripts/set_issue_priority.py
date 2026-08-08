@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Set an issue's Priority field in GitHub Project 1, or fail visibly (#351).
+"""Set or verify an issue's Priority field in GitHub Project 1.
 
 Usage: python scripts/set_issue_priority.py <N> <High|Medium|Low>  (N = bare issue number)
+       python scripts/set_issue_priority.py <N> --check
 
 Why a script and not prose: an issue's priority lives as the single-select
 **Priority** field of Project 1 ("kinozal_scraper — backlog & priority"), set via
@@ -11,6 +12,11 @@ a violation of the Memory↔repo policy (`docs/architecture/project-map.md`) and
 the `principles.md` "Scripts over instructions" canon (prose steps get skipped in long
 pipelines). The agent process binds it: on issue creation the
 agent asks the user for the priority, then runs this script.
+
+The read-only ``--check`` mode is the implementation pre-flight gate (#376):
+it proves that the selected issue has a supported Priority before a branch is
+created. It matches the exact issue URL, not only its number, because a user
+project can contain issues from more than one repository.
 
 The Project/field/option IDs are hardcoded constants here (not in prose, not in
 memory) — and because that hardcoding is this script's main drift source, ANY
@@ -70,7 +76,29 @@ def item_id_from_add_json(output: str | None) -> str:
 
 def priority_from_project_json(output: str | None, issue_url: str) -> str | None:
     """Return the Priority for ``issue_url`` from ``gh project item-list`` JSON."""
-    raise NotImplementedError
+    try:
+        data: Any = json.loads(output or "")
+    except (json.JSONDecodeError, TypeError) as exc:
+        raise ValueError(f"could not parse `gh project item-list` output: {output!r}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        raise ValueError(f"`gh project item-list` returned no items list: {output!r}")
+
+    for item in data["items"]:
+        if not isinstance(item, dict):
+            raise ValueError(f"`gh project item-list` returned a malformed item: {item!r}")
+        content = item.get("content")
+        if not isinstance(content, dict) or content.get("url") != issue_url:
+            continue
+        priority = item.get("priority")
+        if priority is None or priority == "":
+            return None
+        if not isinstance(priority, str) or priority.lower() not in OPTION_IDS:
+            allowed = "/".join(name.capitalize() for name in OPTION_IDS)
+            raise ValueError(
+                f"issue {issue_url} has unsupported Priority {priority!r}; expected {allowed}"
+            )
+        return priority.capitalize()
+    return None
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
@@ -142,11 +170,61 @@ def _item_edit(item_id: str, option_id: str) -> None:
     )
 
 
+def _project_items_json() -> str:
+    return _checked(
+        [
+            "gh",
+            "project",
+            "item-list",
+            PROJECT_NUMBER,
+            "--owner",
+            PROJECT_OWNER,
+            "--limit",
+            "1000",
+            "--format",
+            "json",
+        ],
+        "gh project item-list",
+    )
+
+
+def _check_priority(issue: int) -> None:
+    issue_url = _issue_url(issue)
+    priority = priority_from_project_json(_project_items_json(), issue_url)
+    if priority is None:
+        print(
+            f"error: issue #{issue} has no Priority in GitHub Project {PROJECT_NUMBER}; "
+            f"run `python scripts/set_issue_priority.py {issue} <High|Medium|Low>` first",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print(f"ok: issue #{issue} priority is {priority}")
+
+
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Set an issue's Priority in Project 1 (#351).")
+    parser = argparse.ArgumentParser(
+        description="Set or verify an issue's Priority in Project 1 (#351, #376)."
+    )
     parser.add_argument("issue", type=int, help="issue number")
-    parser.add_argument("level", help="priority level: High | Medium | Low")
+    parser.add_argument("level", nargs="?", help="priority level: High | Medium | Low")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify that the issue already has a supported Priority; do not mutate Project 1",
+    )
     ns = parser.parse_args(argv)
+
+    if ns.check:
+        if ns.level is not None:
+            parser.error("LEVEL and --check are mutually exclusive")
+        try:
+            _check_priority(ns.issue)
+        except (RuntimeError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            sys.exit(1)
+        return
+    if ns.level is None:
+        parser.error("LEVEL is required unless --check is used")
 
     try:
         option_id = option_id_for_level(ns.level)

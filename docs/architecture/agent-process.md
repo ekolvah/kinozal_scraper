@@ -146,11 +146,12 @@ instruction to shorten its own output.
    then set it with `python scripts/set_issue_priority.py <N> <priority>`.
 2. The planner researches the repository, writes the issue contract, obtains
    the architect review, fills `Agent handoff`, and validates the result.
-3. The implementer validates the issue again, creates the branch only with
-   `python scripts/issue_branch.py <N>`, writes and proves failing tests, then
-   commits RED before production logic. Implement the agreed outline, update
-   required documentation and ADRs, and run the local CI gate once in the
-   foreground.
+3. The implementer validates the issue again, verifies its Project Priority
+   with `python scripts/set_issue_priority.py <N> --check`, then creates the
+   branch only with `python scripts/issue_branch.py <N>`. It writes and proves
+   failing tests, then commits RED before production logic. Implement the
+   agreed outline, update required documentation and ADRs, and run the local CI
+   gate once in the foreground.
 4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
    closing reference. Fix CI findings up to three improving iterations and
    enter the review/fix loop. After every push, run `gh pr checks <PR> --watch`,

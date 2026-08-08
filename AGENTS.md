@@ -11,6 +11,8 @@ Claude or Codex adapter is the only permitted executor.
 - Implement a planned issue with `$implement-issue #N`.
 - Run `python scripts/validate_issue_sections.py N` before creating a branch.
   If it fails, stop and hand the issue back to a planner.
+- Run `python scripts/set_issue_priority.py N --check` before creating a branch.
+  If it fails, stop and have the maintainer set the issue Priority.
 - Use `python scripts/issue_branch.py N`; never create an issue branch directly.
 - Follow RED -> GREEN: write the issue's named tests, prove them with
   `python scripts/check_red.py <test paths>`, commit RED, then implement.
