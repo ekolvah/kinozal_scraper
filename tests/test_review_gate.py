@@ -222,13 +222,22 @@ class TestEvidence:
 
         assert {check.name for check in evidence.checks} == set(REQUIRED_CONTEXTS)
 
-    def test_controller_pr_is_classified_from_the_changed_paths(
+    def test_controller_paths_are_not_special_in_the_verdict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        payload = _pr_payload(files=[{"path": "scripts/check_claude_review_outcome.py"}])
+        """#483: ревью-контроллер ревьюится как всё остальное, значит и вердикт обычный.
+
+        Пока носитель 1 был недостижим на таких PR, зелёный чек не доказывал, что ревью
+        было, и гейт эскалировал на ручной IDE-просмотр. Ревью работает — эскалация
+        превратилась бы в `escalate` на каждом PR по агентному процессу.
+        """
+        payload = _pr_payload(files=[{"path": ".github/workflows/claude-review.yml"}])
         monkeypatch.setattr(subprocess, "run", _gh_double(payload, _runs_payload(_ROUND_2)))
 
-        assert collect_evidence("465").controller_pr is True
+        verdict = evaluate(collect_evidence("465"), fixer_budget=3)
+
+        assert verdict.name == "ready-for-human"
+        assert verdict.exit_code == 0
 
     def test_gh_failure_exits_two_instead_of_producing_a_verdict(
         self, monkeypatch: pytest.MonkeyPatch
