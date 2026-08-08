@@ -79,10 +79,10 @@ roles:
     # carrier asked first, which is why it must stay the head of this list.
     adapters:
       - "Claude code-review GitHub Action"
-      - "Codex code-review GitHub Action"
+      - "Codex code review (GitHub integration)"
     adapter_files:
       "Claude code-review GitHub Action": null
-      "Codex code-review GitHub Action": null
+      "Codex code review (GitHub integration)": null
     adapter_routes: null
     carrier_selection: "ci_failover"
     adapter: "Claude code-review GitHub Action"

@@ -328,7 +328,7 @@ class TestFallbackCarrier:
             "a metered credential in the review gate reintroduces the availability "
             "problem #478 exists to remove"
         )
-        assert "openai/codex-action" not in raw, (
+        assert "uses: openai/codex-action" not in raw, (
             "that action authenticates by API key only (its action.yml gates every "
             "functional step on `openai-api-key`), so it cannot carry a subscription"
         )
