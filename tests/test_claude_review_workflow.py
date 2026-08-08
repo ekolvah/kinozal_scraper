@@ -237,8 +237,6 @@ class TestReviewOutcomeGate:
         assert verifier["env"]["LIVE_PR_CONTEXT_STATUS"] == "${{ steps.pr-context.outcome }}"
         verifier_run = str(verifier["run"])
         assert '--live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"' in verifier_run
-        assert "--repo" in verifier_run and "github.repository" in verifier_run
-        assert "--pr" in verifier_run and "steps.pr-context.outputs.number" in verifier_run
 
         verifier_source = _named_step("Checkout verifier source")
         assert verifier_source["uses"] == "actions/checkout@v4"
@@ -283,6 +281,32 @@ class TestReviewOutcomeGate:
 
     def test_controller_exception_has_no_separate_gate_workflow(self) -> None:
         assert not _REMOVED_GATE_WORKFLOW.exists()
+
+    def test_review_uses_workflow_token_instead_of_app_token_exchange(self) -> None:
+        """#483: без этого входа ревью молча не запускается на PR, меняющих этот файл.
+
+        Апстрим кладёт `github_token` в `OVERRIDE_GITHUB_TOKEN`, и `setupGitHubToken()`
+        возвращает его до обмена OIDC на токен GitHub App Anthropic. Без входа обмен
+        выполняется, эндпоинт отвечает `workflow_not_found_on_default_branch` (файл
+        воркфлоу на голове PR ≠ версии в `main`), экшен бросает
+        `WorkflowValidationSkipError` — и job зеленеет за ~26 секунд, ни разу не вызвав
+        модель. Молчаливый скип неотличим от прошедшего ревью (§IV), поэтому вход
+        стережётся, а не «помнится».
+        """
+        assert _inputs().get("github_token") == "${{ github.token }}"
+
+    def test_enforcement_steps_pass_no_controller_classification_options(self) -> None:
+        """#483: воркфлоу и CLI обязаны сниматься с классификации одним движением.
+
+        `--repo`/`--pr` существовали только ради карв-аута «контроллерный PR».
+        `_parse_options` на неизвестный аргумент печатает `unexpected argument` и выходит
+        с 2, поэтому забытый в YAML флаг красит **каждый** PR, а не только контроллерный.
+        """
+        for name in ("Enforce Claude review outcome", "Enforce Codex review outcome"):
+            run = str(_named_step(name)["run"])
+
+            assert "--repo" not in run, f"{name} still passes the removed --repo option"
+            assert "--pr " not in run, f"{name} still passes the removed --pr option"
 
 
 class TestFallbackCarrier:

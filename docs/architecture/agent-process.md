@@ -176,15 +176,14 @@ credential infrastructure.
 ### Review-gate verdicts
 
 `python -m scripts.review_gate <PR>` reads the live PR — the required contexts
-on the current head, the review-controller classification, and how many distinct
-heads `claude-review` has already reviewed. It changes nothing and posts
-nothing.
+on the current head and how many distinct heads `claude-review` has already
+reviewed. It changes nothing and posts nothing.
 
 | Verdict | Exit code | Meaning |
 | --- | --- | --- |
 | `ready-for-human` | `0` | Loop over. Report the PR ready; remaining findings are the maintainer's call. |
 | `fix-blocking` | `10` | One minimal fixer commit, push, run the gate again. |
-| `escalate` | `20` | Loop over with a named anomaly: fixer budget spent, or a controller PR whose green check does not prove a review ran. |
+| `escalate` | `20` | Loop over with a named anomaly: the fixer budget is spent. |
 | `review-pending` | `30` | Evidence is not final. Wait once with `gh pr checks <PR> --watch`, then re-run the gate; a second `review-pending` goes to the maintainer, never a polling loop. |
 
 Exit `2` is not a verdict: it is a `gh`, argument, or capture failure, and it
@@ -197,23 +196,32 @@ reviewed, minus the first — so a review re-run on an unchanged head spends non
 of it. The verdict goes into `## Agent record`, which is how a skipped gate
 becomes visible at merge time.
 
-## Review-controller manual review
+## Review outcome enforcement
 
-When a review-controller PR has an empty outcome output, `claude-review` emits a
-visible warning instead of a successful Claude review. When a structured outcome
-exists, it is enforced exactly as on an ordinary PR: `clean` and `rework` pass,
-`blocking` reds the check. For this single-maintainer repository, the no-outcome exception
-is an accepted operating policy: before merge, the maintainer completes a
-manual IDE-agent review of the complete controller diff.
+A structured outcome is enforced the same way on every PR. `clean` and `rework` pass,
+`blocking` reds the check, and an empty or malformed outcome is an unavailable
+review, which is red too. There is no path-based exception (#483): a PR
+changing the review controller used to pass an empty outcome with a warning,
+because the action refused to review it at all, and that carve-out is gone
+together with its cause. The trust model behind the fix is recorded in
+[ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
 
-This review is a human merge responsibility, not machine-verifiable evidence.
-There is no bootstrap marker and no separate trusted review gate. Keep a
-controller PR limited to `.github/workflows/claude-review.yml`,
+The review still executes code from the PR head, so a controller PR verifies
+itself; the agent review reports, it does not authorise the merge. Keep such a
+PR limited to `.github/workflows/claude-review.yml`,
 `scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
-`scripts/request_codex_review.py`,
-their direct tests, and documentation; do not mix application changes into it.
-Any push requires the maintainer to
-review the new complete diff in the IDE before merge.
+`scripts/request_codex_review.py`, their direct tests, and documentation; do not
+mix application changes into it. That keeps the diff a maintainer reads before
+merging small enough to read.
+
+A controller PR can therefore break its own gate. That failure is fail-closed
+and recoverable without any special right: the enforcement scripts are always
+checked out from the default branch, so a broken head can red the check but
+cannot turn an absent review green, and `main` keeps running its own copy of the
+workflow. Recovery is a push to the same branch — fix the controller change,
+or revert it inside the PR and re-run the check. Never merge a controller PR
+whose `claude-review` is red, and never disable the required context to get
+past it.
 
 On every PR the workflow first checks out the default-branch verifier source,
 then reads the current PR body and head SHA from the GitHub API. It maps the

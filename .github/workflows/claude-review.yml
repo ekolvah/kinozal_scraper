@@ -4,11 +4,14 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+# `id-token: write` снят вместе с обменом OIDC (#483): под `github_token` экшен
+# токен App'а не запрашивает, и сохранённое право осталось бы второй, невидимой
+# в чеке моделью доверия. Комментарии к PR (tracking-комментарий, сводка, inline)
+# покрываются `pull-requests: write`; коммитов экшен здесь не делает.
 permissions:
   contents: read
   pull-requests: write
   issues: read
-  id-token: write
 
 jobs:
   claude-review:
@@ -58,6 +61,13 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # GitHub-токен задан явно (#483). Апстрим кладёт его в `OVERRIDE_GITHUB_TOKEN`,
+          # и `setupGitHubToken()` возвращает его до обмена OIDC на токен GitHub App
+          # Anthropic — то есть валидация «файл воркфлоу совпадает с main» не выполняется.
+          # Без этого входа PR, меняющий этот файл, получал `WorkflowValidationSkipError`
+          # и зелёный чек без единого вызова модели. Модельная авторизация остаётся
+          # подписочной и этим входом не затрагивается: см. docs/adr/0004.
+          github_token: ${{ github.token }}
           track_progress: true
           show_full_output: true
           # Model pinned explicitly (#374): without it the action's upstream
@@ -198,7 +208,6 @@ jobs:
           python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
           --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
           --producer "Claude review"
-          --repo "${{ github.repository }}" --pr "${{ steps.pr-context.outputs.number }}"
 
       - name: Enforce Codex review outcome
         if: ${{ always() && steps.classify.outputs.valid != 'true' }}
@@ -210,4 +219,3 @@ jobs:
           python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
           --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
           --producer "Codex review"
-          --repo "${{ github.repository }}" --pr "${{ steps.pr-context.outputs.number }}"

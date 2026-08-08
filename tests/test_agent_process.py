@@ -394,9 +394,10 @@ class TestAgentProcess:
         for marker in ("review/fix loop", "`not ready`", "scripts.review_gate"):
             assert marker in agents, f"AGENTS.md lost {marker!r}"
 
-    def test_review_controller_policy_requires_manual_ide_review(self) -> None:
+    def test_review_outcome_enforcement_is_documented_without_a_path_exception(self) -> None:
+        """#483: карв-аут для контроллерных PR снят — контракт остался один на всех."""
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
-        assert "## Review-controller manual review" in process
-        assert "manual IDE-agent review" in process
+        assert "## Review-controller manual review" not in process
+        assert "manual IDE-agent review" not in process
         assert "`clean` and `rework` pass" in process
         assert "`blocking` reds the check" in process

@@ -398,16 +398,15 @@ green. A controller-verifier fork therefore uses the accepted
 single-maintainer fallback: the maintainer's IDE-agent review and merge
 decision.
 
-When a PR changes the review-controller surface (`claude-review.yml`,
-`scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
-or `scripts/request_codex_review.py`)
-and has an empty outcome output, `claude-review` emits a visible warning; it
-is not a successful Claude review. A real `clean`, `rework`, or `blocking`
-outcome is enforced for controller PRs exactly as it is for ordinary PRs. In
-this single-maintainer repository, the maintainer must review the complete
-controller diff with an agent in the IDE before merge. That is an accepted manual
-policy, not machine-verifiable evidence: there is no bootstrap marker and no
-separate required gate.
+A PR changing the review controller itself is reviewed like any other (#483).
+The `Claude review` step passes `github_token: ${{ github.token }}`, which the
+action returns instead of exchanging OIDC for a GitHub App token — and the
+App-token path is what refused to run whenever the head's workflow file differs
+from `main`. Before that input, such a PR ended in `WorkflowValidationSkipError`:
+a green `claude-review` with no model invocation at all, which is why an empty
+outcome used to be excused there. The exception is gone with its cause; empty is
+an unavailable review on every path. The trust model and what it costs are in
+[ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
@@ -472,10 +471,10 @@ event payload, so this explicit read is
 what keeps a re-run from reviewing an old PR description or SHA. The body is passed only as fenced,
 untrusted data in an action input — never interpolated into a shell command — and the requested
 summary names the live head SHA. If that API read fails, the deterministic step reports `live PR
-context is unavailable` and stays red; it does not spend quota on a second model call. The first
-ordinary PR after a controller change is the operational compatibility check: a red `Claude review`
-step reporting schema validation means the reviewer is unavailable, so revert the controller PR
-rather than weakening the gate.
+context is unavailable` and stays red; it does not spend quota on a second model call. A controller
+change is now its own compatibility check, because the review runs on the PR head (#483): a red
+`Claude review` step reporting schema validation means the reviewer is unavailable, so fix or
+revert the controller change on that branch rather than weakening the gate.
 
 **Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
 включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний
