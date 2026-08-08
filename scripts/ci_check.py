@@ -81,13 +81,13 @@ def _tracked_files() -> list[str]:
     proc = subprocess.run(["git", "ls-files", "-z"], capture_output=True)
     if proc.returncode != 0:
         print("git ls-files failed — the file set to scan is unknown")
-        sys.exit(1)
+        sys.exit(2)
     if proc.stdout is None:
         # Пустой список тут особенно опасен: `_secrets_targets` вернул бы ноль
         # файлов, и секрет-скан отрапортовал бы «no files to scan» — указатель на
         # неверную причину вместо «захват сломался» (#410).
         print("git ls-files produced no captured output — the file set is unknown")
-        sys.exit(1)
+        sys.exit(2)
     # -z: git otherwise quotes paths with spaces/non-ASCII, yielding names that
     # don't exist on disk. `surrogateescape`: an undecodable path stays addressable
     # (round-trips back to the same bytes) instead of vanishing from the scan.

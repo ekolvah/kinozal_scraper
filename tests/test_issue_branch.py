@@ -77,6 +77,69 @@ class TestFetchTitleEncoding:
         assert _fetch_title(122) == cyrillic_title
 
 
+class TestFetchTitleFailures:
+    @pytest.mark.parametrize(
+        ("stdout", "stderr"),
+        [
+            (None, ""),
+            ('{"state": "OPEN", "title": "valid"}', None),
+        ],
+    )
+    def test_capture_failure_exits_two(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        stdout: str | None,
+        stderr: str | None,
+    ) -> None:
+        def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args=args, returncode=0, stdout=stdout, stderr=stderr
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            _fetch_title(413)
+
+        assert exc.value.code == 2
+        assert "capture failed" in capsys.readouterr().err
+
+    def test_gh_failure_exits_two(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args=args, returncode=1, stdout="", stderr="network unavailable"
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            _fetch_title(413)
+
+        assert exc.value.code == 2
+        error = capsys.readouterr().err
+        assert "rc=1" in error
+        assert "network unavailable" in error
+
+    def test_malformed_payload_exits_two(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(
+                args=args, returncode=0, stdout="not-json", stderr=""
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(SystemExit) as exc:
+            _fetch_title(413)
+
+        assert exc.value.code == 2
+        assert "invalid JSON" in capsys.readouterr().err
+
+
 class TestDirectDelegation:
     """`issue_branch.main()` must build the branch in-process via
     `new_branch.create_branch`, not by re-spawning a second interpreter

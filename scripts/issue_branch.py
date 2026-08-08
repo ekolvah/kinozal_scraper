@@ -60,17 +60,32 @@ def build_branch_name(issue_number: int, title: str) -> str:
 def _fetch_title(issue_number: int) -> str:
     result = subprocess.run(
         ["gh", "issue", "view", str(issue_number), "--json", "title,state"],
-        check=True,
+        check=False,
         text=True,
         capture_output=True,
         encoding="utf-8",
     )
-    if result.stdout is None:
-        # `check=True` уже отсеял ненулевой rc, поэтому `None` здесь означает
-        # только сломанный захват (#364) — раньше он молча становился `""` и
-        # падал ниже как невнятный JSONDecodeError (#410).
-        raise RuntimeError(f"capture failed for `gh issue view {issue_number}`")
-    data = json.loads(result.stdout)
+    if result.stdout is None or result.stderr is None:
+        print(
+            f"error: capture failed for `gh issue view {issue_number}` (rc={result.returncode})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if result.returncode != 0:
+        detail = result.stderr.strip() or "no stderr"
+        print(
+            f"error: `gh issue view {issue_number}` failed (rc={result.returncode}): {detail}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        data = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        print(
+            f"error: invalid JSON from `gh issue view {issue_number}`: {exc}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
     if data.get("state") != "OPEN":
         print(
             f"error: issue #{issue_number} is not OPEN (state={data.get('state')})", file=sys.stderr
