@@ -104,6 +104,21 @@ class TestPriorityFromProjectJson:
         with pytest.raises(ValueError):
             priority_from_project_json("not json", self.ISSUE_URL)
 
+    def test_rejects_unknown_priority(self) -> None:
+        payload = json.dumps(
+            {
+                "items": [
+                    {
+                        "content": {"url": self.ISSUE_URL},
+                        "priority": "Urgent",
+                    }
+                ]
+            }
+        )
+
+        with pytest.raises(ValueError, match="unsupported Priority"):
+            priority_from_project_json(payload, self.ISSUE_URL)
+
 
 class _GhDispatcher:
     """Дубль внешней границы `gh`: диспатчит `subprocess.run` по argv, пишет вызовы
@@ -124,7 +139,10 @@ class _GhDispatcher:
             return subprocess.CompletedProcess(cmd, code, out, "boom" if code else "")
 
         if cmd[:3] == ["gh", "issue", "view"]:
-            return done(0, '{"url":"https://github.com/ekolvah/kinozal_scraper/issues/351"}')
+            return done(
+                0,
+                json.dumps({"url": f"https://github.com/ekolvah/kinozal_scraper/issues/{cmd[3]}"}),
+            )
         if cmd[:3] == ["gh", "project", "item-add"]:
             return done(0, '{"id":"PVTI_item"}')
         if cmd[:3] == ["gh", "project", "item-edit"]:
