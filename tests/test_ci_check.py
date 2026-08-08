@@ -80,7 +80,7 @@ class TestTrackedFilesCaptureFailure:
     оператор идёт искать, почему репозиторий пуст, вместо того чтобы чинить захват.
     """
 
-    def test_none_stdout_names_the_real_cause(
+    def test_none_stdout_exits_two(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
@@ -89,7 +89,20 @@ class TestTrackedFilesCaptureFailure:
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(SystemExit) as exc:
             _tracked_files()
-        assert exc.value.code == 1
+        assert exc.value.code == 2
         out = capsys.readouterr().out
         assert "file set is unknown" in out
         assert "no files to scan" not in out, "must not read as an empty repository"
+
+    def test_git_failure_exits_two(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(args=cmd, returncode=128, stdout=b"", stderr=b"")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        with pytest.raises(SystemExit) as exc:
+            _tracked_files()
+
+        assert exc.value.code == 2
+        assert "git ls-files failed" in capsys.readouterr().out
