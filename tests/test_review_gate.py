@@ -49,7 +49,6 @@ def _evidence(**overrides: Any) -> ReviewEvidence:
     values: dict[str, Any] = {
         "head_sha": _ROUND_2,
         "checks": _checks(),
-        "controller_pr": False,
         "reviewed_heads": frozenset({_ROUND_1, _ROUND_2}),
         "pr_url": _PR_URL,
         "review_run_url": _RUN_URL,
@@ -130,13 +129,6 @@ class TestVerdict:
 
         assert evaluate(evidence, fixer_budget=1).name == "escalate"
         assert evaluate(evidence, fixer_budget=2).name == "fix-blocking"
-
-    def test_green_controller_pr_escalates_instead_of_ready(self) -> None:
-        """A green `claude-review` on a controller PR can mean it never ran (§IV)."""
-        verdict = evaluate(_evidence(controller_pr=True), fixer_budget=3)
-
-        assert verdict.name == "escalate"
-        assert "controller" in verdict.reason
 
 
 class TestContracts:

@@ -430,6 +430,17 @@ decision goes to" route — and the rule itself — live in
   сам review попадает в `## Agent record` issue, и эта запись снимается. Решение целиком —
   [ADR-0003](../adr/0003-second-carrier-for-the-required-review-gate.md).
 
+- **AL. Что ревью носителя 1 действительно запускается под токеном воркфлоу, гардами не
+  доказано (#483).** Структурно закреплён только вход (`github_token: ${{ github.token }}`) и
+  снятие карв-аута; что апстрим при этом не выполняет валидацию воркфлоу и что под этим токеном
+  экшену хватает прав на свои записи в PR — чужая сторона контракта, проверяемая живым прогоном.
+  Класс тот же, что у **AK** и **AD**. **Пропуск не тихий:** возврат прежнего поведения выглядит
+  как пустой outcome → красный `claude-review` (карв-аута, который его прощал, больше нет), а
+  нехватка прав — как ошибка записи в логе шага. **Триггер закрытия — прогон на PR, который
+  вносит саму правку**: он контроллерный по построению, и его лог (`valid=true`, выполненный
+  `Enforce Claude review outcome`, сводка с `Reviewed head SHA:`) попадает в `## Agent record`.
+  Решение целиком — [ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

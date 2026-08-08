@@ -237,8 +237,6 @@ class TestReviewOutcomeGate:
         assert verifier["env"]["LIVE_PR_CONTEXT_STATUS"] == "${{ steps.pr-context.outcome }}"
         verifier_run = str(verifier["run"])
         assert '--live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"' in verifier_run
-        assert "--repo" in verifier_run and "github.repository" in verifier_run
-        assert "--pr" in verifier_run and "steps.pr-context.outputs.number" in verifier_run
 
         verifier_source = _named_step("Checkout verifier source")
         assert verifier_source["uses"] == "actions/checkout@v4"

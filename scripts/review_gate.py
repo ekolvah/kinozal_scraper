@@ -24,8 +24,12 @@ relevant branch (`fixer_revisions >= max_runs`) would require synthesising
 `plan_completed` / `architect_completed` / `implementation_completed` and a
 stand-in `review_outcome` — factoids this gate never verified (§V) — plus three
 dead route branches that would silently move the verdict whenever the router
-changes. What is shared is *data*: the role catalogue, `REQUIRED_CONTEXTS`, and
-the review-controller path set. No policy gets a second home.
+changes. What is shared is *data*: the role catalogue and `REQUIRED_CONTEXTS`.
+No policy gets a second home.
+
+A PR touching the review controller is no longer a special case (#483): the
+review runs on it like on any other PR, so its green check carries the same
+evidence and needs no escalation to a manual IDE review.
 
 Scope note: `?branch=` counts every review run on that branch name, so a fork PR
 or a reused branch name would over-count rounds. Neither exists in this
@@ -46,7 +50,6 @@ from urllib.parse import quote
 
 from scripts.agent_orchestrator import load_catalog
 from scripts.check_branch_protection import REQUIRED_CONTEXTS
-from scripts.check_claude_review_outcome import controller_changed
 
 REVIEW_CONTEXT = "claude-review"
 REVIEW_WORKFLOW_FILE = "claude-review.yml"
@@ -68,7 +71,7 @@ _NEXT_ACTIONS: dict[str, str] = {
         "review-pending goes to the maintainer — never a polling loop"
     ),
 }
-_PR_FIELDS = "state,url,headRefOid,headRefName,statusCheckRollup,files"
+_PR_FIELDS = "state,url,headRefOid,headRefName,statusCheckRollup"
 
 
 @dataclass(frozen=True)
@@ -86,7 +89,6 @@ class ReviewEvidence:
 
     head_sha: str
     checks: tuple[CheckRun, ...]
-    controller_pr: bool
     reviewed_heads: frozenset[str]
     pr_url: str
     review_run_url: str | None
@@ -164,15 +166,6 @@ def evaluate(evidence: ReviewEvidence, fixer_budget: int) -> Verdict:
                 f"{', '.join(red)} is still red — one more round is not routed",
             )
         return _verdict("fix-blocking", _red_reason(red))
-    if evidence.controller_pr:
-        # An empty outcome on a review-controller PR passes the check with a
-        # warning, so green here does not prove a review ran; the policy in
-        # agent-process.md requires a manual IDE review of the whole diff.
-        return _verdict(
-            "escalate",
-            "review-controller PR: a green check does not prove a review ran, and policy "
-            "requires the maintainer's manual IDE review of the complete diff before merge",
-        )
     return _verdict(
         "ready-for-human",
         f"every required check is green on {evidence.head_sha[:8]}; no blocking finding",
@@ -235,11 +228,6 @@ def collect_evidence(pr: str) -> ReviewEvidence:
         # would look like a required context that never reported.
         if isinstance(entry, dict) and entry.get("__typename") == "CheckRun"
     )
-    changed_paths = [
-        str(entry.get("path", ""))
-        for entry in payload.get("files") or ()
-        if isinstance(entry, dict)
-    ]
 
     endpoint = (
         f"repos/{{owner}}/{{repo}}/actions/workflows/{REVIEW_WORKFLOW_FILE}/runs"
@@ -256,7 +244,6 @@ def collect_evidence(pr: str) -> ReviewEvidence:
     return ReviewEvidence(
         head_sha=head_sha,
         checks=checks,
-        controller_pr=controller_changed(changed_paths),
         reviewed_heads=reviewed_heads,
         pr_url=str(payload.get("url", "")),
         review_run_url=review_run_url,

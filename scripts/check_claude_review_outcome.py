@@ -11,6 +11,13 @@ a carrier produced a usable verdict at all: `--classify` measures without judgin
 which is what the failover step gates on. That question lives here because the
 validity rule lives here; asked as a YAML `contains()`/`fromJSON()` expression it
 would become a second, untestable home for the same policy.
+
+The rule has no path-based exception any more (#483). A PR touching the review
+controller used to pass with a `::warning::` on an empty outcome, because the
+action could not review it at all: the App-token exchange refused a workflow file
+that differs from `main`. The workflow now runs the review under `github.token`,
+so such a PR gets an ordinary verdict — and an empty outcome is an unavailable
+review here exactly as anywhere else.
 """
 
 from __future__ import annotations
@@ -19,16 +26,8 @@ import json
 import sys
 from collections.abc import Sequence
 
-from scripts.gh_io import publish_step_output, slurp_records
+from scripts.gh_io import publish_step_output
 
-_REVIEW_CONTROLLER_PATHS = frozenset(
-    {
-        ".github/workflows/claude-review.yml",
-        "scripts/check_branch_protection.py",
-        "scripts/check_claude_review_outcome.py",
-        "scripts/request_codex_review.py",
-    }
-)
 # Public: carrier 2 translates its own review states into this vocabulary (#478),
 # and a second private copy there would be a second merge bar.
 VALID_OUTCOMES = frozenset({"clean", "rework", "blocking"})
@@ -40,8 +39,6 @@ class _Options:
 
     def __init__(self) -> None:
         self.live_pr_context_status: str | None = None
-        self.repository: str | None = None
-        self.pr_number: str | None = None
         self.producer: str = _DEFAULT_PRODUCER
         self.classify: bool = False
 
@@ -59,10 +56,6 @@ def _parse_options(args: list[str]) -> _Options:
         value = args.pop(0)
         if option == "--live-pr-context-status":
             options.live_pr_context_status = value
-        elif option == "--repo":
-            options.repository = value
-        elif option == "--pr":
-            options.pr_number = value
         elif option == "--producer":
             options.producer = value
         else:
@@ -80,48 +73,6 @@ def _require_live_pr_context(status: str | None) -> None:
             file=sys.stderr,
         )
         raise SystemExit(2)
-
-
-def fetch_changed_paths(repository: str, pr_number: int) -> list[str]:
-    """Read every PR path so review-controller changes cannot hide in pagination."""
-    endpoint = f"repos/{repository}/pulls/{pr_number}/files?per_page=100"
-    paths: list[str] = []
-    for record in slurp_records(endpoint):
-        path = record.get("filename")
-        if not isinstance(path, str):
-            raise RuntimeError(f"gh api {endpoint} returned an unexpected payload shape")
-        paths.append(path)
-    return paths
-
-
-def controller_changed(changed_paths: Sequence[str]) -> bool:
-    """Return whether this PR changes the review-controller surface."""
-    return bool(_REVIEW_CONTROLLER_PATHS.intersection(changed_paths))
-
-
-def _validate_controller_options(repository: str | None, pr_number: str | None) -> None:
-    """Reject a partial or malformed controller-classification request."""
-    if (repository is None) != (pr_number is None):
-        print("error: --repo OWNER/REPO and --pr NUMBER must be provided together", file=sys.stderr)
-        raise SystemExit(2)
-    if pr_number is not None:
-        try:
-            int(pr_number)
-        except ValueError as exc:
-            print("error: --pr must be an integer", file=sys.stderr)
-            raise SystemExit(2) from exc
-
-
-def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
-    _validate_controller_options(repository, pr_number)
-    if repository is None or pr_number is None:
-        return False
-
-    try:
-        return controller_changed(fetch_changed_paths(repository, int(pr_number)))
-    except (OSError, RuntimeError, ValueError) as exc:
-        print(f"error: unable to classify review-controller PR: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
 
 
 def _report_validity(outcome: object) -> None:
@@ -155,15 +106,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     producer = options.producer
     _require_live_pr_context(options.live_pr_context_status)
-    _validate_controller_options(options.repository, options.pr_number)
 
-    if payload_arg == "" and _is_controller_pr(options.repository, options.pr_number):
-        print(
-            "::warning::No structured review outcome was produced for this review-controller PR. "
-            "If the review step failed, re-run it; otherwise complete the manual IDE-agent review "
-            "before merge under the single-maintainer policy."
-        )
-        return
     if outcome == "clean":
         print(f"ok: {producer} outcome is clean")
         return
