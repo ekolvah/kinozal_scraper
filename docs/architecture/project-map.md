@@ -309,7 +309,7 @@ false-positive-by-design, для редких memory-записей цена п�
 
 | Файл | На какой вопрос отвечает |
 |---|---|
-| `scripts/validate_issue_sections.py` | Verifies all nine issue sections, including `Agent handoff`; gate for planner and implementer adapters |
+| `scripts/validate_issue_sections.py` + `scripts/check_orphan_scope.py` | Verifies all nine issue sections, including `Agent handoff`; on a passing issue, also surfaces the non-blocking reminder for an explicit `Out of scope` follow-up without `#N` or `wontfix`/`YAGNI` (#368). Gate for planner and implementer adapters; the reminder itself never changes the exit code |
 | `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: единый каталог ролей, evidence-based next action и bounded escalation; не вызывает провайдеров и не заменяет required gates |
 | `scripts/review_gate.py` | Продолжается ли review/fix-цикл по PR: читает required-контексты на текущем head и число уже отревьюенных head'ов — и отдаёт вердикт exit-кодом (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` — отказ `gh`/захвата, не вердикт). Ничего не меняет и не постит. Правило «чиним только blocking, `should-fix` — решение мейнтейнера» дважды проигнорировали как прозу (#458, #465), поэтому у него теперь exit-код, а не пункт списка ([principles.md §Scripts over instructions](principles.md#scripts-over-instructions)). Severity берётся из уже посчитанного `agent-review` check-run, тело ревью не парсится; бюджет — `fixer.max_runs` из каталога ролей. Прозаический дом — [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
