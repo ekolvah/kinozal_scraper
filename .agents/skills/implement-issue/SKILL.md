@@ -43,7 +43,7 @@ Do not replace a missing plan with an invented implementation.
        is not another round (#458).
      - `10` (`fix-blocking`): inspect the root cause — `gh run view <run-id>
        --log-failed` for a red CI check, the review run for a red
-       `claude-review` — fix it in a separate fixer commit, push, go back to the
+       `agent-review` — fix it in a separate fixer commit, push, go back to the
        first bullet.
      - `20` (`escalate`) / `30` (`review-pending`) / `2` (gh or capture
        failure): the PR is `not ready`. Report the named blocker to the

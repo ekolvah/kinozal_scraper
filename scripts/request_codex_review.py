@@ -24,7 +24,7 @@ import json
 import time
 from collections.abc import Callable, Mapping, Sequence
 
-from scripts.check_claude_review_outcome import VALID_OUTCOMES
+from scripts.check_agent_review_outcome import VALID_OUTCOMES
 from scripts.gh_io import flatten_pages, publish_step_output, run_gh, slurp_records
 
 # Verified against the live API (`gh api apps/chatgpt-codex-connector` → owner

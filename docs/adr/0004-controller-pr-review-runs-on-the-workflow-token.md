@@ -53,7 +53,7 @@ PR по карв-ауту.
 Выбран **явный `github_token`**. Апстрим кладёт значение входа в `OVERRIDE_GITHUB_TOKEN`, и
 `setupGitHubToken()` возвращает его **до** обмена OIDC — то есть валидация «файл воркфлоу
 совпадает с дефолтной веткой» не выполняется вовсе, а не обходится. Контроллерный PR получает
-обычный вердикт, и карв-аут снят вместе со своей причиной: `scripts/check_claude_review_outcome.py`
+обычный вердикт, и карв-аут снят вместе со своей причиной: `scripts/check_agent_review_outcome.py`
 больше не знает про пути, `scripts/review_gate.py` — про controller-классификацию, а политика
 ручного IDE-ревью из `agent-process.md` **отменена** (запись [ADR-0003](0003-second-carrier-for-the-required-review-gate.md)
 этим не затрагивается: носителей по-прежнему два и failover тот же).
@@ -86,11 +86,11 @@ PR по карв-ауту.
 ### Confirmation
 
 Гарды:
-`tests/test_claude_review_workflow.py::TestReviewOutcomeGate::test_review_uses_workflow_token_instead_of_app_token_exchange`
+`tests/test_agent_review_workflow.py::TestReviewOutcomeGate::test_review_uses_workflow_token_instead_of_app_token_exchange`
 (вход задан и равен `${{ github.token }}`),
 `::test_enforcement_steps_pass_no_controller_classification_options` (воркфлоу снят с
 классификации одним движением с CLI),
-`tests/test_check_claude_review_outcome.py::TestOutcome::test_an_empty_outcome_is_unavailable_on_every_pr`,
+`tests/test_check_agent_review_outcome.py::TestOutcome::test_an_empty_outcome_is_unavailable_on_every_pr`,
 `tests/test_review_gate.py::TestEvidence::test_controller_paths_are_not_special_in_the_verdict`,
 `tests/test_agent_process.py::TestAgentProcess::test_review_outcome_enforcement_is_documented_without_a_path_exception`.
 

@@ -57,7 +57,7 @@ import yaml
 
 # Канон состава required-контекстов ветки `main`.
 REVIEW_CONTEXT = "agent-review"
-REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", "claude-review")
+REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", REVIEW_CONTEXT)
 
 # PR-джобы, сознательно НЕ сделанные required, и почему. Пустая причина — забытое решение,
 # а не принятое, поэтому гард её не принимает.

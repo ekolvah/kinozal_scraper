@@ -28,7 +28,15 @@ fi
 # не должен стоить полного прогона ci_check, прежде чем о нём скажут. Обе формы отказа блокируют
 # push, но код возврата пробрасывается как есть (`exit $?`), чтобы «дрейф» (1) и «инструмент не
 # сработал» (2) различались снаружи, а не схлопывались в один.
-# shellcheck disable=SC2086
-$PY scripts/check_branch_protection.py || exit $?
+if [ "${BRANCH_PROTECTION_ALLOW_DRIFT+x}" = x ]; then
+    # A non-empty value documents the exceptional migration in the push output.
+    # An empty exported value reaches argparse and fails visibly instead of silently
+    # disabling the drift detector.
+    # shellcheck disable=SC2086
+    $PY scripts/check_branch_protection.py --allow-drift "$BRANCH_PROTECTION_ALLOW_DRIFT" || exit $?
+else
+    # shellcheck disable=SC2086
+    $PY scripts/check_branch_protection.py || exit $?
+fi
 # shellcheck disable=SC2086
 $PY scripts/ci_check.py || exit $?

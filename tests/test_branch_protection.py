@@ -75,7 +75,7 @@ class TestDriftDetection:
 class TestAllowDrift:
     """#458: a gate that regularly demands bypassing teaches bypassing.
 
-    The maintainer removes `claude-review` from required to merge a PR whose review
+    The maintainer removes `agent-review` from required to merge a PR whose review
     is red by construction; the drift detector then blocks every push to unrelated
     feature branches, and the only escape is `--no-verify`, which swallows
     `ci_check` too. `--allow-drift "<reason>"` makes the intentional temporary state
@@ -105,7 +105,7 @@ class TestAllowDrift:
         import scripts.check_branch_protection as guard
 
         self._patch_actual(monkeypatch, ["quality", "pr-link"])
-        guard.main(["--allow-drift", "claude-review снят для мержа #458"])
+        guard.main(["--allow-drift", "agent-review снят для мержа #458"])
         out = capsys.readouterr().out
         assert "#458" in out, "the stated reason must reach the push output"
 
@@ -414,9 +414,7 @@ class TestPrePushHook:
     def test_allow_drift_reason_reaches_protection_probe(self, tmp_path: Path) -> None:
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
         reason = "PATCH-first migration for #480"
-        result = self._run(
-            tmp_path, env={**os.environ, "BRANCH_PROTECTION_ALLOW_DRIFT": reason}
-        )
+        result = self._run(tmp_path, env={**os.environ, "BRANCH_PROTECTION_ALLOW_DRIFT": reason})
 
         assert result.returncode == 0, result.stderr
         calls = self._gate_calls(tmp_path)

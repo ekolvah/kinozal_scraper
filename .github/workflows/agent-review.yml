@@ -1,4 +1,4 @@
-name: Claude code review
+name: Agent review
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ permissions:
   issues: read
 
 jobs:
-  claude-review:
+  agent-review:
     runs-on: ubuntu-latest
     steps:
       # Keep the outcome verifier importable even when the live-PR API read
@@ -170,7 +170,7 @@ jobs:
         if: ${{ always() }}
         env:
           STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
-        run: python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME" --classify
+        run: python -m scripts.check_agent_review_outcome "$STRUCTURED_OUTCOME" --classify
 
       # Carrier 2. It runs only when carrier 1 came back without a verdict — a
       # `blocking` verdict is a result, not a failure, so it is never overruled here.
@@ -205,7 +205,7 @@ jobs:
           STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
           LIVE_PR_CONTEXT_STATUS: ${{ steps.pr-context.outcome }}
         run: >
-          python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
+          python -m scripts.check_agent_review_outcome "$STRUCTURED_OUTCOME"
           --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
           --producer "Claude review"
 
@@ -216,6 +216,6 @@ jobs:
           STRUCTURED_OUTCOME: ${{ steps.codex-review.outputs.payload }}
           LIVE_PR_CONTEXT_STATUS: ${{ steps.pr-context.outcome }}
         run: >
-          python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
+          python -m scripts.check_agent_review_outcome "$STRUCTURED_OUTCOME"
           --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
           --producer "Codex review"

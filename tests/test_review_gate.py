@@ -13,7 +13,12 @@ from typing import Any
 import pytest
 
 from scripts.agent_orchestrator import load_catalog
-from scripts.check_branch_protection import REQUIRED_CONTEXTS, REVIEW_CONTEXT as PROTECTION_REVIEW_CONTEXT
+from scripts.check_branch_protection import (
+    REQUIRED_CONTEXTS,
+)
+from scripts.check_branch_protection import (
+    REVIEW_CONTEXT as PROTECTION_REVIEW_CONTEXT,
+)
 from scripts.review_gate import (
     REVIEW_CONTEXT,
     VERDICT_EXIT_CODES,

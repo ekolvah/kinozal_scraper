@@ -1,6 +1,6 @@
 """Anti-drift guards for the local agent surface (`.claude/agents/*.md`, #392).
 
-Статический гард без сети и кредов — жанр `tests/test_claude_review_workflow.py`
+Статический гард без сети и кредов — жанр `tests/test_agent_review_workflow.py`
 (#374, cloud-половина того же дефекта) и `tests/test_settings_deny.py`.
 
 **Что стережём.** `model: opus` — это АЛИАС, а не id: по доке Claude Code
@@ -60,9 +60,9 @@ _CANONICAL_FINDINGS_HOME = _REPO_ROOT / "docs" / "architecture" / "agent-process
 
 # Формулировки, снятые в #392 как скрытый severity-фильтр. Гард на ИЗВЕСТНУЮ форму
 # дефекта — тот же жанр, что проверка gag-строки `no blocking issues` в
-# `test_claude_review_workflow.py`. Регексп «любой императив в начале строки» здесь
+# `test_agent_review_workflow.py`. Регексп «любой императив в начале строки» здесь
 # не годится: промпт русскоязычный, и легитимные инструкции тоже начинаются с «Не»
-# («Не дублируй работу cloud claude-review» — это разграничение зон, не подавление).
+# («Не дублируй работу cloud agent-review» — это разграничение зон, не подавление).
 _REMOVED_SUPPRESSION = ("не раздувай", "беспощаден", "краткость по умолчанию")
 
 # Набор апстримный (дока Claude Code, таблица frontmatter-полей). Это копия, то есть
@@ -188,7 +188,7 @@ class TestFindingsContractScope:
 class TestCoverageFirstPrompt:
     """Тело промпта: контракт «градация вместо фильтрации» (#392, acceptance #4).
 
-    Зеркало `TestCoverageFirstPrompt` из `tests/test_claude_review_workflow.py`:
+    Зеркало `TestCoverageFirstPrompt` из `tests/test_agent_review_workflow.py`:
     там cloud-ревьюер, здесь локальный plan-ревьюер, дефект один и тот же —
     инструкция «покороче» конвертирует слабую находку в отсутствие находки, а не в
     низкую severity (подтверждено самим ревьюером на прямой вопрос, #392).
