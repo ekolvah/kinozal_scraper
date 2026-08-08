@@ -8,10 +8,12 @@ ADR sections, and the Cyrillic body decode.
 from __future__ import annotations
 
 import subprocess
+import sys
 from typing import Any
 
 import pytest
 
+import scripts.validate_issue_sections as validator
 from scripts.validate_issue_sections import (
     REQUIRED_SECTIONS,
     _fetch_body,
@@ -195,6 +197,27 @@ class TestAgentHandoffSection:
     def test_agent_handoff_requires_all_handoff_fields(self) -> None:
         body = _full_body().replace("next role: implementer\n", "")
         assert find_gaps(body) == ["Agent handoff (missing: next role)"]
+
+
+class TestOrphanScopeReminder:
+    def test_valid_issue_surfaces_reminder_without_failing_validation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body = _full_body().replace(
+            "Real content для Out of scope which is long enough.",
+            "- Follow-up for the historical audit.",
+        )
+        monkeypatch.setattr(validator, "_fetch_body", lambda _n: body)
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "368"])
+
+        validator.main()
+
+        output = capsys.readouterr().out
+        assert "ok: issue #368" in output
+        assert "reminder" in output.lower()
+        assert "Follow-up for the historical audit" in output
 
 
 class TestFetchBodyEncoding:
