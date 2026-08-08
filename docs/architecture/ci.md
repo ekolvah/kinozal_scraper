@@ -346,6 +346,21 @@ schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a 
 `::warning::`**, `blocking` fails, and absent or malformed output is a readable
 `review unavailable` failure.
 
+**One context, two carriers (#478).** Required contexts are AND-ed, so a second required
+context would make availability *worse* — both providers would need quota. The carriers
+therefore sit inside this one job as an ordered failover: `Claude review` runs with
+`continue-on-error`, `Classify review outcome` asks
+`check_claude_review_outcome.py --classify` whether that produced a usable verdict, and
+`Codex review` runs only when the answer is `false`. A `blocking` verdict is a result, so
+it is never failed over and never overruled. Exactly one of the two enforcement steps
+runs, each naming its producer, so a head never collects two verdicts. Carrier 2 is gated
+on `secrets.OPENAI_API_KEY` as well: with no key it stays skipped, nobody produced an
+outcome, and the check is red exactly as before. Its findings reach the PR through
+`scripts/publish_review_summary.py` — the model returns a `summary` field and a
+deterministic step publishes it, because a `pull-requests: write` token inside a
+model-driven shell holding an untrusted diff is authority carrier 1 never had. Rationale
+and the cost decision: [ADR 0003](../adr/0003-second-carrier-for-the-required-review-gate.md).
+
 **Merge authority is narrower than report coverage (#458).** The prompt requires every finding to
 be reported at every severity, so a should-fix finding is the normal outcome of a thorough review.
 Reding the required check on it made a green result unreachable by construction: one delivery PR

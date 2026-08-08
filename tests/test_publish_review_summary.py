@@ -18,7 +18,7 @@ import pytest
 from scripts.publish_review_summary import MARKER, main, summary_body
 
 _PRODUCER = "Codex code-review GitHub Action"
-_HEAD = "0123456789abcdef0123456789abcdef01234567"
+_HEAD = "0123456789abcdef0123456789abcdef01234567"  # pragma: allowlist secret
 _OUTCOME = json.dumps(
     {"outcome": "rework", "summary": "### Findings\n- should-fix: naming in `x.py`"}
 )

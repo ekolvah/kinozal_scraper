@@ -1,15 +1,22 @@
-"""Map a Claude structured review outcome to a deterministic workflow result.
+"""Map a structured review outcome to a deterministic workflow result.
 
 Merge authority is deliberately narrower than report coverage (#458): `blocking`
 reds the required check, `clean` and `rework` pass (the latter with a visible
 `::warning::`), and every state that is *not* evidence — empty, malformed,
 unknown outcome, or an unavailable live PR context — stays red. Absence of
 evidence must never read as success (§IV).
+
+The required check has two carriers (#478), so this module also answers *whether*
+a carrier produced a usable verdict at all: `--classify` measures without judging,
+which is what the failover step gates on. That question lives here because the
+validity rule lives here; asked as a YAML `contains()`/`fromJSON()` expression it
+would become a second, untestable home for the same policy.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
@@ -21,29 +28,45 @@ _REVIEW_CONTROLLER_PATHS = frozenset(
         "scripts/check_claude_review_outcome.py",
     }
 )
+_VALID_OUTCOMES = frozenset({"clean", "rework", "blocking"})
+_DEFAULT_PRODUCER = "Claude review"
 
 
-def _parse_options(args: list[str]) -> tuple[str | None, str | None, str | None]:
-    live_pr_context_status: str | None = None
-    repository: str | None = None
-    pr_number: str | None = None
+class _Options:
+    """Parsed CLI options; the payload itself is positional."""
+
+    def __init__(self) -> None:
+        self.live_pr_context_status: str | None = None
+        self.repository: str | None = None
+        self.pr_number: str | None = None
+        self.producer: str = _DEFAULT_PRODUCER
+        self.classify: bool = False
+
+
+def _parse_options(args: list[str]) -> _Options:
+    options = _Options()
     while args:
         option = args.pop(0)
+        if option == "--classify":
+            options.classify = True
+            continue
         if not args:
             print(f"error: expected a value after {option}", file=sys.stderr)
             raise SystemExit(2)
         value = args.pop(0)
         if option == "--live-pr-context-status":
-            live_pr_context_status = value
+            options.live_pr_context_status = value
         elif option == "--repo":
-            repository = value
+            options.repository = value
         elif option == "--pr":
-            pr_number = value
+            options.pr_number = value
+        elif option == "--producer":
+            options.producer = value
         else:
             print(f"error: unexpected argument {option}", file=sys.stderr)
             raise SystemExit(2)
 
-    return live_pr_context_status, repository, pr_number
+    return options
 
 
 def _require_live_pr_context(status: str | None) -> None:
@@ -119,16 +142,34 @@ def _is_controller_pr(repository: str | None, pr_number: str | None) -> bool:
         raise SystemExit(2) from exc
 
 
+def _report_validity(outcome: object) -> None:
+    """Publish «did this carrier produce a usable verdict» and exit 0 either way.
+
+    Measuring is not judging: a non-zero exit here would end the job before the
+    second carrier was ever asked, and a `blocking` verdict is a result — treating
+    it as invalid would let the failover overrule the carrier that found it.
+    """
+    line = f"valid={'true' if outcome in _VALID_OUTCOMES else 'false'}"
+    print(line)
+    destination = os.environ.get("GITHUB_OUTPUT")
+    if not destination:
+        return
+    try:
+        with open(destination, "a", encoding="utf-8") as handle:
+            handle.write(f"{line}\n")
+    except OSError as exc:
+        print(f"error: cannot write GITHUB_OUTPUT {destination!r}: {exc}", file=sys.stderr)
+        raise SystemExit(2) from exc
+
+
 def main(argv: Sequence[str] | None = None) -> None:
-    """Exit non-zero unless Claude's validated outcome is ``clean`` or ``rework``."""
+    """Exit non-zero unless the carrier's validated outcome is ``clean`` or ``rework``."""
     args = list(sys.argv[1:] if argv is None else argv)
     if not args:
         print("error: expected one structured review outcome JSON value", file=sys.stderr)
         raise SystemExit(2)
     payload_arg = args.pop(0)
-    live_pr_context_status, repository, pr_number = _parse_options(args)
-    _require_live_pr_context(live_pr_context_status)
-    _validate_controller_options(repository, pr_number)
+    options = _parse_options(args)
 
     try:
         payload = json.loads(payload_arg)
@@ -136,7 +177,15 @@ def main(argv: Sequence[str] | None = None) -> None:
         payload = None
     outcome = payload.get("outcome") if isinstance(payload, dict) else None
 
-    if payload_arg == "" and _is_controller_pr(repository, pr_number):
+    if options.classify:
+        _report_validity(outcome)
+        return
+
+    producer = options.producer
+    _require_live_pr_context(options.live_pr_context_status)
+    _validate_controller_options(options.repository, options.pr_number)
+
+    if payload_arg == "" and _is_controller_pr(options.repository, options.pr_number):
         print(
             "::warning::No structured review outcome was produced for this review-controller PR. "
             "If the review step failed, re-run it; otherwise complete the manual IDE-agent review "
@@ -144,7 +193,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         return
     if outcome == "clean":
-        print("ok: Claude review outcome is clean")
+        print(f"ok: {producer} outcome is clean")
         return
     if outcome == "rework":
         # #458: report completeness is not merge authority. The prompt requires
@@ -154,18 +203,20 @@ def main(argv: Sequence[str] | None = None) -> None:
         # last four purely cosmetic). The findings stay visible in the PR and
         # become the maintainer's call, not an automatic barrier.
         print(
-            "::warning::Claude review reported should-fix findings. They are published "
+            f"::warning::{producer} reported should-fix findings. They are published "
             "in the PR and are the maintainer's call — not an automatic merge blocker. "
             "Only blocking findings red this check."
         )
         return
     if outcome == "blocking":
         print(
-            "error: Claude review reported blocking findings; resolve and re-run review.",
+            f"error: {producer} reported blocking findings; resolve and re-run review.",
             file=sys.stderr,
         )
         raise SystemExit(1)
-    print("error: Claude review unavailable: no valid structured outcome.", file=sys.stderr)
+    # Naming the carrier matters most here: two carriers whose «unavailable» reads
+    # identically leave the operator unable to tell which one came back empty (§IV).
+    print(f"error: {producer} unavailable: no valid structured outcome.", file=sys.stderr)
     raise SystemExit(2)
 
 

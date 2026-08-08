@@ -370,7 +370,8 @@ class TestFallbackCarrier:
             "the review model must not receive a write token: its context holds the "
             "untrusted diff and PR body"
         )
-        assert "gh " not in str(codex_inputs.get("prompt", "")), (
+        prompt = str(codex_inputs.get("prompt", ""))
+        assert not any(shelled in prompt for shelled in ("gh pr ", "gh api ", "gh issue ")), (
             "publishing is a deterministic step, not something the model shells out to"
         )
 

@@ -337,15 +337,26 @@ mapping each adapter to its carrier file or to an explicit `null` where the
 carrier is a GitHub Action or a person. That is what makes a role covered by one
 provider and not another a visible fact rather than a silent one (#473).
 
+Every role declares how its carrier is chosen in `carrier_selection:`, because
+having alternatives and choosing between them per run are two different facts:
+
+| Mode | Who chooses | `adapter_routes` |
+| --- | --- | --- |
+| `run_route` | the human, by which chat the request is sent in | route-to-adapter map |
+| `ci_failover` | the workflow at run time, from whether the previous carrier answered | `null` |
+| `sole` | nobody; the role has one carrier | `null` |
+
 `route` in the state file selects the adapter for one run rather than for the
 repository, because a constant naming the wrong agent is confident
 misinformation from a tool whose whole purpose is inspectability (#475). A role
-with a single carrier — the `pr_reviewer` GitHub Action, the `human_merge`
-human — declares `adapter_routes: null` and answers every known route with that
-carrier; it is not a provider's variant of anything. A route that no role
+the route does not choose for — the `human_merge` human, or the `pr_reviewer`
+review gate, which asks its second carrier only when the first returns no
+verdict (#478) — answers every known route with `adapter:`, the carrier asked
+first. Deriving the mode from the number of adapters instead would make the
+review gate claim a `codex` run was reviewed by Codex. A route that no role
 declares is a visible error naming the known routes, and a known route that a
-role does not offer is a visible error naming that role and its routes. Neither
-falls back quietly.
+`run_route` role does not offer is a visible error naming that role and its
+routes. Neither falls back quietly.
 
 To add another agent, add an adapter that points to this document, records its
 role in the hand-off or PR record, and passes the same issue, RED, CI, PR-link,

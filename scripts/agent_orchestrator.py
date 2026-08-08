@@ -24,6 +24,7 @@ _REQUIRED_ROLE_FIELDS = frozenset(
         "contract",
         "adapters",
         "adapter_routes",
+        "carrier_selection",
         "adapter",
         "authority",
         "entry_evidence",
@@ -98,22 +99,43 @@ def load_catalog(path: Path | None = None) -> dict[str, Any]:
         adapters = role["adapters"]
         if not isinstance(adapters, list) or role["adapter"] not in adapters:
             raise ValueError(f"role {name!r} selects an adapter outside its declared entry points")
-        _validate_adapter_routes(name, role, adapters)
+        _validate_carrier_selection(name, role, adapters)
     return payload
 
 
-def _validate_adapter_routes(name: str, role: Mapping[str, Any], adapters: list[Any]) -> None:
-    """A role with alternatives maps each one to exactly one route; the rest declare `null`.
+def _validate_carrier_selection(name: str, role: Mapping[str, Any], adapters: list[Any]) -> None:
+    """How a role's carrier is chosen, declared rather than inferred from a count.
 
-    Full coverage is what keeps the map and the default from drifting apart: the
-    selected ``adapter`` is already one of ``adapters``, so it stays reachable by
-    some route by construction.
+    ``run_route`` is the human's choice of chat: each alternative maps to exactly
+    one route, and full coverage keeps the map and the default from drifting apart.
+    ``ci_failover`` is the workflow's choice at run time — the review gate asks the
+    first carrier and falls back only when it returns no verdict (#478); the run
+    route does not select it, so it stays route-independent. ``sole`` is a role with
+    one carrier. Deriving the mode from ``len(adapters)`` would make the review gate
+    claim a `codex` run was reviewed by Codex, which is the #475 defect again.
     """
+    selection = role["carrier_selection"]
     routes = role["adapter_routes"]
-    if len(adapters) == 1:
+    if selection not in {"sole", "run_route", "ci_failover"}:
+        raise ValueError(
+            f"role {name!r} declares an unknown carrier_selection {selection!r}; "
+            "expected 'sole', 'run_route', or 'ci_failover'"
+        )
+    if (selection == "sole") != (len(adapters) == 1):
+        raise ValueError(
+            f"role {name!r} declares carrier_selection {selection!r} with {len(adapters)} "
+            "adapter(s); 'sole' is for exactly one carrier and the other modes for several"
+        )
+    if selection in {"sole", "ci_failover"}:
         if routes is not None:
             raise ValueError(
-                f"role {name!r} has one route-independent adapter, so adapter_routes must be null"
+                f"role {name!r} does not select its carrier by run route, so it is "
+                "route-independent and adapter_routes must be null"
+            )
+        if selection == "ci_failover" and role["adapter"] != adapters[0]:
+            raise ValueError(
+                f"role {name!r} must select the carrier that is asked first: adapter "
+                f"{role['adapter']!r} is not the head of its failover order"
             )
         return
     if not isinstance(routes, dict) or not all(
@@ -138,9 +160,10 @@ def _catalogue_routes(catalogue: Mapping[str, Any]) -> list[str]:
 def _role_adapter(name: str, role: Mapping[str, Any], route: str | None) -> str:
     """The entry point this run reaches the role through.
 
-    A role with a single carrier — a GitHub Action, a human — is not a provider's
-    variant of anything, so it answers every known route with that carrier. That is
-    not a silent fallback: an unknown route never gets this far (see ``decide``).
+    A role the run route does not select — a human, or a GitHub Action that picks
+    its own carrier at run time — answers every known route with its declared
+    default: for ``ci_failover`` that is the carrier CI asks first. That is not a
+    silent fallback: an unknown route never gets this far (see ``decide``).
     """
     routes = role.get("adapter_routes")
     if route is None or routes is None:
