@@ -68,6 +68,11 @@ def item_id_from_add_json(output: str | None) -> str:
     return str(item_id)
 
 
+def priority_from_project_json(output: str | None, issue_url: str) -> str | None:
+    """Return the Priority for ``issue_url`` from ``gh project item-list`` JSON."""
+    raise NotImplementedError
+
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
     # `None` = захват сломался (#364), а не «gh промолчал». Дефолт на этом месте
