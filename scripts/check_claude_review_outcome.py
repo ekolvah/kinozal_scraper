@@ -28,7 +28,9 @@ _REVIEW_CONTROLLER_PATHS = frozenset(
         "scripts/check_claude_review_outcome.py",
     }
 )
-_VALID_OUTCOMES = frozenset({"clean", "rework", "blocking"})
+# Public: carrier 2 translates its own review states into this vocabulary (#478),
+# and a second private copy there would be a second merge bar.
+VALID_OUTCOMES = frozenset({"clean", "rework", "blocking"})
 _DEFAULT_PRODUCER = "Claude review"
 
 
@@ -149,7 +151,7 @@ def _report_validity(outcome: object) -> None:
     second carrier was ever asked, and a `blocking` verdict is a result — treating
     it as invalid would let the failover overrule the carrier that found it.
     """
-    line = f"valid={'true' if outcome in _VALID_OUTCOMES else 'false'}"
+    line = f"valid={'true' if outcome in VALID_OUTCOMES else 'false'}"
     print(line)
     destination = os.environ.get("GITHUB_OUTPUT")
     if not destination:

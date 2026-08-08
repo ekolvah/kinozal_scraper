@@ -40,11 +40,15 @@ _REMOVED_GATE_WORKFLOW = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
 )
 _ACTION = "anthropics/claude-code-action"
-_FALLBACK_ACTION = "openai/codex-action"
+_AGENTS = Path(__file__).resolve().parent.parent / "AGENTS.md"
+_CODEX_RULES_HEADING = "## Code Review Rules"
 
 # Оба носителя ревьюят по одному контракту (#478). Промпт-гарды ниже параметризованы
 # по ним обоим, иначе носитель 2 мог бы молча переоткрыть политику severity из #458:
 # гард, знающий только про первый носитель, зеленеет на любом тексте второго.
+# Дома у контрактов разные: носитель 1 читает промпт из workflow, носитель 2 —
+# `## Code Review Rules` в `AGENTS.md` (документированная точка настройки Codex
+# code review). Копий по-прежнему две, но каждая — в своём каноническом месте.
 _CARRIERS = ("Claude review", "Codex review")
 
 # Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
@@ -85,15 +89,23 @@ def _prompt() -> str:
 
 
 def _codex_step() -> dict[str, Any]:
-    step = _named_step("Codex review")
-    assert _FALLBACK_ACTION in str(step.get("uses", "")), (
-        "the second carrier must be the official Codex action; its inputs were verified "
-        "against action.yml, and an unknown `with:` key is ignored silently by GitHub"
+    return _named_step("Codex review")
+
+
+def _codex_review_rules() -> str:
+    """Секция `AGENTS.md`, которую Codex code review читает как свой промпт."""
+    text = _AGENTS.read_text(encoding="utf-8")
+    assert _CODEX_RULES_HEADING in text, (
+        f"{_CODEX_RULES_HEADING!r} is the documented place where Codex code review "
+        "picks up repository rules; without it carrier 2 reviews by its own defaults"
     )
-    return step
+    section = text.split(_CODEX_RULES_HEADING, 1)[1]
+    return section.split("\n## ", 1)[0]
 
 
 def _carrier_prompt(carrier: str) -> str:
+    if carrier == "Codex review":
+        return _codex_review_rules()
     return str(_inputs_for_step(_named_step(carrier))["prompt"])
 
 
@@ -303,77 +315,66 @@ class TestFallbackCarrier:
             "carrier on it buys an outcome the enforcement step reds anyway"
         )
 
-    def test_fallback_is_gated_on_an_env_mapped_secret(self) -> None:
-        """`secrets` недоступен в step-level `if:` — гард по env, а не по секрету.
+    def test_the_fallback_runs_on_a_subscription_not_on_metered_credentials(self) -> None:
+        """Носитель, которому нужен платный ключ, в этом репо не включится никогда.
 
-        Секрет не задан → шаг пропущен → валидного outcome нет ни у кого → чек красный,
-        ровно как сегодня. Платный путь включается заданием секрета, а не мержем."""
-        data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-        job_env = data["jobs"]["claude-review"].get("env") or {}
+        Задача #478 — доступность гейта при исчерпанной квоте; носитель, чьё условие
+        запуска — «выдать отдельный API-ключ», её не решает, он её откладывает.
+        Codex code review работает по подписке ChatGPT через свою GitHub-интеграцию,
+        поэтому у второго носителя нет ни ключа, ни гарда на ключ."""
+        raw = _WORKFLOW.read_text(encoding="utf-8")
 
-        assert "OPENAI_API_KEY" in job_env, (
-            "the fallback's credential must be mapped into job-level `env:`; the "
-            "`secrets` context does not exist in a step-level `if:`"
+        assert "OPENAI_API_KEY" not in raw, (
+            "a metered credential in the review gate reintroduces the availability "
+            "problem #478 exists to remove"
         )
-        assert "secrets.OPENAI_API_KEY" in str(job_env["OPENAI_API_KEY"])
-        assert "env.OPENAI_API_KEY != ''" in str(_codex_step()["if"])
-
-    def test_both_carriers_share_the_outcome_vocabulary(self) -> None:
-        """Разные словари вердиктов = разная планка мержа в зависимости от квоты."""
-        schema = str(_inputs_for_step(_codex_step())["output-schema"])
-        claude_args = str(_inputs().get("claude_args", ""))
-
-        assert '"outcome"' in schema
-        for outcome in ("clean", "rework", "blocking"):
-            assert outcome in schema and outcome in claude_args
-
-    def test_fallback_returns_its_summary_as_data(self) -> None:
-        """У codex-action нет MCP-канала комментариев, поэтому текст едет схемой."""
-        schema = str(_inputs_for_step(_codex_step())["output-schema"])
-        assert '"summary"' in schema, (
-            "without a summary field the second carrier's findings never reach the "
-            "human, and a review nobody reads is a review that did not happen (§IV)"
+        assert "openai/codex-action" not in raw, (
+            "that action authenticates by API key only (its action.yml gates every "
+            "functional step on `openai-api-key`), so it cannot carry a subscription"
         )
 
-    def test_fallback_model_pinned_to_full_id(self) -> None:
-        model = str(_inputs_for_step(_codex_step()).get("model", ""))
+    def test_the_fallback_is_a_deterministic_step_not_an_in_runner_model(self) -> None:
+        """Носитель 2 ревьюит вне этого раннера; здесь только запрос и чтение ответа."""
+        step = _codex_step()
 
-        assert model, "an unpinned fallback moves to the action's upstream default silently"
-        assert model.lower() not in UNPINNED_MODEL_VALUES
-
-    def test_fallback_safety_strategy_is_explicit_and_never_unsafe(self) -> None:
-        """`unsafe` даёт модели доступ к памяти процесса, где лежит её же API-ключ."""
-        strategy = str(_inputs_for_step(_codex_step()).get("safety-strategy", ""))
-
-        assert strategy, "the sandbox posture must be chosen, not inherited from a default"
-        assert strategy != "unsafe"
-
-    def test_fallback_result_is_read_with_bracket_syntax(self) -> None:
-        """`outputs.final-message` парсится как вычитание — молча пустая строка.
-
-        Имя выхода взято из `action.yml`, где сам экшен обращается к нему через
-        `outputs['final-message']`."""
-        for step in (_named_step("Publish Codex review summary"), _fallback_verifier()):
-            rendered = str(step.get("run", "")) + str(step.get("env", ""))
-            assert "outputs['final-message']" in rendered, (
-                "a hyphenated output name must be read with bracket syntax; dotted "
-                "access evaluates to an empty string and reds nothing"
-            )
-
-    def test_fallback_summary_is_published_without_giving_the_model_a_token(self) -> None:
-        publish = _named_step("Publish Codex review summary")
-        codex_inputs = _inputs_for_step(_codex_step())
-
-        assert "python -m scripts.publish_review_summary" in str(publish["run"])
-        assert "GH_TOKEN" in str(publish.get("env", {}))
-        assert "GH_TOKEN" not in str(codex_inputs), (
-            "the review model must not receive a write token: its context holds the "
-            "untrusted diff and PR body"
+        assert "uses" not in step, (
+            "carrier 2 is Codex's own GitHub review; nothing runs a model here"
         )
-        prompt = str(codex_inputs.get("prompt", ""))
-        assert not any(shelled in prompt for shelled in ("gh pr ", "gh api ", "gh issue ")), (
-            "publishing is a deterministic step, not something the model shells out to"
+        assert "python -m scripts.request_codex_review" in str(step["run"])
+
+    def test_the_fallback_verdict_is_keyed_to_the_reviewed_head(self) -> None:
+        """Ревью предыдущего пуша — не вердикт о том, что мержится сейчас."""
+        run = str(_codex_step()["run"])
+
+        assert "--head-sha" in run and "steps.pr-context.outputs.head_sha" in run, (
+            "without the head SHA the step would accept a review of an earlier push "
+            "and green the check for code nobody looked at (§IV)"
         )
+        assert "--pr" in run and "--repo" in run
+
+    def test_the_fallback_wait_is_bounded(self) -> None:
+        """Иначе required-чек висит до шестичасового потолка раннера."""
+        step = _codex_step()
+        rendered = str(step.get("run", "")) + str(step.get("timeout-minutes", ""))
+
+        assert "--timeout-seconds" in rendered or step.get("timeout-minutes"), (
+            "the wait for carrier 2 must have a declared bound; an unanswered request "
+            "has to end in a visible red, not in a hanging job"
+        )
+
+    def test_the_fallback_writes_the_payload_enforcement_reads(self) -> None:
+        """Разъехавшиеся имена выхода дали бы молча пустую нагрузку и красный чек
+        с сообщением «ревью недоступно» вместо реального вердикта Codex."""
+        assert "steps.codex-review.outputs.payload" in str(_fallback_verifier()["env"])
+        assert _codex_step()["id"] == "codex-review"
+
+    def test_the_second_carrier_gets_no_second_prompt_copy_in_the_workflow(self) -> None:
+        """Контракт носителя 2 живёт в `AGENTS.md`, где Codex его и читает.
+
+        Копия промпта в workflow была бы третьим домом одной политики — и притом
+        домом, который никто не читает: Codex ревьюит вне этого раннера."""
+        assert "prompt" not in _codex_step()
+        assert _codex_review_rules().strip(), "the carrier-2 contract must not be empty"
 
     def test_each_enforcement_step_names_its_producer(self) -> None:
         """Иначе вердикт на PR не отвечает на вопрос «кто это ревьюил»."""
