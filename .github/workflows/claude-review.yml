@@ -51,6 +51,10 @@ jobs:
       - name: Claude review
         id: review
         if: ${{ steps.pr-context.outcome == 'success' }}
+        # An exhausted quota (or any other failure) must not end the job here:
+        # the failover below is unreachable from a failed step (#478). The outcome
+        # is still enforced — by the classifier and the two enforcement steps.
+        continue-on-error: true
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -147,8 +151,45 @@ jobs:
 
             Do not approve or merge — those stay with the human reviewer.
 
-      - name: Enforce Claude review outcome
+      # Measurement, not verdict: the failover needs to know whether carrier 1
+      # produced a usable outcome at all. The rule lives in the script that owns
+      # validity — expressed as `contains()`/`fromJSON()` here it would be a second
+      # home for the same policy, and one no test can reach.
+      - name: Classify review outcome
+        id: classify
         if: ${{ always() }}
+        env:
+          STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
+        run: python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME" --classify
+
+      # Carrier 2. It runs only when carrier 1 came back without a verdict — a
+      # `blocking` verdict is a result, not a failure, so it is never overruled here.
+      #
+      # Codex reviews through its own GitHub integration on the maintainer's ChatGPT
+      # subscription, not as an action in this runner: `openai/codex-action`
+      # authenticates by API key only. So this step asks and reads the answer; the
+      # review contract it reviews by lives in `AGENTS.md` (## Code Review Rules),
+      # which is where Codex picks it up.
+      - name: Codex review
+        id: codex-review
+        if: >
+          ${{ always() && steps.classify.outputs.valid == 'false'
+          && steps.pr-context.outcome == 'success' }}
+        # Backstop for a hung `gh`; the wait itself is bounded by the script below.
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          python -m scripts.request_codex_review
+          --repo "${{ github.repository }}" --pr "${{ steps.pr-context.outputs.number }}"
+          --head-sha "${{ steps.pr-context.outputs.head_sha }}"
+          --timeout-seconds 900
+
+      # Exactly one of the two steps below runs, so one head never gets two
+      # verdicts. When neither carrier produced an outcome, the second one runs
+      # with an empty payload and reds the check — today's behaviour, unchanged.
+      - name: Enforce Claude review outcome
+        if: ${{ always() && steps.classify.outputs.valid == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           STRUCTURED_OUTCOME: ${{ steps.review.outputs.structured_output }}
@@ -156,4 +197,17 @@ jobs:
         run: >
           python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
           --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
+          --producer "Claude review"
+          --repo "${{ github.repository }}" --pr "${{ steps.pr-context.outputs.number }}"
+
+      - name: Enforce Codex review outcome
+        if: ${{ always() && steps.classify.outputs.valid != 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STRUCTURED_OUTCOME: ${{ steps.codex-review.outputs.payload }}
+          LIVE_PR_CONTEXT_STATUS: ${{ steps.pr-context.outcome }}
+        run: >
+          python -m scripts.check_claude_review_outcome "$STRUCTURED_OUTCOME"
+          --live-pr-context-status "$LIVE_PR_CONTEXT_STATUS"
+          --producer "Codex review"
           --repo "${{ github.repository }}" --pr "${{ steps.pr-context.outputs.number }}"

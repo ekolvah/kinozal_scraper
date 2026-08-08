@@ -411,6 +411,25 @@ decision goes to" route — and the rule itself — live in
   каталога в нём нет, хук печатает `transcripts_not_found` вместо того, чтобы молчать.
   Пересмотр — если появится общий носитель dev-телеметрии, который CI сможет прочитать.
 
+- **AK. Второй носитель review-гейта не проверен живым прогоном (#478).** Носитель 2 — Codex
+  code review через GitHub-интеграцию — покрыт структурно (`TestFallbackCarrier`: порядок шагов,
+  условие запуска, привязка вердикта к head SHA, ограниченное ожидание, имя выхода, атрибуция
+  продюсера, красный гейт при пропущенном носителе) и поведенчески на своём адаптере
+  (`tests/test_request_codex_review.py`: чей review считается вердиктом, отбор по head SHA,
+  перевод состояния в словарь исходов, round-trip нагрузки через сам enforcement-скрипт).
+  Гардами **не** доказаны две вещи, обе — про чужую сторону контракта: (1) что Codex вообще
+  отвечает на `@codex review`, оставленный `github-actions[bot]`, а не человеком, и (2) что
+  он выставляет состояние review так, как просит `AGENTS.md` § Code Review Rules — публично
+  документировано лишь то, что в GitHub он поднимает находки уровня P0/P1, то есть его планка
+  уже нашей coverage-first. **Пропуск сознательный, не тихий:** оба отказа выглядят как
+  «вердикта нет» → пустая нагрузка → красный `claude-review` с явным `::warning::`, кто именно
+  не ответил. Непроверенная ветка не может ослабить гейт — только не сработать, и это видно
+  красной проверкой, а не зелёным PR без ревью. Класс тот же, что у **AD** (сетевая половина
+  branch-protection): проверяется только живым прогоном против чужого сервиса.
+  **Триггер закрытия — первый прогон, где Codex оставил review на head SHA**: ссылка на run и на
+  сам review попадает в `## Agent record` issue, и эта запись снимается. Решение целиком —
+  [ADR-0003](../adr/0003-second-carrier-for-the-required-review-gate.md).
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

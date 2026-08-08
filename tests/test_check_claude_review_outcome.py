@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -161,11 +162,97 @@ class TestReviewOutcomeCli:
         assert "unable to classify review-controller PR: 403" in capsys.readouterr().err
 
 
+class TestClassify:
+    """The failover condition is a measurement, and it lives where the policy lives.
+
+    Expressing «did carrier 1 produce a usable outcome» as a YAML expression would
+    re-implement this module's validity rule in `contains()`/`fromJSON()` — a second
+    home for the same policy, and one no test can reach. So the workflow asks the
+    script and gates on its answer.
+    """
+
+    @pytest.mark.parametrize("outcome", ["clean", "rework", "blocking"])
+    def test_a_real_verdict_is_valid_and_stops_the_failover(
+        self, outcome: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """`blocking` is a result, not a failure.
+
+        Classifying it invalid would start the second carrier, which would then get
+        to overrule the first one's blocking finding."""
+        output = tmp_path / "github_output"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+        main([json.dumps({"outcome": outcome}), "--classify"])
+
+        assert "valid=true" in output.read_text(encoding="utf-8")
+
+    @pytest.mark.parametrize("payload", ["", "{}", "not-json", '{"outcome":"unknown"}'])
+    def test_no_usable_verdict_is_invalid(
+        self, payload: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        output = tmp_path / "github_output"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(output))
+
+        main([payload, "--classify"])
+
+        assert "valid=false" in output.read_text(encoding="utf-8")
+
+    def test_classification_never_reds_the_job(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Measuring is not judging: the verdict belongs to the enforcement step.
+
+        A non-zero exit here would fail the job before the second carrier ever ran."""
+        monkeypatch.setenv("GITHUB_OUTPUT", str(tmp_path / "github_output"))
+        main(['{"outcome":"blocking"}', "--classify"])
+        main(["", "--classify"])
+
+    def test_classification_without_github_output_still_reaches_the_operator(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
+        main(['{"outcome":"clean"}', "--classify"])
+        assert "valid=true" in capsys.readouterr().out
+
+
+class TestProducerAttribution:
+    """Two carriers whose results read identically are one carrier for the reader."""
+
+    def test_clean_outcome_names_its_producer(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main(['{"outcome":"clean"}', "--producer", "Codex"])
+        assert "Codex" in capsys.readouterr().out
+
+    def test_rework_warning_names_its_producer(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main(['{"outcome":"rework"}', "--producer", "Codex"])
+        assert "Codex" in capsys.readouterr().out
+
+    def test_blocking_error_names_its_producer(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with pytest.raises(SystemExit):
+            main(['{"outcome":"blocking"}', "--producer", "Codex"])
+        assert "Codex" in capsys.readouterr().err
+
+    def test_an_unavailable_review_names_the_carrier_that_was_asked(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Otherwise «review unavailable» hides *which* carrier came back empty."""
+        with pytest.raises(SystemExit):
+            main(["", "--producer", "Codex"])
+        assert "Codex" in capsys.readouterr().err
+
+
 class TestChangedPaths:
     def test_branch_protection_declaration_is_a_controller_path(self) -> None:
         import scripts.check_claude_review_outcome as outcome_gate
 
         assert outcome_gate.controller_changed(["scripts/check_branch_protection.py"])
+
+    def test_every_carrier_adapter_is_a_controller_path(self) -> None:
+        """A PR that only fixes carrier 2 changes review behaviour, so the same
+        carve-out and the same manual-review escalation have to apply to it —
+        otherwise a broken carrier cannot be merged past the gate it broke."""
+        import scripts.check_claude_review_outcome as outcome_gate
+
+        assert outcome_gate.controller_changed(["scripts/request_codex_review.py"])
 
     def test_gh_transport_failure_is_distinct(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fail(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -180,7 +267,7 @@ class TestChangedPaths:
             return subprocess.CompletedProcess(args=["gh"], returncode=0, stdout=None, stderr="")
 
         monkeypatch.setattr(subprocess, "run", capture_failed)
-        with pytest.raises(RuntimeError, match="failed: no stderr captured"):
+        with pytest.raises(RuntimeError, match="no stdout captured"):
             fetch_changed_paths("owner/repo", 1)
 
     def test_changed_paths_payload_must_be_file_list(self, monkeypatch: pytest.MonkeyPatch) -> None:

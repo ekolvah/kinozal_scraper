@@ -28,9 +28,12 @@ what matters») exit-code не поймает — семантику промп�
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
+import pytest
 import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
@@ -39,6 +42,8 @@ _REMOVED_GATE_WORKFLOW = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
 )
 _ACTION = "anthropics/claude-code-action"
+_AGENTS = Path(__file__).resolve().parent.parent / "AGENTS.md"
+_CODEX_RULES_HEADING = "## Code Review Rules"
 
 # Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
 # сужение (находку, которую уже ловит ruff/mypy, понижаем как дубль детерминированного
@@ -48,6 +53,9 @@ _ACTION = "anthropics/claude-code-action"
 _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b", re.IGNORECASE)
 
 
+# Кеш, а не фикстура: файлы читаются только на чтение и за прогон не меняются,
+# а парс 11 KB YAML на каждый ассерт — десятки миллисекунд впустую.
+@lru_cache(maxsize=1)
 def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
     return cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
@@ -77,6 +85,45 @@ def _prompt() -> str:
     return str(_inputs()["prompt"])
 
 
+def _codex_step() -> dict[str, Any]:
+    return _named_step("Codex review")
+
+
+@lru_cache(maxsize=1)
+def _codex_review_rules() -> str:
+    """Секция `AGENTS.md`, которую Codex code review читает как свой промпт."""
+    text = _AGENTS.read_text(encoding="utf-8")
+    assert _CODEX_RULES_HEADING in text, (
+        f"{_CODEX_RULES_HEADING!r} is the documented place where Codex code review "
+        "picks up repository rules; without it carrier 2 reviews by its own defaults"
+    )
+    section = text.split(_CODEX_RULES_HEADING, 1)[1]
+    return section.split("\n## ", 1)[0]
+
+
+# Оба носителя ревьюят по одному контракту (#478). Промпт-гарды ниже параметризованы
+# по ним обоим, иначе носитель 2 мог бы молча переоткрыть политику severity из #458:
+# гард, знающий только про первый носитель, зеленеет на любом тексте второго.
+# Дома у контрактов разные: носитель 1 читает промпт из workflow, носитель 2 —
+# `## Code Review Rules` в `AGENTS.md` (документированная точка настройки Codex
+# code review). Копий по-прежнему две, но каждая — в своём каноническом месте.
+# Список носителей и загрузчик промпта каждого объявлены здесь вместе: разъехавшись,
+# они дали бы гард, дважды проверяющий носителя 1 и молча не проверяющий носителя 2.
+_CARRIER_PROMPTS: dict[str, Callable[[], str]] = {
+    "Claude review": _prompt,
+    "Codex review": _codex_review_rules,
+}
+_CARRIERS = tuple(_CARRIER_PROMPTS)
+
+
+def _carrier_prompt(carrier: str) -> str:
+    return _CARRIER_PROMPTS[carrier]()
+
+
+def _fallback_verifier() -> dict[str, Any]:
+    return _named_step("Enforce Codex review outcome")
+
+
 class TestReviewModelPinned:
     def test_model_pinned_to_full_id(self) -> None:
         """Модель задаётся флагом CLI `--model` внутри `claude_args`.
@@ -100,29 +147,39 @@ class TestReviewModelPinned:
         )
 
 
+@pytest.mark.parametrize("carrier", _CARRIERS)
 class TestCoverageFirstPrompt:
-    def test_no_suppression_imperative(self) -> None:
-        offenders = [ln.strip() for ln in _prompt().splitlines() if _SUPPRESSION.match(ln)]
+    """Один контракт поиска и отчёта на оба носителя ревью (#478).
+
+    Носитель 2 добавлен ради доступности, а не ради второго мнения о том, что
+    считать находкой: разъехавшиеся промпты дали бы разный вердикт на одном диффе
+    в зависимости от того, у кого в тот день была квота.
+    """
+
+    def test_no_suppression_imperative(self, carrier: str) -> None:
+        offenders = [
+            ln.strip() for ln in _carrier_prompt(carrier).splitlines() if _SUPPRESSION.match(ln)
+        ]
         assert not offenders, (
             "search-stage suppression imperative(s) in the review prompt — the model "
             f"follows them literally and the finding never reaches the PR (§IV): {offenders}"
         )
 
-    def test_every_finding_graded(self) -> None:
-        prompt = _prompt().lower()
+    def test_every_finding_graded(self, carrier: str) -> None:
+        prompt = _carrier_prompt(carrier).lower()
         missing = [word for word in ("severity", "confidence") if word not in prompt]
         assert not missing, (
             "coverage-first contract requires grading instead of filtering: every finding "
             f"carries severity + confidence; missing from the prompt: {missing} (#374)"
         )
 
-    def test_summary_not_gagged_to_blocking_only(self) -> None:
+    def test_summary_not_gagged_to_blocking_only(self, carrier: str) -> None:
         """Известная форма дефекта на стадии отчёта, а не проверка формулировки.
 
         `post exactly "✅ … no blocking issues found."` — фиксированная сводка,
         которая при нуле blocking и трёх should-fix обязывает напечатать только её.
         Фильтр, убранный со входа, возвращался бы на выходе."""
-        prompt = _prompt().lower()
+        prompt = _carrier_prompt(carrier).lower()
         assert "no blocking issues" not in prompt, (
             "the fixed summary string is scoped to blocking findings — should-fix and "
             "nice-to-have findings disappear from the PR comment (#374)"
@@ -131,28 +188,28 @@ class TestCoverageFirstPrompt:
             "the summary contract must require listing findings of every severity (#374)"
         )
 
-    def test_should_fix_has_a_concrete_bar(self) -> None:
+    def test_should_fix_has_a_concrete_bar(self, carrier: str) -> None:
         """#458: only `blocking` was defined; should-fix had no bar at all.
 
         With `rework` reding a required check, an undefined should-fix meant comment
         wording and doc examples could block a merge. Same known-form guard as the
         rest of this class: presence of the bar, not its semantics."""
-        prompt = _prompt().lower()
+        prompt = _carrier_prompt(carrier).lower()
         assert "should-fix" in prompt
         assert "behaviour, contract" in prompt or "behavior, contract" in prompt, (
             "should-fix must name what qualifies (behaviour / contract / what the "
             "operator reads), or prose and naming findings land there by default (#458)"
         )
 
-    def test_prompt_retires_findings_with_recorded_rationale(self) -> None:
-        prompt = _prompt().lower()
+    def test_prompt_retires_findings_with_recorded_rationale(self, carrier: str) -> None:
+        prompt = _carrier_prompt(carrier).lower()
         assert "recorded rationale" in prompt, (
             "a finding answered by a rationale in the diff (code comment, "
             "coverage-gaps entry, ADR) must not be re-raised each round (#458)"
         )
 
-    def test_prompt_forbids_relisting_accepted_tradeoffs(self) -> None:
-        prompt = _prompt().lower()
+    def test_prompt_forbids_relisting_accepted_tradeoffs(self, carrier: str) -> None:
+        prompt = _carrier_prompt(carrier).lower()
         assert "re-list" in prompt, (
             "re-runs must describe the increment; re-listing consciously-kept "
             "tradeoffs every round is what made ten rounds of PR #462 grow (#458)"
@@ -207,7 +264,7 @@ class TestReviewOutcomeGate:
 
         assert "python -m scripts.check_claude_review_outcome" in str(verifier["run"])
         assert "steps.review.outputs.structured_output" in str(verifier["env"])
-        assert verifier["if"] == "${{ always() }}"
+        assert "always()" in str(verifier["if"])
 
     def test_ordinary_review_has_no_marker_repair_or_polling(self) -> None:
         names = [str(step.get("name")) for step in _steps()]
@@ -226,3 +283,126 @@ class TestReviewOutcomeGate:
 
     def test_controller_exception_has_no_separate_gate_workflow(self) -> None:
         assert not _REMOVED_GATE_WORKFLOW.exists()
+
+
+class TestFallbackCarrier:
+    """#478: доступность обязательного гейта не должна зависеть от одного провайдера.
+
+    Контекст ревью — required check при `enforce_admins: true`, поэтому исчерпанная
+    квота Claude сегодня запирает PR целиком. Квоту нельзя опросить заранее — API
+    остатка не существует, — так что «выбрать того, у кого есть квота» реализуется
+    цепочкой отказа: носитель 2 включается ровно тогда, когда носитель 1 не дал
+    годного вердикта.
+    """
+
+    def test_first_carrier_failure_does_not_end_the_job(self) -> None:
+        """Без этого шаг Codex недостижим: упавший шаг обрывает джоб."""
+        assert _review_step().get("continue-on-error") is True
+
+    def test_validity_is_decided_by_the_script_that_owns_the_rule(self) -> None:
+        """§ Один дом политики: `review_gate.py` — «No policy gets a second home».
+
+        Разбор JSON носителя выражением GitHub Actions продублировал бы правило
+        валидности в `contains()`/`fromJSON()` — в форме, недостижимой ни для одного
+        теста."""
+        classify = _named_step("Classify review outcome")
+
+        assert classify["id"] == "classify"
+        assert "python -m scripts.check_claude_review_outcome" in str(classify["run"])
+        assert "--classify" in str(classify["run"])
+        assert "steps.review.outputs.structured_output" in str(classify["env"])
+        assert "always()" in str(classify["if"])
+
+    def test_fallback_runs_only_when_the_first_carrier_produced_nothing_usable(self) -> None:
+        condition = str(_codex_step()["if"])
+
+        assert "steps.classify.outputs.valid == 'false'" in condition, (
+            "the failover must be gated on the classifier's answer, and on nothing else "
+            "— a `blocking` verdict is a result, so the second carrier must not run and "
+            "overrule it"
+        )
+        assert "steps.pr-context.outcome == 'success'" in condition, (
+            "with the live PR context lost there is nothing to review; spending the paid "
+            "carrier on it buys an outcome the enforcement step reds anyway"
+        )
+
+    def test_the_fallback_runs_on_a_subscription_not_on_metered_credentials(self) -> None:
+        """Носитель, которому нужен платный ключ, в этом репо не включится никогда.
+
+        Задача #478 — доступность гейта при исчерпанной квоте; носитель, чьё условие
+        запуска — «выдать отдельный API-ключ», её не решает, он её откладывает.
+        Codex code review работает по подписке ChatGPT через свою GitHub-интеграцию,
+        поэтому у второго носителя нет ни ключа, ни гарда на ключ."""
+        raw = _WORKFLOW.read_text(encoding="utf-8")
+
+        assert "OPENAI_API_KEY" not in raw, (
+            "a metered credential in the review gate reintroduces the availability "
+            "problem #478 exists to remove"
+        )
+        assert "uses: openai/codex-action" not in raw, (
+            "that action authenticates by API key only (its action.yml gates every "
+            "functional step on `openai-api-key`), so it cannot carry a subscription"
+        )
+
+    def test_the_fallback_is_a_deterministic_step_not_an_in_runner_model(self) -> None:
+        """Носитель 2 ревьюит вне этого раннера; здесь только запрос и чтение ответа."""
+        step = _codex_step()
+
+        assert "uses" not in step, (
+            "carrier 2 is Codex's own GitHub review; nothing runs a model here"
+        )
+        assert "python -m scripts.request_codex_review" in str(step["run"])
+
+    def test_the_fallback_verdict_is_keyed_to_the_reviewed_head(self) -> None:
+        """Ревью предыдущего пуша — не вердикт о том, что мержится сейчас."""
+        run = str(_codex_step()["run"])
+
+        assert "--head-sha" in run and "steps.pr-context.outputs.head_sha" in run, (
+            "without the head SHA the step would accept a review of an earlier push "
+            "and green the check for code nobody looked at (§IV)"
+        )
+        assert "--pr" in run and "--repo" in run
+
+    def test_the_fallback_wait_is_bounded(self) -> None:
+        """Иначе required-чек висит до шестичасового потолка раннера."""
+        step = _codex_step()
+        rendered = str(step.get("run", "")) + str(step.get("timeout-minutes", ""))
+
+        assert "--timeout-seconds" in rendered or step.get("timeout-minutes"), (
+            "the wait for carrier 2 must have a declared bound; an unanswered request "
+            "has to end in a visible red, not in a hanging job"
+        )
+
+    def test_the_fallback_writes_the_payload_enforcement_reads(self) -> None:
+        """Разъехавшиеся имена выхода дали бы молча пустую нагрузку и красный чек
+        с сообщением «ревью недоступно» вместо реального вердикта Codex."""
+        assert "steps.codex-review.outputs.payload" in str(_fallback_verifier()["env"])
+        assert _codex_step()["id"] == "codex-review"
+
+    def test_the_second_carrier_gets_no_second_prompt_copy_in_the_workflow(self) -> None:
+        """Контракт носителя 2 живёт в `AGENTS.md`, где Codex его и читает.
+
+        Копия промпта в workflow была бы третьим домом одной политики — и притом
+        домом, который никто не читает: Codex ревьюит вне этого раннера."""
+        assert "prompt" not in _codex_step()
+        assert _codex_review_rules().strip(), "the carrier-2 contract must not be empty"
+
+    def test_each_enforcement_step_names_its_producer(self) -> None:
+        """Иначе вердикт на PR не отвечает на вопрос «кто это ревьюил»."""
+        primary = _named_step("Enforce Claude review outcome")
+        fallback = _fallback_verifier()
+
+        assert "--producer" in str(primary["run"])
+        assert "--producer" in str(fallback["run"])
+        assert str(primary["if"]) != str(fallback["if"]), (
+            "the two enforcement steps must be mutually exclusive, or a single head "
+            "gets two verdicts"
+        )
+        assert "steps.classify.outputs.valid" in str(fallback["if"])
+
+    def test_a_skipped_fallback_still_reds_the_check(self) -> None:
+        """Отсутствие второго носителя — не основание считать ревью пройденным (§IV).
+
+        Шаг enforcement фолбэка запускается по `always()`, поэтому при пропущенном
+        Codex он получает пустой outcome и падает с «review unavailable»."""
+        assert "always()" in str(_fallback_verifier()["if"])

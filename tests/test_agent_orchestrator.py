@@ -239,10 +239,13 @@ class TestRunRoute:
             ({**_READY_FOR_REVIEW, "review_outcome": "clean"}, "human_merge", "Human reviewer"),
         ],
     )
-    def test_a_single_carrier_role_is_route_independent(
+    def test_a_role_the_run_route_does_not_pick_answers_with_its_default(
         self, overrides: dict[str, Any], role: str, adapter: str
     ) -> None:
-        """A GitHub Action and a human are not a provider's variant of anything."""
+        """A GitHub Action and a human are not a provider's variant of anything.
+
+        The review gate keeps answering this way after gaining a second carrier: that
+        one is selected inside CI, not by the chat the human is in (#478)."""
         decision = decide(_state(route="codex", **overrides), load_catalog())
 
         assert decision.next_role == role
@@ -334,6 +337,94 @@ class TestRunRoute:
         assert result["route"] == "codex"
         assert result["adapter"] == "Codex $plan-issue #N self-review"
         assert result["next_action"] == result["adapter"]
+
+
+class TestCarrierSelection:
+    """Not every alternative carrier is a run-route variant (#478).
+
+    `pr_reviewer` gains a second carrier so an exhausted quota stops locking every
+    PR behind a required check. That carrier is picked inside the CI job, by whether
+    the first one produced a verdict — not by which chat the human is sitting in. The
+    catalogue therefore has to say *how* a role's carrier is selected; deriving it
+    from the adapter count would force the review gate to claim a `codex` run is
+    reviewed by Codex, which is confident misinformation of exactly the #475 kind.
+    """
+
+    def test_the_review_gate_declares_both_of_its_carriers(self) -> None:
+        role = load_catalog()["roles"]["pr_reviewer"]
+
+        assert len(role["adapters"]) == 2, (
+            "the second review carrier exists in CI but not in the catalogue, so the "
+            "control plane cannot name who reviewed a head"
+        )
+        assert role["carrier_selection"] == "ci_failover"
+        assert role["adapter_routes"] is None
+        assert set(role["adapter_files"]) == set(role["adapters"])
+
+    def test_a_runtime_selected_carrier_ignores_the_run_route(self) -> None:
+        """Both routes name the carrier that is asked first, because CI asks it first."""
+        catalogue = load_catalog()
+        overrides = {**_READY_FOR_REVIEW, "reviewed_heads": ()}
+
+        carriers = catalogue["roles"]["pr_reviewer"]["adapters"]
+        assert len(carriers) > 1, "with one carrier this asserts nothing about selection"
+
+        claude = decide(_state(route="claude", **overrides), catalogue)
+        codex = decide(_state(route="codex", **overrides), catalogue)
+
+        assert claude.next_role == codex.next_role == "pr_reviewer"
+        assert claude.adapter == codex.adapter == carriers[0]
+
+    def test_the_carrier_asked_first_is_the_declared_default(self, tmp_path: Path) -> None:
+        """Otherwise `adapter` and the failover order tell two different stories."""
+        catalogue = load_catalog()
+        role = catalogue["roles"]["pr_reviewer"]
+        role["adapter"] = role["adapters"][1]
+        reordered = tmp_path / "roles.yaml"
+        reordered.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="asked first"):
+            load_catalog(reordered)
+
+    def test_a_second_carrier_cannot_arrive_without_saying_how_it_is_selected(
+        self, tmp_path: Path
+    ) -> None:
+        """The #475 guard survives the new mode: silence is not a selection rule."""
+        catalogue = load_catalog()
+        catalogue["roles"]["human_merge"]["adapters"].append("Second human reviewer")
+        undeclared = tmp_path / "roles.yaml"
+        undeclared.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="carrier_selection"):
+            load_catalog(undeclared)
+
+    @pytest.mark.parametrize(
+        ("role", "mutation", "message"),
+        [
+            ("planner", {"carrier_selection": "sole"}, "carrier_selection"),
+            ("human_merge", {"carrier_selection": "ci_failover"}, "carrier_selection"),
+            ("pr_reviewer", {"carrier_selection": "whoever-is-free"}, "carrier_selection"),
+        ],
+    )
+    def test_a_selection_mode_that_contradicts_the_adapters_fails_validation(
+        self, tmp_path: Path, role: str, mutation: dict[str, Any], message: str
+    ) -> None:
+        catalogue = load_catalog()
+        catalogue["roles"][role].update(mutation)
+        broken = tmp_path / "roles.yaml"
+        broken.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match=message):
+            load_catalog(broken)
+
+    def test_a_missing_selection_mode_is_an_incomplete_contract(self, tmp_path: Path) -> None:
+        catalogue = load_catalog()
+        del catalogue["roles"]["pr_reviewer"]["carrier_selection"]
+        without_mode = tmp_path / "roles.yaml"
+        without_mode.write_text(yaml.safe_dump(catalogue), encoding="utf-8")
+
+        with pytest.raises(ValueError, match="incomplete contract"):
+            load_catalog(without_mode)
 
 
 class TestRouteResolution:

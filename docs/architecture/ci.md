@@ -346,6 +346,28 @@ schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a 
 `::warning::`**, `blocking` fails, and absent or malformed output is a readable
 `review unavailable` failure.
 
+**One context, two carriers (#478).** Required contexts are AND-ed, so a second required
+context would make availability *worse* — both providers would need quota. The carriers
+therefore sit inside this one job as an ordered failover: `Claude review` runs with
+`continue-on-error`, `Classify review outcome` asks
+`check_claude_review_outcome.py --classify` whether that produced a usable verdict, and
+`Codex review` runs only when the answer is `false`. A `blocking` verdict is a result, so
+it is never failed over and never overruled. Exactly one of the two enforcement steps
+runs, each naming its producer, so a head never collects two verdicts.
+
+Carrier 2 is **Codex code review through its GitHub integration**, not an action in this
+runner: `openai/codex-action` authenticates by API key only, and a carrier switched on by
+buying a key does not solve an availability problem. `scripts/request_codex_review.py` is
+the whole adapter — it reads the existing reviews, posts `@codex review` once if none of
+them answers for this head, then waits with a declared bound. Only a review by
+`chatgpt-codex-connector[bot]` **on the current head SHA** counts, and its state is the
+verdict: changes requested → `blocking`, a plain comment → `rework`, approved → `clean`.
+That mapping is instructed, not guessed: `AGENTS.md` § Code Review Rules — the file Codex
+reads for repository rules, and the second home of the review contract — tells the reviewer
+to request changes only for a blocking finding. No answer within the bound leaves an empty
+payload, and the enforcement step reds the check exactly as before. Rationale and rejected
+options: [ADR 0003](../adr/0003-second-carrier-for-the-required-review-gate.md).
+
 **Merge authority is narrower than report coverage (#458).** The prompt requires every finding to
 be reported at every severity, so a should-fix finding is the normal outcome of a thorough review.
 Reding the required check on it made a green result unreachable by construction: one delivery PR
@@ -377,7 +399,8 @@ single-maintainer fallback: the maintainer's IDE-agent review and merge
 decision.
 
 When a PR changes the review-controller surface (`claude-review.yml`,
-`scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
+`scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
+or `scripts/request_codex_review.py`)
 and has an empty outcome output, `claude-review` emits a visible warning; it
 is not a successful Claude review. A real `clean`, `rework`, or `blocking`
 outcome is enforced for controller PRs exactly as it is for ordinary PRs. In
