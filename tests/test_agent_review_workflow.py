@@ -216,6 +216,36 @@ class TestCoverageFirstPrompt:
         )
 
 
+@pytest.mark.parametrize("carrier", _CARRIERS)
+class TestDocumentationReviewPrompt:
+    """Both review carriers own the semantic half of the docs policy (#432)."""
+
+    def test_carriers_follow_linked_repository_docs(self, carrier: str) -> None:
+        prompt = _carrier_prompt(carrier).lower()
+        assert "repository docs" in prompt and "links to" in prompt, (
+            f"{carrier} reads CLAUDE.md but is not told to follow its repository-doc links"
+        )
+
+    def test_carriers_check_current_state_not_history(self, carrier: str) -> None:
+        prompt = _carrier_prompt(carrier).lower()
+        missing = [
+            marker
+            for marker in (
+                "docs/architecture/project-map.md",
+                "current implemented state",
+                "history",
+                "ideas",
+                "removing",
+                "meaning",
+            )
+            if marker not in prompt
+        ]
+        assert not missing, (
+            f"{carrier} does not own the semantic documentation review contract; "
+            f"missing markers: {missing} (#432)"
+        )
+
+
 class TestReviewOutcomeGate:
     def test_review_fetches_live_pr_context_for_reruns(self) -> None:
         context = _named_step("Fetch current PR context")
