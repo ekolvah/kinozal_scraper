@@ -16,16 +16,17 @@ would become a second, untestable home for the same policy.
 from __future__ import annotations
 
 import json
-import os
-import subprocess
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
+
+from scripts.gh_io import publish_step_output, slurp_records
 
 _REVIEW_CONTROLLER_PATHS = frozenset(
     {
         ".github/workflows/claude-review.yml",
         "scripts/check_branch_protection.py",
         "scripts/check_claude_review_outcome.py",
+        "scripts/request_codex_review.py",
     }
 )
 # Public: carrier 2 translates its own review states into this vocabulary (#478),
@@ -84,29 +85,8 @@ def _require_live_pr_context(status: str | None) -> None:
 def fetch_changed_paths(repository: str, pr_number: int) -> list[str]:
     """Read every PR path so review-controller changes cannot hide in pagination."""
     endpoint = f"repos/{repository}/pulls/{pr_number}/files?per_page=100"
-    result = subprocess.run(
-        ["gh", "api", endpoint, "--paginate", "--slurp"],
-        text=True,
-        capture_output=True,
-        encoding="utf-8",
-        check=False,
-    )
-    if result.returncode != 0 or result.stdout is None:
-        detail = result.stderr.strip() if result.stderr else "no stderr captured"
-        raise RuntimeError(f"gh api {endpoint} failed: {detail}")
-    try:
-        payload = json.loads(result.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError(f"gh api {endpoint} returned invalid JSON: {exc}") from exc
-    if not isinstance(payload, list):
-        raise RuntimeError(f"gh api {endpoint} returned an unexpected payload shape")
-    pages = payload if all(isinstance(page, list) for page in payload) else [payload]
-    records = [record for page in pages for record in page]
-    if not all(isinstance(record, Mapping) for record in records):
-        raise RuntimeError(f"gh api {endpoint} returned an unexpected payload shape")
-
     paths: list[str] = []
-    for record in records:
+    for record in slurp_records(endpoint):
         path = record.get("filename")
         if not isinstance(path, str):
             raise RuntimeError(f"gh api {endpoint} returned an unexpected payload shape")
@@ -151,17 +131,7 @@ def _report_validity(outcome: object) -> None:
     second carrier was ever asked, and a `blocking` verdict is a result — treating
     it as invalid would let the failover overrule the carrier that found it.
     """
-    line = f"valid={'true' if outcome in VALID_OUTCOMES else 'false'}"
-    print(line)
-    destination = os.environ.get("GITHUB_OUTPUT")
-    if not destination:
-        return
-    try:
-        with open(destination, "a", encoding="utf-8") as handle:
-            handle.write(f"{line}\n")
-    except OSError as exc:
-        print(f"error: cannot write GITHUB_OUTPUT {destination!r}: {exc}", file=sys.stderr)
-        raise SystemExit(2) from exc
+    publish_step_output(f"valid={'true' if outcome in VALID_OUTCOMES else 'false'}")
 
 
 def main(argv: Sequence[str] | None = None) -> None:

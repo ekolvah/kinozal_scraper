@@ -28,6 +28,8 @@ what matters») exit-code не поймает — семантику промп�
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
 
@@ -43,14 +45,6 @@ _ACTION = "anthropics/claude-code-action"
 _AGENTS = Path(__file__).resolve().parent.parent / "AGENTS.md"
 _CODEX_RULES_HEADING = "## Code Review Rules"
 
-# Оба носителя ревьюят по одному контракту (#478). Промпт-гарды ниже параметризованы
-# по ним обоим, иначе носитель 2 мог бы молча переоткрыть политику severity из #458:
-# гард, знающий только про первый носитель, зеленеет на любом тексте второго.
-# Дома у контрактов разные: носитель 1 читает промпт из workflow, носитель 2 —
-# `## Code Review Rules` в `AGENTS.md` (документированная точка настройки Codex
-# code review). Копий по-прежнему две, но каждая — в своём каноническом месте.
-_CARRIERS = ("Claude review", "Codex review")
-
 # Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
 # сужение (находку, которую уже ловит ruff/mypy, понижаем как дубль детерминированного
 # гейта) записано в промпте НЕ императивом, поэтому исключать нечего. Карв-аут вида
@@ -59,6 +53,9 @@ _CARRIERS = ("Claude review", "Codex review")
 _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b", re.IGNORECASE)
 
 
+# Кеш, а не фикстура: файлы читаются только на чтение и за прогон не меняются,
+# а парс 11 KB YAML на каждый ассерт — десятки миллисекунд впустую.
+@lru_cache(maxsize=1)
 def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
     return cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
@@ -92,6 +89,7 @@ def _codex_step() -> dict[str, Any]:
     return _named_step("Codex review")
 
 
+@lru_cache(maxsize=1)
 def _codex_review_rules() -> str:
     """Секция `AGENTS.md`, которую Codex code review читает как свой промпт."""
     text = _AGENTS.read_text(encoding="utf-8")
@@ -103,10 +101,23 @@ def _codex_review_rules() -> str:
     return section.split("\n## ", 1)[0]
 
 
+# Оба носителя ревьюят по одному контракту (#478). Промпт-гарды ниже параметризованы
+# по ним обоим, иначе носитель 2 мог бы молча переоткрыть политику severity из #458:
+# гард, знающий только про первый носитель, зеленеет на любом тексте второго.
+# Дома у контрактов разные: носитель 1 читает промпт из workflow, носитель 2 —
+# `## Code Review Rules` в `AGENTS.md` (документированная точка настройки Codex
+# code review). Копий по-прежнему две, но каждая — в своём каноническом месте.
+# Список носителей и загрузчик промпта каждого объявлены здесь вместе: разъехавшись,
+# они дали бы гард, дважды проверяющий носителя 1 и молча не проверяющий носителя 2.
+_CARRIER_PROMPTS: dict[str, Callable[[], str]] = {
+    "Claude review": _prompt,
+    "Codex review": _codex_review_rules,
+}
+_CARRIERS = tuple(_CARRIER_PROMPTS)
+
+
 def _carrier_prompt(carrier: str) -> str:
-    if carrier == "Codex review":
-        return _codex_review_rules()
-    return str(_inputs_for_step(_named_step(carrier))["prompt"])
+    return _CARRIER_PROMPTS[carrier]()
 
 
 def _fallback_verifier() -> dict[str, Any]:

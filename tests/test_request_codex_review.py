@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+import time
 from pathlib import Path
 from typing import Any
 
@@ -47,11 +48,13 @@ class _Gh:
     def __init__(self, timeline: list[list[dict[str, Any]]]) -> None:
         self.timeline = timeline
         self.calls: list[list[str]] = []
+        self._read = 0
 
     def __call__(self, args: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
         self.calls.append(args)
         if "/reviews" in " ".join(args):
-            page = self.timeline[min(len(self.reads) - 1, len(self.timeline) - 1)]
+            page = self.timeline[min(self._read, len(self.timeline) - 1)]
+            self._read += 1
             return subprocess.CompletedProcess(
                 args=args, returncode=0, stdout=json.dumps(page), stderr=""
             )
@@ -188,23 +191,25 @@ class TestAskingAndWaiting:
 class TestPublishedPayload:
     """The step hands its result to the enforcement step and to nobody else."""
 
-    def _run(
-        self, gh: _Gh, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *extra: str
-    ) -> tuple[str, str]:
+    def _run(self, gh: _Gh, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, *extra: str) -> str:
         output = tmp_path / "github_output"
         output.write_text("", encoding="utf-8")
         monkeypatch.setenv("GITHUB_OUTPUT", str(output))
         monkeypatch.setattr(subprocess, "run", gh)
-        monkeypatch.setattr(request_codex_review, "DEFAULT_POLL_SECONDS", 1)
+        # `main` takes no clock seam — the workflow gives it real seconds. Fake the
+        # clock the module reads instead, or the timeout case below really sleeps.
+        clock = _Clock()
+        monkeypatch.setattr(time, "sleep", clock.sleep)
+        monkeypatch.setattr(time, "monotonic", clock.monotonic)
         main(["--repo", "o/r", "--pr", "7", "--head-sha", _HEAD, *extra])
-        return output.read_text(encoding="utf-8"), ""
+        return output.read_text(encoding="utf-8")
 
     def test_the_verdict_travels_as_the_payload_enforcement_parses(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Round-trip, not a shape assertion: the payload is fed to the script that
         enforces it, so the two cannot agree on paper and disagree in the job."""
-        written, _ = self._run(_Gh([[_review("CHANGES_REQUESTED")]]), monkeypatch, tmp_path)
+        written = self._run(_Gh([[_review("CHANGES_REQUESTED")]]), monkeypatch, tmp_path)
 
         payload = written.split("payload=", 1)[1].strip()
         assert json.loads(payload)["outcome"] == "blocking"
@@ -217,11 +222,14 @@ class TestPublishedPayload:
     ) -> None:
         """Exit 0 with an empty payload on purpose: the check is red either way, and
         keeping the verdict in one step keeps the log answering «who reviewed»."""
-        written, _ = self._run(
+        written = self._run(
             _Gh([[]]), monkeypatch, tmp_path, "--timeout-seconds", "2", "--poll-seconds", "1"
         )
 
-        assert "payload=\n" in written or written.strip().endswith("payload=")
+        assert "payload=\n" in written, (
+            "the enforcement step reads this line; a payload written without its "
+            f"newline is not the empty outcome it parses. got={written!r}"
+        )
         assert "::warning::" in capsys.readouterr().out, (
             "a carrier that never answered must say so; silence here is "
             "indistinguishable from a carrier that was never asked (§IV)"

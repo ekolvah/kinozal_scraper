@@ -246,6 +246,14 @@ class TestChangedPaths:
 
         assert outcome_gate.controller_changed(["scripts/check_branch_protection.py"])
 
+    def test_every_carrier_adapter_is_a_controller_path(self) -> None:
+        """A PR that only fixes carrier 2 changes review behaviour, so the same
+        carve-out and the same manual-review escalation have to apply to it —
+        otherwise a broken carrier cannot be merged past the gate it broke."""
+        import scripts.check_claude_review_outcome as outcome_gate
+
+        assert outcome_gate.controller_changed(["scripts/request_codex_review.py"])
+
     def test_gh_transport_failure_is_distinct(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def fail(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
             return subprocess.CompletedProcess(args=["gh"], returncode=1, stdout="", stderr="403")
@@ -259,7 +267,7 @@ class TestChangedPaths:
             return subprocess.CompletedProcess(args=["gh"], returncode=0, stdout=None, stderr="")
 
         monkeypatch.setattr(subprocess, "run", capture_failed)
-        with pytest.raises(RuntimeError, match="failed: no stderr captured"):
+        with pytest.raises(RuntimeError, match="no stdout captured"):
             fetch_changed_paths("owner/repo", 1)
 
     def test_changed_paths_payload_must_be_file_list(self, monkeypatch: pytest.MonkeyPatch) -> None:

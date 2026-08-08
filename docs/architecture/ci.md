@@ -399,7 +399,8 @@ single-maintainer fallback: the maintainer's IDE-agent review and merge
 decision.
 
 When a PR changes the review-controller surface (`claude-review.yml`,
-`scripts/check_branch_protection.py`, or `scripts/check_claude_review_outcome.py`)
+`scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
+or `scripts/request_codex_review.py`)
 and has an empty outcome output, `claude-review` emits a visible warning; it
 is not a successful Claude review. A real `clean`, `rework`, or `blocking`
 outcome is enforced for controller PRs exactly as it is for ordinary PRs. In
