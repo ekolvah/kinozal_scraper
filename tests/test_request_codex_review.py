@@ -22,8 +22,8 @@ from typing import Any
 import pytest
 
 from scripts import request_codex_review
-from scripts.check_claude_review_outcome import VALID_OUTCOMES
-from scripts.check_claude_review_outcome import main as enforce_outcome
+from scripts.check_agent_review_outcome import VALID_OUTCOMES
+from scripts.check_agent_review_outcome import main as enforce_outcome
 from scripts.request_codex_review import (
     CODEX_REVIEWER,
     STATE_OUTCOMES,

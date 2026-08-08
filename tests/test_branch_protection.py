@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -46,7 +47,7 @@ _HOOK = _REPO_ROOT / ".githooks" / "pre-push"
 
 class TestDriftDetection:
     def test_controller_gate_is_not_a_required_context(self) -> None:
-        assert REQUIRED_CONTEXTS == ("quality", "pr-link", "claude-review")
+        assert REQUIRED_CONTEXTS == ("quality", "pr-link", "agent-review")
 
     """Чистое сравнение объявленного состава контекстов с фактическим."""
 
@@ -408,6 +409,18 @@ class TestPrePushHook:
         self._run(tmp_path)
         calls = self._gate_calls(tmp_path)
         assert "check_branch_protection.py" in calls[0]
+        assert "ci_check.py" in calls[1]
+
+    def test_allow_drift_reason_reaches_protection_probe(self, tmp_path: Path) -> None:
+        self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
+        reason = "PATCH-first migration for #480"
+        result = self._run(
+            tmp_path, env={**os.environ, "BRANCH_PROTECTION_ALLOW_DRIFT": reason}
+        )
+
+        assert result.returncode == 0, result.stderr
+        calls = self._gate_calls(tmp_path)
+        assert f"check_branch_protection.py --allow-drift {reason}" in calls[0]
         assert "ci_check.py" in calls[1]
 
     def test_drift_blocks_push_without_running_ci_check(self, tmp_path: Path) -> None:
