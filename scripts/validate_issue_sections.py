@@ -3,19 +3,26 @@
 
 Usage: python scripts/validate_issue_sections.py <issue-number>
 
-Exits 0 if all required sections are present and non-empty. Otherwise
+Exits 0 if all required sections are present and non-empty. A passing issue may
+also print a non-blocking reminder for an explicit Out of scope follow-up that
+has neither an issue reference nor a wontfix/YAGNI decision (#368). Otherwise
 prints the list of gaps to stderr and exits 1. Consumed by role adapters so an
 agent does not have to "remember" the hand-off contract.
 """
 
 from __future__ import annotations
 
+import importlib
 import json
 import subprocess
 import sys
 from collections.abc import Sequence
 
 from markdown_it import MarkdownIt
+
+check_orphan_scope = importlib.import_module(
+    f"{__package__}.check_orphan_scope" if __package__ else "check_orphan_scope"
+)
 
 REQUIRED_SECTIONS: tuple[str, ...] = (
     "Context / Why",
@@ -144,6 +151,8 @@ def main() -> None:
     gaps = find_gaps(body)
     if not gaps:
         print(f"ok: issue #{n} has all {len(REQUIRED_SECTIONS)} required sections")
+        for reminder in check_orphan_scope.format_reminders(n, body):
+            print(reminder)
         return
     print(f"error: issue #{n} missing/empty sections:", file=sys.stderr)
     for g in gaps:

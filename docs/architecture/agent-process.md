@@ -53,6 +53,11 @@ handoff: ready
 Do not store prompts, transcripts, secrets, or private reasoning in the issue.
 The recorded `validation: passed` is never an authorization by itself: every
 implementer re-runs the validator before creating a branch.
+On a passing issue, the validator also prints a non-blocking reminder when a
+top-level `Out of scope` bullet explicitly promises a follow-up but names
+neither `#N` nor a `wontfix`/`YAGNI` decision. The planner or maintainer still
+decides what the prose means; the reminder never changes the passing exit code
+and does not create an issue automatically (#368).
 Issues planned before this contract had eight sections. A planner adds
 `Agent handoff` before implementation; an implementer that sees the missing
 section stops and returns the issue to a planner rather than guessing it.
