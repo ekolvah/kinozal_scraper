@@ -215,9 +215,10 @@ def main(argv: Sequence[str] | None = None) -> None:
     if verdict is None:
         print(
             f"::warning::{options.reviewer} left no review of {options.head_sha} within "
-            f"{options.timeout_seconds}s. Carrier 2 produced no verdict; the enforcement "
-            "step below reds the check. Check that Codex code review is enabled for this "
-            "repository and that its subscription quota is not exhausted."
+            f"{options.timeout_seconds}s. Carrier 2 produced no verdict, so the enforcement "
+            "step below has no outcome to enforce. Check that this repository is connected "
+            "in Codex cloud settings with code review enabled, and that its subscription "
+            "quota is not exhausted."
         )
         _publish("")
         return
