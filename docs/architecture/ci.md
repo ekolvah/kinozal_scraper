@@ -65,6 +65,23 @@ a check in the registry without updating `ci.yml` fails
 > [`pre-commit`](https://pre-commit.com) framework — which this repo
 > deliberately does **not** use ([§Consciously not adopted](#consciously-not-adopted)).
 
+### Gate CLI exit codes
+
+Developer-flow gates whose caller distinguishes a domain verdict from missing
+evidence use one contract: `0` means the gate passed, `1` means it computed an
+explicit negative verdict, and `2` means usage was invalid or the gate could
+not compute (tool invocation, output capture, or payload decoding failed).
+`validate_issue_sections.py`, for example, reserves `1` for a successfully read
+issue whose required sections are missing; an unreadable issue is `2`, so the
+implementer is not sent back to rewrite a valid plan (#413).
+
+`ci_check.py` remains deliberately narrower at the child-tool boundary: any
+non-zero result from ruff, pytest, pip-audit, mypy, or import-linter means the
+quality gate did not pass and `_run()` maps it to `1`. Its own file-discovery
+precondition is distinguishable, however: failed `git ls-files` or broken
+capture means the input set is unknown and exits `2`; a successfully captured
+but empty set remains the explicit negative verdict `1`.
+
 ### Secret scan (`secrets`)
 
 `detect_secrets.pre_commit_hook` over every tracked file, run as a registry check —
@@ -82,12 +99,14 @@ same commit is scanned in full on Linux CI: "green locally" would carry no infor
 `tests/test_secrets_gate.py::TestGateFires::test_planted_secret_in_a_non_ascii_file_exits_nonzero`
 pins it.
 
-**Two §IV invariants in `ci_check`, and neither is decoration:** `_tracked_files()` exits 1
-when `git ls-files` fails, and `check_secrets()` exits 1 on an **empty file set**. The hook
-itself returns 0 when handed no files — so a broken `git` invocation would otherwise
-reproduce this gate's own historical defect (configured, green, scanning nothing) one layer
-deeper. Do not "simplify" either exit away. `tests/test_secrets_gate.py` covers both, plus a
-planted key (non-zero) and a clean file (zero).
+**Two §IV invariants in `ci_check`, and neither is decoration:** `_tracked_files()` exits 2
+when `git ls-files` fails or its capture breaks, while `check_secrets()` exits 1 on a
+successfully captured but **empty file set**. The hook itself returns 0 when handed no files —
+so a broken `git` invocation would otherwise reproduce this gate's own historical defect
+(configured, green, scanning nothing) one layer deeper. Do not "simplify" either exit away.
+`tests/test_ci_check.py::TestTrackedFilesCaptureFailure` pins the infrastructure code;
+`tests/test_secrets_gate.py` covers the empty set, a planted key (non-zero), and a clean file
+(zero).
 
 **No `--baseline`, by design.** With it, `detect_secrets/pre_commit_hook.py` can return `3`
 after *rewriting* the baseline file in place (line-number drift) — a red push that already
