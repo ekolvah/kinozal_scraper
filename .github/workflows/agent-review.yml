@@ -92,8 +92,8 @@ jobs:
             </pr-body>
 
             Review this pull request as a senior engineer would. Read CLAUDE.md
-            first — it lists project conventions that take precedence over your
-            defaults.
+            and the repository docs it links to first — they list project
+            conventions that take precedence over your defaults.
 
             Look at:
             - Bugs and logic errors
@@ -103,6 +103,10 @@ jobs:
             - Whether the change has matching test coverage, and whether a
               consciously-rejected coverage decision is recorded in the
               `docs/architecture/testing.md` accepted-gaps ledger
+            - For changed documentation, follow
+              `docs/architecture/project-map.md`: it describes the current implemented
+              state, not history or ideas. Issue and PR references
+              are pointers; removing one must not change the statement's meaning.
 
             Coverage first: report every issue you find. Grade findings, never
             drop them — a finding you decided was too small to mention is

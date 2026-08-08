@@ -221,13 +221,13 @@ class TestDocumentationReviewPrompt:
     """Both review carriers own the semantic half of the docs policy (#432)."""
 
     def test_carriers_follow_linked_repository_docs(self, carrier: str) -> None:
-        prompt = _carrier_prompt(carrier).lower()
+        prompt = " ".join(_carrier_prompt(carrier).lower().split())
         assert "repository docs" in prompt and "links to" in prompt, (
             f"{carrier} reads CLAUDE.md but is not told to follow its repository-doc links"
         )
 
     def test_carriers_check_current_state_not_history(self, carrier: str) -> None:
-        prompt = _carrier_prompt(carrier).lower()
+        prompt = " ".join(_carrier_prompt(carrier).lower().split())
         missing = [
             marker
             for marker in (

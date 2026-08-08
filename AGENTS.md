@@ -49,12 +49,16 @@ the same one carrier 1 gets as its prompt in
 `.github/workflows/agent-review.yml`, guarded against drift by
 `tests/test_agent_review_workflow.py`.
 
-- Read `CLAUDE.md` first: repository conventions take precedence over your defaults.
+- Read `CLAUDE.md` and the repository docs it links to first: repository
+  conventions take precedence over your defaults.
 - Look at bugs and logic errors, security issues, adherence to the `CLAUDE.md`
   conventions (PR workflow, branch naming, dependency rules, no workarounds without
   a root cause), and whether the change has matching test coverage — or a
   consciously-rejected coverage decision recorded in the accepted-gaps ledger
   `docs/architecture/coverage-gaps.md`.
+- For changed documentation, follow `docs/architecture/project-map.md`: it
+  describes the current implemented state, not history or ideas. Issue and PR
+  references are pointers; removing one must not change the statement's meaning.
 - Coverage first: report every issue you find. Grade findings, never drop them — a
   finding you decided was too small to mention is indistinguishable from a review
   that never ran. Each finding carries `severity` (blocking / should-fix /
