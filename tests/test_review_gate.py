@@ -13,7 +13,12 @@ from typing import Any
 import pytest
 
 from scripts.agent_orchestrator import load_catalog
-from scripts.check_branch_protection import REQUIRED_CONTEXTS
+from scripts.check_branch_protection import (
+    REQUIRED_CONTEXTS,
+)
+from scripts.check_branch_protection import (
+    REVIEW_CONTEXT as PROTECTION_REVIEW_CONTEXT,
+)
 from scripts.review_gate import (
     REVIEW_CONTEXT,
     VERDICT_EXIT_CODES,
@@ -135,6 +140,7 @@ class TestContracts:
     """Structural guards: they hold by construction, so they stay out of the RED set."""
 
     def test_review_context_is_part_of_required_contexts(self) -> None:
+        assert REVIEW_CONTEXT is PROTECTION_REVIEW_CONTEXT
         assert REVIEW_CONTEXT in REQUIRED_CONTEXTS
 
     def test_every_verdict_has_a_distinct_exit_code(self) -> None:
@@ -223,7 +229,7 @@ class TestEvidence:
         было, и гейт эскалировал на ручной IDE-просмотр. Ревью работает — эскалация
         превратилась бы в `escalate` на каждом PR по агентному процессу.
         """
-        payload = _pr_payload(files=[{"path": ".github/workflows/claude-review.yml"}])
+        payload = _pr_payload(files=[{"path": ".github/workflows/agent-review.yml"}])
         monkeypatch.setattr(subprocess, "run", _gh_double(payload, _runs_payload(_ROUND_2)))
 
         verdict = evaluate(collect_evidence("465"), fixer_budget=3)

@@ -36,7 +36,7 @@ decision-makers: ekolvah
   `action.yml` каждый функциональный шаг гейтится на `openai-api-key`). Codex code review по
   подписке существует, но не как экшен в раннере — как GitHub-интеграция Codex.
 * **Правило валидности не должно получить второй дом.** Что считать пригодным вердиктом, уже
-  знает `scripts/check_claude_review_outcome.py`; выражение в YAML было бы вторым, непокрытым
+  знает `scripts/check_agent_review_outcome.py`; выражение в YAML было бы вторым, непокрытым
   тестами описанием той же политики.
 
 ## Considered Options
@@ -50,9 +50,9 @@ decision-makers: ekolvah
 
 ## Decision Outcome
 
-Выбран **один контекст с двумя носителями и ordered failover**. `claude-review.yml` спрашивает
+Выбран **один контекст с двумя носителями и ordered failover**. `agent-review.yml` спрашивает
 первого носителя (`Claude review`, `continue-on-error: true`), затем шаг `Classify review outcome`
-вызывает `check_claude_review_outcome.py --classify` и публикует `valid=true|false`. Второй
+вызывает `check_agent_review_outcome.py --classify` и публикует `valid=true|false`. Второй
 носитель запускается **только** при `valid == 'false'` — то есть когда первый не оставил
 пригодного структурированного вердикта. Ровно один из двух enforcement-шагов выносит итог, и оба
 вызывают тот же скрипт с `--producer`, так что в логе всегда видно, чей это вердикт.
@@ -86,26 +86,25 @@ review от `chatgpt-codex-connector[bot]` **на текущем head SHA** — 
   `AGENTS.md` § Code Review Rules у носителя 2. Свести в один файл нельзя — у `claude-code-action`
   нет входа `prompt-file`, YAML-якорей в GitHub Actions нет, а Codex читает только свой файл.
   Компенсация — гарды промпта параметризованы по обоим носителям
-  (`tests/test_claude_review_workflow.py`, `_CARRIERS`), так что расхождение копий красит тест.
+  (`tests/test_agent_review_workflow.py`, `_CARRIERS`), так что расхождение копий красит тест.
 * Bad, потому что носители отвечают в разных форматах и с разной планкой: носитель 1 пишет inline-
   комментарии и структурированный outcome, носитель 2 оставляет обычный GitHub review, и в GitHub
   он публично документирован как поднимающий находки уровня P0/P1 — уже, чем наш coverage-first
   контракт. Зелёный чек, вынесенный носителем 2, поэтому слабее того же чека от носителя 1;
   запись об этом — в [`coverage-gaps.md`](../architecture/coverage-gaps.md) **AK**.
 * Bad, потому что вердикт носителя 2 приходит асинхронно: job ждёт его в цикле с границей
-  (`--timeout-seconds`), то есть в failover-ветке `claude-review` идёт минутами, а не секундами.
+  (`--timeout-seconds`), то есть в failover-ветке `agent-review` идёт минутами, а не секундами.
   Плата принята: ветка достижима только когда носитель 1 уже не ответил.
-* Neutral: `check_claude_review_outcome.py` теперь обслуживает обоих носителей, но имя оставлено
-  прежним — переименование провайдер-нейтральных сущностей вынесено в #480 отдельным PR.
+* Neutral: `check_agent_review_outcome.py` обслуживает обоих носителей без провайдерского имени.
 
 ### Confirmation
 
-Гарды: `tests/test_claude_review_workflow.py::TestFallbackCarrier` (порядок шагов, условие
+Гарды: `tests/test_agent_review_workflow.py::TestFallbackCarrier` (порядок шагов, условие
 запуска, отсутствие платного креда, привязка вердикта к head SHA, ограниченное ожидание, имя
 выхода, единственный дом контракта, атрибуция продюсера, красный гейт при пропущенном втором
 носителе), `tests/test_request_codex_review.py` (чей review считается вердиктом, отбор по head
 SHA, перевод состояний, round-trip нагрузки через enforcement-скрипт, видимый таймаут),
-`tests/test_check_claude_review_outcome.py::TestClassify` и `::TestProducerAttribution`,
+`tests/test_check_agent_review_outcome.py::TestClassify` и `::TestProducerAttribution`,
 `tests/test_agent_orchestrator.py::TestCarrierSelection`,
 `tests/test_agent_process.py::test_documented_carrier_selection_modes_match_the_catalogue`.
 
@@ -164,7 +163,7 @@ SHA, перевод состояний, round-trip нагрузки через e
   [`ci.md`](../architecture/ci.md#required-status-checks-branch-protection);
   поле `carrier_selection` в каталоге ролей —
   [`agent-process.md`](../architecture/agent-process.md#roles-and-hand-offs).
-* Провайдер-нейтральные имена (`check_claude_review_outcome.py`, контекст `claude-review`) —
+* Провайдер-нейтральные имена (`check_agent_review_outcome.py`, контекст `agent-review`) —
   [#480](https://github.com/ekolvah/kinozal_scraper/issues/480); переименование required-контекста
   требует PATCH-миграции branch protection и потому вынесено из этой записи.
 * Подписочность Codex code review сверена с документацией OpenAI, а не выведена из пробы:

@@ -44,8 +44,8 @@ Codex code review is carrier 2 of the required review gate (#478): it is asked f
 a review when carrier 1 left no verdict, and `scripts/request_codex_review.py` reads
 the review it posts on the pull request. The rules below are that review contract —
 the same one carrier 1 gets as its prompt in
-`.github/workflows/claude-review.yml`, guarded against drift by
-`tests/test_claude_review_workflow.py`.
+`.github/workflows/agent-review.yml`, guarded against drift by
+`tests/test_agent_review_workflow.py`.
 
 - Read `CLAUDE.md` first: repository conventions take precedence over your defaults.
 - Look at bugs and logic errors, security issues, adherence to the `CLAUDE.md`

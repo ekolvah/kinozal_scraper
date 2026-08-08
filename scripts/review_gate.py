@@ -13,7 +13,7 @@ bullet. This gate replaces the existing «inspect the reviewer outcome» step; i
 adds no round trip.
 
 Severity comes from the place that already computes it deterministically: the
-`claude-review` required context, whose conclusion `check_claude_review_outcome`
+`agent-review` required context, whose conclusion `check_agent_review_outcome`
 derives from the schema-validated outcome (`clean`/`rework` pass, `blocking`
 reds). The review body is never parsed — a markdown parser would be a second,
 fragile home for the same fact, and the should-fix list belongs to the human
@@ -49,10 +49,9 @@ from typing import Any
 from urllib.parse import quote
 
 from scripts.agent_orchestrator import load_catalog
-from scripts.check_branch_protection import REQUIRED_CONTEXTS
+from scripts.check_branch_protection import REQUIRED_CONTEXTS, REVIEW_CONTEXT
 
-REVIEW_CONTEXT = "claude-review"
-REVIEW_WORKFLOW_FILE = "claude-review.yml"
+REVIEW_WORKFLOW_FILE = "agent-review.yml"
 VERDICT_EXIT_CODES: dict[str, int] = {
     "ready-for-human": 0,
     "fix-blocking": 10,
@@ -133,7 +132,7 @@ def _red_reason(red: Sequence[str]) -> str:
     if REVIEW_CONTEXT in red:
         # The check-run conclusion cannot separate exit 1 (blocking findings)
         # from exit 2 (empty/malformed outcome, live PR context lost) in
-        # check_claude_review_outcome. Both start the same way — open the run —
+        # check_agent_review_outcome. Both start the same way — open the run —
         # so the gate names the ambiguity instead of guessing (§IV).
         reason += (
             f"; a red {REVIEW_CONTEXT} means either blocking findings or a "

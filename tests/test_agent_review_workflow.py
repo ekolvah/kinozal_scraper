@@ -1,4 +1,4 @@
-"""Anti-drift guards for the cloud review gate (`.github/workflows/claude-review.yml`, #374).
+"""Anti-drift guards for the cloud review gate (`.github/workflows/agent-review.yml`, #374).
 
 Статический YAML-гард: ни сети, ни кредов — жанр `tests/test_workflow_isolation.py`
 и `tests/test_settings_deny.py`.
@@ -37,7 +37,7 @@ import pytest
 import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
-_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "claude-review.yml"
+_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review.yml"
 _REMOVED_GATE_WORKFLOW = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
 )
@@ -58,7 +58,7 @@ _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b"
 @lru_cache(maxsize=1)
 def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
-    return cast("list[dict[str, Any]]", data["jobs"]["claude-review"]["steps"])
+    return cast("list[dict[str, Any]]", data["jobs"]["agent-review"]["steps"])
 
 
 def _named_step(name: str) -> dict[str, Any]:
@@ -135,7 +135,7 @@ class TestReviewModelPinned:
         args = str(_inputs().get("claude_args", ""))
         found = re.search(r"--model\s+(\S+)", args)
         assert found, (
-            "claude-review must pin the model explicitly via "
+            "agent-review must pin the model explicitly via "
             f"`claude_args: --model <id>`; got claude_args={args!r} (#374)"
         )
         model = found.group(1)
@@ -260,7 +260,7 @@ class TestReviewOutcomeGate:
     def test_workflow_enforces_structured_outcome_directly(self) -> None:
         verifier = _named_step("Enforce Claude review outcome")
 
-        assert "python -m scripts.check_claude_review_outcome" in str(verifier["run"])
+        assert "python -m scripts.check_agent_review_outcome" in str(verifier["run"])
         assert "steps.review.outputs.structured_output" in str(verifier["env"])
         assert "always()" in str(verifier["if"])
 
@@ -271,7 +271,7 @@ class TestReviewOutcomeGate:
         assert "Probe Claude outcome marker" not in names
         assert "Repair Claude outcome marker" not in names
         assert "Verify Claude outcome marker" not in names
-        assert "claude-review-outcome:" not in prompt
+        assert "agent-review-outcome:" not in prompt
 
     def test_prompt_keeps_comments_out_of_merge_authority(self) -> None:
         prompt = _prompt()
@@ -332,7 +332,7 @@ class TestFallbackCarrier:
         classify = _named_step("Classify review outcome")
 
         assert classify["id"] == "classify"
-        assert "python -m scripts.check_claude_review_outcome" in str(classify["run"])
+        assert "python -m scripts.check_agent_review_outcome" in str(classify["run"])
         assert "--classify" in str(classify["run"])
         assert "steps.review.outputs.structured_output" in str(classify["env"])
         assert "always()" in str(classify["if"])

@@ -1,4 +1,4 @@
-"""Tests for the deterministic Claude structured-outcome verifier."""
+"""Tests for the deterministic agent structured-outcome verifier."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from scripts.check_claude_review_outcome import main
+from scripts.check_agent_review_outcome import main
 
 
 class TestOutcome:

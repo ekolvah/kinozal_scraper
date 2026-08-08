@@ -1,7 +1,7 @@
 """Единственный дом denylist'а «модель не запинена» — для обоих гардов (#374, #392).
 
 Политика одна (`docs/architecture/ci.md` §Model pinning), поверхностей две: CLI-флаг
-`--model` внутри `claude_args` в `.github/workflows/claude-review.yml` и frontmatter
+`--model` внутри `claude_args` в `.github/workflows/agent-review.yml` и frontmatter
 сабагента в `.claude/agents/*.md`.
 
 **Почему одно множество, а не два.** Это **denylist**, а не allowlist: объединение

@@ -176,7 +176,7 @@ credential infrastructure.
 ### Review-gate verdicts
 
 `python -m scripts.review_gate <PR>` reads the live PR — the required contexts
-on the current head and how many distinct heads `claude-review` has already
+on the current head and how many distinct heads `agent-review` has already
 reviewed. It changes nothing and posts nothing.
 
 | Verdict | Exit code | Meaning |
@@ -188,7 +188,7 @@ reviewed. It changes nothing and posts nothing.
 
 Exit `2` is not a verdict: it is a `gh`, argument, or capture failure, and it
 leaves the PR `not ready` the same way a missing review does. A red
-`claude-review` cannot distinguish blocking findings from an unavailable review
+`agent-review` cannot distinguish blocking findings from an unavailable review
 — the check-run conclusion collapses both — so the gate names the ambiguity and
 the agent reads the run before changing anything. The fixer budget comes from
 `fixer.max_runs` in the role catalogue; the count is a proxy — distinct heads
@@ -208,8 +208,8 @@ together with its cause. The trust model behind the fix is recorded in
 
 The review still executes code from the PR head, so a controller PR verifies
 itself; the agent review reports, it does not authorise the merge. Keep such a
-PR limited to `.github/workflows/claude-review.yml`,
-`scripts/check_branch_protection.py`, `scripts/check_claude_review_outcome.py`,
+PR limited to `.github/workflows/agent-review.yml`,
+`scripts/check_branch_protection.py`, `scripts/check_agent_review_outcome.py`,
 `scripts/request_codex_review.py`, their direct tests, and documentation; do not
 mix application changes into it. That keeps the diff a maintainer reads before
 merging small enough to read.
@@ -220,12 +220,12 @@ checked out from the default branch, so a broken head can red the check but
 cannot turn an absent review green, and `main` keeps running its own copy of the
 workflow. Recovery is a push to the same branch — fix the controller change,
 or revert it inside the PR and re-run the check. Never merge a controller PR
-whose `claude-review` is red, and never disable the required context to get
+whose `agent-review` is red, and never disable the required context to get
 past it.
 
 On every PR the workflow first checks out the default-branch verifier source,
 then reads the current PR body and head SHA from the GitHub API. It maps the
-primary review's validated structured outcome directly to the `claude-review`
+primary review's validated structured outcome directly to the `agent-review`
 job result. This prevents a manual re-run from
 using stale event metadata; the body is untrusted data, never shell input, and
 the summary identifies the reviewed SHA. Comments have no merge authority and

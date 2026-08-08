@@ -225,11 +225,11 @@ decision goes to" route — and the rule itself — live in
   осознанный не-скоуп, отдельная единица (`agent-process.md`, Governance conventions).
 
 - **W. Промпты ревьюеров: форма стережётся, семантика — нет (#374, #392).** Оба
-  ревьюера — cloud (`.github/workflows/claude-review.yml`) и локальный
+  ревьюера — cloud (`.github/workflows/agent-review.yml`) и локальный
   (`.claude/agents/architect-reviewer.md`) — не несут severity-фильтра *на стадии
   поиска*: модель исполняет такой фильтр буквально, и находка молча не доходит до PR. Гарды
   ловят **известные формы**, и каждый — свои, потому что промпты разные:
-  `tests/test_claude_review_workflow.py` (англоязычный промпт) — императив
+  `tests/test_agent_review_workflow.py` (англоязычный промпт) — императив
   подавления в начале строки, наличие `severity` **и** `confidence`, отсутствие
   gag-строки `no blocking issues`; `tests/test_agent_frontmatter.py`
   (русскоязычный промпт, поэтому не regex по началу строки, а снятые формулировки
@@ -422,7 +422,7 @@ decision goes to" route — and the rule itself — live in
   он выставляет состояние review так, как просит `AGENTS.md` § Code Review Rules — публично
   документировано лишь то, что в GitHub он поднимает находки уровня P0/P1, то есть его планка
   уже нашей coverage-first. **Пропуск сознательный, не тихий:** оба отказа выглядят как
-  «вердикта нет» → пустая нагрузка → красный `claude-review` с явным `::warning::`, кто именно
+  «вердикта нет» → пустая нагрузка → красный `agent-review` с явным `::warning::`, кто именно
   не ответил. Непроверенная ветка не может ослабить гейт — только не сработать, и это видно
   красной проверкой, а не зелёным PR без ревью. Класс тот же, что у **AD** (сетевая половина
   branch-protection): проверяется только живым прогоном против чужого сервиса.
@@ -438,7 +438,7 @@ decision goes to" route — and the rule itself — live in
   возврате прежнего поведения пустой outcome носителя 1 даёт `valid=false`, а это условие
   запуска носителя 2 (#478), и его `clean` красит проверку зелёным. Регресс виден по тому, что
   `Classify review outcome` печатает `valid=false` и шаг `Codex review` **выполняется** (лог и
-  `## Agent record`); красным `claude-review` станет только если и носитель 2 не ответил.
+  `## Agent record`); красным `agent-review` станет только если и носитель 2 не ответил.
   Нехватка прав — как ошибка записи в логе шага. **Триггер закрытия — прогон на PR, который
   вносит саму правку**: он контроллерный по построению, и его лог (`valid=true`, выполненный
   `Enforce Claude review outcome`, сводка с `Reviewed head SHA:`) попадает в `## Agent record`.

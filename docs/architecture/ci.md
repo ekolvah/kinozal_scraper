@@ -335,13 +335,13 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 ## Required status checks (branch protection)
 
 Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
-**`claude-review`** (`claude-review.yml`).
+**`agent-review`** (`agent-review.yml`).
 (`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
 issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
 compared against GitHub and against the workflow files.
 
-The ordinary `claude-review` job is required because its deterministic final step reads the action's
+The ordinary `agent-review` job is required because its deterministic final step reads the action's
 schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a visible
 `::warning::`**, `blocking` fails, and absent or malformed output is a readable
 `review unavailable` failure.
@@ -350,7 +350,7 @@ schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a 
 context would make availability *worse* — both providers would need quota. The carriers
 therefore sit inside this one job as an ordered failover: `Claude review` runs with
 `continue-on-error`, `Classify review outcome` asks
-`check_claude_review_outcome.py --classify` whether that produced a usable verdict, and
+`check_agent_review_outcome.py --classify` whether that produced a usable verdict, and
 `Codex review` runs only when the answer is `false`. A `blocking` verdict is a result, so
 it is never failed over and never overruled. Exactly one of the two enforcement steps
 runs, each naming its producer, so a head never collects two verdicts.
@@ -393,7 +393,7 @@ An ordinary fork PR has no Claude OAuth secret and remains red for its missing
 outcome; a maintainer moves it onto a repository branch to run the required
 review. Separately, no required context is trusted evidence on any fork: all
 three execute PR-head code (`ci.yml`, `scripts/verify_pr_link.py`, and
-`scripts/check_claude_review_outcome.py`), so a fork can make its own check
+`scripts/check_agent_review_outcome.py`), so a fork can make its own check
 green. A controller-verifier fork therefore uses the accepted
 single-maintainer fallback: the maintainer's IDE-agent review and merge
 decision.
@@ -403,7 +403,7 @@ The `Claude review` step passes `github_token: ${{ github.token }}`, which the
 action returns instead of exchanging OIDC for a GitHub App token — and the
 App-token path is what refused to run whenever the head's workflow file differs
 from `main`. Before that input, such a PR ended in `WorkflowValidationSkipError`:
-a green `claude-review` with no model invocation at all, which is why an empty
+a green `agent-review` with no model invocation at all, which is why an empty
 outcome used to be excused there. The exception is gone with its cause; empty is
 an unavailable review on every path. The trust model and what it costs are in
 [ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
@@ -445,7 +445,7 @@ into the push output. It exists because the alternative was `--no-verify`, which
 a genuine red (#458). Scoping the check to pushes to `main` was considered and rejected: pushing
 to `main` is forbidden by process, so that trigger would mean never checking at all.
 
-## Claude review workflow (`claude-review.yml`)
+## Agent review workflow (`agent-review.yml`)
 
 Triggers: every `pull_request: opened/synchronize`. Uses
 `anthropics/claude-code-action@v1` to run an automated code review on every PR push: inline
@@ -506,7 +506,7 @@ model-chatter. **Триггер снятия:** цикл ревью перест
   summary, где перечислены все находки по severity. Фиксированная однострочная summary
   применима только к «не найдено ничего ни на одной severity».
 
-`tests/test_claude_review_workflow.py` гардит **форму**: нет suppression-императива в начале
+`tests/test_agent_review_workflow.py` гардит **форму**: нет suppression-императива в начале
 строки промпта, `severity` + `confidence` присутствуют, нет gag-строки `no blocking issues`.
 Семантику он не проверяет — фильтр, перефразированный как «be selective», проходит; качественная
 половина (что планка blocking остаётся конкретной, а исключение про ruff — не императивным)
@@ -521,7 +521,7 @@ files themselves (the workflow's `claude_args`, the agent's frontmatter); there 
 **no registry document listing which agent runs on which model**, because a copy of the config is
 exactly the thing that drifts away from it.
 
-`claude-review.yml` несёт `claude_args: |` / `--model claude-opus-5`; frontmatter агента —
+`agent-review.yml` несёт `claude_args: |` / `--model claude-opus-5`; frontmatter агента —
 `model: claude-opus-5` + `effort: high`.
 
 Четыре факта, без которых пин чинят неправильно:
@@ -533,7 +533,7 @@ exactly the thing that drifts away from it.
 2. **`effort` по умолчанию наследует уровень сессии** — не `high`. Без пина одна и та же
    plan-стадийная проверка строже или мягче в зависимости от того, чья сессия её запустила;
    пин делает строгость гейта решением репозитория.
-3. **PR, правящий сам `claude-review.yml`, проверяет outcome только при его наличии.** Пустой
+3. **PR, правящий сам `agent-review.yml`, проверяет outcome только при его наличии.** Пустой
    outcome даёт видимое предупреждение; `clean` и `rework` проходят, `blocking` краснит.
    Контракт промпта и разрешённая модель проверяются на следующем несвязанном PR.
 4. **Гард отвергает только короткие алиасы** (`opus`/`sonnet`/`haiku`/`fable`) — любой полный id
@@ -552,7 +552,7 @@ frontmatter в нём не первый, поэтому пин **не** защи
 **молча** пропускает его и берёт унаследованную модель. Записано, чтобы «припинено» не читалось
 как более сильная гарантия, чем оно есть.
 
-**Два гарда, один денилист.** `tests/test_claude_review_workflow.py` проверяет воркфлоу,
+**Два гарда, один денилист.** `tests/test_agent_review_workflow.py` проверяет воркфлоу,
 `tests/test_agent_frontmatter.py` — frontmatter агента, оба импортируют общий набор из
 `tests/_model_pin_policy.py`. Это **денилисты**, поэтому объединение строго консервативнее: может
 только отвергнуть лишнее, но не пропустить.
