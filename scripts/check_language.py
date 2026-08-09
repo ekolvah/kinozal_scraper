@@ -46,7 +46,21 @@ _EXPECTED_AREAS = {
 
 
 def _mask_inline_code(text: str) -> str:
-    """Mask matched CommonMark backtick spans while preserving line numbers."""
+    """Mask matched CommonMark backtick spans while preserving line numbers.
+
+    Two known divergences from CommonMark, both named rather than fixed because
+    neither bites at the current corpus:
+
+    - a span is matched across arbitrary distance, including blank lines, which
+      CommonMark forbids. A stray backtick plus another one paragraphs later
+      therefore masks the text between them. `test_unmatched_backticks_do_not_hide_
+      following_prose` pins only the unpaired-at-EOF case, not this one.
+    - 4-space-indented code blocks are not recognised as code, so their content is
+      reported as prose.
+
+    A false negative here is a missed violation, not a false alarm; widen the
+    matcher only when a real document hits either edge.
+    """
     masked = list(text)
     cursor = 0
     while cursor < len(text):

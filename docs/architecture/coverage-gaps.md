@@ -234,12 +234,16 @@ decision goes to" route — and the rule itself — live in
   cloud (`.github/workflows/agent-review.yml`) nor local
   (`.claude/agents/architect-reviewer.md`) — contains a severity filter *at the discovery stage*:
   the model follows such a filter literally and a finding silently never reaches the PR. Guards
-  catch **known forms**, with different guards because the prompts differ:
-  `tests/test_agent_review_workflow.py` (English prompt) checks a suppression imperative at line
+  catch **known forms**, and the two guards keep different shapes:
+  `tests/test_agent_review_workflow.py` checks a suppression imperative at line
   start, presence of `severity` **and** `confidence`, and absence of the gag line
-  `no blocking issues`; `tests/test_agent_frontmatter.py` (Russian prompt, so not a start-of-line
-  regex but removed wording verbatim) ensures `не раздувай` / `беспощаден` /
-  `краткость по умолчанию` do not return, and requires `confidence` and `blocking`. The latter
+  `no blocking issues`; `tests/test_agent_frontmatter.py` denies removed wording verbatim —
+  `do not inflate` / `ruthless` / `brevity by default` — and requires `confidence` and `blocking`.
+  **The verbatim denylist covers only the English return path** (#470): the phrasings actually
+  removed were Russian, and they are now kept out transitively by `check_language.py`, which
+  covers `.claude/**` Markdown prose. Narrowing or dropping the language gate therefore silently
+  reopens that hole — the dependency is recorded here because it is invisible in either test.
+  The frontmatter guard
   applies **only** to agents declaring the findings contract (#407); other agents do not need these
   tokens. **Semantic paraphrase is consciously NOT covered** ("be selective", "only report what
   matters"): checking prompt meaning would require an LLM call for every suite run, therefore cost

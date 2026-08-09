@@ -18,13 +18,13 @@ without its own section is in [§"Consciously not adopted"](#consciously-not-ado
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-git config core.hooksPath .githooks   # активирует .githooks/pre-push
+git config core.hooksPath .githooks   # activates .githooks/pre-push
 python scripts/ci_check.py
 ```
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
-ruff format → ruff lint → detect-secrets → pytest → pip-audit (runtime) →
-pip-audit (dev) → requirements consistency → mypy → import contracts → language. The `language`
+ruff format → ruff lint → language → detect-secrets → pytest → pip-audit (runtime) →
+pip-audit (dev) → requirements consistency → mypy → import contracts. The `language`
 check runs `scripts/check_language.py` locally and in the matching `ci.yml` step; it enforces
 English-only tracked Markdown prose and Python commentary. Its exit `0` is compliant text, `1`
 is a policy violation, and `2` means trustworthy evidence could not be obtained. (Module-docstring presence

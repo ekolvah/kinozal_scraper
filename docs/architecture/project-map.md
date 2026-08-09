@@ -132,6 +132,12 @@ single English marker; adding an alternative is a policy change, not a per-file 
 `scripts/check_language.py` enforces the English-only policy for tracked Markdown prose and Python
 commentary; code spans and fenced code/data are deliberately outside its prose scope.
 
+**The policy's carriers are `.md` and `.py` — nothing else, and that is a decision, not an
+oversight.** Comments in workflow YAML, `.githooks/`, and `.gitattributes` stay as written: each
+would need its own comment syntax in the gate, and an unenforced rule over them would be exactly
+the invisible-cost shape ADR-0005 exists to remove. Python **string literals** are outside too, so
+operator-facing Russian diagnostics in `scripts/` are legal here; ADR-0005 records what that costs.
+
 **What counts as a mapped file** (there too, #421): **`.md` under `docs/architecture/` and
 `.claude/rules/`**. This is the only scope rule; no second layer filters it. Two clarifications
 explain why the boundary is here rather than expanding the rule:

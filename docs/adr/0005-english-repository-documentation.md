@@ -45,7 +45,19 @@ All prose in tracked Markdown files and all comments plus true module, class,
 and function docstrings in tracked Python files use English. Markdown code spans
 and fenced blocks, Python string literals, Telegram and log messages, Gemini
 prompts, fixtures, scraped titles, and other domain data are outside this
-documentation-language boundary.
+documentation-language boundary. So are comments in non-Markdown, non-Python
+carriers — workflow YAML, `.githooks/`, `.gitattributes`: the gate sees `.md`
+and `.py`, and extending it to a third syntax is a separate unit of work, not a
+silent part of this one. Naming the exclusion here is the point; an unstated
+scope is what made the bilingual cost invisible in the first place.
+
+Operator-facing diagnostics in `scripts/` are Python string literals and so stay
+Russian under this boundary. This decision therefore does **not** remove the
+Windows ANSI failure source from them — it removes it from documentation and
+commentary only. `check_language.py` guards its own output with `_console_text`;
+the other scripts have no such escape hatch, and nothing stops a new Russian
+`print()`. Extending the boundary to diagnostic output is a candidate follow-up,
+deliberately not decided here.
 
 The executable gate derives its Markdown and Python scope from
 `git ls-files -z`, verifies that every expected repository area contributes
@@ -63,8 +75,9 @@ available in Git history.
 ### Consequences
 
 * Good, because wording-based guards cover one canonical vocabulary.
-* Good, because future documentation and diagnostic text avoids the recurring
-  Windows ANSI failure boundary.
+* Good, because future documentation and commentary avoids the recurring
+  Windows ANSI failure boundary; operator-facing diagnostics do not, because
+  they are string literals outside the boundary.
 * Good, because a new tracked documentation file joins the policy without a
   manually maintained path list.
 * Bad, because the one-time migration produces a large review diff and a
@@ -89,8 +102,8 @@ allow-list is empty.
 * Good, because existing text would require no migration.
 * Bad, because every wording-based guard would retain two vocabularies and a
   missed translation would remain indistinguishable from full coverage.
-* Bad, because Cyrillic repository diagnostics would continue crossing fragile
-  Windows encoding boundaries.
+* Bad, because Cyrillic documentation and commentary would continue crossing
+  fragile Windows encoding boundaries.
 
 ### Use English for repository documentation and Python commentary
 
@@ -105,7 +118,8 @@ allow-list is empty.
 * Good, because it matches the primary product language.
 * Bad, because upstream technical vocabulary and provider-neutral contracts are
   English and would need translation or bilingual markers.
-* Bad, because it preserves the Windows diagnostic failure source.
+* Bad, because it preserves the Windows encoding failure source across the whole
+  documentation surface instead of only the diagnostics left outside the boundary.
 
 ### Allow each file to choose its own language without a gate
 
