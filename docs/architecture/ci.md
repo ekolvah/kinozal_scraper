@@ -226,6 +226,21 @@ lives here and in `runtime.md`, not in the constitution.
 | `ARG001`, `ARG002`, `SLF001` (#236) | ратчет | неиспользуемый аргумент функции/метода, доступ к приватному члену чужого объекта | 110 существующих хитов триажированы поштучно, реальных мёртвых параметров в `src/` — ноль. `SLF001` в `src/` **нулевой**: два хита (`RotatingGeminiEnricher` лез в `GeminiEnricher._model_name` из двух мест) были одной настоящей §II-утечкой и сняты публичным свойством `model_name`, а не noqa. **Не выбраны** `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) — сознательный defer (#236 Out of scope) |
 | `D100`, `D104`, `D419` (#253) | **presence-гейт** (порога нет) | отсутствующий / пустой module- и package-docstring | Репо чисто, скоуп репо-широкий: `src/`, `scripts/`/root **и `tests/`** (#433). `D101`/`D103` (класс/функция) сознательно **не** выбраны — гейт только уровня модуля. **Дыра:** `D100`/`D104` флагают только *публичные* модули, поэтому проскочит и будущий `src/kinozal_scraper/_internal.py` (сегодня такого нет), и три живых хелпера `tests/_*.py` — докстринги у них есть, но гейтом это не удерживается. Вторая дыра, общая для всех lint-гейтов: `extend-exclude` в `[tool.ruff]` выносит целое дерево из-под `ruff check`, и config-пинящие гарды этого не видят |
 
+#### Stable first-party classification
+
+`[tool.ruff.lint.isort] known-first-party` explicitly names `kinozal_scraper` and `scripts`.
+Filesystem inference is unstable during RED → GREEN: before a new leaf module exists Ruff can
+classify its import as third-party, then reclassify the unchanged import as first-party after the
+module appears. A warm local cache can retain the first verdict while cold CI computes the second.
+Explicit namespaces make the correct import group deterministic before implementation exists
+(#440).
+
+`--no-cache` is deliberately not added to `check_lint`: it recomputes the state-dependent verdict
+instead of removing that dependency. Five interleaved local runs on 2026-08-09 measured median
+`ruff check .` times of 94 ms with the warm cache and 112 ms with `--no-cache`; the 18 ms difference
+is small, but the configuration fix removes the cause with no extra invocation or intentional
+per-run cost.
+
 **Конвенция глушения — одна на все четыре, и именно её пинят гарды:**
 
 - **Настоящий false positive глушится per-site** `# noqa: <точные коды>` с причиной — никогда
