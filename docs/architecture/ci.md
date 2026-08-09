@@ -229,11 +229,11 @@ lives here and in `runtime.md`, not in the constitution.
 #### Stable first-party classification
 
 `[tool.ruff.lint.isort] known-first-party` explicitly names `kinozal_scraper` and `scripts`.
-Filesystem inference is unstable during RED → GREEN: before a new leaf module exists Ruff can
-classify its import as third-party, then reclassify the unchanged import as first-party after the
-module appears. A warm local cache can retain the first verdict while cold CI computes the second.
-Explicit namespaces make the correct import group deterministic before implementation exists
-(#440).
+With both top-level package directories already present, Ruff 0.15.12 still classifies an import
+whose leaf module does not exist as third-party in this layout; creating that leaf reclassifies the
+unchanged import as first-party. A warm local cache can retain the first verdict while cold CI
+computes the second. Explicit namespaces make the correct import group deterministic before
+implementation exists (#440).
 
 `--no-cache` is deliberately not added to `check_lint`: it recomputes the state-dependent verdict
 instead of removing that dependency. Five interleaved local runs on 2026-08-09 measured median

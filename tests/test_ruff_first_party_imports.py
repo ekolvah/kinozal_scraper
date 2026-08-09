@@ -1,10 +1,10 @@
 """Integration guard for stable Ruff first-party import classification (#440).
 
-Ruff used to infer unresolved ``scripts.*`` and ``kinozal_scraper.*`` imports
-as third-party. Creating the imported module later changed the verdict for an
-unchanged test file, so a warm local cache could disagree with cold CI. These
-tests exercise the real Ruff binary and require both project namespaces to be
-first-party before and after the leaf module exists.
+With the top-level package already present, Ruff used to infer unresolved
+``scripts.*`` and ``kinozal_scraper.*`` leaf imports as third-party. Creating
+the leaf module later changed the verdict for an unchanged test file, so a warm
+local cache could disagree with cold CI. These tests exercise the real Ruff
+binary and require both project namespaces to stay first-party throughout.
 """
 
 from __future__ import annotations
@@ -40,6 +40,9 @@ def _run_ruff(project: Path, candidate: Path) -> subprocess.CompletedProcess[str
 
 
 def _assert_stable_first_party(tmp_path: Path, namespace: str, package_dir: Path) -> None:
+    package_dir.mkdir(parents=True)
+    (package_dir / "__init__.py").write_text("", encoding="utf-8")
+
     tests_dir = tmp_path / "tests"
     tests_dir.mkdir()
     candidate = tests_dir / "test_candidate.py"
@@ -50,8 +53,6 @@ def _assert_stable_first_party(tmp_path: Path, namespace: str, package_dir: Path
 
     before = _run_ruff(tmp_path, candidate)
 
-    package_dir.mkdir(parents=True)
-    (package_dir / "__init__.py").write_text("", encoding="utf-8")
     (package_dir / f"{_MISSING_MODULE}.py").write_text("VALUE = True\n", encoding="utf-8")
     after = _run_ruff(tmp_path, candidate)
 
