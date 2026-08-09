@@ -31,8 +31,11 @@ class TestNormalizedBody:
 
 
 class _GhDispatcher:
-    def __init__(self, *, refs_fail: bool = False, metadata_fail: bool = False) -> None:
+    def __init__(
+        self, *, refs_fail: bool = False, refs_empty: bool = False, metadata_fail: bool = False
+    ) -> None:
         self.refs_fail = refs_fail
+        self.refs_empty = refs_empty
         self.metadata_fail = metadata_fail
         self.calls: list[list[str]] = []
         self.edited_body: str | None = None
@@ -64,7 +67,8 @@ class _GhDispatcher:
         if cmd[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in cmd:
             if self.refs_fail:
                 return done(1, err="gh: rate limit exceeded")
-            return done(0, json.dumps({"closingIssuesReferences": [{"number": 456}]}))
+            refs = [] if self.refs_empty else [{"number": 456}]
+            return done(0, json.dumps({"closingIssuesReferences": refs}))
         raise AssertionError(f"unexpected command: {cmd}")
 
 
@@ -157,6 +161,26 @@ class TestMain:
         error = capsys.readouterr().err
         assert "linkage is unknown, not absent" in error
         assert "NOT linked" not in error
+
+    def test_empty_linkage_exits_1_and_names_the_issue(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        body_file = tmp_path / "report.md"
+        body_file.write_text("## Summary\n", encoding="utf-8")
+        dispatcher = _GhDispatcher(refs_empty=True)
+        monkeypatch.setattr(subprocess, "run", dispatcher)
+        monkeypatch.setattr("time.sleep", lambda *_: None)
+
+        with pytest.raises(SystemExit) as exc:
+            main(["999", "--body-file", str(body_file)])
+
+        assert exc.value.code == 1
+        error = capsys.readouterr().err
+        assert "NOT linked" in error
+        assert "#456" in error
 
     def test_pr_metadata_failure_exits_2(
         self,
