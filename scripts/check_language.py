@@ -53,13 +53,15 @@ def _mask_inline_code(text: str) -> str:
 
     - a span is matched across arbitrary distance, including blank lines, which
       CommonMark forbids. A stray backtick plus another one paragraphs later
-      therefore masks the text between them. `test_unmatched_backticks_do_not_hide_
-      following_prose` pins only the unpaired-at-EOF case, not this one.
+      therefore masks the text between them — a missed violation, not a false
+      alarm. `tests/test_language_policy.py` pins only the unpaired-at-EOF case
+      (`test_unmatched_backticks_do_not_hide_following_prose`), not this one.
+      Fixing it means matching *less*: stop a span at a blank line.
     - 4-space-indented code blocks are not recognised as code, so their content is
-      reported as prose.
+      reported as prose — a false alarm, and the opposite direction: fixing it
+      means recognising *more* text as code.
 
-    A false negative here is a missed violation, not a false alarm; widen the
-    matcher only when a real document hits either edge.
+    Neither bites at the current corpus, so both are named rather than fixed.
     """
     masked = list(text)
     cursor = 0
