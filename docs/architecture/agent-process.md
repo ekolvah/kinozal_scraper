@@ -153,8 +153,12 @@ instruction to shorten its own output.
    agreed outline, update required documentation and ADRs, and run the local CI
    gate once in the foreground.
 4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
-   closing reference. Fix CI findings up to three improving iterations and
-   enter the review/fix loop. After every push, run `gh pr checks <PR> --watch`,
+   closing reference. Replace an existing delivery PR report only with
+   `python -m scripts.update_pr_body <PR> --body-file <path>`: it re-applies the
+   branch-derived closing line and verifies the resulting linkage. A normal
+   `open_pr.py` re-run remains idempotent and never replaces an existing body.
+   Fix CI findings up to three improving iterations and enter the review/fix
+   loop. After every push, run `gh pr checks <PR> --watch`,
    inspect a failed CI run with `gh run view <run-id> --log-failed`, then ask
    `python -m scripts.review_gate <PR>` whether the loop continues. Its verdict
    decides, not the agent's reading of the findings; the exit code is the
