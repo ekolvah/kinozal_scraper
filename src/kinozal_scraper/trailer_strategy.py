@@ -1,10 +1,10 @@
-"""Граница retrieval → selection подбора трейлера (#139, эпик трейлеров).
+"""Trailer-selection retrieval → selection boundary (#139, trailer epic).
 
-Retrieval (запрос → кандидаты) живёт в `youtube.py` (#140), selection (выбор одного)
-— здесь за `TrailerStrategy`. #139 задал типы + Protocol + baseline `FirstResultStrategy`
-(= прежняя прод-логика отбора, теперь только под harness/сравнение). Прод-путь
-`kinozal_pipeline.enrich_with_trailer` (#144) отбирает язык-aware `HeuristicStrategy`
-(#141) = eval `default_strategy()` — RU-приоритет закрывает регрессию #315.
+Retrieval (query → candidates) lives in `youtube.py` (#140); selection (one pick)
+lives here behind `TrailerStrategy`. #139 established types, Protocol, and baseline
+`FirstResultStrategy` (the former production logic, now comparison-only). Production
+`kinozal_pipeline.enrich_with_trailer` (#144) chooses language-aware `HeuristicStrategy`
+(#141), as does eval `default_strategy()`; RU priority closes regression #315.
 """
 
 from __future__ import annotations
@@ -17,26 +17,24 @@ from kinozal_scraper.text_utils import has_cyrillic, normalize_title, title_year
 
 
 def _contains_phrase(haystack: str, phrase: str) -> bool:
-    """Word-boundary containment: `phrase` — целое слово/фраза в `haystack`, не
-    кусок слова (`дом` НЕ матчит `домашний`). Оба уже прошли `normalize_title`.
-    Без boundary короткое название могло бы дать уверенный wrong-pick, войдя
-    подстрокой в несвязанный candidate-title (review #324)."""
+    """Word-boundary containment: `phrase` is a whole word/phrase in `haystack`,
+    not part of a word. Both already passed `normalize_title`; without boundaries,
+    a short title could confidently select an unrelated candidate (review #324)."""
     return bool(re.search(rf"\b{re.escape(phrase)}\b", haystack))
 
 
 def _is_sequel_number(token: str) -> bool:
-    """Одиночный номер сиквела («2» в «Джокер 2»), НЕ 4-значный год (год —
-    дискриминатор в `title_year_matches`, его пропускать нельзя)."""
+    """A standalone sequel number, not a four-digit year. Years discriminate in
+    `title_year_matches` and must not be skipped."""
     return token.isdigit() and not re.fullmatch(r"(?:19|20)\d{2}", token)
 
 
 def _title_tokens_in(film_tokens: list[str], cand_tokens: list[str]) -> bool:
-    """`film_tokens` идут по порядку и подряд в `cand_tokens`, допуская ОДИН
-    интерспёрснутый numeric sequel-токен МЕЖДУ токенами названия — каналы
-    вставляют номер сиквела, которого нет в ru_title («Джокер 2: Безумие на
-    двоих» vs ru_title «Джокер: Безумие на двоих»), и цифра рвёт непрерывную
-    фразу. Точное токен-равенство сохраняет word-boundary (#324: «Дом»≠«Домашний»);
-    порядок обязателен, одиночный пропуск — не fuzzy/edit-distance (§VII)."""
+    """`film_tokens` occur consecutively and in order in `cand_tokens`, allowing
+    ONE interspersed numeric sequel token between title tokens. Channels may insert
+    a sequel number absent from `ru_title`, breaking the phrase. Exact token equality
+    retains word boundaries (#324); order is required and one skip is not fuzzy/edit
+    distance matching (§VII)."""
     if not film_tokens:
         return False
 
@@ -58,13 +56,13 @@ def _title_tokens_in(film_tokens: list[str], cand_tokens: list[str]) -> bool:
 
 @dataclass
 class FilmProfile:
-    """Что selection знает о фильме. `ru_title`/`original_title` несут языковой
-    сигнал, который язык-aware стратегия (#141) использует для RU-приоритета.
+    """What selection knows about a film. `ru_title`/`original_title` carry the
+    language signal used by strategy #141 for RU priority.
 
-    `cast`/`director`/`genre`/`description` — метаданные с details.php (#140),
-    которыми пред-фильтр #141 сверяет кандидата (каст в `description` кандидата).
-    Все с дефолтами: конструкции #139 и записи golden-set без метаданных строятся
-    без изменений (backward-compat), а best-effort фетч деградирует в пустые."""
+    `cast`/`director`/`genre`/`description` are details.php metadata (#140) used by
+    #141's prefilter (cast in a candidate description). Defaults preserve #139
+    construction and metadata-free golden-set records; best-effort fetching degrades
+    to empty values."""
 
     ru_title: str
     original_title: str
@@ -77,11 +75,10 @@ class FilmProfile:
 
 @dataclass
 class Candidate:
-    """Один результат YouTube-поиска. `title`/`description` — то, по чему #141
-    скорит язык/матч (оба уже в `search.list.snippet`); `published_at` захвачен
-    заранее под recency tie-break, чтобы не переписывать фикстуры. Сигналы из
-    `videos.list` (`defaultAudioLanguage` и т.п.) сознательно вне снимка — см.
-    Out of scope #139."""
+    """One YouTube search result. #141 scores language/match from `title` and
+    `description` (both in `search.list.snippet`); `published_at` was captured for
+    a future recency tie-break without rewriting fixtures. `videos.list` signals
+    such as `defaultAudioLanguage` are deliberately outside the snapshot; see #139."""
 
     video_id: str
     title: str
@@ -92,9 +89,9 @@ class Candidate:
 
 @dataclass
 class TrailerPick:
-    """Решение стратегии. `video_id=None` — сознательный «ничего не выбрал»
-    (порождает §IV-маркер в проде, не тихий пропуск). `reason` несёт видимость
-    атрибуции при разборе eval-скоркарты."""
+    """Strategy decision. `video_id=None` intentionally means no pick (a §IV
+    production marker, not a silent skip). `reason` provides attribution visibility
+    while inspecting the eval scorecard."""
 
     video_id: str | None
     confidence: float
@@ -106,12 +103,10 @@ class TrailerStrategy(Protocol):
 
 
 class FirstResultStrategy:
-    """Baseline = прежняя прод-логика отбора (одиночный `get_trailer_url`, удалён в
-    #144): первый кандидат, чей title проходит год-фильтр. Теперь только под
-    harness/сравнение (прод отбирает `HeuristicStrategy` #141). Год-правило шарится
-    через общий `title_year_matches` (§II — не переизобретается). При falsy year
-    (None/0) год-фильтр не применяется, берётся первый кандидат (`not year`, а не
-    `year is None`)."""
+    """Baseline = former production selection (`get_trailer_url`, removed in #144):
+    first candidate whose title passes the year filter. It is now harness/comparison
+    only (production selects `HeuristicStrategy` #141). The rule shares
+    `title_year_matches` (§II); a falsy year (None/0) disables filtering (`not year`)."""
 
     def pick(self, film_profile: FilmProfile, candidates: list[Candidate]) -> TrailerPick:
         year = film_profile.year
@@ -122,27 +117,24 @@ class FirstResultStrategy:
 
 
 class HeuristicStrategy:
-    """#141: детерминированный language-aware пред-фильтр (без LLM), baseline под
-    будущий AI-picker (#142/#144).
+    """#141: deterministic language-aware prefilter (no LLM), baseline for a future
+    AI picker (#142/#144).
 
-    Отбор в два шага:
+    Selection has two steps:
 
-    1. **relevance** — кандидат релевантен, если токены `ru_title` ИЛИ
-       `original_title` идут по порядку в title (допуская один интерспёрснутый
-       numeric sequel-токен — «Джокер 2» матчит «Джокер») И год совпадает
-       (общий `title_year_matches`, только при truthy year — зеркало прода/baseline).
-    2. **ранжирование** по ключу `(is_ru, cast_hits, trailer_signal)`, desc,
-       stable-порядок среди равных: язык **первичен** (#315 — при матче фильма
-       RU>EN), каст в `description` — вторичный тай-брейк ВНУТРИ одного языка
-       (EN-реакция с именем актёра в описании не побьёт RU-трейлер), `trailer_signal`
-       (трейлер/дубляж − тизер) — третичный: настоящий трейлер бьёт новостной
-       клип/тизер при равном языке+касте. `cast_hits` = сколько первых ≤2 имён
-       каста нашлись строкой в описании.
+    1. **relevance** — candidate title contains `ru_title` OR `original_title`
+       tokens in order (allowing one interspersed numeric sequel token) and its year
+       matches (shared `title_year_matches`, only for truthy year).
+    2. **ranking** by `(is_ru, cast_hits, trailer_signal)`, descending and stable:
+       language is **primary** (#315: RU > EN for a film match), cast in the candidate
+       `description` breaks ties within one language, and `trailer_signal` (trailer/
+       dub minus teaser) ranks a real trailer over a news clip/teaser. `cast_hits` is
+       the number of the first ≤2 cast names found in the description.
 
-    Исход: уникальный топ-ранг → уверенный pick (0.9); ≥2 равных топ-ранга → первый
-    по порядку + 0.3 + `ambiguous`-маркер в `reason` (сигнал #144-fallback на LLM,
-    §IV — видимая неоднозначность, не тихий уверенный выбор); ничего не прошло
-    relevance → `TrailerPick(None, 0.0)`."""
+    A unique top rank → confident pick (0.9); ≥2 equal top ranks → first in order,
+    0.3, and an `ambiguous` reason marker (the #144 LLM-fallback signal; §IV visible
+    ambiguity rather than a silent confident pick); no relevant candidate →
+    `TrailerPick(None, 0.0)`."""
 
     _MAX_CAST = 2
 
@@ -165,39 +157,35 @@ class HeuristicStrategy:
     _TEASER_WORDS = ("тизер", "teaser")
 
     def _relevant(self, profile: FilmProfile, candidate: Candidate) -> bool:
-        """Матч названия+года. Кроме двух названий профиля пробуется `original_title`
-        БЕЗ скобочного хвоста (`Marvel's Spider-Man 2 (Digital Deluxe Edition)` →
-        `Marvel's Spider-Man 2`) — иначе издание, которого в заголовке трейлера не
-        бывает, отсекает все настоящие трейлеры игры.
+        """Title-and-year match. In addition to both profile titles, try `original_title`
+        **without** its parenthesized suffix (`Marvel's Spider-Man 2 (Digital Deluxe Edition)` →
+        `Marvel's Spider-Man 2`) — otherwise an edition that never occurs in a trailer title
+        excludes every real game trailer.
 
-        Числа ниже — из одного замера 3764 raw-заголовков (Sheets, 2026-07-29), но
-        считают РАЗНОЕ, поэтому названы явно: 238 заголовков имеют скобку во втором
-        сегменте вообще; из них 78 — игровые с суффиксом издания (это класс, который
-        чинится здесь), 160 — не-игровые, где в скобке альтернативное название
-        (`Ojingeo geim (Squid Game)`). Отдельная метрика — 96 игровых раздач, у
-        которых второй сегмент вообще является названием, а не служебным токеном
-        (класс, который чинит гард в `text_utils.original_title`); со скобкой из них
-        как раз 78.
+        The counts below come from one measurement of 3,764 raw titles (Sheets, 2026-07-29), but
+        count DIFFERENT things, so they are named explicitly: 238 titles have parentheses in the
+        second segment at all; 78 of them are games with an edition suffix (the class fixed here),
+        while 160 are non-games where the parentheses carry an alternative title
+        (`Ojingeo geim (Squid Game)`). A separate metric counts 96 game releases whose second
+        segment is a title at all, not a service token (the class guarded by
+        `text_utils.original_title`); exactly 78 of those have parentheses.
 
-        **Только `original_title`, не `ru_title`.** Во втором сегменте скобка несёт
-        издание (игры) или альтернативное название — в обоих случаях база остаётся
-        валидным названием (маркер части/сезона там встретился 1 раз из 238, и там
-        номер уже в самом названии: `Heroes of Might and Magic IV (4) (Complete)`).
-        В русском
-        же скобка бывает уточнением части/сезона, и срез схлопнул бы `Дюна (Часть
-        вторая)` до франшизы `Дюна`, которую `_title_tokens_in` со своим
-        numeric-skip пропустил бы в «Дюна 2» (год не спасает: в заголовках
-        трейлеров его обычно нет). В проде `ru_title` и так обрезан по `(`
-        (`enrich_with_trailer`), так что срез здесь ничего бы не добавил, кроме
-        этого риска.
+        **Only `original_title`, not `ru_title`.** In the second segment, parentheses carry an
+        edition (games) or alternative title — in both cases the base remains a valid title (a
+        part/season marker occurred there once out of 238, and that number is already in the title:
+        `Heroes of Might and Magic IV (4) (Complete)`). In Russian, however, parentheses can
+        qualify a part/season, and trimming would collapse `Dune (Part Two)` to the franchise
+        `Dune`, which `_title_tokens_in` with its numeric skip would admit into “Dune 2” (year does
+        not save this: trailer titles usually lack it). In production `ru_title` is already trimmed
+        at `(` (`enrich_with_trailer`), so trimming here would add nothing but this risk.
 
-        **Базовый вариант равноправен, а не fallback «при пустом relevant».** Тот
-        вариант был в плане и отвергнут замером: у `Marvel's Spider-Man 2` полное
-        название с изданием подряд входит в «All Marvel's Spider-Man 2 Digital
-        Deluxe Edition Suits» (нарезка костюмов), то есть первый проход давал
-        непустой relevant из ОДНОГО мусорного ролика и до трейлеров не доходил.
-        Отличать трейлер от не-трейлера — работа `_trailer_signal` в `_rank`, а не
-        relevance. Срез делается по сырой строке: `normalize_title` скобку съедает.
+        **The base variant is equal, not a fallback “when relevance is empty”.** That variant was
+        in the plan and rejected by measurement: for `Marvel's Spider-Man 2`, the complete title
+        with edition occurs consecutively in “All Marvel's Spider-Man 2 Digital Deluxe Edition
+        Suits” (a suit compilation), so the first pass yielded non-empty relevance from ONE junk
+        video and never reached trailers. Distinguishing a trailer from a non-trailer is the job of
+        `_trailer_signal` in `_rank`, not relevance. Trimming uses the raw string because
+        `normalize_title` consumes parentheses.
         """
         cand_tokens = normalize_title(candidate.title).split()
         titles = [profile.ru_title, profile.original_title, profile.original_title.split("(")[0]]
@@ -212,11 +200,10 @@ class HeuristicStrategy:
         return (int(has_cyrillic(candidate.title)), cast_hits, self._trailer_signal(candidate))
 
     def _trailer_signal(self, candidate: Candidate) -> int:
-        """Within-language сигнал «это настоящий трейлер»: минимальный
-        keyword-набор (трейлер/дубляж +1) минус тизер/teaser (−1). Разрывает
-        RU-ничью в пользу трейлера над новостным клипом/тизером вместо порядка в
-        пуле (#141-дефект). Зеркалит `cast_hits` третьим измерением; НЕ
-        channel-authority scorer и НЕ recency — 2 дефекта не оправдывают их (§VII)."""
+        """Within-language “real trailer” signal: minimal keyword set (trailer/dub
+        +1) minus teaser (−1). It resolves an RU tie in favor of a trailer over a news
+        clip/teaser instead of pool order (#141 defect). It mirrors `cast_hits` as a
+        third dimension; NOT a channel-authority scorer or recency (§VII)."""
         title = normalize_title(candidate.title)
         return sum(w in title for w in self._TRAILER_WORDS) - sum(
             w in title for w in self._TEASER_WORDS

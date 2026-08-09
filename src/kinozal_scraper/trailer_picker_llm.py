@@ -1,16 +1,16 @@
-"""#142: стратегия A подбора трейлера — LLM-picker (Gemini structured-output).
+"""#142: trailer-selection strategy A — LLM picker (Gemini structured output).
 
-`LLMTrailerStrategy` реализует `TrailerStrategy` (`trailer_strategy.py`): строит промпт
-из `FilmProfile` + пула `Candidate`, зовёт Gemini в JSON-режиме и парсит ответ в
-`TrailerPick` с **честным `None`** (модель может отказаться — §IV, не навязывать чужой
-трейлер). Задуман как дорогой fallback на «спорных» кандидатах пред-фильтра #141;
-композицию heuristic→LLM и подключение в прод/eval несёт #144 — здесь чистый
-selection-слой + structured-Gemini движок.
+`LLMTrailerStrategy` implements `TrailerStrategy` (`trailer_strategy.py`): it builds
+a prompt from `FilmProfile` and a `Candidate` pool, calls Gemini in JSON mode, and
+parses the result into `TrailerPick` with an **honest `None`** (the model may decline;
+§IV prohibits forcing an unrelated trailer). It is an expensive fallback for disputed
+candidates after prefilter #141; #144 owns heuristic→LLM composition and production/eval
+wiring. This module contains the pure selection layer and structured-Gemini engine.
 
-`JsonGenerator` — узкая DI-граница (§II): unit-тесты подставляют double с
-зафиксированным JSON, `GeminiJsonGenerator` — прод-реализация через `genai`.
-Таксономия ошибок ротации (`QuotaExhausted/ModelUnavailable/TryNextModel`) и
-классификатор — общие с `gemini_enricher.py`, не переизобретаются.
+`JsonGenerator` is a narrow DI boundary (§II): unit tests inject a double with fixed
+JSON, while `GeminiJsonGenerator` is the production `genai` implementation. Rotation
+error taxonomy (`QuotaExhausted/ModelUnavailable/TryNextModel`) and its classifier are
+shared with `gemini_enricher.py`, not recreated here.
 """
 
 from __future__ import annotations
@@ -32,8 +32,8 @@ from kinozal_scraper.trailer_strategy import Candidate, FilmProfile, TrailerPick
 
 logger = logging.getLogger(__name__)
 
-# Response-схема structured output. `video_id` nullable → честный «нет подходящего»:
-# модель обязана вернуть ключ, но вправе поставить null, а не выдумывать id.
+# Structured-output response schema. Nullable `video_id` means an honest “no suitable
+# candidate”: the model must return the key but may use null instead of inventing an id.
 PICK_SCHEMA = {
     "type": "object",
     "properties": {
@@ -50,9 +50,9 @@ class JsonGenerator(Protocol):
 
 
 def _build_prompt(film: FilmProfile, candidates: list[Candidate]) -> str:
-    """Промпт для модели: фильм + пронумерованный пул кандидатов с их `video_id`,
-    чтобы модель вернула id одного из них (или null). Русскоязычный приоритет при
-    равном соответствии — #315."""
+    """Model prompt: film plus numbered candidates with their `video_id`, so the
+    model returns one candidate id (or null). Ties prefer Russian-language output
+    per #315."""
     lines = [
         "Выбери ОФИЦИАЛЬНЫЙ трейлер фильма среди кандидатов YouTube.",
         f"Фильм: {film.ru_title} / {film.original_title} ({film.year}).",
@@ -73,17 +73,18 @@ def _build_prompt(film: FilmProfile, candidates: list[Candidate]) -> str:
 
 
 def _clamp_confidence(value: object) -> float:
-    """confidence в `[0,1]`; не-число/None/bool → 0.0 (degraded-visible, не краш,
-    не тихий дефолт). Контракт диапазона общий с baseline (1.0) / ambiguous (0.3)."""
+    """Clamp confidence to `[0,1]`; non-number/None/bool → 0.0 (visible degradation,
+    not a crash or silent default). The range contract is shared by baseline (1.0)
+    and ambiguous (0.3)."""
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return 0.0
     return max(0.0, min(1.0, float(value)))
 
 
 def _parse_pick(raw: str, valid_ids: set[str]) -> TrailerPick:
-    """JSON-ответ модели → `TrailerPick`. Каждая degraded-ветка §IV-видима:
-    различимый `reason` + WARNING-лог в точке детекции (не только поле, которое
-    сейчас читает лишь offline-harness). Узкий catch — не глушить прочие баги."""
+    """Convert a model JSON response to `TrailerPick`. Every degraded branch is
+    §IV-visible: a distinct `reason` plus a WARNING at detection, rather than only
+    a field currently read by the offline harness. Catches remain narrow."""
     try:
         data = json.loads(raw)
         video_id = data["video_id"]
@@ -96,7 +97,7 @@ def _parse_pick(raw: str, valid_ids: set[str]) -> TrailerPick:
         logger.warning("trailer llm-pick degraded: %s", reason)
         return TrailerPick(None, 0.0, reason)
     except TypeError:
-        # json.loads вернул не-object (list/число) → индексация строкой падает.
+        # `json.loads` returned a non-object (list/number), so string indexing fails.
         reason = f"malformed json from llm: not an object ({raw[:80]!r})"
         logger.warning("trailer llm-pick degraded: %s", reason)
         return TrailerPick(None, 0.0, reason)
@@ -114,8 +115,8 @@ def _parse_pick(raw: str, valid_ids: set[str]) -> TrailerPick:
 
 
 class LLMTrailerStrategy:
-    """`TrailerStrategy` через Gemini structured-output. Пустой пул → честный
-    `None` БЕЗ вызова модели (runtime-токены не тратятся на заведомо пустой выбор)."""
+    """`TrailerStrategy` through Gemini structured output. An empty pool → honest
+    `None` WITHOUT a model call (runtime tokens are not spent on a known-empty pick)."""
 
     def __init__(self, generator: JsonGenerator) -> None:
         self._generator = generator
@@ -128,14 +129,14 @@ class LLMTrailerStrategy:
 
 
 class GeminiJsonGenerator:
-    """structured-output собрат `GeminiEnricher`: один вызов Gemini в JSON-режиме
-    (`response_mime_type` + `response_schema`). API-ошибки → общий классификатор
+    """Structured-output sibling of `GeminiEnricher`: one Gemini JSON-mode call
+    (`response_mime_type` + `response_schema`). API errors use the shared classifier
     (`QuotaExhausted/ModelUnavailable/TryNextModel`); truncation (MAX_TOKENS/SAFETY
-    → невалидный JSON) → `TryNextModel` — сигнал retry для #144-ротатора, не тихая
-    деградация. `model_name` property зеркалит собрата, чтобы #144 обернул
-    `list[GeminiJsonGenerator]` экстракцией ротации, не переписыванием.
+    → invalid JSON) raises `TryNextModel`, the retry signal for #144 rotation rather
+    than silent degradation. The `model_name` property mirrors its sibling so #144
+    wraps `list[GeminiJsonGenerator]` with rotation extraction, not a rewrite.
 
-    `client` (genai.Client) прокидывается в конструктор (§II — готовый клиент, не credentials).
+    `client` (genai.Client) is injected into the constructor (§II: ready client, not credentials).
     """
 
     def __init__(self, model_name: str, client: GenaiClient) -> None:

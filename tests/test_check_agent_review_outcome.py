@@ -56,7 +56,7 @@ class TestOutcome:
     def test_an_empty_outcome_is_unavailable_on_every_pr(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """#483: изменённые пути больше ничего не решают — карв-аут снят."""
+        """#483: changed paths no longer decide anything; the carve-out is gone."""
         with pytest.raises(SystemExit) as exc:
             main([""])
 

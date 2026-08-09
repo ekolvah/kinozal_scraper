@@ -1,4 +1,4 @@
-"""Доставка результатов суммаризации + technical-alert маркер."""
+"""Summarization result delivery and the technical-alert marker."""
 
 from __future__ import annotations
 

@@ -30,10 +30,10 @@ reader + Gemini summarizer behind Protocols) and the shared `TelegramNotifier`
 — see [Telethon-direct modules](#telethon-direct-modules) below.
 
 `kinozal_pipeline` additionally enriches each movie with a YouTube trailer
-(`enrich_with_trailer`, #144). Отбор детерминированный, и **Gemini в этом cron-04:00
-hot path нет** — eval-only LLM/embedding/TMDB-пикеры (#142/#143/#329) сознательно вне
-прода, так что трейлер стоит ноль Gemini-квоты. Композиция retrieval → selection и
-обоснование выбора — канон в
+(`enrich_with_trailer`, #144). Selection is deterministic, and **Gemini is not in this
+cron-04:00 hot path** — eval-only LLM/embedding/TMDB pickers (#142/#143/#329) are
+deliberately outside production, so trailers consume zero Gemini quota. The retrieval →
+selection composition and the selection rationale are canonical in
 [pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection).
 
 ## Protocols

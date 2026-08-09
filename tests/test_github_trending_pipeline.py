@@ -494,7 +494,7 @@ class TestRussianEnrichment(unittest.TestCase):
         # First item got the real enrichment text.
         self.assertIn("Для кого: разработчик", notifier.sent[0].text)
         # Subsequent items have empty summary_ru (on_error fallback) — no
-        # "Для кого" marker present.
+        # The audience marker is present.
         for sent in notifier.sent[1:]:
             self.assertNotIn("Для кого", sent.text)
         # Enricher was called once for the first item, then once more (which

@@ -1,15 +1,15 @@
-"""TMDB videos как источник трейлера (#329, эпик трейлеров).
+"""TMDB videos as a trailer source (#329, trailer epic).
 
-Гипотеза эпика: «официальный трейлер с приоритетом русского» — решённая задача;
-каноничный способ — метаданный API с language-размеченными видео, а не
-YouTube-скрейпинг + эвристика (#141) / LLM (#142) / эмбеддинги (#143). TMDB
-`/movie/{id}/videos` отдаёт per-video `key` (YouTube-id), `iso_639_1`, `type`,
-`official`, `site` — правило отбора схлопывается в детерминированный фильтр.
+The epic hypothesis, “an official trailer with Russian priority,” is solved:
+the canonical method is metadata from an API with language-tagged videos, not
+YouTube scraping plus heuristics (#141), LLM (#142), or embeddings (#143). TMDB
+`/movie/{id}/videos` returns each video's `key` (YouTube id), `iso_639_1`,
+`type`, `official`, and `site`, reducing selection to a deterministic filter.
 
-Граница retrieval → selection зеркалит `youtube.py` (§II): `TmdbClient.resolve`
-(внешняя граница, DI) тянет видео, чистая `pick_trailer` их ранжирует. Прод не
-подключается до отдельной интеграции (аналог #144) — это offline-компонент под
-замер на eval-harness.
+The retrieval → selection boundary mirrors `youtube.py` (§II):
+`TmdbClient.resolve` (external boundary, DI) fetches videos and pure
+`pick_trailer` ranks them. Production is not connected until separate
+integration (analogous to #144); this is an offline eval-harness component.
 """
 
 from __future__ import annotations
@@ -28,9 +28,10 @@ _TMDB_API = "https://api.themoviedb.org/3"
 
 @dataclass
 class TmdbVideo:
-    """Одно видео из TMDB `/movie/{id}/videos`. `key` — YouTube-id (кладётся в
-    `TrailerPick.video_id`); `iso_639_1`/`type`/`official`/`site` — сигналы отбора;
-    `name` несёт accessibility-нюанс (ASL-вариант) для внутритировой де-приоритизации."""
+    """One TMDB `/movie/{id}/videos` entry. `key` is the YouTube id stored in
+    `TrailerPick.video_id`; `iso_639_1`/`type`/`official`/`site` are selection
+    signals, while `name` carries an accessibility nuance (an ASL variant) for
+    within-tier deprioritization."""
 
     key: str
     iso_639_1: str
@@ -40,13 +41,13 @@ class TmdbVideo:
     name: str = ""
 
 
-# ── selection: чистое детерминированное правило (§II, без сети/LLM) ────────────
+# ── selection: pure deterministic rule (§II, no network/LLM) ──────────────────
 
 
 def _tier(video: TmdbVideo) -> int:
-    """Приоритет-тир (меньше = лучше); `_INELIGIBLE` — не трейлер/тизер вовсе.
-    RU Trailer → RU Teaser → official en Trailer → любой en Trailer. Спорный стык
-    `RU Teaser (1) < official en Trailer (2)` пришпилен тестом (§I)."""
+    """Priority tier (lower is better); `_INELIGIBLE` is neither trailer nor teaser.
+    RU Trailer → RU Teaser → official EN Trailer → any EN Trailer. The disputed
+    `RU Teaser (1) < official en Trailer (2)` boundary is pinned by a test (§I)."""
     is_ru = video.iso_639_1 == "ru"
     if is_ru and video.type == "Trailer":
         return 0
@@ -63,15 +64,15 @@ _INELIGIBLE = 99
 
 
 def _is_sign_language(video: TmdbVideo) -> bool:
-    """ASL/сурдоперевод-вариант (кейс Битлджуса) — одна substring-проверка `name`,
-    НЕ растущая accessibility-таксономия (§VII)."""
+    """ASL/sign-language variant (the Beetlejuice case): one `name` substring
+    check, NOT a growing accessibility taxonomy (§VII)."""
     return "sign language" in video.name.lower()
 
 
 def pick_trailer(videos: list[TmdbVideo]) -> TrailerPick | None:
-    """Выбрать трейлер из TMDB-видео. Только `site=YouTube`; тир-приоритет
-    (`_tier`), внутри тира ASL-вариант де-приоритезируется. Нечего выбрать →
-    `None` (§IV miss-семантика, порождает видимый маркер в проде, не тихий дефолт)."""
+    """Pick a trailer from TMDB videos. Only `site=YouTube` qualifies; `_tier`
+    sets priority and an ASL variant is deprioritized within a tier. No pick →
+    `None` (§IV miss semantics: a visible production marker, not a silent default)."""
     eligible = [v for v in videos if v.site == _YOUTUBE and _tier(v) != _INELIGIBLE]
     if not eligible:
         return None
@@ -81,7 +82,7 @@ def pick_trailer(videos: list[TmdbVideo]) -> TrailerPick | None:
     return TrailerPick(best.key, confidence, reason)
 
 
-# Уверенность/атрибуция по тиру — язык-приоритет виден в скоркарте (§IV).
+# Per-tier confidence/attribution makes language priority visible in the scorecard (§IV).
 _TIER_META: dict[int, tuple[float, str]] = {
     0: (0.95, "tmdb ru trailer"),
     1: (0.7, "tmdb ru teaser"),
@@ -90,13 +91,13 @@ _TIER_META: dict[int, tuple[float, str]] = {
 }
 
 
-# ── retrieval: внешняя граница (DI, зеркало Youtube) — НЕ юнит-тестится (§II) ──
+# ── retrieval: external boundary (DI, mirrors Youtube), NOT unit-tested (§II) ─
 
 
 class TmdbClient:
-    """Внешняя граница TMDB (DI-паттерн `Youtube`): `resolve(profile)` → видео.
-    Токен из `os.environ["TMDB_TOKEN"]` (v4 Bearer). Сетевой I/O — тонкий слой над
-    чистой `pick_trailer`, поэтому юнит-тестами не покрывается (§II)."""
+    """TMDB external boundary (the `Youtube` DI pattern): `resolve(profile)` → videos.
+    Token comes from `os.environ["TMDB_TOKEN"]` (v4 Bearer). Network I/O is a
+    thin layer over pure `pick_trailer`, so it is not unit-tested (§II)."""
 
     def __init__(self, session: requests.Session | None = None) -> None:
         token = os.environ["TMDB_TOKEN"]
@@ -118,9 +119,9 @@ class TmdbClient:
         return int(results[0]["id"]) if results else None
 
     def resolve(self, profile: FilmProfile) -> list[TmdbVideo]:
-        """Видео фильма = union ru-RU ∪ en-US (дедуп по `key`) — RU-дорожка обязана
-        оказаться в пуле, когда она есть (зеркало union-retrieval `search_candidates`).
-        Фильм не найден → пустой список (§IV: pick_trailer → None → видимый Miss)."""
+        """Film videos = ru-RU ∪ en-US (deduplicated by `key`); the RU track must
+        enter the pool when it exists (mirrors union retrieval in `search_candidates`).
+        Film not found → empty list (§IV: pick_trailer → None → visible Miss)."""
         movie_id = self._find_movie_id(profile)
         if movie_id is None:
             return []

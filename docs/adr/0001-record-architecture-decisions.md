@@ -4,100 +4,98 @@ date: 2026-07-30
 decision-makers: ekolvah
 ---
 
-# Обоснования решений живут записями MADR в `docs/adr/`
+# Decision rationales live in MADR records in `docs/adr/`
 
 ## Context and Problem Statement
 
-Правило [«Что описывает документация»](../architecture/project-map.md) запретило нарратив в
-`docs/`: там описывается текущее реализованное состояние, а история изменений живёт в git/PR.
-Дома обоснованиям правило при этом не дало — отправило их в тело issue/PR, вне репозитория.
-Нужда в них никуда не делась: без фразы «почему решение до сих пор верно» правило выглядит
-ритуалом, и его снесёт следующий «упрощатель». Нарратив вернулся в state-доки.
+The ["What the documentation describes" rule](../architecture/project-map.md) prohibited narrative in
+`docs/`: it describes the current implemented state, while change history lives in git/PRs.
+The rule did not provide a home for rationales, instead sending them to issue/PR bodies outside the repository.
+The need remained: without a statement of why a decision is still correct, the rule looks ritualistic and
+the next “simplifier” will remove it. Narrative returned to state documentation.
 
-Замер на `a49f75a` по `docs/` + `.claude/`: 300 упоминаний вида `#N` в 14 файлах, из них **174**
-стоят вне скобочного указателя — то есть номер таски является членом предложения, а не ссылкой;
-12 заголовков секций названы номерами породивших их тасок.
+Measurement at `a49f75a` across `docs/` + `.claude/`: 300 `#N` references in 14 files, of which **174**
+appear outside a parenthetical pointer—meaning the task number is part of a sentence rather than a link;
+12 section headings are named after the tasks that produced them.
 
-Причина механическая, а не дисциплинарная. `#N` — адрес **события** во внешнем трекере: у него
-нет тела в репозитории и нет статуса. Читатель по такой ссылке не может ни узнать содержание, ни
-проверить, действует ли решение, — поэтому автор пересказывает содержимое рядом со ссылкой
-(«#412 добавил живой кейс…», «как было до #227», «#359 сломал верхнюю половину»). Стабильный ID
-записи, лежащей в репозитории, пересказ снимает: ссылки достаточно.
+The cause is mechanical, not disciplinary. `#N` addresses an **event** in an external tracker: it has
+no body in the repository and no status. A reader cannot learn the content or verify that the decision
+still applies, so the author retells it beside the link (“#412 added a live case…”, “as before #227”,
+“#359 broke the upper half”). A stable ID for a record in the repository removes the need to retell it:
+the link is sufficient.
 
-Вопрос решения: **где в репозитории живёт обоснование, чтобы state-док мог на него сослаться,
-а не пересказать.**
+Decision question: **where in the repository should a rationale live so a state document can link to it
+rather than retell it?**
 
 ## Decision Drivers
 
-* Минимизировать будущий багфикс и саппорт: отвергнутое решение не должно переоткрываться как
-  work-for-work, а действующее — сноситься по незнанию причин.
-* Токены: обоснования не должны попадать в always-load-контекст и не должны дублироваться.
-* Не изобретать формат и не заводить зависимость там, где есть стандарт.
-* Механизм обязан иметь **фильтр входа**, иначе новый каталог станет свалкой того же нарратива.
+* Minimize future bug fixing and support: a rejected decision must not be reopened as work-for-work, and
+  an active one must not be removed through ignorance of its rationale.
+* Tokens: rationales must not enter always-load context and must not be duplicated.
+* Do not invent a format or add a dependency where a standard exists.
+* The mechanism must have an **admission filter**, otherwise the new directory becomes a dump for the same narrative.
 
 ## Considered Options
 
-* Оставить как есть — обоснования в теле issue/PR, правило прозой
-* Свой формат записи в репозитории (как ledger `A`…`AB`, исторически сложившийся в `testing.md`)
-* MADR 4.0.0 + CLI-тул (`pyadr` / `adr-tools-python` / `log4brains`)
-* **MADR 4.0.0 без тулинга** — записи создаются копированием шаблона
+* Keep the current approach—rationales in issue/PR bodies and the rule in prose
+* A custom record format in the repository (such as the historically evolved `A`…`AB` ledger in `testing.md`)
+* MADR 4.0.0 + a CLI tool (`pyadr` / `adr-tools-python` / `log4brains`)
+* **MADR 4.0.0 without tooling**—create records by copying the template
 
 ## Decision Outcome
 
-Выбрано: **MADR 4.0.0 без тулинга**. Формат — де-факто стандарт под организацией ADR, тулинг им
-не требуется по построению («записи создаются копированием шаблона»), а создаёт их здесь агент
-внутри `/implement` — то есть один `Write`, а не серия команд, ради экономии которых существуют
-CLI-обёртки. Шаблон лежит рядом ([`template.md`](template.md)) и скопирован дословно с тега
-`4.0.0` апстрима: `main` от тега уже разошёлся, поэтому берётся именно пин.
+Chosen: **MADR 4.0.0 without tooling**. The format is the de facto standard under the ADR organization;
+by design it needs no tooling (“records are created by copying the template”), and here an agent creates one
+inside `/implement` with a single `Write`, not a command series that CLI wrappers exist to save. The template
+is adjacent ([`template.md`](template.md)) and copied verbatim from upstream tag `4.0.0`: `main` has since
+diverged from the tag, so the pin is used.
 
 ### Consequences
 
-* Good, потому что у обоснования появляется адрес с телом и статусом — state-док ссылается, а не
-  пересказывает; это и снимает механическую причину рецидива.
-* Good, потому что смена решения выражается **новой** записью со статусом `superseded by` и
-  ссылкой вперёд: старое обоснование остаётся читаемым, а не переписывается задним числом.
-* Good, потому что ни одной новой зависимости: ни CLI, ни Node-линтера.
-* Bad, потому что появляется третий дом решений рядом с двумя существующими ledger'ами —
-  цена снимается правилом входа ниже, но требует дисциплины на ревью.
-* Bad, потому что каталог, за которым перестанут следить, превращается в археологию с ложной
-  авторитетностью. Ответ — узкий фильтр входа, а не расширение объёма.
+* Good, because the rationale gains an address with a body and status—a state document links rather than
+  retells it, removing the mechanical cause of recurrence.
+* Good, because a changed decision is expressed as a **new** record with status `superseded by` and a
+  forward link: the old rationale remains readable rather than being rewritten after the fact.
+* Good, because it adds no dependency: neither CLI nor Node linter.
+* Bad, because it adds a third home for decisions beside two existing ledgers—the admission rule below
+  offsets that cost, but requires review discipline.
+* Bad, because an unmaintained directory becomes archaeology with false authority. The answer is a narrow
+  admission filter, not scope expansion.
 
 ### Confirmation
 
-Структурные свойства держит `tests/test_adr_records.py`: имя `NNNN-slug.md`, уникальность номера,
-статус из закрытого набора, `superseded by`, резолвящийся в существующую запись, обязательные
-секции MADR minimal. Семантику — достойно ли решение записи и актуально ли обоснование — гард
-не судит и судить не может; это остаётся человеку на ревью (та же честная позиция, что у
-presence-гарда header'ов).
+`tests/test_adr_records.py` enforces structural properties: the `NNNN-slug.md` name, unique number,
+status from a closed set, `superseded by` resolving to an existing record, and required MADR minimal
+sections. The guard neither judges nor can judge semantics—whether a decision warrants a record and a
+rationale remains current. That stays with a human reviewer (the same honest boundary as a header-presence guard).
 
 ## Pros and Cons of the Options
 
-### Оставить как есть
+### Keep the current approach
 
-* Good, потому что нулевая цена внедрения.
-* Bad, потому что ровно это и измерено как не работающее: 174 повествовательных упоминания.
+* Good, because the implementation cost is zero.
+* Bad, because that exact approach was measured not to work: 174 narrative references.
 
-### Свой формат
+### Custom format
 
-* Good, потому что подгоняется под репозиторий без остатка.
-* Bad, потому что это и есть текущий bespoke: ledger `A`…`AB` со своими ID, своими полями и
-  **без политики статусов** — записи правятся на месте вместо надстройки новой.
+* Good, because it can fit the repository exactly.
+* Bad, because it is the existing bespoke solution: a ledger `A`…`AB` with its own IDs, fields, and
+  **no status policy**—records are edited in place rather than superseded with a new one.
 
-### MADR + CLI-тул
+### MADR + CLI tool
 
-* Good, потому что нумерация и статусы автоматизированы.
-* Bad, потому что живых кандидатов нет: `pyadr` — 0.19.0 (апрель 2022), на PyPI *Pre-Alpha*;
-  `adr-tools-python` — 1.0.3 (июнь 2019); `log4brains` — Node.js, автор объявил low maintenance.
-* Bad, потому что тул решает задачу, которой здесь нет: он экономит **человеку** набор команд.
+* Good, because numbering and statuses are automated.
+* Bad, because there are no viable candidates: `pyadr`—0.19.0 (April 2022), *Pre-Alpha* on PyPI;
+  `adr-tools-python`—1.0.3 (June 2019); `log4brains`—Node.js, whose author declared low maintenance.
+* Bad, because the tool solves a problem absent here: it saves a **human** a series of commands.
 
 ## More Information
 
-**Действующая политика каталога — маршрут «куда идёт решение», закрытый набор статусов,
-иммутабельность принятой записи, ориентир объёма — живёт в
-[`project-map.md` §Canonical-home](../architecture/project-map.md), не здесь.** Это не оговорка
-ради формы: политика меняется, а принятая запись не переписывается, и держать живое правило в
-append-only-файле значило бы каждую его правку оформлять `superseded by` — с четырьмя доками,
-ссылающимися на отменённую запись. Здесь остаётся то, что и должно быть неизменным: **почему**
-выбран MADR без тулинга и что было отвергнуто.
+**The active directory policy—the “where a decision goes” route, closed status set, immutability of an
+accepted record, and size guidance—lives in
+[`project-map.md` §Canonical-home](../architecture/project-map.md), not here.** This is not a formal caveat:
+policy changes while an accepted record is not rewritten, and putting a live rule in an append-only file would
+mean recording every revision as `superseded by`, with four documents linking to the superseded record. This
+record retains what should be immutable: **why** tooling-free MADR was selected and what was rejected.
 
-Хроника «как мы к этому пришли» — тело issue/PR; в записи её нет намеренно.
+The chronicle of “how we got here” belongs in the issue/PR body; it is intentionally absent from this record.

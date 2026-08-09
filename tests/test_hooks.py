@@ -121,11 +121,13 @@ class TestPipCompileGuard:
 
 
 class TestMemoryWriteGuard:
-    """#353: запись в out-of-repo agent-память (`.claude/projects/<slug>/memory/`) —
-    детерминируемый governance-триггер политики Memory↔repo, вынесенный из прозы в
-    pure-предикат по пути (как `_is_python`/`_is_requirements_in`). Сигнал —
-    checkpoint-вопрос (reminder, exit 2), НЕ PreToolUse-блок: false-positive на
-    легит машинно-специфичную память допустим by-design (семантику не скриптуем)."""
+    """#353: writes to out-of-repo agent memory are a governance trigger.
+
+    The Memory↔repo policy is enforced by a pure path predicate, like
+    `_is_python`/`_is_requirements_in`. It emits a checkpoint reminder (exit 2),
+    not a PreToolUse block; machine-specific-memory false positives are accepted
+    by design because semantics are not scripted.
+    """
 
     _MEM = (
         "C:/Users/jadow/.claude/projects/"
@@ -136,8 +138,8 @@ class TestMemoryWriteGuard:
         assert plan_checks(_payload(self._MEM)) == ["memory_write"]
 
     def test_memory_write_surfaces_exit_2(self) -> None:
-        # Сигнал = видимая аномалия (§IV), exit 2 → stderr доходит до агента; ruff
-        # не зовётся (memory-ветка до _is_python), поэтому _never_called безопасен.
+        # The signal is a visible anomaly (§IV): exit 2 exposes stderr to the
+        # agent. The memory branch precedes `_is_python`, so ruff never runs.
         code, stderr = run_on_edit(_payload(self._MEM), ruff_runner=_never_called)
         assert code == 2
         assert stderr != ""
@@ -145,23 +147,22 @@ class TestMemoryWriteGuard:
         assert sig.kind == "memory_write"
 
     def test_windows_backslash_path(self) -> None:
-        # Грабля путей Windows: payload может нести backslash-путь — нормализуется.
+        # Windows payloads can contain backslashes; normalize them.
         p = r"C:\Users\jadow\.claude\projects\slug\memory\bar.md"
         assert plan_checks(_payload(p)) == ["memory_write"]
 
     def test_memory_index_root_file_flagged(self) -> None:
-        # MEMORY.md в корне memory-каталога — trailing-`/` не отсекает корневой файл.
+        # A trailing slash must not exclude MEMORY.md at the memory root.
         p = "C:/Users/jadow/.claude/projects/slug/memory/MEMORY.md"
         assert plan_checks(_payload(p)) == ["memory_write"]
 
     def test_non_memory_subdir_of_projects_not_flagged(self) -> None:
-        # Специфичность `/memory/`, а не просто `projects/`: каталог projects несёт
-        # и другое (сессионные логи). Страхует границу от ослабления регекса.
+        # Match `/memory/`, not all `projects/`, which also stores session logs.
         p = "C:/Users/jadow/.claude/projects/slug/other/f.md"
         assert plan_checks(_payload(p)) == []
 
     def test_repo_paths_not_memory(self) -> None:
-        # Repo-файлы (в т.ч. repo-`.claude/`) не триггерят memory-сигнал — dispatch цел.
+        # Repository files, including `.claude/`, do not trigger the memory signal.
         assert plan_checks(_payload("src/x.py")) == ["ruff"]
         assert plan_checks(_payload("docs/architecture/project-map.md")) == []
         assert plan_checks(_payload(".claude/rules/mindset.md")) == []
@@ -172,13 +173,12 @@ def _never_called(_file: str) -> tuple[int, str]:
 
 
 class TestCaptureFailureIsSetupBroken:
-    """Сломанный захват вывода ruff — сигнал «сетап сломан», не исключение (#410).
+    """Broken ruff output capture means setup failure, not an exception (#410).
 
-    Пин на **различающее** решение: непойманное исключение дало бы хуку exit 1,
-    а stderr хука с кодом 1 уходит пользователю, но НЕ агенту (агент видит код 2).
-    То есть инструмент, вся работа которого — видимость, потерял бы её ровно в тот
-    момент, когда сломался. Тот же код, что у отсутствующего ruff: класс один —
-    «проверка не выполнилась», а не «нашлись замечания».
+    An uncaught exception would return hook exit 1, whose stderr reaches the user
+    but not the agent; the agent sees exit 2. A visibility tool must remain visible
+    when it breaks. This shares the missing-ruff class: the check did not run,
+    rather than findings being present.
     """
 
     def test_none_stdout_returns_setup_broken_marker(self, monkeypatch: pytest.MonkeyPatch) -> None:

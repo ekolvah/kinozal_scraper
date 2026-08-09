@@ -1,67 +1,65 @@
-"""Гард на форму ссылки в `.md`: `#N` — указатель, а не член предложения (#428).
+"""Guard for reference form in `.md`: `#N` is a pointer, not a sentence member (#428).
 
-**Что стережём.** `project-map.md` §«Что описывает документация» требует от доков текущее
-состояние, а не хронику. Правило жило только прозой, и давление на него одностороннее:
-абзац с номером таски выглядит авторитетнее, поэтому номера накапливаются, а вычищать их
-никто не приходит. Замер в [ADR-0001](../docs/adr/0001-record-architecture-decisions.md)
-это и показал. Детерминируемая половина правила — **форма**: `#N` стоит скобочным
-указателем (предложение полно и без него) либо является членом предложения (без перехода
-в трекер фраза неполна). Это случай `principles.md` §Scripts over instructions: exit-code вместо
-пункта в чек-листе ревьюера.
+**What is guarded.** `project-map.md` §“What the documentation describes” requires documents to state current
+state, not chronicle. The rule lived only in prose, with one-way pressure: a paragraph with a task number looks
+authoritative, so numbers accumulate and nobody removes them. Measurement in
+[ADR-0001](../docs/adr/0001-record-architecture-decisions.md) showed exactly that. The deterministic half of
+the rule is **form**: `#N` is a parenthetical pointer (the sentence is complete without it) or a sentence member
+(without tracker navigation the phrase is incomplete). This is `principles.md` §Scripts over instructions: an
+exit code instead of a reviewer-checklist item.
 
-**Две ветки, разные причины.** В теле — форма ради читаемости. В заголовке `#N` запрещён
-**и в скобках**: якорь GitHub генерится из текста заголовка, поэтому `## Eval harness
-(#139)` делает адресом секции `#eval-harness-139` — адрес, привязанный к номеру породившей
-секцию таски. `tests/test_doc_links.py` ловит **последствие** (провисший якорь после
-переименования), эта ветка — **причину**, до того как якорь вообще создан.
+**Two branches, different reasons.** In body text, form is for readability. In a heading, `#N` is forbidden
+**even in parentheses**: GitHub generates an anchor from heading text, so `## Eval harness
+(#139)` makes the section address `#eval-harness-139`, an address tied to the number of the task that created
+the section. `tests/test_doc_links.py` catches the **effect** (a dangling anchor after rename); this branch
+catches the **cause**, before the anchor is created.
 
-**Fail-closed на непарном разделителе.** Разрешённая зона — только **сомкнутая** пара
-`()`. Незакрытая скобка зоны не открывает: иначе одна опечатка молча превращает хвост
-абзаца в белый список, и гард зеленеет, не сообщив ничего (§IV — ровно тот дефект, ради
-которого он написан). По той же причине включён `table`: без него таблица склеивается в
-один `inline`-токен и скобка из одной ячейки смыкается со скобкой из другой через пять
-строк.
+**Fail closed on an unpaired delimiter.** The allowed zone is only a **closed**
+`()` pair. An unclosed parenthesis does not open a zone: otherwise one typo silently turns a paragraph tail
+into an allowlist, and the guard turns green without reporting anything (§IV—the exact defect it prevents).
+For the same reason `table` is enabled: without it a table joins into one `inline` token, and a parenthesis
+from one cell closes with a parenthesis from another five lines later.
 
-**Парность backtick'ов и границы ссылок отдаются парсеру.** `code_inline` и label ссылки —
-легальные места для `#N`, и скобки внутри них в парности не участвуют (`` `f(x)` ``).
-Считать это регекспом значило бы переписать `markdown-it-py`, ради которого он и взят
-(#427). Содержимое ```-блоков отсеивается парсером даром: это токен `fence`, не `inline`.
+**Backtick pairing and link boundaries are delegated to the parser.** `code_inline` and a link label are
+legal places for `#N`, and parentheses inside them do not participate in pairing (`` `f(x)` ``).
+Counting this with a regexp would mean rewriting `markdown-it-py`, which is why it was chosen
+(#427). The parser filters the contents of ``` blocks for free: they are a `fence` token, not `inline`.
 
-**Сигил `#` зарезервирован за ссылками на issue/PR.** Номер правила пишется `workflow.md §7`,
-доска — `Project 1`. Конвенция (канон — `project-map.md`) заменяет собой ветку исключений в
-предикате: без неё пришлось бы вести открытый словарь левого контекста, который растёт с
-каждой новой формой записи. Сама она — **третья ветка гарда** и единственная репо-широкая:
-`#N` рядом с `workflow`/`Project` встречается и в `.py`, и в `.toml`, а прозы для этой
-половины не хватило — на её свёртку в #428 ушло три коммита, два из них после ревью.
-Гейтируемой ветку делает **закрытость** словаря: он закрыт по *токену* (`workflow`,
-`Project`) в обычной markdown-оправе — backtick, `**`, закрывающая скобка ссылки —
-а не по перечню написаний. Ссылка при этом матчится концом URL, а не label'ом:
-`[`workflow.md`](…/workflow.md) #N` ловится потому, что путь кончается тем же
-токеном; ссылка на другой файл прошла бы. Ровно то условие, по которому ветка дат была отклонена как открытая
-(ledger **AC** в `coverage-gaps.md`).
+**The `#` sigil is reserved for issue/PR references.** A rule number is written as `workflow.md §7`,
+a board as `Project 1`. The convention (whose canon is `project-map.md`) replaces an exception branch in
+the predicate: without it, an open dictionary of left context would have to grow with
+every new form of notation. It is itself the **third guard branch** and the only repository-wide one:
+`#N` alongside `workflow`/`Project` occurs in both `.py` and `.toml`, and prose was insufficient for this
+half—reducing it in #428 took three commits, two of them after review.
+What makes the branch gateable is the **closedness** of its dictionary: it is closed by *token* (`workflow`,
+`Project`) in ordinary Markdown wrapping—backtick, `**`, a closing link parenthesis—
+rather than by a list of spellings. A link is matched by the end of its URL, not its label:
+`[`workflow.md`](…/workflow.md) #N` is caught because the path ends with the same
+token; a link to another file would pass. This is precisely the condition under which the date branch was rejected as open
+(ledger **AC** in `coverage-gaps.md`).
 
-**Скоуп.** Ветки про форму указателя — `.md` из индекса git минус `docs/adr/`; ветка сигила —
-**все** отслеживаемые файлы. `git ls-files`, а не обход ФС: `.claude/worktrees/` gitignored
-и держит копии репо со старыми доками (тот же аргумент, что в `tests/test_doc_links.py`).
-Записи MADR исключены **по жанру**: запись — дом обоснования, она датирована по конструкции
-и после принятия иммутабельна, так что покрасневший на ней гард не имел бы легального
-фикса — остался бы exception-список.
+**Scope.** The branches concerning pointer form are `.md` from the git index minus `docs/adr/`; the sigil branch is
+**all** tracked files. `git ls-files`, not a filesystem traversal: `.claude/worktrees/` is gitignored
+and holds repository copies with old docs (the same argument as in `tests/test_doc_links.py`).
+MADR records are excluded **by genre**: a record is the home of rationale, it is dated by design
+and immutable after acceptance, so a guard going red on it would have no legal
+fix—only an exception list would remain.
 
-**Границы гарда, честно.** Гейтится **форма**, а не жанр: `Closed by #88.` → `Закрыто
-(#88).` пройдёт, не став лучше. Замер на момент заведения гарда: из 266 упоминаний `#N`
-в скоупе под него попали 23, остальные разрешены — и настоящий нарратив среди разрешённых
-есть (`.claude/commands/implement.md` держит два в скобках). Гард делает рецидив **видимым
-на ревью** в форме, в которой он дешевле всего, — не делает невозможным. Семантическое
-«норматив или археология» остаётся человеку, тот же класс, что детектор семантических
-дублей (`project-map.md`).
+**Guard boundaries, honestly.** What is gated is **form**, not genre: `Closed by #88.` → `Completed
+(#88).` will pass without becoming better. Measurement when the guard was introduced: of 266 `#N` mentions
+in scope, 23 fell under it; the rest are allowed—and there is real narrative among the allowed cases
+(`.claude/commands/implement.md` has two in parentheses). The guard makes recurrence **visible
+in review** in the form where it is cheapest; it does not make it impossible. The semantic question
+“normative or archaeology” remains for a person, the same class as the detector of semantic
+duplicates (`project-map.md`).
 
-Ещё два предела, названных явно. **Label ссылки прозрачен целиком**, а не только когда он
-и есть номер: `[Closed by #88 — подробности](url)` гард пропустит. Сузить можно, но плата —
-ветка на форму label'а ради случая, которого в репо нет (§VII). **Номер строки в сообщении
-может отставать**, если выше в том же абзаце стоит токен, чей `content` короче занятого им
-куска исходника: code-span, перенесённый через строку (CommonMark заменяет перевод строки
-внутри `` ` `` пробелом), `![](url)` (в `content` только alt) или экранированный `\\#428`.
-Дефект сообщения, а не вердикта; чинить его пришлось бы собственным source-map'ом.
+Two more limits are named explicitly. **A link label is transparent in full**, not only when it
+is the number itself: the guard will permit `[Closed by #88 — details](url)`. It could be narrowed, but the cost is
+a branch for label form for a case absent from the repository (§VII). **The line number in the message
+can lag behind** if a token above it in the same paragraph has `content` shorter than the source
+fragment it occupies: a code span that crosses a line (CommonMark replaces the line break
+inside `` ` `` with a space), `![](url)` (only alt is in `content`), or escaped `\\#428`.
+It is a message defect, not a verdict defect; fixing it would require its own source map.
 """
 
 from __future__ import annotations
@@ -78,45 +76,43 @@ from markdown_it.token import Token
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# `table` не декоративен — см. §Fail-closed в докстринге.
+# `table` is not decorative—see §Fail-closed in the docstring.
 _MD = MarkdownIt("commonmark").enable("table")
 
-# `#` сразу после буквы/цифры — не ссылка (`C#1`); после дефиса — ссылка (`pre-#95`,
-# и это как раз запрещённая форма). Якорь (`#doc-guards`) не матчится: за `#` не цифра.
+# `#` immediately after a letter/digit is not a link (`C#1`); after a hyphen it is (`pre-#95`,
+# and that is precisely prohibited). An anchor (`#doc-guards`) does not match: `#` is not followed by a digit.
 _ISSUE_REF = re.compile(r"(?<!\w)#\d+\b")
 
-# Заглушка непрозрачной зоны: длина сохраняется, чтобы смещения оставались настоящими.
+# Opaque-zone placeholder: retains length so offsets remain accurate.
 _OPAQUE = "\x00"
 
 _EXPECTED_SCOPE_DIRS = ("docs/architecture", ".claude/rules", ".claude/commands")
 
-# Не-issue употребления сигила: номер правила и номер доски. Словарь **закрыт** — ровно
-# то условие, по которому ветка дат была отклонена (ledger **AC**), а эта взята. Живёт
-# не в скоупе `.md`: три коммита этого же PR понадобились, чтобы вычистить `.py`
-# и `.toml`, — прозы для второй половины конвенции не хватило.
+# Non-issue uses of the sigil: rule number and board number. The dictionary is **closed**—the exact
+# condition for rejecting the date branch (ledger **AC**) and selecting this one. It does not live only in
+# `.md` scope: three commits in this PR were needed to clean `.py` and `.toml`; prose was insufficient.
 #
-# Хвост оформления (`.md`, backtick, закрывающая скобка ссылки, `**`) вынесен за
-# альтернативу намеренно: он одинаково нужен обоим токенам — `workflow #N`,
-# `` `workflow.md` #N ``, `[`workflow.md`](path) #N`, `Project #N`, `` `Project` #N ``,
-# `**Project** #N`. Закрыть словарь по *написаниям* вместо *токенов* значило бы оставить
-# большинство `.md`-мест на прозе. `IGNORECASE` — ради `Workflow` в начале предложения.
+# Formatting suffix (`.md`, backtick, closing link parenthesis, `**`) sits outside the alternative deliberately:
+# both tokens need it—`workflow #N`, `` `workflow.md` #N ``, `[`workflow.md`](path) #N`, `Project #N`,
+# `` `Project` #N ``, `**Project** #N`. Closing the dictionary by *spellings* instead of *tokens* would leave
+# most `.md` locations to prose. `IGNORECASE` supports `Workflow` at sentence start.
 #
-# Отрицательный пример пишется через метапеременную `#N`, а не с цифрой: эта ветка —
-# построчный regexp по сырому файлу, code-span для неё не escape hatch (в отличие от двух
-# markdown-веток). За `#` не цифра — предикат молчит, и правило можно показать.
+# The negative example uses metavariable `#N`, not a digit: this branch is a line regexp over the raw file,
+# and a code span is no escape hatch (unlike the two Markdown branches). No digit follows `#`, so the predicate
+# remains silent and the rule can be demonstrated.
 _NON_ISSUE_SIGIL = re.compile(r"(?:workflow(?:\.md)?|project)[`)\]*_]*\s+#\d", re.IGNORECASE)
 
-# Каталог записей MADR — вне скоупа по жанру (докстринг §Скоуп). Пришпилено
-# `test_adr_records_are_out_of_scope`, чтобы carve-out остался осознанным.
+# MADR records directory is outside scope by genre (docstring §Scope). Pinned by
+# `test_adr_records_are_out_of_scope`, so the carve-out remains conscious.
 _EXCLUDED_DIR = "docs/adr/"
 
 
 def readable_stream(inline: Token) -> str:
-    """Текст `inline`-токена, где непрозрачные для правила зоны забиты заглушкой.
+    """`inline` token text with zones opaque to the rule filled by placeholders.
 
-    Заглушкой становятся `code_inline` и содержимое label'а ссылки: `#N` там легален,
-    а скобки внутри не должны участвовать в парности. `softbreak` → `\\n`, иначе
-    смещение находки не переводится в номер строки.
+    `code_inline` and link-label content become placeholders: `#N` is legal there,
+    and internal parentheses must not take part in pairing. `softbreak` maps to a newline,
+    otherwise a finding offset cannot convert to a line number.
     """
     parts: list[str] = []
     link_depth = 0
@@ -135,7 +131,7 @@ def readable_stream(inline: Token) -> str:
 
 
 def paired_spans(text: str) -> list[tuple[int, int]]:
-    """Диапазоны **сомкнутых** пар `()`. Незакрытая `(` зоны не открывает."""
+    """Ranges of **closed** `()` pairs. An unclosed `(` does not open a zone."""
     spans: list[tuple[int, int]] = []
     stack: list[int] = []
     for i, char in enumerate(text):
@@ -147,15 +143,14 @@ def paired_spans(text: str) -> list[tuple[int, int]]:
 
 
 def narrative_refs(markdown: str) -> list[tuple[int, str]]:
-    """`(строка, фрагмент)` для каждого `#N`, стоящего не скобочным указателем."""
+    """`(line, fragment)` for every `#N` not used as a parenthetical pointer."""
     found: list[tuple[int, str]] = []
     for token in _MD.parse(markdown):
         if token.type != "inline":
             continue
-        # `map or [0]`, а не `map is None → skip`: пропуск выбросил бы содержимое токена
-        # из проверки молча — ровно тот §IV-вакуум, против которого гард написан. Сегодня
-        # ветка недостижима (ячейки таблиц `.map` несут — это доказывает
-        # `test_table_cell_paren_does_not_leak`), но цена честного отчёта — ноль.
+        # `map or [0]`, not `map is None → skip`: skipping silently removes token content
+        # from checking—the exact §IV vacuum this guard prevents. This branch is unreachable today
+        # (table cells have `.map`, proved by `test_table_cell_paren_does_not_leak`), but honest reporting costs zero.
         start_line = (token.map or [0])[0]
         stream = readable_stream(token)
         spans = paired_spans(stream)
@@ -169,7 +164,7 @@ def narrative_refs(markdown: str) -> list[tuple[int, str]]:
 
 
 def heading_issue_refs(markdown: str) -> list[tuple[int, str]]:
-    """`(строка, текст заголовка)` для каждого заголовка с `#N` — в скобках тоже."""
+    """`(line, heading text)` for every heading with `#N`, including parentheses."""
     tokens = _MD.parse(markdown)
     return [
         ((token.map or [0])[0] + 1, tokens[i + 1].content)
@@ -179,10 +174,10 @@ def heading_issue_refs(markdown: str) -> list[tuple[int, str]]:
 
 
 def sigil_misuses(text: str) -> list[tuple[int, str]]:
-    """`(строка, фрагмент)` там, где `#N` назвал не issue, а правило или доску.
+    """`(line, fragment)` where `#N` names not an issue but a rule or board.
 
-    Построчный regexp, а не разбор markdown: ветка идёт по **всем** отслеживаемым
-    файлам, включая `.py` и `.toml`, где markdown-структуры нет.
+    Line regexp rather than Markdown parsing: the branch runs over **all** tracked files,
+    including `.py` and `.toml`, which have no Markdown structure.
     """
     return [
         (i, line.strip())
@@ -206,7 +201,7 @@ def _tracked_files() -> tuple[str, ...]:
 
 
 def _tracked_docs() -> tuple[str, ...]:
-    """Отслеживаемые `.md` вне `docs/adr/` — скоуп веток про форму указателя."""
+    """Tracked `.md` outside `docs/adr/`—scope of pointer-form branches."""
     names = [name for name in _tracked_files() if name.endswith(".md")]
     return tuple(name for name in names if not name.startswith(_EXCLUDED_DIR))
 
@@ -220,11 +215,11 @@ def _report(finder: Callable[[str], list[tuple[int, str]]], docs: tuple[str, ...
 
 
 def _report_any(names: tuple[str, ...]) -> list[str]:
-    """`sigil_misuses` по **всем** отслеживаемым файлам, включая нетекстовые.
+    """`sigil_misuses` over **all** tracked files, including non-text files.
 
-    Декодирование лоскутное (`errors="replace"`): искомые формы ASCII-only, поэтому
-    порча нелатиницы находок не теряет, а фильтр по расширению — наоборот, тихо
-    выронил бы новый тип файла из инварианта.
+    Decoding is permissive (`errors="replace"`): sought forms are ASCII-only, so corrupting
+    non-Latin text does not lose findings, while extension filtering would silently drop a new
+    file type from the invariant.
     """
     found: list[str] = []
     for name in names:
@@ -243,7 +238,7 @@ class TestDocsCarryNoNarrative:
         )
 
     def test_adr_records_are_out_of_scope(self) -> None:
-        """Carve-out осознан, а не выродился: записи MADR есть и в скоуп не попали."""
+        """The carve-out is conscious, not degenerate: MADR records exist and are outside scope."""
         result = subprocess.run(
             ["git", "ls-files", "-z", "docs/adr"],
             cwd=_REPO_ROOT,
@@ -264,7 +259,7 @@ class TestDocsCarryNoNarrative:
         )
 
     def test_non_md_files_are_in_sigil_scope(self) -> None:
-        """Ветка сигила репо-широкая: `.py`/`.toml` обязаны в неё попадать (§IV)."""
+        """The sigil branch is repository-wide: `.py`/`.toml` must enter it (§IV)."""
         assert [name for name in _tracked_files() if not name.endswith(".md")]
 
     def test_sigil_names_only_issues(self) -> None:
@@ -286,7 +281,7 @@ class TestDocsCarryNoNarrative:
 
 
 class TestNarrativePredicates:
-    """Предикаты на синтетике: без них гард доказывал бы сам себя на зелёном репо."""
+    """Predicates on synthetic input: without them the guard proves itself on a green repository."""
 
     def test_pointer_in_parens_is_allowed(self) -> None:
         assert narrative_refs("Дискриминатор сверяет точный литерал (#385).") == []
@@ -309,14 +304,14 @@ class TestNarrativePredicates:
         assert len(narrative_refs("RCA #396 установил, что исход решает одна величина.")) == 1
 
     def test_unbalanced_paren_does_not_whitelist_tail(self) -> None:
-        """Одна незакрытая скобка не превращает хвост абзаца в белый список (§IV)."""
+        """One unclosed parenthesis does not turn the paragraph tail into an allowlist (§IV)."""
         assert len(narrative_refs("Вызов `f(x` сломан — подробности в #88.")) == 1
 
     def test_stray_backtick_does_not_whitelist_tail(self) -> None:
         assert len(narrative_refs("Одиночный ` в прозе, а дальше Closed by #88.")) == 1
 
     def test_paren_inside_code_span_is_not_a_zone(self) -> None:
-        """Скобки внутри code-span'а в парности не участвуют — их разрешил парсер."""
+        """Parentheses inside a code span do not participate in pairing—the parser permits them."""
         assert len(narrative_refs("Функция `f(x)` сломана — Closed by #88.")) == 1
 
     def test_table_cell_paren_does_not_leak(self) -> None:
@@ -327,7 +322,7 @@ class TestNarrativePredicates:
         assert narrative_refs("```\nClosed by #88\n```\n") == []
 
     def test_issue_ref_in_heading_is_reported(self) -> None:
-        """В заголовке скобки не спасают: якорь генерится из всего текста."""
+        """In a heading, parentheses do not help: anchor is generated from all text."""
         assert len(heading_issue_refs("## Eval harness (#139)")) == 1
         assert heading_issue_refs("## Eval harness — trailer selection") == []
         assert narrative_refs("## Eval harness (#139)") == []
@@ -337,17 +332,17 @@ class TestNarrativePredicates:
         assert narrative_refs("Якорь #doc-guards-2 у второго одноимённого заголовка.") == []
 
     def test_rule_and_board_numbers_are_reported(self) -> None:
-        # Нарушители собираются интерполяцией: ветка сигила сканирует **все**
-        # отслеживаемые файлы, включая этот, и литерал в тесте покраснел бы сам на себе.
+        # Offenders are built by interpolation: the sigil branch scans **all** tracked files,
+        # including this one, so a literal in the test would make the test itself red.
         assert len(sigil_misuses(f"правило workflow #{7} и доска Project #{1}")) == 1
         assert sigil_misuses("правило `workflow.md` §7 и доска Project 1") == []
 
     def test_every_spelling_of_a_rule_number_is_reported(self) -> None:
-        """Словарь закрыт по *токену*, а не по перечню написаний.
+        """Dictionary is closed by *token*, not by a list of spellings.
 
-        Часть форм стоит в `.md` внутри сомкнутых скобок, то есть
-        `narrative_refs` их пропускает по построению — если бы regexp требовал
-        соседства, регресс `§N` → `#N` был бы невидим всем трём веткам.
+        Some forms occur in `.md` inside closed parentheses, so `narrative_refs` skips them
+        by construction—if the regexp required adjacency, a `§N` → `#N` regression would be
+        invisible to all three branches.
         """
         for spelling in (
             f"workflow #{9}",
@@ -360,7 +355,7 @@ class TestNarrativePredicates:
             assert sigil_misuses(spelling), spelling
 
     def test_sigil_branch_reads_any_file_type(self) -> None:
-        """Ветка построчная — работает и там, где markdown-структуры нет."""
+        """The line-oriented branch works even where Markdown structure is absent."""
         line = f"# comment: pip-compile (workflow #{7})"
         assert sigil_misuses(f'{line}\nname = "x"\n') == [(1, line)]
 

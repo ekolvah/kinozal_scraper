@@ -1,11 +1,11 @@
-"""RED tests for #329: TMDB videos как источник трейлера (official + язык).
+"""RED tests for #329: TMDB videos as a trailer source (official + language).
 
-`pick_trailer` — чистое детерминированное правило отбора (§II, без сети/LLM):
-только `site=YouTube`; приоритет RU Trailer → RU Teaser → official en Trailer →
-любой en Trailer → None. ASL-вариант де-приоритезируется ВНУТРИ тира (PoC-нюанс
-Битлджуса — одна substring-проверка `name`, не растущая таксономия). Выбранный
-`key` кладётся в `TrailerPick.video_id`. `TmdbClient` (внешняя граница, DI как
-`Youtube`) НЕ юнит-тестится (§II)."""
+`pick_trailer` is a pure deterministic selection rule (§II, no network/LLM):
+only `site=YouTube`; priority RU Trailer → RU Teaser → official en Trailer →
+any en Trailer → None. The ASL variant is deprioritized WITHIN a tier (the Beetlejuice
+PoC nuance—one `name` substring check, not a growing taxonomy). The selected
+`key` is stored in `TrailerPick.video_id`. `TmdbClient` (an external boundary, DI like
+`Youtube`) is NOT unit-tested (§II)."""
 
 from __future__ import annotations
 
@@ -37,8 +37,8 @@ class TestPickTrailer(unittest.TestCase):
         self.assertEqual(pick.video_id, "ru1")
 
     def test_ru_teaser_beats_official_en_trailer(self) -> None:
-        # Спорный стык тир-лестницы (§I пришпиливает решение): RU Teaser выше
-        # official en Trailer — русская дорожка ценнее «более официального» англа.
+        # Contested tier-boundary decision (§I pins it): RU Teaser outranks an
+        # official en Trailer—the Russian track is more valuable than “more official” English.
         pick = pick_trailer(
             [
                 _v("en1", iso="en", kind="Trailer", official=True),
@@ -59,7 +59,7 @@ class TestPickTrailer(unittest.TestCase):
         self.assertEqual(pick.video_id, "off")
 
     def test_skips_non_youtube_site(self) -> None:
-        # Vimeo RU-трейлер (иначе топ-тир) отфильтрован → берётся YouTube en.
+        # A Vimeo RU trailer (otherwise top tier) is filtered → YouTube en is selected.
         pick = pick_trailer(
             [
                 _v("vimeoRu", iso="ru", kind="Trailer", official=True, site="Vimeo"),
@@ -80,8 +80,8 @@ class TestPickTrailer(unittest.TestCase):
         self.assertEqual(pick.video_id, "ruTrailer")
 
     def test_deprioritizes_sign_language_variant(self) -> None:
-        # Кейс Битлджуса: ASL-official Trailer уступает обычному en Trailer в том
-        # же тире (ASL-вариант первым в списке — порядок не должен его вытянуть).
+        # Beetlejuice case: an ASL official Trailer loses to a normal en Trailer in the
+        # same tier (ASL is first in the list—ordering must not pull it through).
         pick = pick_trailer(
             [
                 _v(
@@ -98,5 +98,5 @@ class TestPickTrailer(unittest.TestCase):
         self.assertEqual(pick.video_id, "plain")
 
     def test_empty_videos_returns_none(self) -> None:
-        # §IV miss-семантика: нечего выбрать → None (не тихий дефолт).
+        # §IV miss semantics: nothing to select → None (not a silent default).
         self.assertIsNone(pick_trailer([]))

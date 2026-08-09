@@ -1,14 +1,16 @@
-"""Транспортно-агностичная политика ретрая транзиентных HTTP-ответов (#365).
+"""Transport-neutral retry policy for transient HTTP responses (#365).
 
-Гард на два именованных набора кодов и на то, что все прод-call site'а живут по одному
-бюджету попыток. Ключевое утверждение здесь — **не** «ретрай есть», а «403/429 ретраятся
-только у HTML-транспорта за Cloudflare»: у JSON-API это rate limit со своим окном сброса,
-и долбёжка в него противоречит документации GitHub (см. `http_retry` docstring).
+The guard pins two named status-code sets and one attempt budget for every
+production call site. Its key claim is **not** merely "a retry exists," but that
+403/429 are retried only by the HTML transport behind Cloudflare. For a JSON API
+they are rate limits with their own reset window, and hammering them contradicts
+GitHub documentation (see the `http_retry` docstring).
 
-Предикат проверяется на исключениях, поднятых **настоящим** `raise_for_status()` настоящего
-`Response` обоих транспортов — у `curl_cffi` и stdlib `requests` разные иерархии `HTTPError`
-без общего предка, и ошибка в пути к статусу тихо превратила бы ретрай в его отсутствие
-(жанр реалити-анкера из #298/#306).
+The predicate is exercised on exceptions raised by the **real**
+`raise_for_status()` of a real `Response` from both transports. `curl_cffi` and
+stdlib `requests` have separate `HTTPError` hierarchies with no common parent;
+using the wrong status path would silently turn retry into no retry (the reality-
+anchor genre from #298/#306).
 """
 
 from __future__ import annotations
@@ -213,16 +215,16 @@ class TestPolicyParity(unittest.TestCase):
 
 
 class TestPatientPolicy(unittest.TestCase):
-    """Второй режим того же анти-бот-транспорта: попытки разнесены, а не сжаты (#396).
+    """The same anti-bot transport with attempts spread, not compressed (#396).
 
-    Замер пробником установил две вещи: попытки с паузой 60 с ведут себя независимо,
-    а четыре попытки за ~7 с бьют в одно решение Cloudflare и дают фактически один
-    бросок в сутки — отсюда 12 красных ночных прогонов подряд.
+    A probe established two facts: attempts 60 seconds apart behave independently,
+    while four attempts in about seven seconds hit one Cloudflare decision and
+    amount to one daily chance, which produced 12 consecutive red nightly runs.
 
-    Числа 24 и 720 с пиньются, а не описываются: на них стоит расчёт окна (~4.6 ч)
-    против жёсткого 6-часового потолка job'а GitHub Actions. Уехавшая вниз пауза
-    вернула бы корреляцию попыток, уехавшее вверх число — оборвало бы прогон
-    по таймауту; ни то ни другое не видно глазами в дифе.
+    The values 24 and 720 seconds are pinned rather than described: the resulting
+    roughly 4.6-hour window must fit below GitHub Actions' hard six-hour job limit.
+    A shorter delay would correlate attempts again; a larger count would end the
+    run on timeout. Neither mistake is visually obvious in a diff.
     """
 
     def _attempts(self, status: int) -> int:
@@ -246,8 +248,9 @@ class TestPatientPolicy(unittest.TestCase):
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_patient_policy_retries_the_antibot_code_set(self, _sleep: unittest.mock.Mock) -> None:
-        # Медленная политика отличается от быстрой ТОЛЬКО расписанием: набор кодов
-        # общий, иначе «терпеливый» транспорт начал бы долбить постоянную ошибку.
+        # The slow policy differs from the fast one ONLY in scheduling. They
+        # share status codes; otherwise the patient transport would hammer a
+        # permanent error.
         for status, expected in ((403, 24), (429, 24), (404, 1)):
             with self.subTest(status=status):
                 self.assertEqual(self._attempts(status), expected)

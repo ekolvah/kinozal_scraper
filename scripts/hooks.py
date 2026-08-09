@@ -180,31 +180,29 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
         [sys.executable, "-m", "ruff", "check", file_path],
     ):
         try:
-            # `encoding` обязателен (#364): без него Windows декодит вывод ruff
-            # кодовой страницей ОС, поток-читатель умирает на первом кириллическом
-            # байте — и текст находки теряется, хотя хук рапортует «ruff found
-            # issues». `errors="replace"` тут же и намеренно: инструмент, вся работа
-            # которого — видимость, не должен уметь умереть на декодировании
-            # (не-UTF-8 байт от стороннего тула). Мохряк в одном символе честнее
-            # молчания обо всей находке (§IV).
-            # Дочерней половины контракта (`PYTHONUTF8`) здесь нет намеренно: пишет
-            # в pipe сам ruff — Rust-бинарь, выдающий UTF-8, а не Python-процесс,
-            # чью кодировку задаёт интерпретатор. Если бы шим всё же отдал не-UTF-8,
-            # `errors="replace"` деградирует символ, а не теряет находку.
+            # `encoding` is mandatory (#364): otherwise Windows decodes ruff output with
+            # its system code page, the reader thread dies on the first Cyrillic byte, and
+            # finding text is lost although the hook reports “ruff found issues.”
+            # `errors="replace"` is deliberate: a visibility tool must not die while
+            # decoding a non-UTF-8 byte from a third-party tool. One mangled character is
+            # more honest than silence about the whole finding (§IV).
+            # The child-side contract (`PYTHONUTF8`) is deliberately absent: ruff itself,
+            # a Rust binary that emits UTF-8, writes the pipe, not a Python process whose
+            # encoding the interpreter sets. If a shim emits non-UTF-8, `errors="replace"`
+            # degrades a character rather than losing the finding.
             completed = subprocess.run(
                 cmd, text=True, capture_output=True, encoding="utf-8", errors="replace"
             )
         except FileNotFoundError as exc:  # ruff/python missing → visible, not silent
             return _RUFF_EXEC_ERROR, str(exc)
         if completed.stdout is None or completed.stderr is None:
-            # Сломанный захват — это «сетап сломан», тот же класс, что отсутствующий
-            # ruff выше, поэтому и код тот же. Исключение отсюда бросать нельзя:
-            # непойманное дало бы exit 1, а stderr хука с кодом 1 уходит
-            # пользователю, но НЕ агенту — понижение видимости в инструменте,
-            # который ради видимости и существует (#410).
-            # `combined_out +`, а не голая диагностика: если первая команда
-            # (`ruff format --check`) уже нашла замечания, ранний return выбросил бы
-            # их — потеря находки внутри инструмента, чья работа быть видимым.
+            # Failed capture means “setup broken,” the same class as missing ruff above,
+            # so it uses the same code. Do not raise: unhandled failure yields exit 1,
+            # whose hook stderr reaches the user but NOT the agent, reducing visibility
+            # in a tool that exists for visibility (#410).
+            # Use `combined_out +`, not bare diagnostics: if the first command
+            # (`ruff format --check`) already found issues, early return must not discard
+            # them—the visibility tool must not lose its own finding.
             return _RUFF_EXEC_ERROR, combined_out + (
                 f"capture failed for `{' '.join(cmd)}` (rc={completed.returncode}): "
                 f"stdout={completed.stdout!r} stderr={completed.stderr!r}"

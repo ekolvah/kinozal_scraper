@@ -49,10 +49,11 @@ def _ignore_source(path: str) -> str:
         text=True,
         encoding="utf-8",
     )
-    # Без дефолта (#410): `None` означал бы сломанный захват, а не «git промолчал».
-    # Тест остаётся на stdlib и НЕ тянет хелпер из `scripts/` — это регресс на
-    # состояние репо, и связывать его с dev-скриптами значит расширять поверхность
-    # его отказа. Пустой stdout при rc=1 («путь не игнорируется») штатен.
+    # No default (#410): `None` would mean broken capture, not "git said nothing."
+    # The test stays on stdlib and does NOT import a helper from `scripts/`: this
+    # is a repository-state regression, and coupling it to developer scripts
+    # would widen its failure surface. Empty stdout at rc=1 ("path is not
+    # ignored") is normal.
     assert result.stdout is not None, f"capture failed for `git check-ignore -v {path}`"
     return result.stdout.strip()
 

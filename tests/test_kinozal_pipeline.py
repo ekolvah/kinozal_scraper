@@ -68,10 +68,9 @@ _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
 
 
 class _FakeYoutube:
-    """#144 retrieval-фейк для пайплайн-прогонов: синтезирует один релевантный
-    кандидат из профиля (title+year), чтобы `HeuristicStrategy` его выбрал и прод
-    отдал youtube.com-URL (прежний `get_trailer_url`-фейк — прод ходит через
-    `search_candidates`)."""
+    """#144 retrieval fake for pipeline runs: synthesizes one relevant candidate from the
+    profile (title+year), so `HeuristicStrategy` selects it and production returns a youtube.com URL
+    (the former `get_trailer_url` fake is obsolete; production uses `search_candidates`)."""
 
     def __init__(self) -> None:
         self.last_profile: FilmProfile | None = None
@@ -126,9 +125,9 @@ class TestBaseUrlResolution(unittest.TestCase):
 
 
 class _PoolYoutube:
-    """#144 retrieval-фейк: отдаёт фиксированный пул кандидатов и захватывает
-    `FilmProfile`, с которым его позвали (проверка деривации профиля). Заменяет
-    прежний `get_trailer_url`-фейк — прод теперь ходит через `search_candidates`."""
+    """#144 retrieval fake: returns a fixed candidate pool and captures the `FilmProfile`
+    used to call it (checks profile derivation). Replaces the former `get_trailer_url` fake—
+    production now calls `search_candidates`."""
 
     def __init__(self, pool: list[Candidate]) -> None:
         self.pool = pool
@@ -140,7 +139,7 @@ class _PoolYoutube:
 
 
 class _RaisingRetrieval:
-    """Retrieval-сбой (§IV): `search_candidates` бросает → error-маркер + WARNING."""
+    """Retrieval failure (§IV): `search_candidates` raises → error marker + WARNING."""
 
     def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
         raise RuntimeError("YouTube API down")
@@ -156,7 +155,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         )
 
     def test_prefers_ru_candidate_over_en(self) -> None:
-        # #315 регрессия: в пуле RU- и EN-трейлер одного фильма+года → выбирается RU.
+        # #315 regression: the pool has RU and EN trailers for one film+year → RU is selected.
         pool = [
             Candidate(video_id="en01", title="Man on Fire 2026 Official Trailer"),
             Candidate(video_id="ru01", title="Гнев 2026 официальный трейлер"),
@@ -177,7 +176,9 @@ class TestEnrichWithTrailer(unittest.TestCase):
 
     def test_no_original_segment_profile_uses_clean_title(self) -> None:
         youtube = _PoolYoutube([])
-        item = self._item("Film One / 2024 / BDRip")  # 2-й сегмент — год, оригинала нет
+        item = self._item(
+            "Film One / 2024 / BDRip"
+        )  # Second segment is the year; there is no original title.
         enrich_with_trailer(item, youtube)
         assert youtube.last_profile is not None
         self.assertEqual(youtube.last_profile.ru_title, "Film One")
@@ -192,7 +193,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertIsNone(youtube.last_profile.year)
 
     def test_miss_returns_miss_marker(self) -> None:
-        # §IV: пустой пул → pick=None → видимый miss-маркер + INFO (ожидаемо, не аномалия).
+        # §IV: empty pool → pick=None → visible miss marker + INFO (expected, not anomalous).
         youtube = _PoolYoutube([])
         item = self._item("Some Film")
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
@@ -201,7 +202,7 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertTrue(any(r.levelno == logging.INFO for r in cm.records))
 
     def test_failure_returns_error_marker(self) -> None:
-        # §IV (#138): retrieval-исключение → видимый error-маркер + WARNING, не тихий "".
+        # §IV (#138): retrieval exception → visible error marker + WARNING, not silent "".
         item = self._item("Some Film")
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
             trailer = enrich_with_trailer(item, _RaisingRetrieval())
@@ -209,8 +210,8 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertEqual(cm.records[-1].levelno, logging.WARNING)
 
     def test_success_logs_pick_reason(self) -> None:
-        # Breadcrumb (§IV, architect-review SHOULD-FIX): успешный pick пишет reason,
-        # чтобы «ru language» отличался от «ambiguous» в прод-логах при разборе.
+        # Breadcrumb (§IV, architect-review SHOULD-FIX): a successful pick writes reason,
+        # so “ru language” differs from “ambiguous” during production-log investigation.
         pool = [Candidate(video_id="ru01", title="Гнев 2026 официальный трейлер")]
         youtube = _PoolYoutube(pool)
         item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
@@ -219,9 +220,9 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertTrue(any("ru language" in r.getMessage() for r in cm.records))
 
     def test_pick_breadcrumb_carries_video_id(self) -> None:
-        # #359: без `video_id` в логе отчёт «пришла не та ссылка» неразбираем — видно
-        # `ambiguous`, но не видно, ЧТО ушло пользователю. Расследование #359 уткнулось
-        # ровно в это и пришлось реконструировать пул по живому YouTube.
+        # #359: without `video_id` in logs, “the wrong link arrived” is not diagnosable—
+        # `ambiguous` is visible but not WHAT was sent. #359 investigation hit exactly this
+        # and had to reconstruct the pool from live YouTube.
         pool = [Candidate(video_id="ru01", title="Гнев 2026 официальный трейлер")]
         youtube = _PoolYoutube(pool)
         item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
@@ -230,8 +231,8 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertTrue(any("video_id=ru01" in r.getMessage() for r in cm.records))
 
     def test_miss_breadcrumb_reports_pool_size(self) -> None:
-        # #359: «YouTube ничего не вернул» и «вернул N, ни один не прошёл relevance» —
-        # разные баги, а miss-лог их не различал. Пул непустой, но год не тот.
+        # #359: “YouTube returned nothing” and “returned N, none passed relevance” are different
+        # bugs, but the miss log did not distinguish them. The pool is non-empty but the year is wrong.
         pool = [Candidate(video_id="ru01", title="Гнев 1999 трейлер")]
         youtube = _PoolYoutube(pool)
         item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
@@ -241,11 +242,10 @@ class TestEnrichWithTrailer(unittest.TestCase):
         self.assertTrue(any("pool=1 candidates" in r.getMessage() for r in cm.records))
 
     def test_ambiguous_pick_still_returns_url(self) -> None:
-        # Guard (#359): ambiguous-ничья (conf=0.3) ОТДАЁТ ссылку — подавление её в
-        # miss-маркер было реализовано и откачено по замеру на golden-set: все 10
-        # подавленных picks оказались попаданиями (26 hit → 16, wrong 0 → 0), потому
-        # что ничья = «несколько дубляжей одного фильма», а не «возможно, не тот фильм».
-        # Не подавлять снова без прогона `scripts/eval_trailers.py`.
+        # Guard (#359): an ambiguous tie (conf=0.3) RETURNS a link—suppressing it to the miss marker
+        # was implemented and reverted after golden-set measurement: all 10 suppressed picks were hits
+        # (26 hit → 16, wrong 0 → 0), because a tie means “several dubs of one film,” not “possibly
+        # the wrong film.” Do not suppress again without `scripts/eval_trailers.py`.
         pool = [
             Candidate(video_id="ru01", title="Гнев 2026 русский трейлер"),
             Candidate(video_id="ru02", title="Гнев 2026 трейлер #2"),
@@ -809,11 +809,11 @@ class TestDeliveryTruthfulness(unittest.TestCase):
 
 
 class _CountingYoutube:
-    """Считает походы в retrieval и синтезирует релевантного кандидата (#384).
+    """Counts retrieval calls and synthesizes a relevant candidate (#384).
 
-    `fail_from` — с какого по счёту вызова начинать бросать `raises`. Счётчик
-    здесь единственный способ отличить «оставшиеся фильмы в сеть НЕ ходят» от
-    «ходят и получают отказ»: маркер в уведомлении у обоих случаев одинаковый.
+    `fail_from` is the call number at which to start raising `raises`. The counter is the
+    only way to distinguish “remaining films do NOT call the network” from “they call it
+    and fail”: the notification marker is identical in both cases.
     """
 
     def __init__(self, fail_from: int | None = None, raises: Exception | None = None) -> None:
@@ -849,15 +849,14 @@ def _config_for(n: int) -> dict[str, Any]:
 
 
 class TestGameTitleGrammar(unittest.TestCase):
-    """#385 → #412: у игровой раздачи второй ` / `-сегмент может быть и служебным
-    токеном (`x64`, `RU`), и настоящим оригинальным названием.
+    """#385 → #412: for a game release, the second ` / ` segment can be either a service
+    token (`x64`, `RU`) or a real original title.
 
-    #385 отличал их по категории листинга (`t=7` → оригинала нет) — это чинило
-    `x64 2024 trailer`, но у локализованных игр отбрасывало реальное английское
-    название, и запрос уходил только по русскому, которого на YouTube нет
-    (#412: `no trailer found for 'Marvel Человек-Паук 2' (pool=5 candidates)` при
-    пяти официальных трейлерах). Дискриминатор переехал в грамматику заголовка,
-    поэтому работает независимо от источника — категория листинга больше не нужна.
+    #385 distinguished them by listing category (`t=7` → no original), fixing `x64 2024 trailer`
+    but discarding the real English title for localized games, so the query used only the Russian name,
+    absent from YouTube (#412: `no trailer found for the localized Spider-Man 2 title (pool=5 candidates)` despite
+    five official trailers). The discriminator moved to title grammar, so it works independent of source;
+    listing category is no longer needed.
     """
 
     _GAME_HTML = (
@@ -886,9 +885,8 @@ class TestGameTitleGrammar(unittest.TestCase):
     )
 
     def test_localised_game_profile_carries_original(self) -> None:
-        # #412: раздача с игрового URL, но с настоящим оригиналом во 2-м сегменте
-        # — он обязан доехать до профиля, иначе union остаётся одноветочным по
-        # русскому названию и трейлер не находится.
+        # #412: a game-URL release with a real original in segment two must carry it to the profile,
+        # otherwise the union has only a Russian-name branch and the trailer is not found.
         youtube = _PoolYoutube([])
         _run(
             html=self._LOCALISED_GAME_HTML,
@@ -903,10 +901,9 @@ class TestGameTitleGrammar(unittest.TestCase):
         self.assertEqual(youtube.last_profile.year, 2025)
 
     def test_service_segment_has_no_original_on_non_game_url(self) -> None:
-        # #412: гард живёт в грамматике, а не в категории — те же заголовки с
-        # НЕ игрового URL тоже не должны отдавать `x64`/`RU` как название.
-        # По замеру Sheets класс `RU`-сегмента — 139 раздач; после снятия
-        # `kinozal_is_game` только этот гард удерживает их от `RU 2006 trailer`.
+        # #412: the guard belongs in grammar, not category—the same titles from a non-game URL
+        # must not return `x64`/`RU` as a title. Sheets measurement has 139 `RU`-segment releases;
+        # after removing `kinozal_is_game`, only this guard prevents `RU 2006 trailer`.
         for html, expected_ru in (
             (self._GAME_HTML, "S.T.A.L.K.E.R. 2"),
             (self._LANG_SEGMENT_HTML, "Fallout 2"),
@@ -924,9 +921,9 @@ class TestGameTitleGrammar(unittest.TestCase):
 
 
 class TestQuotaStop(unittest.TestCase):
-    """#384: суточная квота YouTube — 100 `search.list` (замер 2026-07-26), а прогон
-    при всплеске items просит втрое больше. Границу называет сам API: первый квотный
-    отказ останавливает retrieval, вычислять потолок заранее не нужно."""
+    """#384: daily YouTube quota is 100 `search.list` calls (measured 2026-07-26), while a run
+    during an item spike requests three times more. The API names the boundary itself: the first quota
+    failure stops retrieval, so no advance ceiling calculation is needed."""
 
     _TOTAL = 10
     _FAIL_FROM = 4
@@ -940,15 +937,15 @@ class TestQuotaStop(unittest.TestCase):
         return notifier
 
     def test_enrichment_stops_after_first_quota_error(self) -> None:
-        # Цена обнаружения — запросы ОДНОГО фильма, а не 163 отказа подряд, как в
-        # прогоне 30143534431: после 4-го вызова в сеть не ходим вообще.
+        # Detection cost is requests for ONE film, not 163 consecutive failures as in run 30143534431:
+        # after the fourth call, do not call the network at all.
         youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=YoutubeQuotaExhausted("429"))
         self._run_with(youtube)
         self.assertEqual(youtube.calls, self._FAIL_FROM)
 
     def test_remaining_items_get_quota_marker(self) -> None:
-        # §IV: исчерпанная квота — не промах и не поломка поиска. Третья причина
-        # требует от оператора третьего действия, значит и маркер третий.
+        # §IV: exhausted quota is neither a miss nor a retrieval failure. A third cause requires a third
+        # operator action, therefore a third marker.
         youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=YoutubeQuotaExhausted("429"))
         notifier = self._run_with(youtube)
         tail = notifier.sent[self._FAIL_FROM - 1 :]
@@ -960,8 +957,8 @@ class TestQuotaStop(unittest.TestCase):
         self.assertNotEqual(_TRAILER_QUOTA_MARKER, _TRAILER_ERROR_MARKER)
 
     def test_generic_retrieval_error_does_not_stop_enrichment(self) -> None:
-        # Регрессионный якорь на #383: сетевой сбой роняет ОДИН фильм (error-маркер),
-        # а не глушит трейлеры до конца прогона. Иначе один 500 стоил бы всего прогона.
+        # Regression anchor for #383: a network failure affects ONE film (error marker), not trailers
+        # for the rest of the run. Otherwise one 500 would cost the entire run.
         youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=RuntimeError("YouTube 500"))
         notifier = self._run_with(youtube)
         self.assertEqual(youtube.calls, self._TOTAL)
@@ -970,7 +967,7 @@ class TestQuotaStop(unittest.TestCase):
             self.assertNotIn(_TRAILER_QUOTA_MARKER, notif.text)
 
     def test_healthy_run_is_unchanged(self) -> None:
-        # Обычные сутки — 1-6 новинок, квота не при чём: ни маркеров, ни остановки.
+        # Ordinary day: 1–6 new releases, quota is irrelevant—no markers and no stop.
         youtube = _CountingYoutube()
         _, notifier = _run(youtube=youtube)
         self.assertEqual(youtube.calls, 2)
@@ -978,8 +975,8 @@ class TestQuotaStop(unittest.TestCase):
             self.assertNotIn(_TRAILER_QUOTA_MARKER, notif.text)
 
     def test_quota_stop_logs_single_warning_with_count(self) -> None:
-        # Ровно одна строка, а не по строке на фильм: 163-строчный шум — часть того,
-        # что чинится, повторять его новым маркером бессмысленно.
+        # Exactly one line, not one per film: 163-line noise is part of what is fixed; reproducing it
+        # with a new marker is pointless.
         youtube = _CountingYoutube(fail_from=self._FAIL_FROM, raises=YoutubeQuotaExhausted("429"))
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
             self._run_with(youtube)
@@ -992,9 +989,9 @@ class TestKinozalKnownBugs(unittest.TestCase):
     """Documents current behaviour for scenarios that should ideally be louder."""
 
     def test_youtube_quota_exhausted_still_notifies_with_visible_marker(self) -> None:
-        """YouTube quota → `search_candidates` бросает → enrich отдаёт видимый §IV
-        error-маркер (#138), НЕ тихий пустой трейлер. Пайплайн всё равно публикует
-        items — деградация громкая (маркер + WARNING), не quiet-G из таксономии.
+        """YouTube quota → `search_candidates` raises → enrich returns a visible §IV error marker
+        (#138), NOT a silent empty trailer. The pipeline still publishes items—the degradation is loud
+        (marker + WARNING), not taxonomy quiet-G.
         """
 
         class _QuotaExhaustedYoutube:
@@ -1421,14 +1418,14 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
 
 def _details_html(genre: str, *, cast: str = "", director: str = "", description: str = "") -> str:
     """Synthetic kinozal details page mirroring the REAL markup (verified against
-    the live page): the `Жанр:` value is tag-wrapped (`<span class="lnks_tobrs">`),
+    the live page): the genre value is tag-wrapped (`<span class="lnks_tobrs">`),
     NOT a bare text node, sits after a whitespace node, and is terminated by <br>.
     A parser reading `next_sibling`/`str()` naively would get '' or raw HTML here.
 
     #140 extends the same tag-wrapped `<b>Label:</b> … <br>` shape to
-    cast (`В ролях:`) / director (`Режиссер:`) / plot (`О фильме:`) so the shared
+    cast / director / plot labels so the shared
     `_parse_labeled_field` is exercised against markup of the same family as
-    `Жанр:` — no parallel saved-HTML fixture."""
+    genre label—no parallel saved-HTML fixture."""
     rows = ["<b>Год выпуска:</b> 2024<br>"]
     if director:
         rows.append(f'<b>Режиссер:</b> <span class="person">{director}</span><br>')
@@ -1457,7 +1454,7 @@ _MOVIE_B_KEY = "Movie B / 2025"
 
 
 class TestParseGenre(unittest.TestCase):
-    """`_parse_genre` reads the `Жанр:` value off a details page (pure)."""
+    """`_parse_genre` reads the genre value from a details page (pure)."""
 
     def test_extracts_tag_wrapped_genre_as_plain_text(self) -> None:
         # Real markup wraps the value in <span>; must return visible text, never
@@ -1502,8 +1499,8 @@ class TestGenreMatching(unittest.TestCase):
 
 
 class TestParseLabeledField(unittest.TestCase):
-    """`_parse_labeled_field` — общий sibling-walk для `<b>Label:</b> … <br>`,
-    из которого `_parse_genre` вынесен (§II — не 4 копии br/b-терминации)."""
+    """`_parse_labeled_field` is the shared sibling walk for `<b>Label:</b> … <br>`,
+    from which `_parse_genre` is factored (§II—no four copies of br/b termination)."""
 
     def test_reads_tag_wrapped_value(self) -> None:
         html = _details_html("боевик", cast="Дензел Вашингтон")
@@ -1514,8 +1511,8 @@ class TestParseLabeledField(unittest.TestCase):
 
 
 class TestParseDetailsMetadata(unittest.TestCase):
-    """`_parse_details_metadata` собирает каст/режиссёра/жанр/описание с details.php
-    через общий `_parse_labeled_field`."""
+    """`_parse_details_metadata` collects cast/director/genre/description from details.php
+    through shared `_parse_labeled_field`."""
 
     def test_parses_cast_director_description(self) -> None:
         html = _details_html(
@@ -1532,7 +1529,7 @@ class TestParseDetailsMetadata(unittest.TestCase):
         self.assertIn("Дакота Фаннинг", meta["cast"])
 
     def test_missing_field_yields_empty(self) -> None:
-        # Отсутствие ОДНОГО поля при наличии других — норма (пусто, без исключения).
+        # Absence of ONE field while others exist is normal (empty, no exception).
         meta = kp._parse_details_metadata(_details_html("боевик", director="Тони Скотт"))
         self.assertEqual(meta["cast"], [])
         self.assertEqual(meta["director"], "Тони Скотт")
@@ -1550,8 +1547,8 @@ class _StubFetcher:
 
 
 class TestBuildFilmProfile(unittest.TestCase):
-    """`build_film_profile(item, fetcher)` — best-effort сбор `FilmProfile` из
-    details.php; деградация до title+year при сбое (§IV видимый), без падения."""
+    """`build_film_profile(item, fetcher)` best-effort builds `FilmProfile` from
+    details.php; failure visibly degrades to title+year (§IV), without crashing."""
 
     def _item(self, raw: str) -> NormalizedItem:
         return NormalizedItem(
@@ -1581,7 +1578,7 @@ class TestBuildFilmProfile(unittest.TestCase):
         self.assertIn("Дензел Вашингтон", profile.cast)
 
     def test_degrades_to_title_year_on_fetch_failure(self) -> None:
-        # §IV: фетч упал → профиль на title+year, пустые метаданные, WARNING, без raise.
+        # §IV: fetch failed → title+year profile, empty metadata, WARNING, no raise.
         item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
             profile = kp.build_film_profile(item, _StubFetcher(exc=RuntimeError("520")))
@@ -1595,16 +1592,15 @@ class TestBuildFilmProfile(unittest.TestCase):
         self.assertEqual(cm.records[-1].levelno, logging.WARNING)
 
     def test_service_segment_falls_back_to_clean_title(self) -> None:
-        # #412: второй call-site `original_title`, до которого #385 не дошёл —
-        # он не читает `kinozal_is_game` вовсе, поэтому для игровой раздачи
-        # отдавал `original_title="x64"`. Грамматический гард чинит и его.
+        # #412: second `original_title` call site that #385 did not reach—it does not read
+        # `kinozal_is_game`, so a game release returned `original_title="x64"`. Grammar guard fixes it too.
         item = self._item("S.T.A.L.K.E.R. 2 / x64 / RU / Action / 2024 / Portable / PC (Windows)")
         profile = kp.build_film_profile(item, _StubFetcher(html=_details_html("боевик")))
         self.assertEqual(profile.original_title, "S.T.A.L.K.E.R. 2")
 
     def test_warns_when_fetch_ok_but_all_metadata_empty(self) -> None:
-        # §IV-tripwire (AC #3a): фетч ОК, но 0 полей (дрейф селектора) → видимый
-        # WARNING, профиль всё равно строится на title+year.
+        # §IV tripwire (AC #3a): fetch OK but 0 fields (selector drift) → visible
+        # WARNING; profile is still built from title+year.
         item = self._item("Гнев / Man on Fire / 2026 / WEB-DLRip")
         blank = "<html><body><h2>no labels here</h2></body></html>"
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as cm:
@@ -1679,7 +1675,7 @@ class TestGenreFilter(unittest.TestCase):
         _, notifier, _ = _run_genre_filter(excluded="Hidden objects")
         sent_ids = {n.id for n in notifier.sent}
         self.assertNotIn(_GAME_A_KEY, sent_ids)  # Hidden objects → filtered
-        self.assertIn(_MOVIE_B_KEY, sent_ids)  # драма → kept
+        self.assertIn(_MOVIE_B_KEY, sent_ids)  # Drama → kept.
 
     def test_non_excluded_item_notified(self) -> None:
         _, notifier, _ = _run_genre_filter(excluded="Hidden objects")
@@ -1722,7 +1718,7 @@ class TestGenreFilter(unittest.TestCase):
 
     def test_unparsed_genre_logged_but_item_kept(self) -> None:
         # §IV: a successfully-fetched item with no parseable genre (e.g. the
-        # `Жанр:` selector drifted) is kept (fail-open) AND surfaced in the log,
+        # genre selector drifted) is kept (fail-open) AND surfaced in the log,
         # so a silent filter-wide no-op can't hide. Distinct from the fetch-error
         # WARNING path — this is the successful-fetch-but-empty case.
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as cm:
@@ -1842,7 +1838,7 @@ class TestKinozalFacade(unittest.TestCase):
 
     def test_fetch_details_mirror_url_authenticates(self) -> None:
         # #317: a mirror-host (kinozal.guru) details URL fetched anonymously returns
-        # HTTP 200 with the `Жанр:` block stripped (kinozal.guru gates HTML behind
+        # HTTP 200 with the genre block stripped (kinozal.guru gates HTML behind
         # login → 302 login.php, pipeline.md § Kinozal mirror fallback) — a false
         # success that fetch_listing's exception-triggered failover never corrects,
         # silently blinding the genre filter. fetch_details MUST authenticate for
@@ -1850,7 +1846,7 @@ class TestKinozalFacade(unittest.TestCase):
         from kinozal_scraper.kinozal_pipeline import Kinozal
 
         url = "https://kinozal.guru/details.php?id=1"
-        stripped = "<html><body>login required</body></html>"  # no <b>Жанр:</b>
+        stripped = "<html><body>login required</body></html>"  # no genre label
         genre_html = _details_html("Hidden objects")
         session = unittest.mock.Mock()
         with (
@@ -1869,7 +1865,7 @@ class TestKinozalFacade(unittest.TestCase):
 
     def test_fetch_details_origin_url_stays_anonymous(self) -> None:
         # Guard: a healthy kinozal.tv details URL is fetched anonymously (the .tv
-        # page shows `Жанр:` to anonymous users) — no login, no fetch_authenticated,
+        # page shows genre to anonymous users) — no login, no fetch_authenticated,
         # so the healthy path never pays for a mirror login.
         from kinozal_scraper.kinozal_pipeline import Kinozal
 

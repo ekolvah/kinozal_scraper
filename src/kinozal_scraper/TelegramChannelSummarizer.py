@@ -1,4 +1,4 @@
-"""Чтение Telegram-каналов (Telethon) + суммаризация через Gemini."""
+"""Telegram-channel reading (Telethon) and Gemini summarization."""
 
 from __future__ import annotations
 

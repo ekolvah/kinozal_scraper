@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
-"""Фактический расход токенов dev-сессий Claude Code и детектор его роста (#464).
+"""Actual token use in Claude Code development sessions and its growth detector (#464).
 
-**Зачем.** Приоритет (2) цель-функции не измерялся ничем: статический храповик
-`tests/test_always_load_budget.py` стережёт *объявленную* плату (байты always-load набора),
-но уплаченную — байты, умноженные на число turn'ов через `cache_read` — не видел никто.
+**Why.** Priority (2) in the objective function had no measurement: static ratchet
+`tests/test_always_load_budget.py` guards *declared* cost (always-load bytes), not paid
+cost—bytes multiplied by turns through `cache_read`.
 
-**Носитель данных.** Транскрипты Claude Code (`~/.claude/projects/<slug>/*.jsonl`) чистятся
-по `cleanupPeriodDays` (дефолт 30 дней), поэтому они не durable-стор: агрегат по ветке
-дописывается в локальный ledger рядом с ними, иначе база сравнения молча исчезает через месяц.
+**Data carrier.** Claude Code transcripts (`~/.claude/projects/<slug>/*.jsonl`) are cleaned
+by `cleanupPeriodDays` (default 30 days), so are not durable storage. Per-branch aggregate
+is appended to a nearby local ledger or comparison baseline silently vanishes after a month.
 
-**Режимы.** `--hook` — тихий, для `SessionStart`: печатает только аномалию и **всегда** выходит
-с кодом 0 (`SessionStart` отдаёт stdout в контекст Claude лишь на exit 0). `--report` — таблица
-по веткам.
+**Modes.** `--hook` is quiet for `SessionStart`: prints only anomaly and **always** exits 0
+(`SessionStart` sends stdout to Claude context only at exit 0). `--report` prints branch table.
 
-**Чего метрика НЕ отвечает (границы скоупа).** Нормировка на turn убирает второй возможный
-драйвер — «стало больше turn'ов на задачу»; он виден только в колонке `turns` отчёта. Сама
-цена turn'а к тому же растёт с длиной сессии механически (контекст перечитывается целиком),
-поэтому длинная ветка выглядит дороже короткой при одинаковой дисциплине. Вердикт `grown` —
-повод посмотреть разбивку, а не приговор конкретной ветке. Codex-половина расхода
-(`~/.codex/sessions`) сюда не входит вовсе.
+**What it does NOT answer (scope boundary).** Per-turn normalization removes the other
+possible driver, more turns per task; it is visible only in report `turns`. Turn cost also
+mechanically rises with session length because full context is reread, so a long branch
+looks costlier than a short one under equal discipline. `grown` prompts breakdown review,
+not judgment of a branch. Codex use (`~/.codex/sessions`) is excluded.
 """
 
 from __future__ import annotations
@@ -38,78 +36,74 @@ from typing import Protocol
 
 
 class TextSink(Protocol):
-    """Минимальный контракт приёмника текста: и настоящий stdout, и тестовый двойник."""
+    """Minimal text-sink contract for real stdout and a test double."""
 
     def write(self, text: str, /) -> int: ...
 
 
-# Цена относительно свежего input-токена той же модели (прайсинг Anthropic на 2026-08-06:
-# Opus 5 $5/$25 за Mtok, cache read 0.1x базового input, cache write 1.25x на 5m TTL и 2x на 1h).
-# Ратио внутри модели одинаковы у всей линейки, различается только базовая цена — она вынесена
-# в `_MODEL_SCALE`, чтобы переезд части работы на другую модель двигал сводную величину.
+# Cost relative to fresh input token of the same model (Anthropic pricing on 2026-08-06:
+# Opus 5 $5/$25 per Mtok, cache read 0.1x base input, cache write 1.25x at 5m TTL and 2x at 1h).
+# Ratios within a model are common to the line; only base price differs and lives in
+# `_MODEL_SCALE`, so moving work to another model changes the aggregate.
 _RATIO_OUTPUT = 5.0
 _RATIO_CACHE_READ = 0.1
 _RATIO_CACHE_WRITE_5M = 1.25
 _RATIO_CACHE_WRITE_1H = 2.0
 
-# Базовая цена input-токена относительно Opus 5 ($5/Mtok = 1.0). Ключ — подстрока в `model`.
-# Сопоставление по семейству, а не по точному id, — сознательный выбор: новая версия семейства
-# (`claude-opus-6`) унаследует вес семейства молча, зато аномалия не поднимается на каждый
-# релиз. Граница: смену цены **внутри** семейства метрика не заметит — сверять при бампе весов.
+# Base input-token price relative to Opus 5 ($5/Mtok = 1.0), keyed by `model` substring.
+# Family matching rather than exact id is deliberate: a new family version inherits weight
+# without anomaly on each release. Limitation: price change within family is invisible; check
+# when bumping weights.
 _MODEL_SCALE: dict[str, float] = {
     "fable": 2.0,
     "opus": 1.0,
     "sonnet": 0.6,
     "haiku": 0.2,
-    # Служебные записи Claude Code (21 штука в реальной выборке): нулевой usage, не биллятся.
-    # В таблице они не ради веса, а чтобы не поднимать `unknown_model` каждый старт.
+    # Claude Code service records (21 in real sample): zero usage, not billed. They are in the
+    # table not for weight, but to avoid `unknown_model` on every start.
     "<synthetic>": 0.0,
 }
 _UNKNOWN_MODEL_SCALE = 1.0
 
-# Бакеты, которые не участвуют в тренде: `main` разнороден (планирование, ревью, чтение),
-# записи без ветки — сессии вне репо-контекста. Оба видны в отчёте, но не в детекторе.
+# Buckets excluded from trend: `main` is heterogeneous (planning, review, reading), and
+# no-branch records are sessions outside repository context. Both report, neither detects.
 MAIN_BUCKET = "main"
 NO_BRANCH_BUCKET = "(no-branch)"
 
 LEDGER_NAME = "token_ledger.jsonl"
 LEDGER_SCHEMA = 1
 
-# Прунинг ledger'а сознательно не заводим: строка на ветку — это ~200 B, то есть 72 бакета
-# текущей истории весят меньше 15 КБ, а растёт файл со скоростью нескольких веток в неделю.
-# Порог, за которым разбор станет заметен, отстоит на годы, и вводить сейчас политику
-# устаревания — гадать о правильном окне без данных. Наблюдаемый триггер пересмотра —
-# `timeout` хука начнёт срабатывать (тогда же и появятся цифры, по которым выбирать окно).
+# Deliberately no ledger pruning: a branch line is ~200 B, so 72 current-history buckets are
+# under 15 KB and the file grows by a few branches weekly. Parsing cost is years away; an
+# expiry policy now would guess a window without data. Reconsider when hook `timeout` fires.
 
-# Машинный канон интерфейса: алерт печатается в контекст и предлагает оператору флаг, поэтому
-# расхождение текста с `argparse` отправляло бы его в `unrecognized arguments` ровно в тот
-# момент, ради которого метрика заведена. Гейтится `TestReportMode`.
+# Machine interface canon: alert prints into context and suggests an operator flag, so drift
+# from `argparse` would produce `unrecognized arguments` at the critical moment. Guarded by
+# `TestReportMode`.
 CLI_FLAGS = ("--hook", "--report")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
-# Порог и окно подобраны по фактическим данным на стадии реализации (цифры — в теле PR).
-# Порог сознательно крупный: алерт печатается в контекст каждого старта, поэтому чуткий
-# детектор сам становится статьёй расхода по приоритету (2).
+# Threshold and window came from implementation-stage data (numbers in PR body). Threshold
+# is deliberately large: alert enters every start context, so sensitivity itself costs priority (2).
 DEFAULT_WINDOW = 5
 DEFAULT_REL_THRESHOLD = 0.4
 DEFAULT_ABS_FLOOR = 20_000.0
 
-# Окно чтения транскриптов шире ретенции Claude Code (30 дней): всё, что старше, уже живёт
-# в ledger'е, и перечитывать его каждый старт незачем.
+# Transcript-reading window exceeds Claude Code retention (30 days): older data is already in
+# ledger, so rereading it on every start is unnecessary.
 DEFAULT_MTIME_DAYS = 45
 
-# Дублирует `timeout` хука в `.claude/settings.json` (сверяется тестом). Нужен здесь, чтобы
-# предупредить до того, как хук начнут убивать: убитый хук не доходит до `write_ledger`,
-# то есть метрика встала бы навсегда и без следа.
+# Mirrors hook `timeout` in `.claude/settings.json` (test-checked). Warn here before users kill
+# the hook: a killed hook never reaches `write_ledger`, leaving the metric stalled silently.
 HOOK_TIMEOUT_SECONDS = 20
 _SLOW_COLLECT_SHARE = 0.6
 
 
 @dataclass(frozen=True)
 class UsageRecord:
-    """Один turn: дедуплицированная usage-запись из транскрипта."""
+    """One turn: deduplicated usage record from transcript."""
 
     timestamp: str
     session_id: str
@@ -125,7 +119,7 @@ class UsageRecord:
 
 @dataclass(frozen=True)
 class Anomaly:
-    """Видимый сбой метрики: не бывает тихим (§IV)."""
+    """Visible metric failure: never silent (§IV)."""
 
     kind: str  # "malformed_line" | "no_usage_records" | "high_anomaly_rate" | "unknown_model"
     detail: str
@@ -133,7 +127,7 @@ class Anomaly:
 
 @dataclass(frozen=True)
 class BranchStats:
-    """Агрегат расхода по одной ветке — единица и отчёта, и ledger'а."""
+    """Per-branch usage aggregate: unit of both report and ledger."""
 
     branch: str
     turns: int
@@ -148,13 +142,13 @@ class BranchStats:
 
     @property
     def per_turn(self) -> float:
-        """Effective tokens на turn — шкала «каждый шаг стал дороже»."""
+        """Effective tokens per turn: scale for “each step became more expensive.”"""
         return self.effective / self.turns if self.turns else 0.0
 
 
 @dataclass(frozen=True)
 class Verdict:
-    """Исход детекции: `grown` / `steady` / `insufficient_data`."""
+    """Detection outcome: `grown` / `steady` / `insufficient_data`."""
 
     status: str
     recent_median: float
@@ -169,10 +163,10 @@ def _int(source: dict, key: str) -> int:
 
 
 def _dedup_key(entry: dict, fallback: int) -> object:
-    """Ключ дедупликации: `requestId`, иначе `uuid`, иначе позиция.
+    """Deduplication key: `requestId`, otherwise `uuid`, otherwise position.
 
-    Записи без `requestId` существуют (8 штук в реальной выборке): дедуп по отсутствующему
-    ключу схлопнул бы их в одну и выглядел бы как падение расхода.
+    Records without `requestId` exist (eight in the real sample): deduplication on a
+    missing key would collapse them to one and look like falling usage.
     """
     request_id = entry.get("requestId")
     if isinstance(request_id, str) and request_id:
@@ -184,7 +178,7 @@ def _dedup_key(entry: dict, fallback: int) -> object:
 
 
 def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]:
-    """Разобрать строки транскрипта в записи + аномалии, дедуплицируя по `requestId`."""
+    """Parse transcript lines into records and anomalies, deduplicating by `requestId`."""
     records: list[UsageRecord] = []
     anomalies: list[Anomaly] = []
     seen: set[object] = set()
@@ -204,8 +198,8 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]
             continue
         usage = message.get("usage")
         if not isinstance(usage, dict):
-            # Апстрим переименовал/убрал поле — записей просто не будет, и это ловит
-            # `health_anomalies`: тишина здесь не равна «роста нет».
+            # If upstream renames/removes the field, no records remain; `health_anomalies`
+            # catches that because silence here does not mean “no growth.”
             continue
         key = _dedup_key(entry, index)
         if key in seen:
@@ -216,8 +210,8 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]
             write_5m = _int(creation, "ephemeral_5m_input_tokens")
             write_1h = _int(creation, "ephemeral_1h_input_tokens")
         else:
-            # Без детализации TTL считаем всю запись кэша по 5-минутному тарифу — это
-            # нижняя оценка платы, а не подстановка нуля.
+            # Without TTL details, price all cache entries at the 5-minute rate: a lower
+            # cost estimate, not substitution of zero.
             write_5m, write_1h = _int(usage, "cache_creation_input_tokens"), 0
         branch = entry.get("gitBranch")
         records.append(
@@ -238,7 +232,7 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]
 
 
 def model_scale(model: str) -> float:
-    """Множитель базовой цены модели; неизвестная модель — 1.0 (и повод для аномалии)."""
+    """Model base-price multiplier; unknown model is 1.0 and triggers anomaly."""
     lowered = model.lower()
     for marker, scale in _MODEL_SCALE.items():
         if marker in lowered:
@@ -247,13 +241,13 @@ def model_scale(model: str) -> float:
 
 
 def is_known_model(model: str) -> bool:
-    """Есть ли модель в таблице весов: новая модель делает сводную величину неверной."""
+    """Whether model is in weight table: a new model makes aggregate incorrect."""
     lowered = model.lower()
     return any(marker in lowered for marker in _MODEL_SCALE)
 
 
 def effective_tokens(record: UsageRecord) -> float:
-    """Сводная величина в input-эквивалентах Opus 5 — взвешенная по относительной цене."""
+    """Aggregate in Opus 5 input equivalents, weighted by relative price."""
     weighted = (
         record.input_tokens
         + record.output_tokens * _RATIO_OUTPUT
@@ -271,7 +265,7 @@ def health_anomalies(
     files_seen: int,
     anomaly_rate_threshold: float = 0.05,
 ) -> list[Anomaly]:
-    """Аномалии уровня выборки: schema drift (файлы есть, записей нет) и доля битых строк."""
+    """Sample-level anomalies: schema drift (files exist, records do not) and bad-line share."""
     anomalies: list[Anomaly] = []
     if files_seen and not records:
         anomalies.append(
@@ -288,8 +282,8 @@ def health_anomalies(
                 "high_anomaly_rate", f"нераспарсенных строк {share:.0%} ({len(parse_anomalies)})"
             )
         )
-    # Пустая модель тоже получает нейтральный вес, поэтому попадает сюда наравне с новой:
-    # иначе это был бы единственный неизвестный вес без сигнала.
+    # Empty model also gets neutral weight and belongs here with a new one; otherwise it
+    # would be the only unknown weight without a signal.
     unknown = sorted({r.model or "(пусто)" for r in records if not is_known_model(r.model)})
     if unknown:
         anomalies.append(
@@ -299,25 +293,24 @@ def health_anomalies(
 
 
 def counts_as_turn(record: UsageRecord) -> bool:
-    """Идёт ли запись в знаменатель `per_turn`.
+    """Whether record enters the `per_turn` denominator.
 
-    Turn — шаг **основного** цикла агента. Sidechain-записи (субагенты) дешёвые и
-    многочисленные, а spawn субагента — рекомендованная тактика (`mindset.md`):
-    в знаменателе они разбавляли бы `per_turn` и детектор выдавал бы `steady` на растущей
-    плате. Плату они при этом вносят — она видна в `effective` и отдельной колонкой.
-    Служебные `<synthetic>`-записи не биллятся вовсе, поэтому turn'ами тоже не считаются.
+    A turn is a **main** agent-loop step. Sidechain records (subagents) are cheap and many,
+    while subagent spawning is recommended (`mindset.md`): in denominator they would dilute
+    `per_turn` and report `steady` amid rising cost. Their cost remains in `effective` and a
+    separate column. Service `<synthetic>` records are not billed, so are not turns either.
     """
     return not record.is_sidechain and model_scale(record.model) > 0
 
 
 def _earliest(current: str, candidate: str) -> str:
-    """Минимальный непустой timestamp: пустой иначе навсегда пиннит ветку в начало окна."""
+    """Minimum nonempty timestamp; empty would pin branch to window start forever."""
     known = [value for value in (current, candidate) if value]
     return min(known) if known else ""
 
 
 def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats]:
-    """Свернуть записи в агрегат по ветке; записи без ветки — в отдельный бакет, не выброс."""
+    """Fold records into branch aggregate; no-branch records get a bucket, not discard."""
     stats: dict[str, BranchStats] = {}
     for record in records:
         cost = effective_tokens(record)
@@ -353,13 +346,14 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
 
 
 def issue_branches(stats: Iterable[BranchStats]) -> list[BranchStats]:
-    """Issue-ветки с непустым знаменателем, упорядоченные по времени первой записи.
+    """Issue branches with a nonempty denominator, ordered by first-record time.
 
-    `main` и no-branch — вне тренда как разнородные. Бакет с `turns == 0` (все записи —
-    субагенты или служебные) исключён по другой причине: его `per_turn` равен нулю, и в
-    `statistics.median` он шёл бы наравне с реальными ветками — в recent-окне гасил бы
-    алерт, в baseline задирал бы процент. Осел бы он там навсегда: после ретенции такой
-    бакет уже нечем пересчитать, а из ledger'а он не уходит.
+    `main` and no-branch are heterogeneous and outside the trend. A `turns == 0` bucket (all
+    records are subagent or service) is excluded for a different reason: its `per_turn` is zero,
+    so in `statistics.median` it would be ranked alongside real branches — suppressing an alert
+    in the recent window and inflating the percentage in the baseline. It would settle there
+    forever: after retention, such a bucket can no longer be recomputed, and it does not leave
+    the ledger.
     """
     kept = [s for s in stats if s.branch not in (MAIN_BUCKET, NO_BRANCH_BUCKET) and s.turns > 0]
     return sorted(kept, key=lambda s: (s.first_seen, s.branch))
@@ -368,18 +362,16 @@ def issue_branches(stats: Iterable[BranchStats]) -> list[BranchStats]:
 def merge_ledger(
     ledger: dict[str, BranchStats], fresh: dict[str, BranchStats]
 ) -> dict[str, BranchStats]:
-    """Объединить историю с текущими транскриптами: свежий агрегат замещает, не суммируется.
+    """Merge history with current transcripts: fresh aggregate replaces, not sums.
 
-    Замещение верно, только пока свежий агрегат **полнее** исторического. У ветки старше окна
-    чтения (`DEFAULT_MTIME_DAYS`) или ретенции Claude Code часть транскриптов уже исчезла,
-    поэтому пересчёт по ней неполон: приняв его, ветка «худела» бы молча, а недосчёт читался
-    бы как падение расхода — ровно тот отказ, ради которого ledger и заведён. Первыми
-    страдали бы долгоживущие бакеты (`main` — 37 % turn'ов по замеру).
+    Replacement is valid only while fresh aggregate is **more complete** than history. Beyond
+    reading window (`DEFAULT_MTIME_DAYS`) or Claude Code retention, transcripts disappear and
+    recomputation is incomplete; accepting it silently shrinks a branch and reads undercount
+    as falling usage—the failure ledger prevents. Long-lived buckets suffer first (`main` 37%).
 
-    Обратная сторона названа честно: долгоживущий бакет замерзает на историческом пике.
-    У `main` окно чтения (45 дней) шире ретенции (30), поэтому свежий пересчёт по нему
-    систематически меньше накопленного и строка в отчёте перестаёт обновляться. Для
-    issue-веток, живущих дни, эффекта нет — а `main` в тренде не участвует.
+    The tradeoff is explicit: long-lived bucket freezes at historical peak. `main` reading
+    window (45 days) exceeds retention (30), so fresh recomputation is systematically smaller
+    and its report line stops updating. Day-lived issue branches are unaffected; main is not trend.
     """
     merged = dict(ledger)
     for branch, entry in fresh.items():
@@ -390,7 +382,7 @@ def merge_ledger(
 
 
 def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Anomaly]]:
-    """Прочитать ledger; битая строка — аномалия, а не молчаливый пропуск."""
+    """Read ledger; corrupt line is anomaly, not silent skip."""
     stats: dict[str, BranchStats] = {}
     anomalies: list[Anomaly] = []
     for index, raw in enumerate(lines):
@@ -415,10 +407,10 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
             anomalies.append(Anomaly("ledger_schema", f"ledger line {index + 1}: {exc}"))
             continue
         if not _fields_well_typed(entry):
-            # `"turns": "12"` проходит конструктор и падает уже в `merge_ledger` — до
-            # `write_ledger`, то есть файл не переписался бы никогда и метрика умерла бы
-            # навсегда. Как штатная аномалия битая запись просто отбрасывается, и ledger
-            # лечится сам на следующем старте.
+            # `"turns": "12"` passes constructor but fails in `merge_ledger` before
+            # `write_ledger`, so file would never rewrite and metric would die
+            # forever. As a normal anomaly, corrupt record is discarded and ledger
+            # heals itself on next start.
             anomalies.append(
                 Anomaly("ledger_schema", f"ledger line {index + 1}: неверные типы полей")
             )
@@ -428,7 +420,7 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
 
 
 def _fields_well_typed(entry: BranchStats) -> bool:
-    """Типы полей ledger'а: `schema`-версия стережёт состав, но не типы."""
+    """Ledger field types: `schema` version guards shape, not types."""
     return (
         isinstance(entry.branch, str)
         and isinstance(entry.turns, int)
@@ -444,7 +436,7 @@ def _fields_well_typed(entry: BranchStats) -> bool:
 
 
 def ledger_lines(stats: dict[str, BranchStats]) -> list[str]:
-    """Сериализовать агрегаты в JSONL-строки ledger'а."""
+    """Serialize aggregates into ledger JSONL lines."""
     return [
         json.dumps({"schema": LEDGER_SCHEMA, **asdict(entry)}, ensure_ascii=False)
         for _, entry in sorted(stats.items())
@@ -458,11 +450,11 @@ def detect_growth(
     rel_threshold: float = DEFAULT_REL_THRESHOLD,
     abs_floor: float = DEFAULT_ABS_FLOOR,
 ) -> Verdict:
-    """Сравнить медиану per-turn последних `window` веток с предыдущими `window`.
+    """Compare recent `window` per-turn median with preceding `window`.
 
-    Медиана, а не среднее: одна длинная рефактор-сессия перевешивает выборку. Абсолютный пол
-    вдобавок к относительному: алерт печатается в контекст каждого старта, поэтому шумный
-    детектор сам становится статьёй расхода по приоритету (2).
+    Median, not mean: one long refactor session should not outweigh sample. Absolute floor
+    supplements relative threshold because alert enters every start context, so a noisy
+    detector itself becomes a priority-(2) cost.
     """
     ordered = issue_branches(stats)
     if len(ordered) < 2 * window:
@@ -489,15 +481,15 @@ def _k(value: float) -> str:
 
 
 def format_report(stats: Iterable[BranchStats], verdict: Verdict, anomalies: list[Anomaly]) -> str:
-    """Полная таблица по веткам + вердикт."""
+    """Full branch table and verdict."""
     rows = sorted(stats, key=lambda s: (s.first_seen, s.branch))
     lines = [
         f"{'branch':<48} {'turns':>6} {'effective':>12} {'per-turn':>10} "
         f"{'cache_read':>12} {'sidechain':>11}"
     ]
     for entry in rows:
-        # Прочерк, а не `0.0k`: у бакета без основных turn'ов нет знаменателя, и ноль рядом
-        # с непустым `effective` читался бы как «ветка бесплатная».
+        # Dash, not `0.0k`: a bucket without main turns has no denominator, and zero beside
+        # nonempty `effective` would read as “branch is free.”
         per_turn = _k(entry.per_turn) if entry.turns else "—"
         lines.append(
             f"{entry.branch[:48]:<48} {entry.turns:>6} {_k(entry.effective):>12} "
@@ -519,7 +511,7 @@ def format_report(stats: Iterable[BranchStats], verdict: Verdict, anomalies: lis
 
 
 def format_alert(verdict: Verdict, anomalies: list[Anomaly]) -> str:
-    """Текст для hook-режима; пустая строка — норма, печатать нечего."""
+    """Hook-mode text; empty string is normal when there is nothing to print."""
     lines: list[str] = []
     if verdict.status == "grown":
         delta = verdict.recent_median - verdict.baseline_median
@@ -534,10 +526,10 @@ def format_alert(verdict: Verdict, anomalies: list[Anomaly]) -> str:
 
 
 def read_payload(stdin_text: str) -> dict:
-    """Разобрать `SessionStart` JSON; толерантно к пустому/битому вводу → {}.
+    """Parse `SessionStart` JSON; tolerate empty/corrupt input → {}.
 
-    Зеркалит `scripts/hooks.py`: ненулевой выход хука проглотил бы собственный алерт
-    (`SessionStart` игнорирует stdout на exit 2) и показал бы юзеру ошибку каждую сессию.
+    Mirrors `scripts/hooks.py`: nonzero hook exit would swallow its own alert
+    (`SessionStart` ignores stdout at exit 2) and show the user an error every session.
     """
     stdin_text = (stdin_text or "").strip()
     if not stdin_text:
@@ -554,14 +546,14 @@ def _iter_lines(paths: Iterable[Path]) -> Iterator[str]:
         try:
             handle = path.open(encoding="utf-8", errors="replace")
         except OSError:
-            # Файл исчез между отбором и чтением — сессия удалена, ретенция сработала.
+            # File vanished between selection and reading: session was deleted by retention.
             continue
         with handle:
             yield from handle
 
 
 def _recent_paths(transcripts: Path, cutoff: float) -> list[Path]:
-    """Файлы транскриптов в окне по mtime; ledger — не транскрипт и сюда не попадает."""
+    """Transcript files in mtime window; ledger is not a transcript and is excluded."""
     paths = []
     for path in transcripts.glob("*.jsonl"):
         if path.name == LEDGER_NAME:
@@ -569,7 +561,7 @@ def _recent_paths(transcripts: Path, cutoff: float) -> list[Path]:
         try:
             fresh = path.stat().st_mtime >= cutoff
         except OSError:
-            # Между `glob` и `stat` файл может исчезнуть: в report-режиме это был бы traceback.
+            # File may vanish between `glob` and `stat`; report mode would otherwise traceback.
             continue
         if fresh:
             paths.append(path)
@@ -579,14 +571,14 @@ def _recent_paths(transcripts: Path, cutoff: float) -> list[Path]:
 def collect(
     transcripts: Path, *, days: int = DEFAULT_MTIME_DAYS
 ) -> tuple[list[UsageRecord], list[Anomaly], int]:
-    """Прочитать транскрипты в окне по mtime; вернуть записи, аномалии и число файлов.
+    """Read transcripts in mtime window; return records, anomalies, and file count.
 
-    Дедупликация — сквозная по всем файлам: `resume`/`fork` копируют историю в новый
-    транскрипт, и пофайловый разбор дал бы двойной счёт.
+    Deduplicate across all files: `resume`/`fork` copy history into a new transcript,
+    so per-file parsing would double count.
 
-    Ledger лежит в этом же каталоге и переписывается каждую сессию, поэтому всегда свежий
-    по mtime. Считая его транскриптом, после ретенции (файлы вычищены, ledger остался) мы
-    получали бы `files_seen=1, records=0` — вечную ложную «schema drift» в контексте.
+    Ledger is in this directory and rewrites every session, so is always mtime-fresh. Treating
+    it as transcript after retention (files removed, ledger remains) yields `files_seen=1,
+    records=0`: permanent false “schema drift” in context.
     """
     cutoff = time.time() - days * 86_400
     paths = _recent_paths(transcripts, cutoff)
@@ -595,23 +587,23 @@ def collect(
 
 
 def transcript_dir() -> Path:
-    """Каталог транскриптов Claude Code для этого репо на текущей машине."""
+    """Claude Code transcript directory for this repository on the current machine."""
     slug = re.sub(r"[^A-Za-z0-9]", "-", str(_REPO_ROOT))
     return _CLAUDE_PROJECTS / slug
 
 
 def run_hook(payload: dict, transcripts: Path, ledger_path: Path) -> str:
-    """Текст для stdout хука: пусто в норме, в чужой среде и на не-startup источнике."""
+    """Hook stdout text: empty normally, in foreign environment, and for non-startup source."""
     if payload.get("source") != "startup":
         return ""
     if not transcripts.is_dir():
         if not transcripts.parent.is_dir():
-            # Чужая среда: транскриптов Claude Code тут нет вовсе (cloud-ревьюер, другая
-            # машина). `.claude/settings.json` лежит в репо, и видимая ошибка попадала бы
-            # в контекст каждой ревью-сессии навсегда.
+            # Foreign environment: no Claude Code transcripts here (cloud reviewer, another
+            # machine). `.claude/settings.json` is in repository, so visible error would enter
+            # every review-session context forever.
             return ""
-        # Своя машина, но каталога этого репо нет: апстрим сменил правило slug'а, репо
-        # переехало. Промолчать здесь — дать метрике умереть навсегда и тихо (§IV).
+        # Local machine but no repository directory: upstream changed slug rule or repository
+        # moved. Silence would let the metric die forever and silently (§IV).
         return format_alert(
             Verdict("insufficient_data", 0.0, 0.0, (), ()),
             [Anomaly("transcripts_not_found", f"нет каталога {transcripts} — slug-правило уехало")],
@@ -635,30 +627,28 @@ def run_hook(payload: dict, transcripts: Path, ledger_path: Path) -> str:
 
 
 def write_ledger(ledger_path: Path, stats: dict[str, BranchStats]) -> None:
-    """Записать ledger атомарно: усечённый файл — потеря всей базы сравнения.
+    """Write ledger atomically: truncated file loses all comparison baseline.
 
-    `write_text` сначала обнуляет файл, поэтому краш или две одновременно стартующие сессии
-    оставили бы метрику без истории — ровно тот отказ, ради которого ledger и заведён.
+    `write_text` first empties file, so crash or two simultaneous sessions would leave metric
+    without history—the exact failure ledger exists to prevent.
     """
     tmp = ledger_path.with_name(ledger_path.name + f".{os.getpid()}.tmp")
     try:
         tmp.write_text("\n".join(ledger_lines(stats)) + "\n", encoding="utf-8")
         os.replace(tmp, ledger_path)
     except BaseException:
-        # Не оставлять хвост в каталоге, если запись прервалась. На цифры он не влияет
-        # (в глоб `*.jsonl` не попадает), но мусор копился бы молча.
+        # Do not leave a tail in directory after interrupted write. It does not affect numbers
+        # (not included by `*.jsonl` glob), but garbage would accumulate silently.
         tmp.unlink(missing_ok=True)
         raise
 
 
 def _read_ledger_lines(ledger_path: Path) -> list[str]:
-    """Строки ledger'а; битые байты заменяются, как и в `_iter_lines`.
+    """Ledger lines; corrupt bytes are replaced as in `_iter_lines`.
 
-    Без `errors="replace"` один невалидный байт давал бы `UnicodeDecodeError` — это
-    `ValueError`, а не `OSError`, поэтому он пробивал бы перехват в hook-режиме. Хуже, что
-    падение происходит **до** `write_ledger`: файл никогда не перезаписался бы, и хук ронял
-    бы каждую сессию без шанса самовылечиться. Заменённый байт вместо этого доходит до
-    `parse_ledger` и становится штатной аномалией.
+    Without `errors="replace"`, one invalid byte raises UnicodeDecodeError (ValueError, not
+    OSError) past hook-mode handling. Worse, it happens **before** `write_ledger`, so file
+    never rewrites and hook fails every session. Replaced byte reaches `parse_ledger` as normal anomaly.
     """
     if not ledger_path.exists():
         return []
@@ -666,12 +656,11 @@ def _read_ledger_lines(ledger_path: Path) -> list[str]:
 
 
 def resolve_transcripts(payload: dict) -> Path:
-    """Каталог транскриптов: из `SessionStart`-payload, иначе по slug-правилу.
+    """Transcript directory: from SessionStart payload, otherwise slug rule.
 
-    `transcript_path` приходит от самого Claude Code, поэтому в hook-режиме снимает весь
-    класс отказа «правило нормализации slug'а уехало». Вывод slug'а остаётся для `--report`,
-    где payload'а нет — и именно поэтому расхождение двух путей нельзя проглатывать
-    (см. `divergence_anomaly`).
+    Claude Code supplies `transcript_path`, eliminating slug-normalization failure in hook
+    mode. Slug derivation remains for payload-free `--report`, so divergence cannot be ignored
+    (see `divergence_anomaly`).
     """
     raw = payload.get("transcript_path")
     if isinstance(raw, str) and raw:
@@ -682,13 +671,12 @@ def resolve_transcripts(payload: dict) -> Path:
 
 
 def divergence_anomaly(resolved: Path) -> list[Anomaly]:
-    """Аномалия, если payload и slug-правило указывают на разные каталоги.
+    """Anomaly when payload and slug rule point to different directories.
 
-    Хук пишет ledger туда, куда указал payload, а `--report` — единственная инструкция,
-    которую печатает алерт — читает по slug-правилу. Промолчав, мы отправили бы оператора
-    в `нет каталога транскриптов` с кодом 1 ровно в тот момент, ради которого метрика
-    заведена; а при запуске из подкаталога репо история молча делилась бы надвое, и каждая
-    половина выглядела бы дешевле целого.
+    Hook writes ledger where payload points, while `--report` follows slug rule. Silence
+    would send the operator to “no transcript directory” at the metric's critical moment;
+    launching from a repository subdirectory would silently split history and make each
+    half look cheaper than the whole.
     """
     expected = transcript_dir()
     if resolved == expected:
@@ -702,12 +690,11 @@ def divergence_anomaly(resolved: Path) -> list[Anomaly]:
 
 
 def emit(text: str, stream: TextSink | None = None) -> None:
-    """Напечатать текст в UTF-8 независимо от кодовой страницы консоли.
+    """Print text in UTF-8 regardless of console code page.
 
-    Вывод кириллический, а стандартный stdout на Windows — cp1252 (`CLAUDE.md` §Среда):
-    обычный `print` роняет процесс `UnicodeEncodeError`. Для хука это не косметика —
-    ненулевой код заставил бы `SessionStart` выбросить stdout, и вместо алерта юзер
-    увидел бы голое «hook error».
+    Output is Cyrillic while default Windows stdout is cp1252 (CLAUDE.md §Environment),
+    so normal `print` raises UnicodeEncodeError. For hook this is not cosmetic: nonzero
+    exit makes SessionStart discard stdout and user sees only “hook error.”
     """
     stream = stream if stream is not None else sys.stdout
     buffer = getattr(stream, "buffer", None)
@@ -719,7 +706,7 @@ def emit(text: str, stream: TextSink | None = None) -> None:
 
 
 def main() -> int:
-    """CLI: `--hook` (тихий, всегда exit 0) и `--report` (таблица, режим по умолчанию)."""
+    """CLI: `--hook` (quiet, always exit 0) and `--report` (default table mode)."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hook", action="store_true", help="режим SessionStart: тихий, exit 0")
     parser.add_argument("--report", action="store_true", help="таблица по веткам (по умолчанию)")
@@ -738,12 +725,11 @@ def main() -> int:
                 text = "\n".join(part for part in (text, mismatch) if part)
             if text:
                 emit(text)
-        except Exception as exc:  # noqa: BLE001 - контракт «hook всегда exit 0», см. ниже
-            # Любое исключение, не только `OSError`: на ненулевом коде `SessionStart`
-            # выбрасывает stdout, и вместо содержательной аномалии юзер видит голое
-            # «hook error» — каждую сессию, без шанса на самолечение.
-            # Канал — stdout, а не stderr: при нулевом коде в контекст уходит именно он,
-            # а stderr показывается только на ненулевом. Иначе сбой был бы тих (§IV).
+        except Exception as exc:  # noqa: BLE001 - “hook always exits 0” contract; see below
+            # Any exception, not only OSError: nonzero SessionStart discards stdout and user
+            # sees bare “hook error” every session, with no chance of self-healing.
+            # Use stdout, not stderr: at zero exit it enters context, while stderr displays
+            # only on nonzero. Otherwise failure would be silent (§IV).
             with contextlib.suppress(Exception):
                 emit(f"token-trend аномалия [{type(exc).__name__}]: {exc}")
         return 0
@@ -764,7 +750,7 @@ def main() -> int:
     try:
         emit(report)
     except OSError:
-        # `--report | head` закрывает stdout на полуслове — это не сбой метрики.
+        # `--report | head` closes stdout mid-output; this is not metric failure.
         return 0
     return 0
 

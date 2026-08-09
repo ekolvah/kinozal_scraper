@@ -1,4 +1,4 @@
-"""Извлечение/нормализация топа kinozal.tv + обогащение трейлером (run_kinozal_pipeline)."""
+"""kinozal.tv top extraction/normalization and trailer enrichment (run_kinozal_pipeline)."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def _excluded_genres() -> set[str]:
 
 def _parse_labeled_field(details_html: str, label: str) -> str:
     """Read a `<b>{label}:</b> … <br>` field's visible text off a kinozal details
-    page (#263 for `Жанр:`, generalised in #140 for каст/режиссёр/описание).
+    page (#263 for `Genre:`, generalized in #140 for cast/director/description).
 
     Real markup (verified against the live page): the value follows the `<b>`
     label as tag-wrapped links/spans (`<span class="lnks_tobrs">…</span>`) or a
@@ -65,7 +65,7 @@ def _parse_labeled_field(details_html: str, label: str) -> str:
     `<br>` or `<b>`. We collect the *visible text* of the siblings up to that
     terminator — `str(sibling)` would serialize raw HTML for a tag-wrapped value,
     and `next_sibling` alone is just the whitespace text node. `label` is matched
-    by prefix (`startswith`), so pass it without the trailing colon (`"Жанр"`).
+    by prefix (`startswith`), so pass it without the trailing colon (`"Genre"`).
     Returns '' if the field is absent (caller decides what '' means)."""
     soup = BeautifulSoup(details_html, "html.parser")
     for b in soup.find_all("b"):
@@ -83,16 +83,16 @@ def _parse_labeled_field(details_html: str, label: str) -> str:
 
 
 def _parse_genre(details_html: str) -> str:
-    """`Жанр:` value off a details page — thin wrapper over the shared
+    """`Genre:` value off a details page — thin wrapper over the shared
     `_parse_labeled_field` (§II — one sibling-walk, not four copies). Caller
     treats '' as unknown → keep (#263)."""
     return _parse_labeled_field(details_html, "Жанр")
 
 
 def _parse_details_metadata(details_html: str) -> dict[str, Any]:
-    """Assemble the trailer-selection metadata off a kinozal details page (#140):
-    каст (`В ролях:`) / режиссёр (`Режиссер:`) / жанр (`Жанр:`) / описание
-    (`О фильме:`), all via the shared `_parse_labeled_field`. `cast` is split on
+    """Assemble trailer-selection metadata from a kinozal details page (#140):
+    cast (`Cast:`) / director (`Director:`) / genre (`Genre:`) / description
+    (`About the film:`), all via shared `_parse_labeled_field`. `cast` is split on
     commas like a multi-valued genre; a missing field yields ''/[] (not an error)."""
     cast_raw = _parse_labeled_field(details_html, "В ролях")
     return {
@@ -104,21 +104,19 @@ def _parse_details_metadata(details_html: str) -> dict[str, Any]:
 
 
 def build_film_profile(item: NormalizedItem, fetcher: Any) -> FilmProfile:
-    """Best-effort сбор `FilmProfile` из details.php для подбора трейлера (#140).
+    """Best-effort `FilmProfile` construction from details.php for trailer selection (#140).
 
-    ru_title = clean title, original_title = 2-й ` / `-сегмент (или clean, когда
-    отдельного оригинала нет — тогда retrieval схлопнёт union в один запрос), year
-    как в `enrich_with_trailer`. Метаданные (каст/режиссёр/жанр/описание) тянутся
-    через `fetcher.fetch_details` (наследует origin→mirror failover).
+    `ru_title` is the clean title; `original_title` is the second ` / ` segment (or
+    clean where no separate original exists, so retrieval collapses union to one query);
+    year follows `enrich_with_trailer`. Metadata (cast/director/genre/description) comes
+    through `fetcher.fetch_details` and inherits origin→mirror failover.
 
-    §IV-деградация: сбой фетча/парса → профиль на title+year с пустыми метаданными
-    + WARNING, пайплайн НЕ падает. Успешный фетч, из которого не распарсилось НИ
-    одного поля (каст+режиссёр+описание) → отдельный WARNING-tripwire: это дрейф
-    селектора, а не пустой фильм — не тихий no-op, который молча ослабит пред-фильтр
-    #141. Richer-builder с метаданными для harness/#140-eval; прод-`enrich_with_trailer`
-    (#144) строит облегчённый title+year профиль без каста — RU-приоритет (#315) держится
-    на языке заголовка, per-item details-фетч ради каст-тай-брейка отложен (#144 Out of
-    scope). Эта функция — точка входа под ту эскалацию, когда она окупится."""
+    §IV degradation: fetch/parse failure → a title+year profile with empty metadata and
+    WARNING; the pipeline does NOT fail. A successful fetch with no parsed cast, director,
+    or description triggers a separate WARNING because that is selector drift, not an empty
+    film. This richer builder supports harness/#140 eval; production `enrich_with_trailer`
+    (#144) uses a light title+year profile without cast. RU priority (#315) comes from title
+    language; per-item fetching for cast ties is deferred (#144 Out of scope)."""
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
     year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
@@ -262,17 +260,17 @@ class Kinozal:
 
     def fetch_details(self, url: str) -> str:
         """Fetch a details.php page for genre filtering (#263), returning just the
-        HTML — the `Жанр:` field is read from it, no base_url resolution needed.
+        HTML — the `Genre:` field is read from it, so no base_url resolution is needed.
 
         A healthy run serves the listing from the anonymous kinozal.tv primary, so
-        `url` is a .tv link whose details page shows `Жанр:` anonymously — reuse
+        `url` is a .tv link whose details page shows `Genre:` anonymously — reuse
         `fetch_listing`'s anonymous-primary / authenticated-mirror-on-error path.
 
         But when kinozal.tv is down the listing falls back to the authenticated
         kinozal.guru mirror (#247), so `url` is a *mirror* link. kinozal.guru gates
         all HTML behind login (302 → login.php, `docs/architecture/pipeline.md`
         § Kinozal mirror fallback), so an anonymous GET of a mirror details page
-        returns HTTP 200 — a login page with no `Жанр:` block. That is a *false
+        returns HTTP 200 — a login page with no `Genre:` block. That is a *false
         success*: it raises no exception, so
         `fetch_listing`'s except-triggered mirror failover never fires, and the
         genre filter silently goes blind (every item parses to "" → fail-open →
@@ -387,14 +385,14 @@ def _dedupe_key(raw: str) -> str:
     The key is the title-identity prefix `RU / Original / Year` — everything up to
     and *including* the release-year segment — with the trailing `Format` segment(s)
     dropped. This distinguishes namesakes/sequels that share the RU first segment but
-    differ in original title or year (`Дюна / Dune / 2021` vs
-    `Дюна / Dune: Part Two / 2024`), while still collapsing repacks of one film that
+    differ in original title or year (`Dune / Dune / 2021` vs
+    `Dune / Dune: Part Two / 2024`), while still collapsing repacks of one film that
     differ ONLY in the format tail (`… / 2025 / Portable` vs `… / 2025 / FitGirl`).
 
     The year is located by scanning for the first ` / `-segment that is a bare year
     (`YEAR_SEGMENT_RE.fullmatch`) — positional slicing would break on the no-original
     form `Title / Year / Format`, and a substring match would false-hit a year baked
-    into a format token (`… / BDRip 2160p`). When no year segment exists (e.g. `Дюна`
+    into a format token (`… / BDRip 2160p`). When no year segment exists (e.g. `Dune`
     with no separators) the boundary is unknowable, so we fall back to the clean first
     segment — today's behaviour, keeping yearless repacks collapsed.
     """
@@ -451,8 +449,8 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
     The key comes from `_dedupe_key(raw @title)`, dropping only the trailing format
     segment. Repacks of one film (Portable, FitGirl, …) differ ONLY in that tail, so
     they still share a key and collapse to one item — while namesakes/sequels that
-    differ in original title or year no longer collapse (the #363 bug: `Дюна / Dune /
-    2021` and `Дюна / Dune: Part Two / 2024` both keyed on the clean RU `Дюна`, silently
+    differ in original title or year no longer collapse (the #363 bug: `Dune / Dune /
+    2021` and `Dune / Dune: Part Two / 2024` both keyed on the clean RU `Dune`, silently
     dropping the second). The key becomes the stored dedupe_key so future runs also skip
     all repacks of an already-notified film. `item.title` (display) stays the clean RU
     segment — display ≠ key.
@@ -480,57 +478,52 @@ def _normalize_items(items: list[NormalizedItem]) -> list[NormalizedItem]:
 # dev-tripwire firing only on real anomalies (a clean miss is expected).
 _TRAILER_MISS_MARKER = "🎬 трейлер не найден"
 _TRAILER_ERROR_MARKER = "⚠️ трейлер: ошибка поиска"
-# Третья причина (#384) — не промах и не поломка, а исчерпанная суточная квота.
-# Отдельный маркер, потому что действие оператора другое: не «чинить поиск», а
-# сократить объём прогона или сменить источник трейлеров.
+# The third cause (#384) is neither miss nor failure, but exhausted daily quota.
+# It has a separate marker because the operator must reduce run volume or change
+# the trailer source, not fix search.
 _TRAILER_QUOTA_MARKER = "⚠️ трейлер: дневная квота YouTube"
 
 
 def select_trailer(profile: FilmProfile, youtube: Any) -> str:
-    """Retrieval + selection + §IV-маркеры: всё, что стоит между профилем и юзером.
+    """Retrieval, selection, and §IV markers: everything between profile and user.
 
-    Retrieval → selection split (эпик трейлеров): собирает пул кандидатов через
-    `youtube.search_candidates` (union запроса по RU + оригинальному названию, #140)
-    и выбирает один язык-aware `HeuristicStrategy` (#141) — RU-трейлер в приоритете,
-    EN как fallback (закрывает RU-регрессию #138→#315, которую давал одиночный
-    `get_trailer_url` по оригинальному названию).
+    The trailer-epic retrieval → selection split builds a candidate pool through
+    `youtube.search_candidates` (RU plus original-title query union, #140) and selects
+    one language-aware `HeuristicStrategy` result (#141): RU trailer first, EN fallback,
+    closing RU regression #138→#315 from original-title-only `get_trailer_url`.
 
-    `HeuristicStrategy` инстанцируется напрямую (pure internal logic, не внешняя
-    граница — §II) и совпадает с eval `default_strategy()` (`scripts/eval_trailers.py`)
-    — прод и замер меряют одну стратегию; при эскалации eval-стратегии обнови и здесь.
+    `HeuristicStrategy` is instantiated directly (pure internal logic, not an external
+    boundary—§II) and matches eval `default_strategy()` (`scripts/eval_trailers.py`), so
+    production and measurement use one strategy; update this on eval-strategy escalation.
 
-    Пустой pick (`video_id=None`) → `_TRAILER_MISS_MARKER` + INFO с размером пула;
-    исключение retrieval → `_TRAILER_ERROR_MARKER` + WARNING (traceback). Успешный pick
-    пишет INFO-breadcrumb с `video_id`/`reason`/`confidence`. Любой путь — item всё равно
-    уведомляется, не тихий "".
+    Empty pick (`video_id=None`) → `_TRAILER_MISS_MARKER` plus pool-size INFO; retrieval
+    exception → `_TRAILER_ERROR_MARKER` plus WARNING traceback. A successful pick logs an
+    INFO breadcrumb with `video_id`/`reason`/`confidence`. Every path still notifies the
+    item; never a silent empty string.
 
-    **Почему breadcrumb несёт `video_id` (#359).** Без него отчёт «пришла не та ссылка»
-    неразбираем: по логу видно `ambiguous`, но не видно, какое видео ушло пользователю —
-    расследование упирается в реконструкцию по живому YouTube, чей выдач меняется за сутки.
-    Размер пула на miss-ветке отделяет «YouTube ничего не вернул» от «вернул N, ни один не
-    прошёл relevance» — это разные баги.
+    **Why the breadcrumb carries `video_id` (#359).** Without it, a report of a wrong
+    link cannot be investigated: the log says `ambiguous` but not which video reached the
+    user, and live YouTube results change daily. Pool size distinguishes no YouTube result
+    from N results that all failed relevance; those are different bugs.
 
-    **Отбор по `confidence` здесь сознательно НЕ делается.** #359 пробовал давить
-    низкоуверенные picks (`< 0.5`) в miss-маркер и это откачено: замер на golden-set (28
-    кейсов) дал 26 hit → 16 hit, 2 miss → 12 miss, wrong 0 → 0. Все 10 подавленных picks
-    были ПОПАДАНИЯМИ: `confidence=0.3` («ничья») означает «несколько одинаково хороших
-    трейлеров одного фильма» (дубляж №1 vs №2), а не «возможно, не тот фильм».
+    **Do NOT filter by `confidence` here.** #359 tried converting low-confidence picks
+    (`< 0.5`) to misses and reverted it: the 28-case golden set changed 26 hit → 16 hit,
+    2 miss → 12 miss, wrong 0 → 0. All ten suppressed picks were hits: `confidence=0.3`
+    means equally good trailers for one film, not potentially the wrong film.
 
-    **Почему это отдельная функция (#379).** Эта половина — то, что реально уходит
-    пользователю, и именно её сломал #359, не тронув `HeuristicStrategy.pick`. Замер
-    (`scripts/eval_trailers.py::evaluate_delivery`) заходит СЮДА, а не в `pick`, и
-    исход пришпилен `tests/fixtures/trailer_baseline.json`: изменение post-pick
-    политики теперь валит `tests/test_eval_baseline.py`. Шов проходит по `FilmProfile`
-    — родной форме golden-set; будь входом `NormalizedItem`, фикстурам пришлось бы
-    дублировать kinozal-грамматику заголовка (§II).
+    **Why this is a separate function (#379).** It is the half that reaches users and
+    that #359 broke without changing `HeuristicStrategy.pick`. Eval
+    (`scripts/eval_trailers.py::evaluate_delivery`) enters HERE, not `pick`; its baseline
+    is pinned by `tests/fixtures/trailer_baseline.json`, so post-pick policy changes fail
+    `tests/test_eval_baseline.py`. The seam is `FilmProfile`, the golden-set's native form;
+    `NormalizedItem` would make fixtures duplicate Kinozal title grammar (§II).
     """
     try:
         candidates = youtube.search_candidates(profile)
     except YoutubeQuotaExhausted:
-        # Единственное исключение, которое НЕ вырождается в маркер этого фильма:
-        # квота суточная и общая, значит следующий фильм упрётся в неё гарантированно.
-        # Решение «прекратить обогащение» принимает цикл прогона (§IV — сигнал должен
-        # долететь до того, кто может на него отреагировать), не эта функция.
+        # The sole exception that does NOT degrade to this film's marker: daily quota is
+        # shared, so the next film will certainly hit it. The run loop, not this function,
+        # decides to stop enrichment (§IV: the signal must reach its responder).
         raise
     except Exception as exc:  # noqa: BLE001 — retrieval failure degrades to a visible marker, item still notified
         logger.warning("trailer lookup failed for %r: %s", profile.ru_title, exc, exc_info=True)
@@ -554,26 +547,25 @@ def select_trailer(profile: FilmProfile, youtube: Any) -> str:
 def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     """Pick a YouTube trailer URL, or return a visible §IV marker (#144/#315).
 
-    Прод-вход: строит `FilmProfile` из kinozal-заголовка и делегирует доставку
-    `select_trailer`. `FilmProfile` собирается из title+year (ru_title = clean,
-    original_title = 2-й ` / `-сегмент или "", year из kinozal_raw_title);
-    cast/метаданные не тянем — RU-приоритет держится на языке заголовка, а per-item
-    details-фетч ради внутриязыкового тай-брейка — отдельный юнит (см. #144 Out of
-    scope), не #315.
+    Production entry: constructs `FilmProfile` from the Kinozal title and delegates to
+    `select_trailer`. It uses title+year (`ru_title` clean, `original_title` second ` / `
+    segment or "", year from kinozal_raw_title); do not fetch cast/metadata because RU
+    priority uses title language, while per-item fetching for within-language ties is a
+    separate unit (#144 Out of scope), not #315.
 
-    **Граница гейта (#379).** Пришпилена baseline'ом только вторая половина
-    (`select_trailer`). Деривация профиля ниже замером НЕ покрыта и держится на
-    юнит-тестах `TestEnrichWithTrailer` — именно здесь сидели #385 (игровая
-    грамматика) и #393; правку в этой половине гейт `trailer_baseline.json` не увидит.
+    **Gate boundary (#379).** The baseline pins only the second half (`select_trailer`).
+    Profile derivation below is not measured and relies on `TestEnrichWithTrailer` unit
+    tests; #385 (game grammar) and #393 occurred here, so `trailer_baseline.json` will
+    not see a change in this half.
     """
     clean = item.title.split("(")[0].strip()
     raw_for_year = item.raw.get("kinozal_raw_title", item.dedupe_key)
     year_match = re.search(r"\b(20\d{2})\b", raw_for_year)
     year = int(year_match.group(1)) if year_match else None
-    # Служебный второй сегмент (`x64`, `RU`) гасит сам `original_title` — гард
-    # живёт в грамматике заголовка, а не здесь (#412). Прежняя развилка по
-    # `kinozal_is_game` (#385) гасила оригинал у ВСЕХ раздач с игрового URL и
-    # тем ломала локализованные игры, у которых оригинал есть на общем месте.
+    # `original_title` itself suppresses a service second segment (`x64`, `RU`); the
+    # guard belongs in title grammar, not here (#412). The former `kinozal_is_game`
+    # branch (#385) suppressed originals for ALL game-URL listings, breaking localized
+    # games that have an original in the standard position.
     orig = original_title(raw_for_year)
     return select_trailer(FilmProfile(ru_title=clean, original_title=orig, year=year), youtube)
 
@@ -605,7 +597,7 @@ def _split_by_excluded_genre(
             continue
         if not genre:
             # Fetched OK but no genre parsed — kept (fail-open). Tracked so a drifted
-            # `Жанр:` selector surfaces as a visible anomaly (§IV) instead of the
+            # The `Genre:` selector surfaces as a visible anomaly (§IV) instead of the
             # filter silently becoming a no-op for every item.
             unparsed.append(item)
             kept.append(item)
@@ -773,10 +765,9 @@ def _notify_and_persist(
             except YoutubeQuotaExhausted as exc:
                 quota_exhausted = True
                 item.trailer_url = _TRAILER_QUOTA_MARKER
-                # Одна строка на прогон, не строка на фильм: 163-строчный шум
-                # прогона 30143534431 — часть чинимого дефекта, повторять его
-                # нельзя (§IV — аномалия должна быть читаемой, а не утопленной
-                # в повторах). exc_info несёт, какой именно лимит назвал API.
+                # One line per run, not per film: the 163-line noise in run 30143534431
+                # is part of the defect and must not recur (§IV: an anomaly must be
+                # readable rather than drowned in repeats). `exc_info` names the API limit.
                 logger.warning(
                     "youtube quota exhausted after %d enriched films: %s; "
                     "%d remaining films skip retrieval with a visible marker",

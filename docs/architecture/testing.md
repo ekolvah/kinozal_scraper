@@ -121,7 +121,7 @@ grounded in reality, not self-fulfilling (#327).
     point is that they *can* diverge.
   - **The baseline is the gate.** `tests/fixtures/trailer_baseline.json` pins the **delivery**
     outcome per case (`{"i", "film", "outcome"}` — the index rides along because `ru_title` is not
-    unique: "Гладиатор 2" appears twice, and swapping two same-named cases would slip past a
+unique: "Gladiator 2" appears twice, and swapping two same-named cases would slip past a
     name-only check). `compare_to_baseline` is a pure function; the red comes from
     `tests/test_eval_baseline.py::TestBaselineGate::test_committed_baseline_matches_main`.
     **Why a ratchet and not an absolute threshold.** A threshold would need a strategy good enough
@@ -141,43 +141,43 @@ grounded in reality, not self-fulfilling (#327).
     outside the measurement and rests on `TestEnrichWithTrailer` unit tests. This limit is
     load-bearing: a change written in that blind spot passes green.
 
-- **Отрицательный полюс метрики: разметка `trap` (#380).** Шкала `Hit +1 / Miss 0 / Wrong −2`
-  объявляет, что чужой трейлер вдвое хуже честного маркера, — и половина шкалы мертва, если в
-  наборе нет ни одного `wrong`: такой набор наказывает за осторожность, но «сколько wrong
-  предотвращено» показать не в состоянии (#327, #359).
-  - **Что размечено.** Три кейса с живьём записанными пулами и полем `trap` — id кандидатов, про
-    которых **верифицировано** (через `videos.list` → канал + описание, основание в `note`), что
-    это *другая работа*: фанатский Minecraft-продакшен под названием сериала, хоррор-фильм-тёзка,
-    сериал `The Rookie` под названием фильма `The Amateur`. Один из них стратегия сегодня и
-    выбирает, поэтому скоркарта не `wrong=0`.
-  - **Почему отдельное поле, а не только accept-set.** `correct` отвечает «этот id — правильный»;
-    он не умеет отличить «чужая работа» от «валидный дубляж той же работы, который мы не
-    дозаписали». `trap` — ground truth про **пул**, а не про исход, поэтому переживает улучшение
-    стратегии. Загрузчик fail-loud наравне с остальным набором: не-список / не-str / id вне пула
-    **кандидатов** (не union'а с TMDB — ловушка осмысленна только среди того, что стратегия
-    ранжирует) / пересечение с accept-set → `GoldenSetError`. Опечатка в id иначе тихо разоружила
-    бы разметку: кейс выглядел бы размеченным, не будучи им.
-  - **Гейт — инвариант фикстуры, а не утверждение о стратегии.**
-    `TestWrongPole::test_golden_set_keeps_verified_traps` требует ≥3 кейсов с непустым `trap`.
-    Проверять «ловушка всё ещё выбираема стратегией» было бы соблазнительно и **неверно**: такой
-    гейт краснел бы ровно на том изменении, ради вознаграждения которого набор и правился, требуя
-    от контрибьютора собрать новый живой кейс в самый неудачный момент — предсказуемый исход тут
-    не «набор стал лучше», а «в `trap` дописали наугад, чтобы позеленело». Наблюдение «полюс стал
-    слишком лёгким» приходит из диффа baseline (`wrong→hit`) и заводится как issue, а не как
-    красный CI у того, кто починил прод.
-  - **Что метрика показывает.** Контрфактическая политика «давить `confidence < 0.5`» (#359) на
-    наборе с полюсом даёт 26 → 14 и **не трогает `wrong` вообще** (как был 1, так и остаётся):
-    реальный чужой pick идёт с `confidence=0.9`. Порог по уверенности ортогонален наблюдаемому
-    классу ошибок — вывод, который на наборе без полюса непроверяем
-    (канон — [pipeline.md](pipeline.md#trailer-retrieval-and-selection)).
-  - **Дрейф пулов — не теория.** Повторная запись пула «Крайних мер» через час уже не возвращает
-    пришпиленный `trap`-id. Поэтому `_record` перевалидирует свежий payload **до** `write_text`:
-    иначе файл сохранился бы, а упала бы следующая *загрузка* — у всех, кто просто запустил
-    `pytest`, и без намёка на причину. И поэтому же новый кейс записывается через
-    `--record --golden <scratch>.json` на однокейсовом файле, а не переписыванием фикстуры целиком.
-  - **Вне TMDB-колонки (сознательно).** У `trap`-кейсов `tmdb_videos: []` — единственный способ
-    записать снимок сейчас — `--record-tmdb` по всем 28, то есть та самая разморозка, от которой
-    фикстуры и защищены; `evaluate_tmdb` их пропускает.
+- **Negative pole of the metric: `trap` annotation (#380).** The `Hit +1 / Miss 0 / Wrong −2`
+  scale declares that a trailer for another work is twice as bad as an honest marker — and half
+  the scale is dead when the set has no `wrong`: such a set penalises caution but cannot show
+  "how many wrong picks were prevented" (#327, #359).
+  - **What is annotated.** Three cases with live-recorded pools and a `trap` field — candidate
+    IDs verified (through `videos.list` → channel + description, with the basis in `note`) as
+    being *another work*: a fan Minecraft production named after a series, a namesake horror
+    film, and the `The Rookie` series under the film title `The Amateur`. The strategy currently
+    selects one of them, so the scorecard is not `wrong=0`.
+  - **Why a separate field, not only an accept set.** `correct` says "this ID is correct"; it
+    cannot distinguish "another work" from "a valid dub of the same work that we did not record".
+    `trap` is ground truth about the **pool**, not the outcome, so it survives strategy
+    improvements. The loader fails loudly like the rest of the set: non-list / non-str / ID
+    outside the candidate **pool** (not the union with TMDB — a trap only makes sense among what
+    the strategy ranks) / intersection with the accept set → `GoldenSetError`. A typo in an ID
+    would otherwise silently disarm the annotation: the case would look annotated without being so.
+  - **The gate is a fixture invariant, not a statement about the strategy.**
+    `TestWrongPole::test_golden_set_keeps_verified_traps` requires ≥3 cases with a non-empty
+    `trap`. Checking whether "the trap is still selectable by the strategy" would be tempting
+    and **wrong**: the gate would fail precisely on the change the set was improved to reward,
+    requiring a contributor to collect a new live case at the worst possible time. The predictable
+    outcome would be not "the set became better" but "a random entry was added to `trap` to turn
+    it green". The observation "the pole became too easy" comes from a baseline (`wrong→hit`) diff
+    and becomes an issue, not red CI for the person who fixed production.
+  - **What the metric shows.** The counterfactual policy "suppress `confidence < 0.5`" (#359)
+    yields 26 → 14 on a set with the pole and **does not change `wrong` at all** (it remains 1):
+    the actual wrong pick has `confidence=0.9`. The confidence threshold is orthogonal to the
+    observed error class — a conclusion that cannot be tested on a set without the pole
+    (canonical: [pipeline.md](pipeline.md#trailer-retrieval-and-selection)).
+  - **Pool drift is not theoretical.** Re-recording the "Extreme Measures" pool an hour later no
+    longer returns the pinned `trap` ID. Therefore `_record` revalidates fresh payload **before**
+    `write_text`: otherwise the file would be saved and the next *load* would fail — for anyone
+    who merely ran `pytest`, with no hint of the cause. For the same reason, a new case is recorded
+    through `--record --golden <scratch>.json` on a one-case file, not by rewriting the whole fixture.
+  - **Outside the TMDB column (consciously).** `trap` cases have `tmdb_videos: []` — the only way
+    to record a snapshot now is `--record-tmdb` over all 28, precisely the unfreezing the fixtures
+    are meant to prevent; `evaluate_tmdb` skips them.
 
 - **TMDB dual-source measure (#329).** Beside the `TrailerStrategy` (YouTube-retrieval) column the
   harness prints a second scorecard: `evaluate_tmdb` replays a frozen per-film `tmdb_videos`
@@ -204,7 +204,7 @@ regex, which only checks the two-line *format*) against a **frozen golden-set**
 (`tests/fixtures/summary_golden.json`: GitHub-project input + a recorded summary-under-eval +
 `note`, ≥1 deliberately **unfaithful** case as an audible anchor). It builds RAGAS inputs
 (`contexts` = title+description+language the model actually saw; `answer` = the summary;
-`question` = the fixed «для кого/зачем» intent) and runs RAGAS `faithfulness` (did the summary
+`question` = the fixed "for whom/why" intent) and runs RAGAS `faithfulness` (did the summary
 invent facts absent from the source?) + `answer_relevancy`. `--threshold` gates on mean
 faithfulness (baseline first, tighten later — same *metric-before-optimization* discipline as the
 trailer harness). The loader is fail-loud (§IV/§VI): non-list / empty / missing `input.*` / empty

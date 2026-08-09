@@ -1,26 +1,26 @@
 ---
-description: Довести распланированную issue до PR — ветка, RED→GREEN, docs, CI-гейт, review/fix-цикл
+description: Deliver a planned issue to a PR — branch, RED→GREEN, docs, CI gate, and review/fix loop
 argument-hint: <issue-number>
 ---
 
-# /implement N — довести issue до PR
+# /implement N — deliver an issue to a PR
 
-Claude-интерфейс к ролям `implementer` и `fixer`. Шаги, гейты, exit-коды и правило остановки
-цикла — канон в
+Claude adapter for the `implementer` and `fixer` roles. The steps, gates, exit codes, and loop
+termination rule are canonical in
 [`../../docs/architecture/agent-process.md#deterministic-delivery-flow`](../../docs/architecture/agent-process.md#deterministic-delivery-flow)
-и
+and
 [`../../docs/architecture/agent-process.md#review-gate-verdicts`](../../docs/architecture/agent-process.md#review-gate-verdicts);
-сюда не копируются. Здесь только то, что специфично для этого харнесса.
+and are not copied here. This file contains only harness-specific material.
 
-`$ARGUMENTS` = номер issue.
+`$ARGUMENTS` = issue number.
 
-0. Если сессия тянется с прошлой задачи (issue/PR уже доведён до hand-off) — попроси
-   user'а запустить `/compact` до старта. Сам вызвать не можешь, это built-in CLI.
-1. Пройди delivery flow по канону. План не выдумывай: провалившийся
-   `validate_issue_sections.py` — это возврат к `planner`, а не повод достроить план самому.
-2. Правки файлов — `Edit`/`Write`, не heredoc-скрипт ([mindset](../rules/mindset.md)).
-3. `ci_check.py` и `git push` идут минуты — **один foreground-вызов с поднятым `timeout`**,
-   без фона и без polling-цикла (тайминги и грабли — `CLAUDE.md` §Среда).
-4. Цикл заканчивает **exit-код `python -m scripts.review_gate <PR>`**, а не твоё чтение
-   findings. Действие по каждому вердикту — в §Review-gate verdicts; таблицу сюда не копировать.
-5. На выходе: ссылка на PR, вердикт гейта и явное «merge — твой шаг».
+0. If the session continues from a previous task (an issue/PR already reached hand-off), ask
+   the user to run `/compact` before starting. You cannot invoke it; it is a built-in CLI command.
+1. Follow the canonical delivery flow. Do not invent a plan: a failing
+   `validate_issue_sections.py` returns work to the `planner`; it is not a reason to complete the plan yourself.
+2. Edit files with `Edit`/`Write`, not a heredoc script ([mindset](../rules/mindset.md)).
+3. `ci_check.py` and `git push` take minutes — make **one foreground invocation with an increased `timeout`**,
+   with no background execution or polling loop (timings and pitfalls: `CLAUDE.md` §Environment).
+4. The **exit code of `python -m scripts.review_gate <PR>`** ends the loop, not your reading of
+   findings. Actions for each verdict are in §Review-gate verdicts; do not copy that table here.
+5. On completion, provide the PR link, the gate verdict, and an explicit “merge is your step”.

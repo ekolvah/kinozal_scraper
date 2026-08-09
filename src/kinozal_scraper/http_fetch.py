@@ -1,17 +1,17 @@
-"""Единая точка HTML-fetch для всех пайплайнов.
+"""Single HTML-fetch entry point for every pipeline.
 
-Использует curl_cffi с браузерным TLS-фингерпринтом (impersonate), чтобы
-Cloudflare-fronted источники не отдавали 403 на JA3/JA4-handshake (issue #217).
+Uses curl_cffi with a browser TLS fingerprint (`impersonate`) so Cloudflare-fronted
+sources do not return 403 for the JA3/JA4 handshake (issue #217).
 
-**Замер #358 (2026-07-25) — что уже проверено, не переоткрывать.** Прод-крон
-7 дней подряд ловил 403 на soldoutticketbox.com. Инструментальная проверка тем же
-`curl_cffi`: локально (residential IP) `impersonate="chrome"` → 200, без него → 403,
-`chrome124`/`chrome131` → те же 200; в CI (датацентровый IP GitHub Actions) → 403.
-В теле блока нет ни `cdn-cgi/challenge-platform`, ни turnstile. Отсюда: TLS-фингерпринт
-(#217) исправен, **пин свежей impersonate-версии ничего не даёт**, **Playwright бесполезен**
-(решать нечего — это плоский WAF-отказ, а не JS-челлендж). Причина — репутация
-датацентрового IP (bot score), лечится только другим egress'ом. Поэтому здесь живёт
-`describe_block`: без заголовков/тела ответа выбор лечения был бы гаданием.
+**Measurement #358 (2026-07-25)—do not reopen verified work.** Production cron
+received 403 from soldoutticketbox.com for seven days. With the same `curl_cffi`, a
+residential IP with `impersonate="chrome"` returned 200 and without it 403;
+`chrome124`/`chrome131` also returned 200, while GitHub Actions datacenter IPs returned
+403. The block body has neither `cdn-cgi/challenge-platform` nor Turnstile. Therefore
+the TLS fingerprint fix (#217) works, pinning a newer impersonation does not help, and
+Playwright is useless: this is a flat WAF rejection, not a JS challenge. Datacenter IP
+reputation (bot score) requires different egress. `describe_block` records headers/body
+because choosing a remedy without them would be guesswork.
 """
 
 from __future__ import annotations
@@ -42,11 +42,10 @@ _BODY_PREFIX_LIMIT = 200
 def _header(headers: Any, name: str) -> str:
     """Case-insensitive header read that tolerates a missing/odd mapping.
 
-    Сканирует `items()`, а не `.get(name)`: curl_cffi `Headers` регистронезависим
-    сам (проверено на реальном `Response`), но `describe_block` типизирован под
-    любой mapping, и его контракт не должен зависеть от того, в каком регистре
-    ключи положил вызывающий. Total by construction (`getattr` + falsy-default),
-    never `try/except` — see `describe_block`."""
+    Scan `items()` rather than `.get(name)`: curl_cffi `Headers` is case-insensitive
+    itself (verified on a real `Response`), but `describe_block` accepts any mapping,
+    so its contract must not depend on the key case supplied by its caller. Total by
+    construction (`getattr` + falsy default), never `try/except`; see `describe_block`."""
     items = getattr(headers, "items", None)
     if items is None:
         return ""
@@ -56,21 +55,20 @@ def _header(headers: Any, name: str) -> str:
 def describe_block(status_code: int, headers: Any, body: str) -> str:
     """One-line operator-facing evidence for an HTTP failure (#358).
 
-    Собирает то, по чему выбирается лечение анти-бот-блока: статус, `cf-ray`
-    (идентификатор запроса на edge — разный на каждой попытке, поэтому строка
-    пишется per-attempt), `cf-mitigated` (собственная классификация Cloudflare:
-    `challenge` = managed challenge), Cloudflare error code, `<title>` ответа и
-    размер тела.
+    Collects evidence used to choose an anti-bot-block remedy: status, `cf-ray`
+    (an edge request identifier that varies per attempt, hence per-attempt logging),
+    `cf-mitigated` (Cloudflare's own classification: `challenge` = managed challenge),
+    Cloudflare error code, response `<title>`, and body size.
 
-    `<title>`, а не префикс тела: у настоящей блок-страницы первые ~200 символов —
-    `<!DOCTYPE html> <!--[if lt IE 7]>…`, то есть диагностически пусты, а полезное
-    (`Attention Required! | Cloudflare`) лежит в заголовке документа. Префикс тела
-    остаётся fallback'ом для страниц без `<title>`.
+    Use `<title>`, not body prefix: a real block page starts with roughly 200
+    diagnostically empty characters such as `<!DOCTYPE html> <!--[if lt IE 7]>…`,
+    while useful text (`Attention Required! | Cloudflare`) is in its document title.
+    The body prefix remains fallback for pages without `<title>`.
 
-    **Тотальна по конструкции и намеренно без `try/except`**: любой аргумент может
-    быть пустым/странным, но все операции (`.get`, regex, слайсы) на этом не падают.
-    Обёртка `except: return ""` здесь была бы §IV-нарушением — диагностика сбоя,
-    которая сама молча глотает сбой.
+    **Total by construction and deliberately without `try/except`**: every argument
+    may be empty or odd, but all operations (`.get`, regex, slices) tolerate that.
+    An `except: return ""` wrapper would violate §IV: failure diagnostics must not
+    silently swallow their own failure.
     """
     parts = [str(status_code)]
     parts.extend(
@@ -96,16 +94,16 @@ def _get_once(url: str, **kwargs: Any) -> requests.Response:
     Two retry schedules now wrap this same body — the fast one and soldout's
     patient one — and each wraps it as a plain decorator call for that reason.
 
-    Диагностика висит на `except HTTPError`, а не на `if status >= 400`: «что есть
-    ошибка» решает сам curl_cffi, happy-path не трогается, и лог привязан к точке
-    отказа. `raise` без аргументов — исключение уходит наружу неизменным (#358: лог
-    additive, не подменяет сбой)."""
+    Diagnostics attach to `except HTTPError`, not `if status >= 400`: curl_cffi decides
+    what is an error, the happy path remains untouched, and logging is tied to failure.
+    Bare `raise` propagates the original exception unchanged (#358: logging is additive,
+    not a replacement failure)."""
     resp = requests.get(url, **kwargs)
     try:
         resp.raise_for_status()
     except HTTPError:
-        # decode(errors="replace") вместо resp.text: тело блок-страницы уже прочитано
-        # в память, а битая кодировка не должна ронять диагностику сбоя.
+        # Use `decode(errors="replace")` rather than `resp.text`: the block-page body is
+        # already in memory, and broken encoding must not crash failure diagnostics.
         body = resp.content.decode("utf-8", "replace") if resp.content else ""
         logger.warning(
             "[http_fetch] %s %s", url, describe_block(resp.status_code, resp.headers, body)

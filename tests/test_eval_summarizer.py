@@ -1,15 +1,14 @@
-"""RED tests for #347: RAGAS-eval суммаризатора (faithfulness / answer_relevancy).
+"""RED tests for #347: RAGAS evaluation of the summarizer (faithfulness / answer_relevancy).
 
-Заменяет regex `response_pattern` (vibe-check ФОРМАТА) на измеримую оценку СМЫСЛА:
-не выдумал ли `summary_ru` фактов сверх описания проекта (faithfulness) и отвечает ли
-он на «для кого/зачем» (answer_relevancy).
+Replaces regex `response_pattern` (a FORMAT vibe check) with measurable assessment of MEANING:
+whether `summary_ru` invented facts beyond the project description (faithfulness) and whether it
+answers “for whom/why” (answer_relevancy).
 
-`ragas.evaluate` — внешняя библиотечная граница (§II): изолирована в тонком шве
-`_evaluate_dataset` (единственное, что мокается). Сборка инпутов (`build_ragas_inputs`)
-и нормализация ragas-output (`normalize_ragas_output`) — ЧИСТЫЕ, тестируются прямо, а не
-из-под мока (фрагильный version-drift mapping не должен прятаться за границей). Живой
-судья RAGAS в этих тестах НЕ вызывается (нет ключа/токенов) — baseline снимается
-отдельным live-прогоном, не в CI.
+`ragas.evaluate` is an external library boundary (§II), isolated behind the thin
+`_evaluate_dataset` seam (the only mocked item). Input construction (`build_ragas_inputs`)
+and RAGAS-output normalization (`normalize_ragas_output`) are PURE and tested directly, not
+under a mock (fragile version-drift mapping must not hide behind the boundary). These tests do NOT
+invoke the live RAGAS judge (no key/tokens)—the baseline comes from a separate live run, not CI.
 """
 
 from __future__ import annotations
@@ -60,19 +59,19 @@ class TestLoadGoldenSet:
             load_golden_set(_write(tmp_path, {"not": "a list"}))
 
     def test_rejects_empty_summary(self, tmp_path: Path) -> None:
-        # Пустой summary нельзя тихо мерить faithfulness'ом — fail-loud (§IV).
+        # An empty summary must not be silently measured for faithfulness—fail loudly (§IV).
         bad = {**_VALID_CASE, "summary": "   "}
         with pytest.raises(GoldenSetError):
             load_golden_set(_write(tmp_path, [bad]))
 
     def test_rejects_missing_input_field(self, tmp_path: Path) -> None:
-        # Кейс без input.description → GoldenSetError, не тихий скип.
+        # A case without input.description → GoldenSetError, not a silent skip.
         bad = {"input": {"title": "foo"}, "summary": "s", "note": ""}
         with pytest.raises(GoldenSetError):
             load_golden_set(_write(tmp_path, [bad]))
 
     def test_shipped_fixture_is_valid(self) -> None:
-        # Замороженный golden-set в репо грузится без ошибок (structure-drift guard).
+        # The repository's frozen golden set loads without errors (structure-drift guard).
         cases = load_golden_set(GOLDEN_PATH)
         assert cases, "shipped golden-set must be non-empty"
 
@@ -89,13 +88,13 @@ class TestBuildRagasInputs:
         rows = build_ragas_inputs([case])
         assert len(rows) == 1
         row = rows[0]
-        # answer = summary под оценкой.
+        # answer = the summary under evaluation.
         assert row["answer"] == "Для кого: X\nЗачем: Y"
-        # contexts = источник, который модель реально видела (title+description+language).
+        # contexts = source the model actually saw (title+description+language).
         assert isinstance(row["contexts"], list)
         ctx = row["contexts"][0]
         assert "foo-lib" in ctx and "bar baz" in ctx and "Python" in ctx
-        # question = фиксированный интент суммаризации, непустой.
+        # question = fixed, non-empty summarization intent.
         assert row["question"]
 
     def test_language_optional_absent(self) -> None:
@@ -106,7 +105,7 @@ class TestBuildRagasInputs:
 
 class TestNormalizeRagasOutput:
     def test_maps_ragas_result_to_rowscores(self) -> None:
-        # Сырой per-row вывод ragas (list[dict]) → list[RowScore] (чистый mapping).
+        # Raw per-row RAGAS output (list[dict]) → list[RowScore] (pure mapping).
         raw = [
             {"faithfulness": 0.9, "answer_relevancy": 0.8},
             {"faithfulness": 0.5, "answer_relevancy": 1.0},
@@ -117,7 +116,7 @@ class TestNormalizeRagasOutput:
         ]
 
     def test_missing_metric_is_visible_error(self) -> None:
-        # ragas не посчитал метрику → видимая аномалия (§IV), не тихий 0.
+        # RAGAS did not calculate a metric → visible anomaly (§IV), not a silent 0.
         with pytest.raises(GoldenSetError):
             normalize_ragas_output([{"faithfulness": 0.9}])
 
@@ -133,7 +132,7 @@ class TestScorecard:
 class TestMain:
     def test_threshold_below_exits_1(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         golden = _write(tmp_path, [_VALID_CASE, _VALID_CASE])
-        # Граница §II: живой судья замокан на низкий faithfulness — ragas не импортируется.
+        # §II boundary: the live judge is mocked with low faithfulness—RAGAS is not imported.
         monkeypatch.setattr(
             "scripts.eval_summarizer._evaluate_dataset",
             lambda rows: [{"faithfulness": 0.2, "answer_relevancy": 0.9} for _ in rows],

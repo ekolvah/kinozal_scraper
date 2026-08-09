@@ -1,38 +1,37 @@
-# Mindset — операционный режим агента в этом репо
+# Mindset — agent operating mode in this repository
 
-**На какой вопрос отвечает этот файл:** какие токен-тактики специфичны для Claude-харнесса
-в main-сессии этого репо. **Принцип, цель-функцию или процедурное правило сюда не
-перефразируй — только ссылайся.**
+**Question this document answers:** which token tactics are specific to the Claude harness
+in this repository’s main session. **Do not paraphrase a principle, goal function, or procedural rule here—link to it only.**
 
-Always-load (без `paths:`): тактики нужны в любой сессии, не только при работе с тестами.
+Always-load (without `paths:`): the tactics are needed in every session, not only when working with tests.
 
-## Что где лежит
+## Where things live
 
-- **Цель-функция** (три приоритета) и «скрипты > инструкции» —
+- **Goal function** (three priorities) and “scripts > instructions” —
   [`../../docs/architecture/principles.md#goal-function`](../../docs/architecture/principles.md#goal-function).
-- **Принципы §I–VII** — [`principles.md`](../../docs/architecture/principles.md):
+- **Principles §I–VII** — [`principles.md`](../../docs/architecture/principles.md):
   root cause → §V, visibility → §IV, test-first → §I, simplicity/minimal-diff → §VII.
-- **Процедура** (роли, ветка, PR-дисциплина, гейты, planner runbook, контракт
-  architect-review) — [`agent-process.md`](../../docs/architecture/agent-process.md).
-- **Тесты**: сверься с [`testing.md`](testing.md) **до выбора уровня теста** — он
-  path-scoped (`tests/**`) и может подгрузиться уже после того, как стратегия выбрана.
+- **Procedure** (roles, branch, PR discipline, gates, planner runbook, and architect-review
+  contract) — [`agent-process.md`](../../docs/architecture/agent-process.md).
+- **Tests**: consult [`testing.md`](testing.md) **before choosing the test level**—it is
+  path-scoped (`tests/**`) and may load only after the strategy has been chosen.
 
-## Токен-тактики Claude-харнесса (дом здесь)
+## Claude harness token tactics (their home is here)
 
-- **Чтение файлов**: `Grep` или `Read` с `offset/limit` под нужный фрагмент *до* whole-file
-  `Read`. Whole-file — только когда нужен весь файл (особенно дорого перед компакцией).
-- **Spawn субагента**: только при >3 round-trip исследования на тему ИЛИ независимой параллельной
-  задаче. Для одиночного `Grep`/`Read` cold-start агента дороже прямого вызова.
-- **`TodoWrite`**: только если задача реально ≥3 шага и есть риск потерять контекст; однокшаговая
-  / линейная правка — без него.
-- **Коротко по умолчанию — и в ответе, и в файле на диске**: развёрнутый разбор только когда
-  явно нужен; в `.md` — по существу, без дублирующих саммари-секций и boilerplate. Инструкция
-  нужна явная: понижение `effort` режет объём размышления, а не видимого ответа.
-- **`MEMORY.md`**: сверяться с индексом в начале сессии прежде чем заново «открывать» факт
-  (verify-before-act для устаревающих фактов).
-- **Ожидание долгой команды**: один foreground-вызов с явно поднятым `timeout`. Цикл
-  `sleep`/повторных `Read` файла-вывода запрещён (`Bash(sleep:*)` в `permissions.deny`) — каждый
-  холостой ход перепрогоняет весь контекст сессии. Фон — только когда команда заведомо
-  перерастает потолок Bash-тула. Тайминги конкретных команд — `CLAUDE.md` §Среда.
-- **Правки файлов — `Edit`/`Write`, не heredoc-скрипт** (`python - <<'PY'`): харнесс втягивает
-  изменённый файл в контекст и держит его там до конца сессии.
+- **Reading files**: use `Grep` or `Read` with an `offset/limit` for the needed fragment *before* a whole-file
+  `Read`. Read the whole file only when it is needed (especially expensive before compaction).
+- **Spawning a subagent**: only for research requiring >3 round trips on a topic OR an independent parallel
+  task. A cold-start agent costs more than a direct call for a single `Grep`/`Read`.
+- **`TodoWrite`**: only if the task truly has ≥3 steps and context loss is likely; do not use it for a single-step
+  or linear edit.
+- **Be concise by default—in the response and in files on disk**: provide extensive analysis only when explicitly
+  needed; `.md` files should stay substantive, without duplicate summary sections or boilerplate. An explicit instruction
+  is needed: lowering `effort` reduces reasoning volume, not the visible response.
+- **`MEMORY.md`**: consult the index at session start before re-“discovering” a fact
+  (verify-before-act for stale facts).
+- **Waiting for a long command**: make one foreground invocation with a clearly increased `timeout`. A loop of
+  `sleep`/repeated `Read` operations on an output file is forbidden (`Bash(sleep:*)` in `permissions.deny`)—every
+  idle iteration reprocesses the entire session context. Use the background only when the command is known to exceed
+  the Bash tool limit. Command-specific timings are in `CLAUDE.md` §Environment.
+- **Edit files with `Edit`/`Write`, not a heredoc script** (`python - <<'PY'`): the harness draws the changed
+  file into context and retains it until the session ends.

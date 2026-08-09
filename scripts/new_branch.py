@@ -27,13 +27,13 @@ def is_valid_branch_name(name: str) -> bool:
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, check=True, text=True, capture_output=capture, encoding="utf-8")
-    # Раньше здесь `stdout=None` нормализовался в `""` — как причуда Windows (#109).
-    # #364 показал, что это симптом умершего на декодировании потока-читателя, и
-    # причину закрыл. Теперь `None` при запрошенном захвате означает настоящий отказ
-    # захвата, и нормализация подменяла бы его пустотой: `_prune_gone_branches`
-    # рапортовал бы «pruned: 0 merged branches» — неотличимо от честного «нечего
-    # удалять», хотя список веток не был получен вовсе (#410).
-    # Без `capture` `None` штатен: вывод идёт в консоль, декодировать нечего.
+    # `stdout=None` used to normalize to `""` as a Windows quirk (#109).
+    # #364 showed this is a symptom of a decoding reader that died, and closed the cause.
+    # With requested capture, None now means genuine capture failure,
+    # and normalization would replace it with emptiness: `_prune_gone_branches`
+    # would report “pruned: 0 merged branches,” indistinguishable from an honest “nothing
+    # to delete,” although the branch list was never obtained (#410).
+    # Without `capture`, None is normal: output goes to the console and needs no decoding.
     if capture and result.stdout is None:
         raise RuntimeError(f"capture failed for `{' '.join(cmd)}` (rc={result.returncode})")
     return result
@@ -69,10 +69,10 @@ def _prune_gone_branches() -> None:
         if result.returncode == 0:
             pruned += 1
         else:
-            # Проверка на месте, а не в `_run`: этот вызов идёт мимо seam'а
-            # намеренно — там прибит `check=True`, а `git branch -d` имеет право
-            # падать (непомерженная ветка). Без неё сломанный захват дал бы
-            # `AttributeError` вместо диагностики (#410).
+            # Check here rather than in `_run`: this call intentionally bypasses its seam,
+            # which fixes `check=True`, while `git branch -d` may legitimately
+            # fail for an unmerged branch. Without it, failed capture would cause
+            # `AttributeError` instead of diagnostics (#410).
             detail = "capture failed" if result.stderr is None else result.stderr.strip()
             skipped += 1
             print(f"warn: kept {branch} ({detail})", file=sys.stderr)

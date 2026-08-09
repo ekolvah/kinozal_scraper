@@ -1,44 +1,41 @@
 """Anti-drift guards for the local agent surface (`.claude/agents/*.md`, #392).
 
-Статический гард без сети и кредов — жанр `tests/test_agent_review_workflow.py`
-(#374, cloud-половина того же дефекта) и `tests/test_settings_deny.py`.
+A static guard without network or credentials—of the same genre as `tests/test_agent_review_workflow.py`
+(#374, the cloud half of the same defect) and `tests/test_settings_deny.py`.
 
-**Что стережём.** `model: opus` — это АЛИАС, а не id: по доке Claude Code
-(https://code.claude.com/docs/en/sub-agents, §Choose a model) поле принимает алиас
-(`sonnet`/`opus`/`haiku`/`fable`), полный id (`claude-opus-5`) или `inherit`
-(дефолт при отсутствии поля). С релизом Opus 5 plan-стадийный ревьюер переехал на
-другую модель без строчки в диффе — §IV: смена неотличима от её отсутствия.
-`effort` (там же, таблица frontmatter-полей; значения `low|medium|high|xhigh|max`)
-по умолчанию **наследуется от сессии**, поэтому без явного пина строгость
-plan-гейта зависит от того, в какой сессии его вызвали — невоспроизводимо между
-контрибьюторами.
+**What is guarded.** `model: opus` is an ALIAS, not an ID: according to Claude Code documentation
+(https://code.claude.com/docs/en/sub-agents, §Choose a model), the field accepts an alias
+(`sonnet`/`opus`/`haiku`/`fable`), a full ID (`claude-opus-5`), or `inherit`
+(the default when the field is absent). With the release of Opus 5, the plan-stage reviewer moved to
+another model without a line in the diff—§IV: the change is indistinguishable from its absence.
+`effort` (same source, frontmatter-field table; values `low|medium|high|xhigh|max`)
+**inherits from the session** by default, so without an explicit pin the strictness of
+the plan gate depends on the session in which it was invoked—non-reproducible across
+contributors.
 
-**Denylist общий с cloud-гардом** — `tests/_model_pin_policy.py`. Держать копии в
-двух файлах было ошибкой первой версии: наборы уже разошлись (`fable` был здесь и
-отсутствовал там). Это denylist, поэтому объединение строго консервативнее — может
-только отвергнуть лишнее, но не пропустить.
+**The denylist is shared with the cloud guard**—`tests/_model_pin_policy.py`. Keeping copies in
+two files was an error in the first version: the sets had already diverged (`fable` was here and
+absent there). This is a denylist, so their union is strictly more conservative—it can
+only reject too much, not allow too much.
 
-**Границы гарда, честно.** Frontmatter стережётся полностью; тело промпта — по той
-же форме, что и cloud-половина (`TestCoverageFirstPrompt` ниже): наличие
-coverage-first контракта + отсутствие снятых формулировок подавления. Что НЕ
-ловится — **семантическая перефразировка** фильтра («будь избирателен», «пиши
-только про важное»): её exit-code не проверяет ни здесь, ни в #374. Эта остаточная
-дыра записана в ledger
+**Guard boundaries, honestly.** Frontmatter is guarded in full; the prompt body follows the
+same form as the cloud half (`TestCoverageFirstPrompt` below): presence of a
+coverage-first contract + absence of removed suppression wording. What is NOT caught is a
+**semantic paraphrase** of the filter (“be selective”, “write only about important things”): no exit code
+checks it here or in #374. This residual gap is recorded in the ledger
 [`coverage-gaps.md`](../docs/architecture/coverage-gaps.md),
-чтобы отказ не переоткрыли как work-for-work.
+so the rejection is not reopened as work-for-work.
 
-**Два разных скоупа — это не небрежность (#407).** Инварианты frontmatter
-(`model`, `effort`) применяются к **каждому** агенту: пин обязателен всем, и
-производность от glob нужна ровно затем, чтобы следующий агент попал под правило
-автоматически, а не через ручной список, который забудут дополнить.
-Промпт-контракт (`TestCoverageFirstPrompt`) — наоборот, только к тем, кто
-**возвращает findings**: требовать `confidence`/`blocking` от агента, который их не
-возвращает, значит гарантировать, что контрибьютор ослабит тест, а не добавит
-осмысленный контракт. Зачисление идёт по свойству файла, а не по имени: #372
-планирует `code-critic`, и суффикс `*-reviewer` молча НЕ зачислил бы настоящего
-ревьюера — обмен видимой ловушки на тихую.
+**Two different scopes are not carelessness (#407).** Frontmatter invariants
+(`model`, `effort`) apply to **every** agent: every one needs a pin, and deriving the set from a glob is
+precisely so the next agent enters the rule automatically rather than through a manual list someone will forget
+to extend. The prompt contract (`TestCoverageFirstPrompt`), by contrast, applies only to those that
+**return findings**: requiring `confidence`/`blocking` from an agent that does not return them
+guarantees a contributor will weaken the test rather than add a meaningful contract. Enrollment is by
+file property, not name: #372 plans `code-critic`, and the `*-reviewer` suffix would silently NOT
+enroll a real reviewer—trading a visible trap for a silent one.
 
-Сегодня агент в репо ровно один, так что оба скоупа профилактические.
+Today the repository has exactly one agent, so both scopes are preventive.
 """
 
 from __future__ import annotations
@@ -53,52 +50,36 @@ from _model_pin_policy import UNPINNED_MODEL_VALUES
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _AGENTS_DIR = _REPO_ROOT / ".claude" / "agents"
 
-# Дом контракта findings после #452: он общий для ролей, поэтому переехал из промпта
-# Claude-сабагента в provider-neutral канон. Гард обязан ехать за каноном — иначе он
-# стережёт копию, а не правило.
+# Since #452, the provider-neutral process document is the findings-contract home.
 _CANONICAL_FINDINGS_HOME = _REPO_ROOT / "docs" / "architecture" / "agent-process.md"
 
-# Формулировки, снятые в #392 как скрытый severity-фильтр. Гард на ИЗВЕСТНУЮ форму
-# дефекта — тот же жанр, что проверка gag-строки `no blocking issues` в
-# `test_agent_review_workflow.py`. Регексп «любой императив в начале строки» здесь
-# не годится: промпт русскоязычный, и легитимные инструкции тоже начинаются с «Не»
-# («Не дублируй работу cloud agent-review» — это разграничение зон, не подавление).
-_REMOVED_SUPPRESSION = ("не раздувай", "беспощаден", "краткость по умолчанию")
+# Known suppression phrases removed in #392; this denylist is intentionally exact.
+_REMOVED_SUPPRESSION = ("do not inflate", "ruthless", "brevity by default")
 
-# Набор апстримный (дока Claude Code, таблица frontmatter-полей). Это копия, то есть
-# потенциальный дрейф — держим осознанно, потому что опечатка в значении
-# игнорируется молча. Forcing-function: красный тест здесь = сверься с докой,
-# набор мог измениться; не «поправь тест под файл».
+# Upstream frontmatter values. Verify documentation on failure rather than
+# adjusting this copied set to the file under test.
 _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
-# Секция, которой файл объявляет, что описывает findings по корзинам severity.
-# Именно её наличие делает coverage-first контракт осмысленным — поэтому зачисление
-# идёт по ней, а не по имени файла (см. `TestFindingsContractScope`). Набор маркеров
-# закрыт и двуязычен по той же причине, что в `test_doc_headers.py`: канон переехал
-# в англоязычный `agent-process.md`, а промпт сабагента остался русским (#452).
-_FINDINGS_SECTIONS = ("## Формат ответа", "### Findings format")
+# A findings-format section enrolls a file in the grading contract by property.
+_FINDINGS_SECTIONS = ("### Findings format",)
 
 
 def declares_findings_contract(body: str) -> bool:
-    """Декларирует ли файл, что описывает контракт findings (и значит связан им)."""
+    """Whether a file declares, and is bound by, the findings contract."""
     return any(section in body for section in _FINDINGS_SECTIONS)
 
 
 def _agent_files() -> list[Path]:
-    # rglob, не glob: Claude Code сканирует `.claude/agents/` рекурсивно, поэтому
-    # агент в подпапке был бы вне инварианта — и `test_agent_files_are_actually_scanned`
-    # остался бы зелёным за счёт файла верхнего уровня, то есть тот самый тихий
-    # вакуум, против которого он и написан, просто одной директорией глубже.
+    # Claude Code scans recursively, so the invariant must use `rglob` as well.
     return sorted(_AGENTS_DIR.rglob("*.md"))
 
 
 def _body(path: Path) -> str:
-    """Тело промпта без frontmatter — либо весь файл, если frontmatter'а нет.
+    """Return prompt content without frontmatter, or the full file if absent.
 
-    Канонический док (`_CANONICAL_FINDINGS_HOME`) frontmatter не несёт, и старая
-    безусловная `partition` вернула бы на нём пустую строку: файл молча выпал бы
-    из обеих проверок ниже, оставив их зелёными (§IV).
+    The canonical process document has no frontmatter and must not collapse to an
+    empty body through unconditional partitioning (§IV).
     """
     text = path.read_text(encoding="utf-8")
     if not text.startswith("---"):
@@ -107,18 +88,16 @@ def _body(path: Path) -> str:
 
 
 def _suppression_scope() -> list[Path]:
-    """Denylist снятых формулировок — по КАЖДОМУ исполняемому промпту плюс канон.
+    """Apply the suppression denylist to every prompt plus the canonical home.
 
-    Расширение denylist'а строго консервативно: он может только отвергнуть лишнее.
-    Скоуп нельзя сужать до «файлов, декларирующих контракт»: после переезда контракта
-    (#452) промпт сабагента его не декларирует, и «будь краток» вернулось бы в
-    исполняемый файл, не покраснив ничего (#392).
+    The broader scope is conservative and prevents wording from returning to an
+    executable prompt after the contract itself moved in #452.
     """
     return [*_agent_files(), _CANONICAL_FINDINGS_HOME]
 
 
 def _findings_agents() -> list[Path]:
-    """Файлы, связанные контрактом findings, — подмножество, не все (#407)."""
+    """Return the subset of files bound by the findings contract (#407)."""
     return [path for path in _suppression_scope() if declares_findings_contract(_body(path))]
 
 
@@ -135,9 +114,9 @@ def _frontmatter(path: Path) -> dict[str, Any]:
 
 class TestAgentModelPinned:
     def test_agent_files_are_actually_scanned(self) -> None:
-        """Гард на пустой glob: без него переименование/переезд `.claude/agents/`
-        делает оба инварианта ниже вакуумно-зелёными, и «нечего проверять»
-        становится неотличимо от «всё в порядке» (§IV)."""
+        """Guard against an empty glob: without it, renaming or moving `.claude/agents/`
+        leaves both invariants below vacuously green, and “nothing to check” becomes
+        indistinguishable from “everything is fine” (§IV)."""
         assert _agent_files(), f"no agent definitions found under {_AGENTS_DIR}"
 
     @pytest.mark.parametrize("path", _agent_files(), ids=lambda p: p.name)
@@ -169,57 +148,56 @@ class TestAgentModelPinned:
 
 
 class TestFindingsContractScope:
-    """Зачисление под промпт-контракт — по свойству файла, не по имени (#407).
+    """Enroll files under the prompt contract by file property, not filename (#407).
 
-    Имя (`*-reviewer`) было бы худшим признаком: #372 планирует агента `code-critic`,
-    то есть настоящий ревьюер НЕ попал бы под контракт и остался бы молча
-    незащищённым. Свойство «декларирует секцию формата findings» тянется за тем
-    самым, что делает контракт осмысленным."""
+    A name (`*-reviewer`) would be the worse signal: #372 plans the `code-critic` agent,
+    so a real reviewer would NOT enter the contract and remain silently
+    unprotected. The property “declares a findings-format section” follows what
+    makes the contract meaningful.
+    """
 
     def test_body_without_findings_section_is_not_enrolled(self) -> None:
-        body = "Ты ищешь файлы по репозиторию и возвращаешь пути.\n\n## Когда вызван\n\nВсегда.\n"
+        body = "You find repository files and return paths.\n\n## Invocation\n\nAlways.\n"
         assert not declares_findings_contract(body)
 
     def test_body_with_findings_section_is_enrolled(self) -> None:
-        body = "Ты ревьюишь план.\n\n## Формат ответа\n\n- **BLOCKING** — …\n"
+        body = "You review a plan.\n\n### Findings format\n\n- **BLOCKING** — ...\n"
         assert declares_findings_contract(body)
 
 
 class TestCoverageFirstPrompt:
-    """Тело промпта: контракт «градация вместо фильтрации» (#392, acceptance #4).
+    """Prompt body: the “grade rather than filter” contract (#392, acceptance #4).
 
-    Зеркало `TestCoverageFirstPrompt` из `tests/test_agent_review_workflow.py`:
-    там cloud-ревьюер, здесь локальный plan-ревьюер, дефект один и тот же —
-    инструкция «покороче» конвертирует слабую находку в отсутствие находки, а не в
-    низкую severity (подтверждено самим ревьюером на прямой вопрос, #392).
+    Mirrors `TestCoverageFirstPrompt` in `tests/test_agent_review_workflow.py`:
+    there it is a cloud reviewer and here a local plan reviewer; the defect is the same—
+    an instruction to be “shorter” converts a weak finding into no finding rather than
+    low severity (confirmed by the reviewer when directly asked, #392).
 
-    **Substance-гард, а не косметика:** пин модели — одна строка, а содержание
-    правки — именно переписанный промпт; без этих тестов поведенческое изменение
-    ехало бы вообще без покрытия.
+    **Substance guard, not cosmetics:** the model pin is one line, while the change’s
+    substance is the rewritten prompt; without these tests the behavior change has no coverage.
 
-    **Два скоупа внутри класса** (#452). Grading-контракт (`confidence`/`blocking`) —
-    к файлу, который контракт **декларирует**: требовать его от промпта, который
-    findings не описывает, значит заставить контрибьютора ослабить тест. Denylist
-    снятых формулировок — к `_suppression_scope()`, то есть ко всем исполняемым
-    промптам плюс канону: он может только отвергнуть лишнее, и сужать его до
-    декларантов значило бы выпустить «будь краток» обратно в промпт сабагента."""
+    **Two scopes within the class** (#452). The grading contract (`confidence`/`blocking`) applies
+    to the file that **declares** it: requiring it of a prompt that does not describe findings forces
+    a contributor to weaken the test. The denylist of removed phrases applies to `_suppression_scope()`,
+    i.e. all executed prompts plus canonical source: it can only reject excess, and narrowing it to
+    declarers would release “be brief” back into the subagent prompt."""
 
     def test_scope_is_not_empty(self) -> None:
-        """§IV на суженном списке: сузить — не значит позволить ему тихо схлопнуться
-        в ноль. Без этого переименование секции формата обнуляет весь класс, и
-        «никого не проверяем» становится неотличимо от «все прошли»."""
+        """§IV on a narrowed list: narrowing does not permit silently collapsing it to zero.
+        Without this, renaming the format section empties the class and “we check nobody”
+        becomes indistinguishable from “everyone passed.”"""
         assert _findings_agents(), (
             "nothing declares a findings contract — either a section header "
             f"({_FINDINGS_SECTIONS}) drifted or the scope collapsed silently (#407)"
         )
 
     def test_findings_contract_scope_covers_the_canonical_home(self) -> None:
-        """Гард едет за каноном, а не остаётся стеречь опустевший промпт (#452).
+        """The guard follows the canonical source rather than guarding an emptied prompt (#452).
 
-        После переезда контракта в `agent-process.md` исполняемый промпт сабагента
-        перестал его декларировать. Если бы denylist ехал только по декларантам,
-        снятая формулировка вернулась бы в промпт молча, а `test_scope_is_not_empty`
-        зеленел бы за счёт дока — дыра под галочкой."""
+        After moving the contract to `agent-process.md`, the executed subagent prompt stopped
+        declaring it. If the denylist ran only over declarers, the removed phrase would silently
+        return to the prompt while `test_scope_is_not_empty` stayed green because of a document—
+        a hole beneath a checkmark."""
         assert _CANONICAL_FINDINGS_HOME in _findings_agents(), (
             f"{_CANONICAL_FINDINGS_HOME.name} no longer declares the findings contract"
         )

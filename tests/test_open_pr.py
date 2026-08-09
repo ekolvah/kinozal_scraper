@@ -1,13 +1,13 @@
-"""RED tests for #320: `open_pr.py` — надёжная автолинковка PR→issue.
+"""RED tests for #320: `open_pr.py`—reliable PR→issue automatic linking.
 
-Провал #319: PR не закрыл issue #140 (русское «Закрывает» GitHub не парсит; squash
-выбросил `(closes #N)` из тела коммита). Фикс — детерминированно строить английский
-`Closes #N` в теле PR (переживает squash) + после create читать `closingIssuesReferences`
-и падать видимым сбоем (§IV), если линковка пуста.
+Failure #319: the PR did not close issue #140 (GitHub does not parse Russian “Closes”; squash
+dropped `(closes #N)` from the commit body). The fix is to deterministically build English
+`Closes #N` in the PR body (survives squash) + read `closingIssuesReferences` after create
+and fail visibly (§IV) if the linkage is empty.
 
-`gh`/`git` — внешняя граница, мокаются через `subprocess.run` seam (§II — не мок
-внутренней логики). `closingIssuesReferences` парсится толерантно к обеим формам —
-плоский CLI-массив и `.nodes`-обёртка (см. `TestHasClosingReference`).
+`gh`/`git` are the external boundary, mocked through the `subprocess.run` seam (§II—not a mock
+of internal logic). `closingIssuesReferences` is parsed tolerantly in both forms—the
+flat CLI array and the `.nodes` wrapper (see `TestHasClosingReference`).
 """
 
 from __future__ import annotations
@@ -54,16 +54,16 @@ class TestEnsureClosesLine:
         assert result.count("Closes #320") == 1
 
     def test_leaves_other_closes_untouched(self) -> None:
-        # Скрипт только ДОБАВЛЯЕТ свою строку, не переписывает чужой текст: legit
-        # `Closes #999` (мульти-issue PR) сохраняется, наш `Closes #320` добавлен.
+        # The script only ADDS its line; it does not rewrite another author's text: an existing
+        # `Closes #999` (multi-issue PR) is preserved, and our `Closes #320` is added.
         body = "## Summary\n\nCloses #999\n"
         result = ensure_closes_line(body, 320)
         assert "Closes #320" in result
         assert "#999" in result
 
     def test_bare_placeholder_left_inert(self) -> None:
-        # Голый `Closes #` из шаблона GitHub игнорит (нет номера) — не трогаем его
-        # regex-хирургией, просто добавляем свою строку с номером.
+        # A bare `Closes #` from the GitHub template is ignored (there is no number)—do not alter it
+        # with regexp surgery; simply add our line with the number.
         body = "## Summary\n\nCloses #\n"
         result = ensure_closes_line(body, 320)
         assert "Closes #320" in result
@@ -71,17 +71,17 @@ class TestEnsureClosesLine:
 
 class TestHasClosingReference:
     def test_true_when_flat_array(self) -> None:
-        # Текущая CLI-форма: плоский массив без `.nodes`.
+        # Current CLI form: a flat array without `.nodes`.
         payload = json.dumps({"closingIssuesReferences": [{"number": 320, "url": "https://x/320"}]})
         assert has_closing_reference(payload) is True
 
     def test_true_when_nodes_wrapper(self) -> None:
-        # GraphQL-форма (и куда мог бы переехать будущий `gh`): `.nodes`-обёртка.
+        # GraphQL form (and where a future `gh` could move): the `.nodes` wrapper.
         payload = json.dumps({"closingIssuesReferences": {"nodes": [{"number": 320}]}})
         assert has_closing_reference(payload) is True
 
     def test_false_when_flat_empty(self) -> None:
-        # Реальный вывод `gh pr view 319` (наш провальный кейс).
+        # Actual output of `gh pr view 319` (our failing case).
         assert has_closing_reference('{"closingIssuesReferences":[]}') is False
 
     def test_false_when_nodes_empty(self) -> None:
@@ -89,9 +89,9 @@ class TestHasClosingReference:
 
 
 class _GhDispatcher:
-    """Дубль внешней границы `gh`/`git`: диспатчит `subprocess.run` по argv, пишет
-    вызовы в `calls`. Позволяет проверить оркестрацию `main()` (какие команды и с
-    каким body вызваны), не трогая сеть."""
+    """Double for the `gh`/`git` external boundary: dispatches `subprocess.run` by argv and records
+    calls in `calls`. It lets tests verify `main()` orchestration (which commands and which
+    body were used) without touching the network."""
 
     def __init__(
         self,
@@ -101,9 +101,9 @@ class _GhDispatcher:
         refs_empty_reads: int = 0,
         create_fails: bool = False,
     ) -> None:
-        # `refs_empty_reads` — сколько ПЕРВЫХ чтений closingIssuesReferences вернут
-        # пусто до непустого (моделирует eventual-consistency GitHub после create,
-        # пойманную dogfood'ом PR #321). Большое число = линковка так и не появилась.
+        # `refs_empty_reads` is how many INITIAL closingIssuesReferences reads return
+        # empty before a non-empty one (models GitHub eventual consistency after create,
+        # caught by dogfooding PR #321). A large number means linkage never appeared.
         self.branch = branch
         self.existing_pr = existing_pr
         self.refs_empty_reads = refs_empty_reads
@@ -135,7 +135,7 @@ class _GhDispatcher:
             raise AssertionError(f"unexpected gh pr view: {cmd}")
         if cmd[:3] == ["gh", "pr", "create"]:
             if self.create_fails:
-                return done(1, "")  # gh pr create ненулевой exit
+                return done(1, "")  # non-zero exit from gh pr create
             return done(0, "https://github.com/ekolvah/kinozal_scraper/pull/999\n")
         if cmd[:3] == ["gh", "pr", "edit"]:
             return done(0, "")
@@ -149,32 +149,32 @@ class TestMainVerification:
     def test_exits_1_when_linkage_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # Линковка так и не появилась (все чтения пусты) → видимый сбой (§IV) с PR URL.
+        # Linkage never appeared (all reads are empty) → a visible failure (§IV) with the PR URL.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=99)
         monkeypatch.setattr(subprocess, "run", disp)
-        monkeypatch.setattr("time.sleep", lambda *_: None)  # не ждём реальный backoff
+        monkeypatch.setattr("time.sleep", lambda *_: None)  # do not wait for real backoff
         with pytest.raises(SystemExit) as exc:
             main(["--title", "T"])
         assert exc.value.code == 1
         err = capsys.readouterr().err
-        assert "999" in err  # PR URL в сообщении
-        assert "#320" in err  # remediation указывает issue
+        assert "999" in err  # PR URL in the message
+        assert "#320" in err  # remediation identifies the issue
 
     def test_failed_refs_read_is_visible_not_reported_as_missing_link(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Упавший `gh pr view` — «линковка неизвестна», а не «линковки нет» (#410).
+        """A failed `gh pr view` means “linkage is unknown”, not “linkage is absent” (#410).
 
-        Раньше `_closing_refs_json` не проверял returncode и возвращал `"{}"`, что
-        неотличимо от честного «ссылок нет»: скрипт поллил и выносил вердикт
-        `NOT linked`, а настоящая причина (сбой `gh`) не доходила до оператора.
+        Previously `_closing_refs_json` did not check returncode and returned `"{}"`, which
+        is indistinguishable from an honest “no references”: the script polled and issued the
+        `NOT linked` verdict, while the real cause (a `gh` failure) never reached the operator.
 
-        Код **2**, а не 1: единица занята легитимными вердиктами того же скрипта
-        («PR NOT linked», «gh pr create failed»), и слить с ними инфра-сбой значило
-        бы повторить исходную ошибку в другой форме. Тот же выбор, что в сиблинге
-        `verify_pr_link.py`. Толерантность к транзиенту при этом сохранена: вердикт
-        выносится, только когда провалились ВСЕ попытки чтения — одиночный
-        rate-limit внутри retry-цикла стоит попытки, а не прогона."""
+        Code **2**, not 1: one is occupied by the same script's legitimate verdicts
+        (“PR NOT linked”, “gh pr create failed”), and merging an infrastructure failure into them
+        would repeat the original error in another form. The same choice is made by sibling
+        `verify_pr_link.py`. Tolerance for transients remains: a verdict is issued
+        only when ALL read attempts fail—a single rate limit inside the retry loop costs an
+        attempt, not the run."""
 
         def failing_refs_read(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if cmd[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in cmd:
@@ -195,21 +195,21 @@ class TestMainVerification:
     def test_early_success_then_read_failures_is_unknown_not_absent(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Смешанный случай: одно раннее успешное чтение + серия сбоев (#410).
+        """Mixed case: one early successful read + a series of failures (#410).
 
-        Первое чтение штатно пустое — GitHub считает `closingIssuesReferences`
-        асинхронно (#321). Значит «успешных чтений было хотя бы одно» НЕ даёт права
-        выносить вердикт «ссылок нет»: финального состояния мы не наблюдали.
-        Раньше условие требовало провала ВСЕХ попыток, и этот сценарий давал ложный
-        `NOT linked` с бесполезной ремедиацией «добавь Closes #N» — при том что
-        `ensure_closes_line` его уже вшила."""
+        The first read is normally empty—GitHub computes `closingIssuesReferences`
+        asynchronously (#321). Therefore “there was at least one successful read” does NOT authorize
+        the “no references” verdict: the final state was not observed.
+        Previously the condition required ALL attempts to fail, and this scenario produced a false
+        `NOT linked` with useless remediation “add Closes #N”—even though
+        `ensure_closes_line` had already added it."""
         state = {"reads": 0}
         base = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=99)
 
         def flaky(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if cmd[:3] == ["gh", "pr", "view"] and "closingIssuesReferences" in cmd:
                 state["reads"] += 1
-                if state["reads"] > 1:  # первое чтение удачное, остальные падают
+                if state["reads"] > 1:  # the first read succeeds; the rest fail
                     return subprocess.CompletedProcess(
                         args=cmd, returncode=1, stdout="", stderr="gh: rate limit exceeded"
                     )
@@ -225,13 +225,13 @@ class TestMainVerification:
         assert "NOT linked" not in err
 
     def test_retries_linkage_until_populated(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Регресс на dogfood PR #321: GitHub считает closingIssuesReferences
-        # асинхронно после create — первое чтение пусто, но линковка КОРРЕКТНА.
-        # main() должен опросить повторно, не падать exit 1 на первой гонке.
+        # Regression from dogfooding PR #321: GitHub computes closingIssuesReferences
+        # asynchronously after create—the first read is empty, but linkage is CORRECT.
+        # main() must poll again rather than exit 1 on the first race.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=1)
         monkeypatch.setattr(subprocess, "run", disp)
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        main(["--title", "T"])  # не должно бросить SystemExit
+        main(["--title", "T"])  # must not raise SystemExit
         refs_reads = sum(
             1
             for c in disp.calls
@@ -240,7 +240,7 @@ class TestMainVerification:
         assert refs_reads >= 2, "линковка должна перечитываться после пустого первого чтения"
 
     def test_reuses_existing_pr_and_fixes_linkage(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Повторный запуск: PR для ветки уже есть, body без линкера → edit, НЕ create.
+        # Repeat run: a PR for the branch already exists, with a body lacking the link → edit, NOT create.
         disp = _GhDispatcher(
             branch="issue-320-x",
             existing_pr={"url": "https://x/pull/999", "body": "## Summary\n\nDid it.\n"},
@@ -255,8 +255,8 @@ class TestMainVerification:
         assert any("Closes #320" in part for part in edit_cmd)
 
     def test_creates_new_pr_when_no_open_pr(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Фикс #4: `gh pr list --state open` не видит ЗАКРЫТЫЙ PR той же ветки →
-        # пустой список → скрипт создаёт новый, а не цепляется к мёртвому PR.
+        # Fix #4: `gh pr list --state open` does not see a CLOSED PR for the same branch →
+        # an empty list → the script creates a new one rather than attaching to a dead PR.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=0)
         monkeypatch.setattr(subprocess, "run", disp)
         main(["--title", "T"])
@@ -269,8 +269,8 @@ class TestMainVerification:
     def test_exits_1_when_create_fails(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # `gh pr create` упал (нет upstream / уже есть PR / сеть) → видимый exit 1,
-        # не тихое продолжение к чтению линковки по пустому url.
+        # `gh pr create` failed (no upstream / a PR already exists / network) → visible exit 1,
+        # not a silent continuation to read linkage from an empty URL.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, create_fails=True)
         monkeypatch.setattr(subprocess, "run", disp)
         with pytest.raises(SystemExit) as exc:
@@ -287,22 +287,22 @@ class TestMainVerification:
 
 
 class TestLinkageBudget:
-    """#352: бюджет поллинга линковки (~8с) исчерпался на PR #349, где GitHub
-    индексировал `closingIssuesReferences` ~30+с → false-positive «issue NOT
-    linked» при корректном `Closes #N`. Root cause — узкий бюджет, не отсутствие
-    ретрая. Бюджет расширен под наблюдаемый лаг (~40с)."""
+    """#352: the linkage polling budget (~8s) was exhausted on PR #349, where GitHub
+    indexed `closingIssuesReferences` for ~30+s → a false-positive “issue NOT
+    linked” with a correct `Closes #N`. The root cause was a narrow budget, not missing
+    retry. The budget was expanded for the observed lag (~40s)."""
 
     def test_confirms_linkage_appearing_beyond_old_budget(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Линковка появляется на 9-м чтении (refs_empty_reads=8) — за пределами
-        # старого бюджета=5 (там main() бросил бы SystemExit false-positive),
-        # внутри нового. main() должен подтвердить линковку и не упасть; fast-path
-        # останавливает поллинг на появлении → ровно 9 чтений, не весь бюджет.
+        # Linkage appears on the ninth read (refs_empty_reads=8)—beyond the
+        # old budget=5 (where main() would raise a false-positive SystemExit),
+        # within the new one. main() must confirm linkage and not fail; the fast path
+        # stops polling when it appears → exactly nine reads, not the whole budget.
         disp = _GhDispatcher(branch="issue-352-x", existing_pr=None, refs_empty_reads=8)
         monkeypatch.setattr(subprocess, "run", disp)
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        main(["--title", "T"])  # не должно бросить SystemExit
+        main(["--title", "T"])  # must not raise SystemExit
         refs_reads = sum(
             1
             for c in disp.calls
@@ -311,6 +311,6 @@ class TestLinkageBudget:
         assert refs_reads == 9, "fast-path останавливает поллинг на появлении линковки"
 
     def test_budget_covers_observed_indexing_lag(self) -> None:
-        # Кодируем acceptance как ДЛИТЕЛЬНОСТЬ (~40с наблюдаемого лага), а не хардкод
-        # конкретного сплита attempts×delay — устойчиво к переразбивке.
+        # Encode acceptance as a DURATION (~40s of observed lag), not a hardcoded
+        # attempts×delay split—robust to repartitioning.
         assert LINKAGE_ATTEMPTS * LINKAGE_DELAY_S >= 40

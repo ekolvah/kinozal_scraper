@@ -4,177 +4,169 @@ date: 2026-08-07
 decision-makers: ekolvah
 ---
 
-# Обязательный review-гейт держат два носителя за одним контекстом, второй — по failover
+# Two carriers hold the required review gate behind one context; the second is failover
 
 ## Context and Problem Statement
 
-`pr_reviewer` — единственная роль delivery-flow, у которой один носитель: код-ревью выполняет
-`claude-review.yml`, и этот job — required context в branch protection
-(`{"contexts":["quality","pr-link","claude-review"]}`, `enforce_admins: true`). Исчерпанная квота
-подписки Claude поэтому запирает **все** PR: гейт обязателен, обойти его нельзя даже владельцу,
-а ждать восстановления квоты можно часами.
+`pr_reviewer` is the only delivery-flow role with one carrier: code review is performed by
+`claude-review.yml`, and that job is a required context in branch protection
+(`{"contexts":["quality","pr-link","claude-review"]}`, `enforce_admins: true`). Exhausted
+Claude subscription quota exhaustion therefore locks **all** PRs: the gate is mandatory, even the owner
+cannot bypass it, and quota recovery can take hours.
 
-Остальные роли переживают отказ носителя тривиально: планировщик и реализатор выбираются
-маршрутом запуска (`adapter_routes`, #475) — человек просто открывает другой чат. У ревьюера
-маршрута нет: его запускает CI, а не человек.
+The other roles survive carrier failure trivially: the planner and implementer are selected by a launch
+route (`adapter_routes`, #475)—a person simply opens another chat. The reviewer has no route: CI, not a
+person, starts it.
 
-Вопрос (#478): как дать роли второго носителя, не ослабив гейт и не начав платить за то, что
-в обычный день делает подписка.
+Question (#478): how can the role receive a second carrier without weakening the gate or paying for what a
+subscription performs on a normal day?
 
 ## Decision Drivers
 
-* **Гейт не должен ослабнуть.** Второй носитель — это способ получить вердикт, когда первый его
-  не дал, а не способ получить *другой* вердикт.
-* **Required-контексты в branch protection соединяются по AND.** Всё, что добавлено как второй
-  обязательный контекст, ухудшает доступность, а не улучшает её.
-* **API квоты не существует** — ни у Claude, ни у OpenAI нет эндпоинта «сколько у тебя осталось».
-  Формулировка владельца «CI-джоб должен выбрать того агента, у кого есть квота» реализуема
-  только как реакция на факт отказа, не как предварительный выбор.
-* **Второй носитель должен работать на подписке владельца.** Отдельного платного API-ключа нет;
-  носитель, который включается покупкой ключа, задачу доступности не решает, а откладывает.
-  `openai/codex-action` — именно такой: он аутентифицируется только API-ключом (в его
-  `action.yml` каждый функциональный шаг гейтится на `openai-api-key`). Codex code review по
-  подписке существует, но не как экшен в раннере — как GitHub-интеграция Codex.
-* **Правило валидности не должно получить второй дом.** Что считать пригодным вердиктом, уже
-  знает `scripts/check_agent_review_outcome.py`; выражение в YAML было бы вторым, непокрытым
-  тестами описанием той же политики.
+* **The gate must not weaken.** The second carrier obtains a verdict when the first did not provide one;
+  it does not obtain a *different* verdict.
+* **Required contexts in branch protection are ANDed.** Anything added as a second required context
+  reduces availability rather than improving it.
+* **No quota API exists**—neither Claude nor OpenAI provides a “how much remains” endpoint. The owner’s
+  formulation, “the CI job should select the agent with quota,” is implementable only as a reaction to
+  an actual failure, not as advance selection.
+* **The second carrier must use the owner’s subscription.** There is no separate paid API key; a carrier
+  enabled by buying a key does not solve availability, it only postpones it. `openai/codex-action` is such
+  a carrier: it authenticates only with an API key (in its `action.yml`, every functional step is gated on
+  `openai-api-key`). Subscription-based Codex code review exists, but not as a runner action—as Codex’s
+  GitHub integration.
+* **The validity rule must not gain a second home.** `scripts/check_agent_review_outcome.py` already knows
+  what counts as a valid verdict; an expression in YAML would be a second, untested description of the policy.
 
 ## Considered Options
 
-* Один контекст, два носителя внутри job'а, ordered failover
-* Носитель 2 экшеном `openai/codex-action` по платному API-ключу
-* Второй required-контекст с отдельным workflow для второго носителя
-* Один контекст, выбор носителя до вызова (по остатку квоты)
-* Ручной обход гейта владельцем при исчерпанной квоте
-* Ничего не делать: ждать восстановления квоты
+* One context, two carriers inside the job, ordered failover
+* Carrier 2 as `openai/codex-action` with a paid API key
+* A second required context with a separate workflow for the second carrier
+* One context, select the carrier before invocation (by remaining quota)
+* Owner manually bypasses the gate when quota is exhausted
+* Do nothing: wait for quota recovery
 
 ## Decision Outcome
 
-Выбран **один контекст с двумя носителями и ordered failover**. `agent-review.yml` спрашивает
-первого носителя (`Claude review`, `continue-on-error: true`), затем шаг `Classify review outcome`
-вызывает `check_agent_review_outcome.py --classify` и публикует `valid=true|false`. Второй
-носитель запускается **только** при `valid == 'false'` — то есть когда первый не оставил
-пригодного структурированного вердикта. Ровно один из двух enforcement-шагов выносит итог, и оба
-вызывают тот же скрипт с `--producer`, так что в логе всегда видно, чей это вердикт.
+Chosen: **one context with two carriers and ordered failover**. `agent-review.yml` asks the first carrier
+(`Claude review`, `continue-on-error: true`), then `Classify review outcome` invokes
+`check_agent_review_outcome.py --classify` and publishes `valid=true|false`. The second carrier runs **only**
+when `valid == 'false'`—that is, when the first left no valid structured verdict. Exactly one of the two
+enforcement steps emits the result, and both invoke the same script with `--producer`, so the log always
+shows whose verdict it is.
 
-Носитель 2 — **Codex code review через GitHub-интеграцию**, на подписке ChatGPT владельца.
-Он ревьюит вне этого раннера, поэтому шаг `Codex review` — не модель, а адаптер
-`scripts/request_codex_review.py`: читает существующие review, при отсутствии ответа на текущий
-head один раз пишет `@codex review` и ждёт с объявленной границей. Вердиктом считается **только**
-review от `chatgpt-codex-connector[bot]` **на текущем head SHA** — ревью предыдущего пуша описывает
-не тот дифф, который мержится. Состояние review и есть вердикт: changes requested → `blocking`,
-обычный comment → `rework`, approved → `clean`. Перевод не угадан, а предписан: контракт ревью
-носителя 2 живёт в `AGENTS.md` § Code Review Rules (файл, из которого Codex забирает правила
-репозитория) и требует запрашивать изменения только на blocking-находке. Не ответил в срок —
-нагрузка пуста, `Enforce Codex review outcome` роняет проверку. Это буквально сегодняшнее
-поведение: нет вердикта — красный гейт.
+Carrier 2 is **Codex code review through the GitHub integration**, using the owner’s ChatGPT subscription.
+It reviews outside this runner, so `Codex review` is not a model step but the adapter
+`scripts/request_codex_review.py`: it reads existing reviews, posts `@codex review` once when the current
+head has no response, and waits to a declared boundary. A verdict is **only** a review from
+`chatgpt-codex-connector[bot]` **on the current head SHA**—a previous push’s review describes a different
+diff from the one being merged. Review state is the verdict: changes requested → `blocking`, an ordinary
+comment → `rework`, approved → `clean`. This mapping is prescribed, not guessed: carrier 2’s review contract
+lives in `AGENTS.md` § Code Review Rules (the file from which Codex obtains repository rules) and requires
+requesting changes only for a blocking finding. If it does not reply in time, the payload is empty and
+`Enforce Codex review outcome` fails the check. That is the literal present behavior: no verdict means a red gate.
 
-Каталог ролей получил поле `carrier_selection` (`run_route` | `ci_failover` | `sole`).
-`pr_reviewer` объявляет `ci_failover` и `adapter_routes: null`: его носитель не зависит от
-маршрута запуска. Поле объявляется, а не выводится из числа адаптеров — иначе вернулся бы дефект
-#475, когда роль с двумя носителями молча приписывала прогону не того агента.
+The role catalog gained `carrier_selection` (`run_route` | `ci_failover` | `sole`).
+`pr_reviewer` declares `ci_failover` and `adapter_routes: null`: its carrier does not depend on the
+launch route. The field is declared, not inferred from the number of adapters—otherwise defect #475 would
+return, where a role with two carriers silently attributed a run to the wrong agent.
 
 ### Consequences
 
-* Good, потому что исчерпанная квота подписки больше не запирает мерж: гейт остаётся один и
-  обязательный, но получить вердикт можно двумя способами.
-* Good, потому что failover срабатывает на *отсутствие* вердикта, а не на его содержание:
-  `blocking` от первого носителя — это результат, и вторым носителем он не перебивается.
-* Good, потому что второй носитель не стоит денег: он работает на той же подписке, что и остальная
-  работа над репозиторием, и включается настройкой Codex code review, а не выдачей ключа.
-* Bad, потому что контракт ревью продублирован двумя копиями: промпт носителя 1 в workflow и
-  `AGENTS.md` § Code Review Rules у носителя 2. Свести в один файл нельзя — у `claude-code-action`
-  нет входа `prompt-file`, YAML-якорей в GitHub Actions нет, а Codex читает только свой файл.
-  Компенсация — гарды промпта параметризованы по обоим носителям
-  (`tests/test_agent_review_workflow.py`, `_CARRIERS`), так что расхождение копий красит тест.
-* Bad, потому что носители отвечают в разных форматах и с разной планкой: носитель 1 пишет inline-
-  комментарии и структурированный outcome, носитель 2 оставляет обычный GitHub review, и в GitHub
-  он публично документирован как поднимающий находки уровня P0/P1 — уже, чем наш coverage-first
-  контракт. Зелёный чек, вынесенный носителем 2, поэтому слабее того же чека от носителя 1;
-  запись об этом — в [`coverage-gaps.md`](../architecture/coverage-gaps.md) **AK**.
-* Bad, потому что вердикт носителя 2 приходит асинхронно: job ждёт его в цикле с границей
-  (`--timeout-seconds`), то есть в failover-ветке `agent-review` идёт минутами, а не секундами.
-  Плата принята: ветка достижима только когда носитель 1 уже не ответил.
-* Neutral: `check_agent_review_outcome.py` обслуживает обоих носителей без провайдерского имени.
+* Good, because exhausted subscription quota no longer locks merging: the gate remains singular and mandatory,
+  but a verdict is obtainable in two ways.
+* Good, because failover activates on the *absence* of a verdict, not its content: `blocking` from the first
+  carrier is a result and cannot be overridden by the second.
+* Good, because the second carrier costs no money: it uses the same subscription as other repository work and
+  is enabled by configuring Codex code review, not issuing a key.
+* Bad, because the review contract is duplicated in two copies: carrier 1’s workflow prompt and carrier 2’s
+  `AGENTS.md` § Code Review Rules. They cannot be combined into one file—`claude-code-action` has no
+  `prompt-file` input, GitHub Actions has no YAML anchors, and Codex reads only its own file. The compensation
+  is prompt guards parameterized for both carriers (`tests/test_agent_review_workflow.py`, `_CARRIERS`), so
+  divergent copies make the test red.
+* Bad, because carriers respond in different formats and to different bars: carrier 1 writes inline comments
+  and a structured outcome; carrier 2 leaves a normal GitHub review and GitHub publicly documents it as
+  surfacing P0/P1 findings, narrower than this coverage-first contract. Therefore a green check from carrier 2
+  is weaker than the same check from carrier 1; this is recorded in [`coverage-gaps.md`](../architecture/coverage-gaps.md) **AK**.
+* Bad, because carrier 2’s verdict arrives asynchronously: the job waits in a bounded loop
+  (`--timeout-seconds`), so `agent-review` takes minutes rather than seconds on the failover branch. The cost
+  is accepted: that branch is reachable only when carrier 1 already did not reply.
+* Neutral: `check_agent_review_outcome.py` serves both carriers without a provider name.
 
 ### Confirmation
 
-Гарды: `tests/test_agent_review_workflow.py::TestFallbackCarrier` (порядок шагов, условие
-запуска, отсутствие платного креда, привязка вердикта к head SHA, ограниченное ожидание, имя
-выхода, единственный дом контракта, атрибуция продюсера, красный гейт при пропущенном втором
-носителе), `tests/test_request_codex_review.py` (чей review считается вердиктом, отбор по head
-SHA, перевод состояний, round-trip нагрузки через enforcement-скрипт, видимый таймаут),
-`tests/test_check_agent_review_outcome.py::TestClassify` и `::TestProducerAttribution`,
+Guards: `tests/test_agent_review_workflow.py::TestFallbackCarrier` (step order, activation condition,
+absence of paid credentials, verdict tied to head SHA, bounded wait, output name, single contract home,
+producer attribution, and red gate when the second carrier is missing), `tests/test_request_codex_review.py`
+(which review counts as a verdict, head-SHA selection, state mapping, payload round trip through the enforcement
+script, visible timeout),
+`tests/test_check_agent_review_outcome.py::TestClassify` and `::TestProducerAttribution`,
 `tests/test_agent_orchestrator.py::TestCarrierSelection`,
 `tests/test_agent_process.py::test_documented_carrier_selection_modes_match_the_catalogue`.
 
-Чего гарды не доказывают: что Codex отвечает на `@codex review` от бота и что он выставляет
-состояние review так, как просит `AGENTS.md`. Обе стороны контракта — чужие, проверяются одним
-живым прогоном, и до него запись остаётся с непроверенным исполнением
+What the guards do not prove: that Codex responds to `@codex review` from the bot and sets the review state
+as `AGENTS.md` requests. Both sides of that contract are external, verified by one live run; until then the
+record has unverified execution
 ([`coverage-gaps.md`](../architecture/coverage-gaps.md) **AK**).
 
 ## Pros and Cons of the Options
 
-### Один контекст, два носителя внутри job'а, ordered failover
+### One context, two carriers inside the job, ordered failover
 
-* Good, потому что не трогает branch protection: набор required-контекстов тот же.
-* Good, потому что порядок носителей явный и объявленный — `adapter` каталога = тот, кого
-  спрашивают первым.
-* Bad, потому что job становится длиннее и содержит две почти одинаковые простыни промпта.
+* Good, because branch protection is unchanged: the required-context set stays the same.
+* Good, because carrier order is explicit and declared—the catalog `adapter` is asked first.
+* Bad, because the job becomes longer and contains two nearly identical prompt blocks.
 
-### Носитель 2 экшеном `openai/codex-action` по платному API-ключу
+### Carrier 2 as `openai/codex-action` with a paid API key
 
-* Good, потому что ревью целиком внутри одного job'а: синхронный шаг, structured output той же
-  формы, что у носителя 1, и никакого ожидания чужого сервиса.
-* Bad, потому что не решает задачу: экшен принимает только API-ключ, отдельного ключа у владельца
-  нет, и носитель, включаемый покупкой, при исчерпанной квоте подписки гейт не разблокирует.
-  Обходной путь сообщества (положить `~/.codex/auth.json` в секрет и подсунуть через `codex-home`)
-  отвергнут: недокументированный контракт на истекающем токене.
+* Good, because review stays entirely inside one job: a synchronous step, structured output in the same
+  shape as carrier 1, and no waiting for an external service.
+* Bad, because it does not solve the task: the action accepts only an API key, the owner has no separate key,
+  and a carrier enabled by purchase does not unlock the gate when subscription quota is exhausted. The community
+  workaround (store `~/.codex/auth.json` in a secret and inject it through `codex-home`) is rejected: it is an
+  undocumented contract on an expiring token.
 
-### Второй required-контекст с отдельным workflow
+### A second required context with a separate workflow
 
-* Good, потому что второй носитель изолирован, свой файл, свой лог.
-* Bad, потому что required-контексты AND-ятся: PR теперь ждёт **оба** гейта, и отказ любого из
-  двух носителей запирает мерж. Решение делает ровно противоположное задаче.
+* Good, because the second carrier is isolated, with its own file and log.
+* Bad, because required contexts are ANDed: the PR now waits for **both** gates, and either carrier’s failure
+  locks merging. The option does exactly the opposite of the goal.
 
-### Выбор носителя до вызова, по остатку квоты
+### Select the carrier before invocation, by remaining quota
 
-* Good, потому что не тратит попытку на заведомо исчерпанного носителя.
-* Bad, потому что нереализуемо: эндпоинта остатка квоты нет ни у одного из провайдеров.
-  Любая эвристика («последний прогон упал → значит квоты нет») — это тот же failover, только
-  с состоянием между прогонами и с окном, в котором она ошибается.
+* Good, because it does not spend an attempt on a known-exhausted carrier.
+* Bad, because it is unimplementable: neither provider has a remaining-quota endpoint. Any heuristic
+  (“the last run failed → quota is gone”) is the same failover, but with inter-run state and a window in which it errs.
 
-### Ручной обход гейта владельцем
+### Owner manually bypasses the gate
 
-* Good, потому что не требует кода.
-* Bad, потому что требует снять `enforce_admins` — то есть постоянно ослабить защиту ветки ради
-  редкого события; и обход не оставляет ревью-следа на head SHA.
+* Good, because it requires no code.
+* Bad, because it requires removing `enforce_admins`—permanently weakening branch protection for a rare event;
+  and a bypass leaves no review trail on the head SHA.
 
-### Ничего не делать
+### Do nothing
 
-* Good, потому что нулевая стоимость и нулевой риск.
-* Bad, потому что цена отказа — заблокированная доставка на неопределённое время, и она
-  повторяема: квота исчерпывается тем чаще, чем активнее идёт разработка.
+* Good, because it has zero cost and zero risk.
+* Bad, because failure costs an indefinitely blocked delivery, and it recurs: quota is exhausted more often
+  as development becomes more active.
 
 ## More Information
 
 * Issue: [#478](https://github.com/ekolvah/kinozal_scraper/issues/478).
-* Механика гейта и порядок шагов —
+* Gate mechanics and step order —
   [`ci.md`](../architecture/ci.md#required-status-checks-branch-protection);
-  поле `carrier_selection` в каталоге ролей —
+  the `carrier_selection` field in the role catalog —
   [`agent-process.md`](../architecture/agent-process.md#roles-and-hand-offs).
-* Провайдер-нейтральные имена (`check_agent_review_outcome.py`, контекст `agent-review`) —
-  [#480](https://github.com/ekolvah/kinozal_scraper/issues/480); переименование required-контекста
-  требует PATCH-миграции branch protection и потому вынесено из этой записи.
-* Подписочность Codex code review сверена с документацией OpenAI, а не выведена из пробы:
-  [pricing](https://learn.chatgpt.com/docs/pricing) («ChatGPT Work and Codex are included in your
-  ChatGPT … plan», код-ревью тарифицируется только когда Codex ревьюит через GitHub) и
-  [GitHub integration](https://learn.chatgpt.com/docs/third-party/github) (триггеры `@codex review`
-  и автоматическое ревью репозитория, настройка через `AGENTS.md` § Code Review Rules).
-  Логин бота сверен с живым API: `gh api apps/chatgpt-codex-connector` → owner `openai`.
-* Включение носителя 2 — разовая настройка вне репозитория: Codex cloud подключён к репозиторию
-  и **Code review** для него включён. Без этого шаг отработает как «вердикта нет» — красный чек
-  с `::warning::`, а не тихий зелёный.
-* Пересмотреть запись стоит, если появится API остатка квоты (тогда failover можно заменить
-  предварительным выбором) или если носитель 2 получит структурированный выход (тогда его планка
-  перестанет отличаться от носителя 1).
+* Provider-neutral names (`check_agent_review_outcome.py`, `agent-review` context) —
+  [#480](https://github.com/ekolvah/kinozal_scraper/issues/480); renaming a required context requires a PATCH
+  migration of branch protection and is therefore outside this record.
+* Codex code review’s subscription basis was checked against OpenAI documentation, not inferred from a trial:
+  [pricing](https://learn.chatgpt.com/docs/pricing) (“ChatGPT Work and Codex are included in your ChatGPT … plan”; code review is billed only when Codex reviews through GitHub) and
+  [GitHub integration](https://learn.chatgpt.com/docs/third-party/github) (`@codex review` triggers and automatic
+  repository review, configured through `AGENTS.md` § Code Review Rules). The bot login was checked against the
+  live API: `gh api apps/chatgpt-codex-connector` → owner `openai`.
+* Enabling carrier 2 is a one-time configuration outside the repository: Codex cloud is connected to the repository
+  and **Code review** is enabled. Without it, the step runs as “no verdict”—a red check with `::warning::`, not a silent green.
+* Revisit this record if a remaining-quota API appears (then failover can be replaced by advance selection), or
+  carrier 2 gains structured output (then its bar will no longer differ from carrier 1).

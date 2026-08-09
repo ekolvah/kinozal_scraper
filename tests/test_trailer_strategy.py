@@ -1,10 +1,10 @@
 """RED tests for #139: TrailerStrategy Protocol + FirstResultStrategy baseline.
 
-FirstResultStrategy повторяет ПРЕЖНЮЮ прод-логику отбора (одиночный
-`get_trailer_url`, удалён в #144): первый Candidate, чей title проходит общий
-`title_year_matches`; при year=None — первый кандидат (год-фильтр только при
-truthy year). Теперь baseline под harness/сравнение (прод отбирает
-`HeuristicStrategy` #141). Год-правило шарится (§II), не переписывается.
+FirstResultStrategy repeats the PREVIOUS production selection logic (the single
+`get_trailer_url`, removed in #144): the first Candidate whose title passes shared
+`title_year_matches`; with year=None, the first candidate (year filtering only for a
+truthy year). It is now a baseline for harness/comparison (production selects
+`HeuristicStrategy` #141). The year rule is shared (§II), not rewritten.
 """
 
 from __future__ import annotations
@@ -33,9 +33,9 @@ class TestFirstResultStrategy(unittest.TestCase):
         self.assertEqual(pick.video_id, "a")
 
     def test_skips_wrong_year_candidate(self) -> None:
-        # Замена §II-фейкового test_2026_film_skips_2015_kingsman_trailer:
-        # kingsman-2015 в пуле пропущен, выбран корректный 2026 — на реальных
-        # Candidate, через общий title_year_matches, без мока внутренней логики.
+        # Replacement for the §II fake test_2026_film_skips_2015_kingsman_trailer:
+        # Kingsman-2015 in the pool is skipped and correct 2026 selected—on real
+        # Candidates, through shared title_year_matches, without mocking internal logic.
         strat = FirstResultStrategy()
         film = FilmProfile(ru_title="Секретная служба", original_title="Kingsman", year=2026)
         candidates = [
@@ -48,16 +48,16 @@ class TestFirstResultStrategy(unittest.TestCase):
         self.assertEqual(pick.video_id, "correct_id")
 
     def test_no_match_returns_none_pick(self) -> None:
-        # Замена §II-фейкового test_miss_returns_miss_marker на уровне стратегии:
-        # пустой пул → TrailerPick(video_id=None). Прод-маркер §IV
-        # (_TRAILER_MISS_MARKER) остаётся отдельным тестом enrich_with_trailer.
+        # Replacement for the §II fake test_miss_returns_miss_marker at strategy level:
+        # empty pool → TrailerPick(video_id=None). The production §IV marker
+        # (_TRAILER_MISS_MARKER) remains a separate enrich_with_trailer test.
         strat = FirstResultStrategy()
         film = FilmProfile(ru_title="X", original_title="X", year=2026)
         pick = strat.pick(film, [])
         self.assertIsNone(pick.video_id)
 
     def test_no_year_takes_first_candidate(self) -> None:
-        # year=None → прод не применяет год-фильтр → первый кандидат.
+        # year=None → production does not apply the year filter → first candidate.
         strat = FirstResultStrategy()
         film = FilmProfile(ru_title="Дюна", original_title="Dune", year=None)
         candidates = [
@@ -68,9 +68,9 @@ class TestFirstResultStrategy(unittest.TestCase):
         self.assertEqual(pick.video_id, "first")
 
     def test_falsy_year_zero_mirrors_prod(self) -> None:
-        # Пришпиливает точное зеркало прода (`if film_year:`): falsy year (0) —
-        # как None — год-фильтр не применяет → первый кандидат, даже с чужим
-        # годом в заголовке. Guard против будущего дрейфа `not year` → `is None`.
+        # Pins the exact production mirror (`if film_year:`): a falsy year (0), like
+        # None, does not apply year filtering → first candidate even with a foreign
+        # year in the title. Guard against future `not year` → `is None` drift.
         strat = FirstResultStrategy()
         film = FilmProfile(ru_title="Ноль", original_title="Zero", year=0)
         candidates = [Candidate(video_id="first", title="Zero 1999 Trailer")]
@@ -79,11 +79,11 @@ class TestFirstResultStrategy(unittest.TestCase):
 
 
 class TestHeuristicStrategy(unittest.TestCase):
-    """RED tests for #141: language-aware детерминированный пред-фильтр.
+    """RED tests for #141: language-aware deterministic pre-filter.
 
-    Ранжирование: язык первичен (#315 RU>EN), каст в `description` — вторичный
-    тай-брейк внутри одного языка. Неоднозначность (равный топ-ранг) → первый по
-    порядку + низкий confidence + `ambiguous`-маркер (сигнал для #144, не тихий).
+    Ranking: language is primary (#315 RU>EN), cast in `description` is a secondary
+    tie-breaker within one language. Ambiguity (equal top rank) → first by order + low
+    confidence + `ambiguous` marker (a visible signal for #144).
     """
 
     def _pick(self, film: FilmProfile, cands: list[Candidate]) -> TrailerPick:
@@ -107,8 +107,8 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "ru")
 
     def test_ru_beats_eng_even_when_eng_has_cast(self) -> None:
-        # #315: язык первичен. EN-реакция с именем каста в description НЕ
-        # побеждает RU без каста — reaction-video false-positive не проходит.
+        # #315: language is primary. An EN reaction with a cast name in description does NOT
+        # beat RU without cast—the reaction-video false positive does not pass.
         film = FilmProfile(
             ru_title="Волк", original_title="The Wolf", year=2025, cast=["John Smith"]
         )
@@ -123,7 +123,7 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "ru")
 
     def test_cast_breaks_tie_within_same_language(self) -> None:
-        # Два RU-кандидата равного языка+года: каст в description различает.
+        # Two RU candidates with equal language+year: cast in description distinguishes them.
         film = FilmProfile(
             ru_title="Ярость", original_title="Ярость", year=2026, cast=["Иван Петров"]
         )
@@ -155,9 +155,9 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertGreaterEqual(pick.confidence, 0.7)
 
     def test_ambiguous_two_eng_picks_first_low_confidence(self) -> None:
-        # #327: teaser-vs-main больше НЕ ambiguous (trailer-signal их различает),
-        # поэтому ничью держат две равноценные версии трейлера — ambiguity-
-        # семантика (первый по порядку + низкий confidence + маркер) сохраняется.
+        # #327: teaser-vs-main is no longer ambiguous (trailer signal distinguishes them),
+        # so the tie is two equivalent trailer versions—ambiguity semantics (first by order +
+        # low confidence + marker) remains.
         film = FilmProfile(ru_title="Барби", original_title="Barbie", year=2023)
         cands = [
             Candidate(video_id="main", title="Barbie 2023 Official Trailer"),
@@ -169,10 +169,9 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertIn("ambiguous", pick.reason)
 
     def test_numbered_sequel_relevance_match(self) -> None:
-        # Реальный дефект #141: канал добавляет номер сиквела («Джокер 2»),
-        # которого нет в ru_title → нормализованная фраза разорвана цифрой, и
-        # word-boundary phrase-match отвергает настоящий RU-трейлер. Он обязан
-        # пройти relevance (RED до numeric-sequel-token фикса).
+        # Actual #141 defect: a channel adds a sequel number (“Joker 2”) absent from ru_title →
+        # a digit splits the normalized phrase and word-boundary phrase matching rejects the real RU trailer.
+        # It must pass relevance (RED before the numeric-sequel-token fix).
         film = FilmProfile(
             ru_title="Джокер: Безумие на двоих",
             original_title="Joker: Folie à Deux",
@@ -187,18 +186,17 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "ru_trailer")
 
     def test_base_title_does_not_crossmatch_sequel(self) -> None:
-        # Обратное направление B3: numeric-token фикс НЕ должен дать базовому
-        # фильму «Дюна» (2021) матчить сиквел-кандидат другого года — год-фильтр
-        # остаётся дискриминатором (инвариант зелёный до и после фикса; краснеет,
-        # если фикс случайно ослабит год-фильтр).
+        # Reverse B3 direction: the numeric-token fix must NOT let the base film
+        # “Dune” (2021) match a different-year sequel candidate—the year filter remains
+        # discriminating (green before and after the fix; red if the fix weakens it).
         film = FilmProfile(ru_title="Дюна", original_title="Dune", year=2021)
         cands = [Candidate(video_id="sequel", title="Дюна: Часть вторая — Русский трейлер (2024)")]
         self.assertIsNone(self._pick(film, cands).video_id)
 
     def test_tiebreak_prefers_trailer_over_news_clip(self) -> None:
-        # Реальный дефект #141: при RU-ничьей (равный язык, нет каста) выбор шёл
-        # по порядку в пуле → новостной клип/тизер вместо настоящего трейлера.
-        # trailer-signal (трейлер/дубляж − тизер) разрывает ничью (RED до фикса).
+        # Actual #141 defect: on an RU tie (equal language, no cast), pool ordering selected
+        # a news clip/teaser instead of the real trailer. Trailer signal (trailer/dub − teaser)
+        # breaks the tie (RED before the fix).
         film = FilmProfile(
             ru_title="Джокер: Безумие на двоих",
             original_title="Joker: Folie à Deux",
@@ -217,8 +215,8 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "trailer")
 
     def test_short_title_not_matched_inside_word(self) -> None:
-        # review #324: word-boundary матч — короткое «Дом» НЕ входит в «Домашний»,
-        # иначе был бы уверенный wrong-pick несвязанного кандидата.
+        # Review #324: word-boundary match—the short title “Dom” is NOT contained in “Domashniy”,
+        # otherwise an unrelated candidate would be a confident wrong pick.
         film = FilmProfile(ru_title="Дом", original_title="Home", year=2026)
         cands = [Candidate(video_id="x", title="Домашний питомец 2026 трейлер")]
         self.assertIsNone(self._pick(film, cands).video_id)
@@ -229,11 +227,10 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "d")
 
     def test_edition_suffix_does_not_block_match(self) -> None:
-        # #412: у игровой раздачи оригинал несёт издание — `Marvel's Spider-Man 2
-        # (Digital Deluxe Edition)`. Токены `digital deluxe edition` в заголовке
-        # трейлера не встречаются никогда, поэтому полное название не матчится ни
-        # с одним из пяти официальных трейлеров, и пользователь получал §IV-маркер
-        # при непустом пуле (прогон 30421569845, pool=5).
+        # #412: a game release carries an edition in its original title—`Marvel's Spider-Man 2
+        # (Digital Deluxe Edition)`. Tokens `digital deluxe edition` never occur in trailer titles,
+        # so the full title matches none of five official trailers and the user received a §IV marker
+        # despite a non-empty pool (run 30421569845, pool=5).
         film = FilmProfile(
             ru_title="Marvel Человек-Паук 2",
             original_title="Marvel's Spider-Man 2 (Digital Deluxe Edition)",
@@ -245,12 +242,10 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "ps5")
 
     def test_bracket_in_ru_title_not_collapsed_to_franchise(self) -> None:
-        # Гард на форму фикса (architect-review B3): срез скобочного хвоста
-        # применяется к `original_title`, но НЕ к русскому названию. Иначе
-        # `Дюна (Часть вторая)` схлопывается до франшизы `Дюна`, а one-numeric-skip
-        # в `_title_tokens_in` пропускает её в «Дюна 2» — год не спасает (в
-        # заголовках трейлеров его обычно нет), и вместо честного §IV-маркера
-        # ушла бы чужая ссылка с confidence 0.9.
+        # Guard on fix shape (architect review B3): bracket-tail trimming applies to `original_title`,
+        # but NOT the Russian title. Otherwise the “Dune (Part Two)” title collapses to the `Dune` franchise,
+        # and one-numeric-skip in `_title_tokens_in` admits it into “Dune 2”—the year does not save it
+        # (trailer titles usually lack one), yielding a foreign link with confidence 0.9 instead of an honest §IV marker.
         film = FilmProfile(
             ru_title="Дюна (Часть вторая)", original_title="Dune: Part Two", year=None
         )
@@ -261,12 +256,11 @@ class TestHeuristicStrategy(unittest.TestCase):
         self.assertEqual(self._pick(film, cands).video_id, "right")
 
     def test_edition_in_candidate_title_does_not_win_over_trailer(self) -> None:
-        # Замер #412 на живом пуле: у игры полное название С изданием подряд входит
-        # в заголовок нарезки костюмов («All Marvel's Spider-Man 2 Digital Deluxe
-        # Edition Suits»), поэтому «базовый вариант только при пустом relevant»
-        # (первоначальный план) отдавал бы пользователю эту нарезку и до настоящих
-        # трейлеров не доходил. Базовый вариант равноправен, а трейлер от
-        # не-трейлера отделяет `_trailer_signal`.
+        # #412 measurement on a live pool: the game’s full title including edition appears consecutively
+        # in a costume-compilation title (“All Marvel's Spider-Man 2 Digital Deluxe Edition Suits”), so
+        # “base variant only when relevant is empty” (the original plan) would return that compilation
+        # before reaching real trailers. The base variant is equal; `_trailer_signal` separates trailer
+        # from non-trailer.
         film = FilmProfile(
             ru_title="Marvel Человек-Паук 2",
             original_title="Marvel's Spider-Man 2 (Digital Deluxe Edition)",

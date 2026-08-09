@@ -1,13 +1,13 @@
-"""RED-тесты #379: baseline-храповик поверх delivery-скоркарты трейлеров.
+"""RED tests for #379: a baseline ratchet over the trailer delivery scorecard.
 
-Дефект, который чинится: в #359 регресс качества 26→16 прошёл architect-review,
-`ci_check`, `claude-review` и три зелёных CI-чека — метрика лежала в репозитории
-готовая, но никто не был обязан её запускать. Здесь метрика становится гейтом:
-закоммиченный baseline сверяется с реальным прогоном на каждом `pytest`.
+Defect addressed: in #359, a quality regression from 26→16 passed architect review,
+`ci_check`, `claude-review`, and three green CI checks—the metric was ready in the repository,
+but nobody had to run it. Here the metric becomes a gate: the committed baseline is compared
+with a real run on every `pytest`.
 
-Носитель гейта один — `TestBaselineGate::test_committed_baseline_matches_main`
-(отдельной записи в `CHECKS`/`ci.yml` нет: `ci_check` уже гоняет `pytest`, а
-`.githooks/pre-push` — `ci_check`).
+The gate has one carrier—`TestBaselineGate::test_committed_baseline_matches_main`
+(there is no separate entry in `CHECKS`/`ci.yml`: `ci_check` already runs `pytest`, and
+`.githooks/pre-push` runs `ci_check`).
 """
 
 from __future__ import annotations
@@ -36,17 +36,17 @@ from scripts.eval_trailers import (
 
 GOLDEN_PATH = Path(__file__).parent / "fixtures" / "trailer_golden.json"
 
-# Порог из #359 — подавление низкоуверенных picks. Держится ЗДЕСЬ, а не в `src`:
-# в проде эта политика откачена, и `experimental_select` там был бы мёртвым кодом.
+# The #359 threshold suppresses low-confidence picks. It belongs HERE, not in `src`:
+# production reverted this policy, and `experimental_select` there would be dead code.
 _CONFIDENCE_FLOOR = 0.5
 
 
 def _select_with_359_confidence_gate(profile: FilmProfile, youtube: Any) -> str:
-    """Политика, откаченная в #359: pick с `confidence < 0.5` давится в miss-маркер.
+    """Policy reverted in #359: a pick with `confidence < 0.5` is suppressed to the miss marker.
 
-    Частичный повтор тела прод-`select_trailer` — намеренный (N3 architect-review):
-    контрфактическая политика не имеет права жить в `src`, а assert «вариант хуже
-    прода на том же наборе» остаётся осмысленным при любом дрейфе прода.
+    Partial repetition of production `select_trailer` is intentional (N3 architect review):
+    a counterfactual policy must not live in `src`, while the assertion that “the variant is worse
+    than production on the same set” remains meaningful under any production drift.
     """
     pick = HeuristicStrategy().pick(profile, youtube.search_candidates(profile))
     if pick.video_id is None or pick.confidence < _CONFIDENCE_FLOOR:
@@ -55,7 +55,7 @@ def _select_with_359_confidence_gate(profile: FilmProfile, youtube: Any) -> str:
 
 
 class _CompareCase(unittest.TestCase):
-    """Мини-golden-set из двух кейсов: один попадает, второй промахивается."""
+    """A two-case mini golden set: one hit and one miss."""
 
     def _write(self, data: Any) -> str:
         fd, path = tempfile.mkstemp(suffix=".json")
@@ -93,8 +93,8 @@ class TestCompare(_CompareCase):
         self.assertTrue(report.ok, report.text)
 
     def test_regression_names_moved_films(self) -> None:
-        # Просадка обязана назвать ФИЛЬМ и переход, а не только дельту score:
-        # #359 нужно было знать, какие именно 10 picks подавились.
+        # A regression must name the FILM and transition, not only the score delta:
+        # #359 needed to show which exact 10 picks were suppressed.
         rows, _ = evaluate_delivery(self._cases())
         baseline = build_baseline(rows)
         degraded: list[tuple[GoldenCase, str | None, Outcome]] = [
@@ -107,9 +107,9 @@ class TestCompare(_CompareCase):
         self.assertIn("miss", report.text)
 
     def test_improvement_also_not_ok(self) -> None:
-        # Асимметричный гейт («улучшение = зелёное с предупреждением») воспроизводит
-        # чинимый дефект: сигнал, который никто не обязан прочитать (§IV). Плюс после
-        # #380 суммарно-положительная дельта сможет спрятать своп hit→wrong.
+        # An asymmetric gate (“improvement = green with warning”) reproduces the addressed
+        # defect: a signal nobody must read (§IV). After #380, a net-positive delta could also
+        # hide a hit→wrong swap.
         rows, _ = evaluate_delivery(self._cases())
         baseline = build_baseline(rows)
         improved: list[tuple[GoldenCase, str | None, Outcome]] = [
@@ -125,7 +125,7 @@ class TestCompare(_CompareCase):
             compare_to_baseline(build_baseline(rows)[:1], rows)
 
     def test_desynced_film_name_fails_loud(self) -> None:
-        # Сравнение по позиции без сверки имени тихо сопоставило бы разные фильмы.
+        # Position-only comparison without name checking would silently pair different films.
         rows, _ = evaluate_delivery(self._cases())
         baseline = build_baseline(rows)
         baseline[0].film = "Совсем другой фильм"
@@ -142,17 +142,16 @@ class TestCompare(_CompareCase):
 
 
 class TestWrongPole(unittest.TestCase):
-    """#380: у метрики должен быть живой отрицательный полюс.
+    """#380: the metric must have a live negative pole.
 
-    Шкала `Hit +1 / Miss 0 / Wrong −2` объявляла, что чужой трейлер вдвое хуже
-    честного маркера, но на наборе #327 `wrong` не встречался НИ РАЗУ: все кейсы
-    строились как «правильный ответ существует, найди его». Половина шкалы была
-    мертва — набор мог только наказать за осторожность (#359: −10 hit), а
-    «сколько wrong предотвращено» показать был не в состоянии.
+    The `Hit +1 / Miss 0 / Wrong −2` scale declares a foreign trailer twice as bad as
+    an honest marker, but in set #327 `wrong` occurred NOT ONCE: every case was built as
+    “the correct answer exists, find it.” Half the scale was dead—the set could only
+    penalize caution (#359: −10 hit) and could not show “how many wrong outcomes were prevented.”
 
-    Гейт — инвариант ФИКСТУРЫ, а не утверждение о стратегии: он считает разметку
-    `trap`, поэтому не краснеет от улучшения подбора (иначе он штрафовал бы ровно
-    то изменение, ради которого заводился) и при этом ловит выхолащивание разметки.
+    The gate is a FIXTURE invariant, not a claim about strategy: it counts `trap`
+    annotations, so selection improvements do not make it red (otherwise it would penalize the
+    change it was created for), while it still catches hollowing out the annotations.
     """
 
     _MIN_TRAP_CASES = 3
@@ -169,10 +168,9 @@ class TestWrongPole(unittest.TestCase):
         )
 
     def test_trap_pick_classifies_as_wrong(self) -> None:
-        # Связь разметки со шкалой, а не декларация: `trap` не участвует в
-        # скоринге (веса #380 не трогает), поэтому «ловушка = wrong» держится
-        # исключительно на дизъюнктности trap и accept-set, которую валидирует
-        # загрузчик. Тест фиксирует это следствие на реальных кейсах.
+        # A link between annotation and scale, not a declaration: `trap` does not participate
+        # in scoring (it does not change #380 weights), so “trap = wrong” rests solely on the
+        # disjointness of trap and accept set validated by the loader. This test pins that consequence on real cases.
         for case in (c for c in load_golden_set(GOLDEN_PATH) if c.trap):
             for trap_id in case.trap:
                 with self.subTest(film=case.film.ru_title, trap=trap_id):
@@ -180,7 +178,7 @@ class TestWrongPole(unittest.TestCase):
 
 
 class TestBaselineGate(unittest.TestCase):
-    """Сам гейт: закоммиченный baseline против реального golden-set."""
+    """The gate itself: committed baseline against the real golden set."""
 
     def test_committed_baseline_matches_main(self) -> None:
         cases = load_golden_set(GOLDEN_PATH)
@@ -189,10 +187,9 @@ class TestBaselineGate(unittest.TestCase):
         self.assertTrue(report.ok, report.text)
 
     def test_reverted_359_policy_fails_the_gate(self) -> None:
-        # Acceptance #379: изменение, идентичное откаченному в #359, доходит до
-        # вердикта гейта — не «score стал ниже», а `ok=False` с именами фильмов.
-        # Между «score упал» и «гейт сработал» лежит вся сравнивающая логика, то
-        # есть ровно то, что должно было поймать #359.
+        # Acceptance #379: a change identical to the one reverted in #359 reaches the gate
+        # verdict—not “score became lower,” but `ok=False` with film names. All comparison logic
+        # lies between “score fell” and “gate fired,” exactly what #359 should have caught.
         cases = load_golden_set(GOLDEN_PATH)
         rows, _ = evaluate_delivery(cases, select=_select_with_359_confidence_gate)
         report = compare_to_baseline(load_baseline(BASELINE_PATH), rows)

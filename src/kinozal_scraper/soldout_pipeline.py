@@ -1,4 +1,4 @@
-"""Sold-out events источник (run_soldout_pipeline)."""
+"""Sold-out events source (run_soldout_pipeline)."""
 
 from __future__ import annotations
 
