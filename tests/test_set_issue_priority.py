@@ -30,7 +30,7 @@ from scripts.set_issue_priority import (
 
 class TestOptionIdForLevel:
     def test_maps_each_level(self) -> None:
-# Contract for option IDs verified against `gh project field-list 1`.
+        # Contract for option IDs verified against `gh project field-list 1`.
         assert option_id_for_level("High") == "b9005885"
         assert option_id_for_level("Medium") == "ca573e2f"
         assert option_id_for_level("Low") == "3a2c2352"

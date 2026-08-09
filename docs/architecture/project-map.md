@@ -157,7 +157,7 @@ script cannot output curated SR ✅/❌ judgements or duplicates anyway). Instea
 **presence lint** (ruff `D100`/`D104`/`D419` in `check_lint`, #253; formerly bespoke
 `scripts/check_headers.py`): every public `.py` under `src/`, `scripts/`, and `tests/` (#433) must
 carry a non-empty module docstring or be red. The map therefore provides not a per-file question
-copy for source files, but a [**concern-level router**](#project-source) (concern → files + deep-dive
+copy for source files, but a [**concern-level router**](#project-source-files) (concern → files + deep-dive
 pointer) — orientation absent from a per-file docstring.
 
 **The `tests/` docstring form is "genre: what it guards"** (`Anti-drift guard for …`,

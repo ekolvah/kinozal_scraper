@@ -176,7 +176,9 @@ class TestEnrichWithTrailer(unittest.TestCase):
 
     def test_no_original_segment_profile_uses_clean_title(self) -> None:
         youtube = _PoolYoutube([])
-        item = self._item("Film One / 2024 / BDRip")  # Second segment is the year; there is no original title.
+        item = self._item(
+            "Film One / 2024 / BDRip"
+        )  # Second segment is the year; there is no original title.
         enrich_with_trailer(item, youtube)
         assert youtube.last_profile is not None
         self.assertEqual(youtube.last_profile.ru_title, "Film One")

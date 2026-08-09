@@ -37,7 +37,7 @@ other slow one; the rest are seconds. Measured 2026-07-29 on the maintainer's
 Windows box: **~8 minutes end-to-end**. The absolute figure drifts with the
 dependency set — the shape (minutes, network-bound tail) is the durable part.
 Operational consequence for agents (output going quiet after `pytest` is
-`pip-audit` working, not a hang) is in `CLAUDE.md` §Среда. If the measurement
+`pip-audit` working, not a hang) is in `CLAUDE.md` §Environment. If the measurement
 ever crosses the Bash tool's 10-minute ceiling, the derived constant
 `timeout: 600000` in the implementer adapter stops working and
 needs revisiting together with this number.
@@ -209,7 +209,7 @@ agent can't quietly gut a contract while keeping its name. `principles.md`
 is deliberately **not** edited: §II is tool-agnostic canon, so the tool mention
 lives here and in `runtime.md`, not in the constitution.
 
-**Сознательно не взято здесь:** контракт «оркестраторы импортируют только Protocol-модули» —
+**Consciously not adopted here:** the contract "orchestrators import only Protocol modules" —
 is currently **inexpressible**: `Protocol` classes reside in the same module as their concrete
 implementations. Revisit with the Protocol-extraction refactor (#234 Out of scope).
 
@@ -241,7 +241,7 @@ instead of removing that dependency. Five interleaved local runs on 2026-08-09 m
 is small, but the configuration fix removes the cause with no extra invocation or intentional
 per-run cost.
 
-**Конвенция глушения — одна на все четыре, и именно её пинят гарды:**
+**The silencing convention is one for all four, and guards pin it:**
 
 - **A real false positive is silenced per site** with `# noqa: <exact codes>` and a reason — never
   per file: a per-file ignore blinds the whole file to *new* hits. Live per-site examples are six
@@ -261,40 +261,40 @@ per-run cost.
   across 25 thousand lines, and 41 of 60 files wrote one voluntarily before the gate. Thus
   `per-file-ignores` for `tests/**` retain three codes from one set on one rationale; do **not**
   cargo-cult the superficial pattern "tests always receive a per-file ignore" from this.
-- **У каждого правила — anti-drift-гард** (`tests/test_complexity_ratchet.py`,
-  `test_ruff_dead_code_rule.py`, `test_ruff_arg_slf_rules.py`, `test_ruff_docstring_rule.py` — все
-  в жанре `test_ruff_silence_rules.py`), но **глубина у них разная, и это не выровнено**:
-  - *effective select* пинят все четыре;
-  - ветку «код не лежит в глобальном `ignore`» и ветку `per-file-ignores` несут три из четырёх —
-    **у ratchet-гарда (`C901`/`PLR0912`/`PLR0915`) их нет**, так что эту тройку сегодня можно
-    молча положить в `ignore`, оставив все гарды зелёными. Пробел назван, а не закрыт: он старше
-    расширения docstring-гейта на `tests/` (#433) и своей issue пока не имеет.
-  - у ветки `per-file-ignores` **две формы, и форма следует из наличия легитимного исключения**:
-    `ARG`/`SLF` проверяются по покрытию путей (`fnmatch` против sentinel-путей `src`/`scripts`),
-    потому что `tests/**` им заглушён законно; у `ERA001` и docstring-кодов легитимных исключений
-    нет, поэтому проверка строже — кода не должно быть в `per-file-ignores` **ни под каким
-    паттерном** (иначе узкий возврат вида `"tests/test_x.py" = ["D100"]` прошёл бы мимо
-    sentinel-зонда). Docstring-гард дополнительно читает `extend-`-близнецы обеих таблиц
-    (`extend-ignore`, `extend-per-file-ignores`), которые ruff honours наравне; у трёх остальных
-    этой ветки нет.
+- **Every rule has an anti-drift guard** (`tests/test_complexity_ratchet.py`,
+  `test_ruff_dead_code_rule.py`, `test_ruff_arg_slf_rules.py`, `test_ruff_docstring_rule.py` — all
+  in the style of `test_ruff_silence_rules.py`), but **their depth differs and is not equalized**:
+  - all four pin the *effective select*;
+  - three of four cover the “code is not in global `ignore`” branch and the `per-file-ignores`
+    branch — **the ratchet guard (`C901`/`PLR0912`/`PLR0915`) has neither**, so today this trio
+    can be silently put in `ignore` with every guard still green. The gap is named, not closed: it
+    predates extension of the docstring gate to `tests/` (#433) and has no issue yet.
+  - the `per-file-ignores` branch has **two forms, and the form follows the presence of a legitimate
+    exception**: `ARG`/`SLF` are checked by path coverage (`fnmatch` against `src`/`scripts`
+    sentinel paths) because `tests/**` is legitimately suppressed for them; `ERA001` and the
+    docstring codes have no legitimate exception, so their check is stricter — the code must not
+    occur in `per-file-ignores` **under any pattern** (otherwise a narrow return such as
+    `"tests/test_x.py" = ["D100"]` would pass the sentinel probe). The docstring guard additionally
+    reads the `extend-` twins of both tables (`extend-ignore`, `extend-per-file-ignores`), which
+    ruff honours equally; the other three lack this branch.
 
-**§IV no-op-гард старого docstring-скрипта не перенесён — сознательно, а не потерян.** «Упасть,
-если скан не нашёл ни одного файла» было артефактом параметризованного `root.rglob(Path("src"))`
-в bespoke `scripts/check_headers.py`; `ruff check .` рекурсирует всё дерево от cwd и промахнуться
-мимо пакета так не может. Остаточный случай «пакет исчез/пуст» ловят **строго жёстче**
-`test_package_importable.py` (17 хардкод-`import_module`), `test_repo_layout.py`, mypy и
-import-linter.
+**The §IV no-op guard from the old docstring script was not carried over — deliberately, not lost.**
+“Fail if the scan found no files” was an artefact of parameterized `root.rglob(Path("src"))` in
+bespoke `scripts/check_headers.py`; `ruff check .` recurses through the full tree from cwd and
+cannot miss the package this way. The residual “package disappeared/is empty” case is caught
+**strictly more strongly** by `test_package_importable.py` (17 hardcoded `import_module` calls),
+`test_repo_layout.py`, mypy, and import-linter.
 
-**Сознательно не взято здесь:**
+**Deliberately not included here:**
 
-- **`RUF100`** (самоочищающийся noqa) — отложен: 18 существующих unused-noqa по репо, это
-  отдельная уборка, а не этот гейт (#233 Out of scope).
-- **`vulture`** (cross-module unused) — не взят: репо намерено **нулём** cross-module мёртвого
-  кода, а локальное неиспользуемое уже ловит ruff `F` (F401/F841). На динамической форме этого
-  кода (реестр пайплайнов, декларативный конфиг, `Protocol`-реализации, pytest-фикстуры,
-  `__main__`-энтрипоинты) vulture FP-склонен: зависимость + гейт + whitelist с per-CI-триажем
-  ради гипотетики. **Revisit (wait-for-pain):** появится реальный cross-module мёртвый код,
-  который `ERA001` не ловит (#235 Out of scope).
+- **`RUF100`** (self-cleaning noqa) is deferred: 18 existing unused-noqa occurrences in the
+  repository make this separate cleanup, not this gate (#233 Out of scope).
+- **`vulture`** (cross-module unused) is not included: the repository deliberately has **zero**
+  cross-module dead code, while ruff `F` (F401/F841) already catches locally unused code. In the
+  dynamic form of this code (pipeline registry, declarative configuration, `Protocol`
+  implementations, pytest fixtures, `__main__` entry points), vulture is false-positive prone:
+  dependency + gate + whitelist with per-CI triage for a hypothetical. **Revisit (wait-for-pain):**
+  real cross-module dead code that `ERA001` does not catch appears (#235 Out of scope).
 
 ### Subprocess output guard (`tests/test_subprocess_encoding.py`)
 
@@ -312,58 +312,57 @@ rules that are two ends of the same defect (#364, #410):
    junit report, `validate_issue_sections` an empty issue body, the secret scan
    an empty file list).
 
-**Конвенция размещения None-check** (её требует гард, поэтому она здесь, а не в стиле-гайде):
-проверка на `None` стоит там, где захваченный вывод **читается** — в `_run`-шве файла, если шов
-есть; на call-site, если скрипт делает единственный вызов; инлайном для вызовов, которые шов
-**намеренно** обходят (`new_branch`'s `git branch -d`, которому позволено падать и потому нельзя
-через `check=True`-шов). Централизован только *инвариант* — здесь, в гарде: общий helper-модуль
-невозможен, корень репо никогда не на `sys.path` при `python scripts/foo.py`
-(см. [ledger](coverage-gaps.md)).
+**Convention for locating the None check** (the guard requires it, so it belongs here rather than
+in a style guide): the `None` check is where captured output is **read** — in the file's `_run`
+seam if it has one; at the call site if the script makes a single call; inline for calls that
+**deliberately** bypass the seam (`new_branch`'s `git branch -d`, which is allowed to fail and
+therefore cannot use the `check=True` seam). Only the *invariant* is centralized — here, in the
+guard: a shared helper module is impossible because repository root is never on `sys.path` under
+`python scripts/foo.py` (see the [ledger](coverage-gaps.md)).
 
-**Ни ruff, ни bandit, ни pylint это не покрывают** — стандартного правила на `subprocess`-encoding
-нет ни у одного (ruff'ов `PLW1514` — про `open()`). Записано, чтобы прецедент «стандартные тулы >
-велосипеды» (#237) не переоткрывали против этого гарда. Второй предел — гард проверяет только
-**родительскую** сторону: дочерний Python всё равно пишет в кодовой странице ОС без
-`PYTHONUTF8=1` / `-X utf8`. Оба предела в
-[ledger'е принятых дыр](coverage-gaps.md); само правило — канон в
-`CLAUDE.md` §Среда.
+**Neither ruff, bandit, nor pylint covers this** — none has a standard rule for `subprocess`
+encoding (ruff's `PLW1514` concerns `open()`). This records that the “standard tools > bicycles”
+precedent (#237) must not be reopened against this guard. The second boundary is that the guard
+checks only the **parent** side: child Python still writes in the OS code page without
+`PYTHONUTF8=1` / `-X utf8`. Both boundaries are in the
+[accepted-gaps ledger](coverage-gaps.md); the rule itself is canon in `CLAUDE.md` §Environment.
 
 `scripts/hooks.py` additionally passes `errors="replace"` — per-call-site decision for a tool
 whose entire job is visibility; the guard does not require `errors` anywhere.
 
 ### Doc guards
 
-Статические гарды над `.md` (плюс одна репо-широкая ветка, см. ниже), все в жанре выше —
-статическая проверка под `check_pytest`, без записи в реестр `CHECKS`. Заголовок этой секции намеренно не перечисляет файлы: якорь
-генерится из его текста, и привязка адреса к волатильному перечню — тот же дефект, что номер
-таски в заголовке.
+Static guards over `.md` (plus one repository-wide branch, see below), all of the genre above—
+static checks under `check_pytest`, without an entry in the `CHECKS` registry. This section's heading deliberately does not list files: its anchor
+is generated from its text, and tying an address to a volatile list is the same defect as a
+task number in a heading.
 
-- **header'ы** — каждый картируемый `.md` несёт строку «на какой вопрос отвечает этот файл»
-  (конвенция — `project-map.md`, #421).
-- **ссылки** — каждая внутренняя ссылка и каждый code-span вида `` `file.md#anchor` `` резолвится:
-  цель есть в индексе, якорь совпадает со slug'ом заголовка по правилам github-slugger (#427).
-  Скоуп и проверка существования — **индекс git** (`git ls-files -z`, фильтр по суффиксу уже в
-  Python), а склейка пути — **лексическая** (`posixpath.normpath`), без единого обращения к ФС:
-  gitignored-копии репо в `.claude/worktrees/` иначе краснели бы локально, а `Path.exists()` /
-  `Path.resolve()` на Windows регистронезависимы и пропустили бы `` `Pipeline.md#…` `` локально, чтобы
-  уронить CI на Linux. Разбор через `markdown-it-py`: ссылка внутри ```-блока не считается
-  ссылкой, а текст заголовка нужен отрендеренный.
-- **форма ссылки** — `#N` стоит скобочным указателем, а не членом предложения; в заголовке
-  секции запрещён и в скобках, потому что якорь генерится из текста заголовка (#428). Сигил `#`
-  зарезервирован за issue/PR: правило — `agent-process.md`, доска — `Project 1`; конвенция
-  заменяет собой открытый словарь исключений в предикате. Эта ветка идёт по **всем**
-  отслеживаемым файлам, а не только по `.md`: словарь закрыт по **токену** (`workflow`,
-  `Project`) в обычной markdown-оправе, а `.py` и `.toml` дрейфуют так же — прозой её
-  удержать не вышло. Построчный regexp, поэтому code-span её не глушит: иллюстрация правила
-  пишется через метапеременную. Разрешённая зона — только **сомкнутая**
-  пара `()`, иначе одна незакрытая скобка молча превращает хвост абзаца в белый список; парность
-  backtick'ов и границы ссылок отдаются парсеру, а `table` включён, чтобы скобка из одной ячейки
-  не смыкалась со скобкой из другой. Записи MADR (`docs/adr/`) вне скоупа по жанру: запись —
-  дом обоснования, датирована по конструкции и после принятия иммутабельна.
+- **headers**—every mapped `.md` carries the line “what question this file answers”
+  (the convention is `project-map.md`, #421).
+- **links**—every internal link and every code span in the form `` `file.md#anchor` `` resolves:
+  the target exists in the index, and the anchor matches the heading slug under github-slugger rules (#427).
+  The scope and existence check use the **git index** (`git ls-files -z`, with suffix filtering already in
+  Python), while path joining is **lexical** (`posixpath.normpath`), with no filesystem access:
+  otherwise gitignored repository copies in `.claude/worktrees/` would fail locally, and `Path.exists()` /
+  `Path.resolve()` are case-insensitive on Windows and would allow `` `Pipeline.md#…` `` locally only to
+  fail CI on Linux. Parsing uses `markdown-it-py`: a link inside a ``` block does not count as a
+  link, and heading text must be rendered.
+- **reference form**—`#N` is a parenthetical pointer, not a sentence member; in a section
+  heading it is forbidden even in parentheses, because the anchor is generated from heading text (#428). The `#`
+  sigil is reserved for issue/PRs: the rule is `agent-process.md`, the board is `Project 1`; the convention
+  replaces an open dictionary of exceptions in the predicate. This branch covers **all**
+  tracked files, not only `.md`: its dictionary is closed by **token** (`workflow`,
+  `Project`) in ordinary Markdown wrapping, and `.py` and `.toml` drift the same way—prose
+  could not hold it. It is a line regexp, so a code span does not suppress it: the rule's illustration
+  is written through a metavariable. The allowed zone is only a **closed**
+  `()` pair; otherwise one unclosed parenthesis silently turns the paragraph tail into an allowlist. Backtick
+  pairing and link boundaries are delegated to the parser, and `table` is enabled so a parenthesis from one cell
+  does not close with a parenthesis from another. MADR records (`docs/adr/`) are outside the scope by genre: a record is
+  the home of rationale, dated by design, and immutable after acceptance.
 
-Каждый из них — presence / резолвимость / форма, **не** корректность: указатель на существующий, но
-переставший быть домом темы файл, как и хроника, аккуратно уложенная в скобки, ловится человеком
-на ревью. Границы каждого гарда названы в его docstring.
+Each is presence / resolvability / form, **not** correctness: a pointer to a file that exists but
+has ceased to be the topic's home, like a chronicle carefully put in parentheses, is caught by a person
+in review. The boundaries of every guard are named in its docstring.
 
 ## Required status checks (branch protection)
 

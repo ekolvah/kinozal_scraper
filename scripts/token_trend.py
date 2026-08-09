@@ -59,8 +59,8 @@ _MODEL_SCALE: dict[str, float] = {
     "opus": 1.0,
     "sonnet": 0.6,
     "haiku": 0.2,
-# Claude Code service records (21 in real sample): zero usage, not billed. They are in the
-# table not for weight, but to avoid `unknown_model` on every start.
+    # Claude Code service records (21 in real sample): zero usage, not billed. They are in the
+    # table not for weight, but to avoid `unknown_model` on every start.
     "<synthetic>": 0.0,
 }
 _UNKNOWN_MODEL_SCALE = 1.0

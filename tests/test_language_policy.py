@@ -47,9 +47,7 @@ message = "русские данные"
 continues here`.
 
 Russian prose outside code.
-""".replace("Russian data", "русские данные").replace(
-            "Russian prose", "Русская проза"
-        )
+""".replace("Russian data", "русские данные").replace("Russian prose", "Русская проза")
 
         violations = markdown_violations(text)
 

@@ -68,13 +68,13 @@ class GoldenCase:
     correct: str | list[str] | None
     candidates: list[Candidate]
     note: str
-# #329: frozen TMDB-video snapshot (optional—pre-#329 records load with an empty
-# list; evaluate_tmdb returns Miss until a snapshot is recorded).
+    # #329: frozen TMDB-video snapshot (optional—pre-#329 records load with an empty
+    # list; evaluate_tmdb returns Miss until a snapshot is recorded).
     tmdb_videos: list[TmdbVideo] = field(default_factory=list)
-# #380: pool candidates VERIFIED as another work (evidence in `note`). Answers what an
-# accept set cannot: “another film” versus an incompletely recorded dub of the same one.
-# Ground truth concerns the POOL, not outcome, so it survives strategy improvement; it
-# does not participate in scoring (weights outside #380 scope), while `classify` marks wrong.
+    # #380: pool candidates VERIFIED as another work (evidence in `note`). Answers what an
+    # accept set cannot: “another film” versus an incompletely recorded dub of the same one.
+    # Ground truth concerns the POOL, not outcome, so it survives strategy improvement; it
+    # does not participate in scoring (weights outside #380 scope), while `classify` marks wrong.
     trap: list[str] = field(default_factory=list)
 
 
