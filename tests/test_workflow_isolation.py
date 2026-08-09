@@ -106,20 +106,20 @@ class TestPipelineStepIsolation:
 
 
 class TestSoldoutStepPlacement:
-    """soldout — единственный шаг, который спит часами (#396), поэтому его место и
-    его потолок в прогоне сами по себе инварианты."""
+    """Soldout is the only step that sleeps for hours (#396), so both its place
+    and its ceiling in the run are invariants."""
 
     def test_soldout_waits_last_of_all(self) -> None:
-        """soldout ждёт до ~4.6 ч внутри шага (#396) — значит стоит последним.
+        """Soldout waits up to about 4.6 hours in-step (#396), so it goes last.
 
-        Разброс попыток во времени и есть фикс: Cloudflare режет датацентровые IP
-        вероятностно, и единственное, что отличает доехавший прогон, — успела ли
-        хоть одна из 24 разнесённых попыток. Цена — часы ожидания, и заплатить её
-        можно только в самом конце: в середине прогона тот же шаг отложил бы
-        доставку остальных источников на те же часы.
+        Spreading attempts over time is the fix: Cloudflare blocks data-center
+        IPs probabilistically, and a completed run differs only in whether one
+        of 24 spaced attempts succeeded. The cost is hours of waiting and can be
+        paid only at the end; the same step in the middle would delay every
+        other source by those hours.
 
-        Порядок ключей в YAML — ровно то, что следующий контрибьютор переставит,
-        не заметив; сам GitHub Actions такой инвариант не выражает.
+        YAML key order is exactly what a later contributor may rearrange without
+        noticing; GitHub Actions itself cannot express this invariant.
         """
         steps = _steps()
         soldout = [i for i, s in enumerate(steps) if _SOLDOUT_RUN.search(str(s.get("run", "")))]
@@ -140,17 +140,17 @@ class TestSoldoutStepPlacement:
         )
 
     def test_soldout_step_timeout_brackets_the_patient_policy(self) -> None:
-        """Таймаут шага зажат с двух сторон, и обе границы выведены, а не вписаны (#396).
+        """The step timeout has derived lower and upper bounds (#396).
 
-        Снизу — худший случай самой политики: меньше него таймаут убивал бы штатный
-        прогон. Сверху — 360-минутный потолок job'а **минус бюджет предшествующих
-        шагов**: потолок отсчитывается от старта job'а, а не шага, и job, убитый по
-        нему, GitHub **отменяет**, а не проваливает — `if: failure()` у fallback-алерта
-        не разворачивается, и §IV-сигнал теряется ровно в той патологии, ради которой
-        таймаут заводился.
+        The lower bound is the policy's worst case; anything smaller kills a
+        normal run. The upper bound is the 360-minute job ceiling **minus the
+        preceding steps' budget**: the clock starts with the job, not this step,
+        and GitHub **cancels** a job that hits it rather than failing it. The
+        fallback alert's `if: failure()` then never runs, losing the §IV signal
+        in precisely the pathology the timeout addresses.
 
-        Обе границы читаются из констант политики: подняли число попыток — тест
-        покраснеет здесь, а не в проде через полгода.
+        Both bounds come from policy constants: raising the attempt count makes
+        this test red now rather than production red six months later.
         """
         from kinozal_scraper.http_fetch import _HTML_GET
         from kinozal_scraper.http_retry import _PATIENT_ATTEMPTS, _PATIENT_WAIT_S
@@ -177,10 +177,12 @@ class TestSoldoutStepPlacement:
         )
 
     def test_daily_schedule_unchanged(self) -> None:
-        """Фикс #396 сознательно НЕ трогает частоту: он разносит попытки внутри
-        одного суточного прогона. Учащение расписания — другое решение с другой
-        ценой (нагрузка на сайт, квота Gemini у соседних шагов), и молча оно
-        приехать не должно."""
+        """The #396 fix deliberately leaves frequency unchanged.
+
+        It spreads attempts inside one daily run. Running more often is a
+        separate decision with different costs (site load and the neighboring
+        steps' Gemini quota), so it must not arrive silently.
+        """
         doc = _doc()
         triggers = doc.get("on", doc.get(True, {}))
         crons = [entry["cron"] for entry in triggers["schedule"]]

@@ -1,36 +1,36 @@
-"""Presence-гард на header'ы картируемых `.md` (#421).
+"""Presence guard for headers in mapped `.md` files (#421).
 
-**Что стережём.** `docs/architecture/project-map.md` §«Конвенция-заголовков» объявляет:
-каждый картируемый файл несёт header с единственным вопросом, на который он отвечает, и
-этот header — **канон** («при дрейфе header wins»), тогда как «Карта файлов» — производный
-индекс. Для `.py` presence этого канона уже загейчен — ruff `D100`/`D104`/`D419` в
-`check_lint` (#253, бывший bespoke `scripts/check_headers.py`). Для `.md` аналога не было:
-правило жило прозой с #164 и за это время соблюдалось меньше чем наполовину. Это ровно
-случай `principles.md` §Scripts over instructions — детерминируемый шаг «убедись, что header
-есть» становится exit-code'ом.
+**What is guarded.** `docs/architecture/project-map.md` §“Header convention” declares that
+every mapped file carries a header with the single question it answers, and that header is
+the **canon** (“when they drift, header wins”), while the “File Map” is a derived
+index. Presence of this canon is already gated for `.py` by ruff `D100`/`D104`/`D419` in
+`check_lint` (#253, formerly bespoke `scripts/check_headers.py`). There was no equivalent for `.md`:
+the rule had lived in prose since #164 and was followed less than half the time. This is exactly
+the `principles.md` §Scripts over instructions case—the deterministic step “ensure that a header
+exists” becomes an exit code.
 
-**Почему тест, а не запись в `CHECKS`.** `tests/test_ci_check.py::TestStepParity` требует
-`_ci_yml_check_names() == set(CHECKS)`, поэтому новая запись в реестр обязала бы завести
-ещё и `--only`-шаг в `ci.yml` — лишний parity-элемент ради статической проверки, которую и
-так гоняет `check_pytest`. Жанр — `test_repo_layout.py` / `test_agent_frontmatter.py`.
+**Why a test, not an entry in `CHECKS`.** `tests/test_ci_check.py::TestStepParity` requires
+`_ci_yml_check_names() == set(CHECKS)`, so a new registry entry would also require an
+`--only` step in `ci.yml`—an extra parity element for a static check already run by
+`check_pytest`. Its genre is `test_repo_layout.py` / `test_agent_frontmatter.py`.
 
-**Скоуп — это сам glob, и никакого второго фильтра поверх него нет.** Первая версия
-отсеивала файлы с frontmatter `description:`, чтобы «зачислять по свойству, а не по
-каталогу». Отсеивать было нечего: `.claude/agents/*.md` и `.claude/commands/*.md` — то
-самое `description:`-множество — этим glob'ом не перечисляются вовсе, то есть исключены
-раньше и безусловно. Единственным живым эффектом фильтра внутри скоупа был **тихий
-opt-out**: добавь `description:` в шапку arch-дока, и он молча выпадал из параметризации,
-не уронив ни одного теста, — ровно §IV-дефект, против которого написан гард на пустой
-скоуп. Свойство `description:` осталось тем, чем оно и было по сути, — **обоснованием**
-границы в спеке (`project-map.md`), а не механизмом здесь.
+**Scope is the glob itself, with no second filter over it.** The first version
+filtered out files with frontmatter `description:` to “admit them by property rather than by
+directory”. There was nothing to filter out: `.claude/agents/*.md` and `.claude/commands/*.md`—the
+very `description:` set—are not enumerated by this glob at all, so they are excluded earlier
+and unconditionally. The filter's only live effect inside scope was a **silent
+opt-out**: add `description:` to an architecture document's preamble and it silently drops out of parameterization,
+without failing a test—the exact §IV defect guarded against by the empty-scope check.
+The `description:` property remains what it essentially was: the **rationale**
+for the boundary in the specification (`project-map.md`), not the mechanism here.
 
-**Границы гарда, честно.** Presence ≠ correctness: что header *есть* и непуст —
-детерминируемо, что он *актуален* — нет, и это уже записано в `project-map.md`
-§«Presence ≠ correctness» (здесь ссылка, не вторая копия). Расхождение header ↔ реальное
-назначение ловит человек на ревью.
+**Guard boundaries, honestly.** Presence ≠ correctness: whether a header *exists* and is non-empty is
+deterministic, whether it is *current* is not, and that is already recorded in `project-map.md`
+§“Presence ≠ correctness” (a reference here, not a second copy). A person catches divergence
+between the header and the actual purpose in review.
 
-**Скоуп производен от glob, а не от списка** — чтобы следующий arch-док попал под правило
-автоматически, а не через ручной перечень, который забудут дополнить (та же логика, что в
+**Scope is derived from the glob, not from a list** so the next architecture document enters the rule
+automatically, rather than through a manual enumeration someone will forget to extend (the same logic as
 `test_agent_frontmatter.py`, #407).
 """
 
@@ -43,40 +43,30 @@ import pytest
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# Каталоги картируемых `.md`. Канон границы — `project-map.md` §«Конвенция-заголовков».
+# Mapped Markdown directories; `project-map.md` defines the canonical boundary.
 _SCOPED_DIRS = (
     _REPO_ROOT / "docs" / "architecture",
     _REPO_ROOT / ".claude" / "rules",
 )
 
-# Маркер header'а — на языке самого дока. Принимаются оба варианта: репо двуязычен
-# (`testing.md`/`principles.md` англоязычны, остальные — русские), и требовать один
-# язык значило бы гнать churn-дифф с переводом ради формы. Набор закрыт: расширять
-# его — правка спеки в `project-map.md`, а не подгонка теста под файл.
-_MARKERS = (
-    "**На какой вопрос отвечает этот файл:**",
-    "**Question this document answers:**",
-)
+# English is the repository documentation language (ADR-0005); the marker set is closed.
+_MARKERS = ("**Question this document answers:**",)
 
-# Любой заголовок секции, не только `## `: на `### ` тоже надо останавливаться, иначе
-# у дока, чья первая секция — h3, «областью header'а» становится весь файл, и маркер,
-# упомянутый в прозе внизу, засчитался бы за header.
+# Stop at any section heading; otherwise a later prose mention could count as a header.
 _SECTION_HEADING = re.compile(r"^#{2,6} ")
 
-# Минимум содержательного текста после маркера: пустой «header» — это отсутствие
-# header'а с галочкой, ровно тот зелёный-но-пустой сигнал, против которого написан
-# `D419` для `.py`.
+# Require substantive text after the marker, paralleling Python's `D419`.
 _MIN_ANSWER_CHARS = 20
 
 
 def _mapped_docs_in(directory: Path) -> list[Path]:
-    """`rglob`, а не `glob`: спека говорит «`.md` **под** каталогом».
+    """Use `rglob`, not `glob`: the specification says “`.md` **under** the directory”.
 
-    Плоский `glob` оставил бы будущий `docs/architecture/<подкаталог>/*.md` вне инварианта
-    молча — та же форма тихого вакуума, что и переезд самого каталога. Каталог записей MADR
-    лежит **не** здесь (`docs/adr/`) и под этот гард не попадает намеренно: у записи своя
-    шапка, канон границы — `project-map.md` §«Что считается картируемым файлом», свой
-    инвариант — `test_adr_records.py` (#426).
+    A flat `glob` would silently leave future `docs/architecture/<subdirectory>/*.md` outside the invariant—the
+    same form of silent vacuum as moving the directory itself. The MADR record catalogue lives
+    **not** here (`docs/adr/`) and is intentionally outside this guard: records have their own
+    preamble, the canonical boundary is `project-map.md` §“What counts as a mapped file”, and their
+    own invariant is `test_adr_records.py` (#426).
     """
     return sorted(directory.rglob("*.md"))
 
@@ -86,10 +76,10 @@ def _mapped_docs() -> list[Path]:
 
 
 def _header_region(path: Path) -> list[str]:
-    """Строки до первого заголовка секции — там обязан быть header.
+    """Return lines before the first section heading, where the header belongs.
 
-    Граница семантическая, а не «первые N строк»: N разваливается на файле с
-    многострочной шапкой (`operations.md` — header + блок «Чего здесь нет», 12 строк).
+    The boundary is semantic rather than a fixed number of lines, which would
+    fail for documents with multi-line introductory blocks.
     """
     lines: list[str] = []
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -100,12 +90,12 @@ def _header_region(path: Path) -> list[str]:
 
 
 def _header_answer(lines: list[str]) -> str | None:
-    """Текст после маркера, если маркер **начинает** строку, иначе `None`.
+    """Return text after a marker **at the start** of a line, otherwise `None`.
 
-    Привязка к началу строки, а не `marker in text`: иначе док, который маркер лишь
-    упоминает (как `project-map.md`, цитирующий оба варианта в тексте самой спеки),
-    засчитывался бы как несущий header. Ведущий `> ` снимается — `testing.md` держит
-    header блокквотом, и это легитимная форма.
+    This is anchored at the start of the line rather than `marker in text`: otherwise a document
+    that merely mentions the marker (such as `project-map.md`, which quotes both variants in the specification text itself)
+    would count as carrying a header. The leading `> ` is removed—`testing.md` holds its
+    header in a blockquote, and that is a legitimate form.
     """
     for line in lines:
         stripped = line.removeprefix("> ").strip()
@@ -118,13 +108,13 @@ def _header_answer(lines: list[str]) -> str | None:
 class TestMappedDocsCarryHeader:
     @pytest.mark.parametrize("directory", _SCOPED_DIRS, ids=lambda d: d.name)
     def test_every_scoped_directory_contributes(self, directory: Path) -> None:
-        """Гард на пустой скоуп, по каталогу а не по объединению.
+        """Guard each directory against an empty scope, not only their union.
 
-        Проверять непустоту объединения мало: переезд одного из двух каталогов оставил
-        бы тест зелёным за счёт второго — «нечего проверять» стало бы неотличимо от
-        «всё в порядке» (§IV). Прецедент — `test_agent_frontmatter.py`. Утверждение
-        идёт о **том же** списке, что параметризует проверки ниже: гард, смотрящий на
-        более широкий набор, чем реально сканируется, сам был бы вакуумом.
+        Checking the union for non-emptiness is insufficient: moving one of two directories
+        would leave the test green thanks to the other—“nothing to check” would become indistinguishable
+        from “everything is fine” (§IV). The precedent is `test_agent_frontmatter.py`. The assertion is
+        about the **same** list that parameterizes the checks below: a guard that looks at
+        a wider set than is actually scanned would itself be a vacuum.
         """
         assert _mapped_docs_in(directory), f"no .md found under {directory}"
 

@@ -1,46 +1,36 @@
 #!/usr/bin/env python3
-"""Детектор дрейфа: объявленные required status checks ↔ фактические в GitHub (#436).
+"""Detect drift between declared and GitHub-required status checks (#436).
 
     python scripts/check_branch_protection.py
 
-Печатает фактический состав контекстов ветки `main` **всегда**, на любом коде выхода — это и
-есть воспроизводимый способ его увидеть, не открывая настройки руками. Коды: `0` совпало,
-`1` дрейф, `2` отказ инструмента (`gh` недоступен/без прав, битый JSON, сломанный захват вывода
-#364/#410). Разделение `1` и `2` — §IV: отказ инструмента не имеет права выглядеть как вердикт
-«дрейфа нет».
+Always prints actual `main` contexts, regardless of exit: this is the reproducible
+way to inspect them without opening settings. Exit 0 means match, 1 drift, and 2
+tool failure (unavailable/unauthorized `gh`, malformed JSON, or broken output capture
+#364/#410). §IV requires tool failure never to look like a “no drift” verdict.
 
-**Почему дом объявления здесь, а не в доке.** Состав контекстов машинно сверяется — и с GitHub
-(этот скрипт), и с воркфлоу репо (`tests/test_branch_protection.py`). Проза сверяться не умеет,
-поэтому доки на `REQUIRED_CONTEXTS` ссылаются, а не пересказывают его (тот же приём, что
-`scripts/set_issue_priority.py`).
+Declaration belongs here, not documentation: its composition is mechanically checked
+against GitHub by this script and repository workflows by
+`tests/test_branch_protection.py`; prose cannot be checked, so docs reference rather
+than repeat `REQUIRED_CONTEXTS`, as in `scripts/set_issue_priority.py`.
 
-**Почему дев-скрипт в `.githooks/pre-push`, а не job в CI.** У `GITHUB_TOKEN` нет скоупа
-`administration`, а чтение `branches/*/protection` требует admin-прав, поэтому CI-форма требует
-положить в secrets отдельный токен (fine-grained PAT с `Administration: read` или GitHub App).
-Радиус такого токена узкий, то есть форма рабочая — отвергнута она **по цене**: долгоживущий
-секрет приносит обязанность ротации, а протухший токен красит job без реального дрейфа и учит
-игнорировать детектор. Плюс `ci.yml` зеркалит реестр `CHECKS` из `ci_check.py`
-(`tests/test_ci_check.py::TestStepParity`), так что чек в `ci_check` автоматически обязан стать
-шагом CI — где и упрётся в права. Обходной путь через ruleset-эндпоинт (`repos/{owner}/{repo}/
-rules/branches/main`, читается обычным repo-read) для этого репо пуст: enforcement живёт в classic
-branch protection, которая туда не попадает. Пересматривать выбор уместно при переезде на rulesets
-или при появлении второго контрибьютора.
+This is a `.githooks/pre-push` developer script, not CI. `GITHUB_TOKEN` lacks
+`administration`, while reading `branches/*/protection` needs admin rights. CI would
+need a separate long-lived admin secret; its rotation burden and stale-token false reds
+would teach operators to ignore the detector. `ci.yml` also mirrors `ci_check.py`
+`CHECKS`, so every new ci check would become a CI step that hits that permission limit.
+The ordinary repo-read ruleset endpoint is irrelevant here because enforcement uses
+classic branch protection. Reconsider on migration to rulesets or a second contributor.
 
-**Локальный enforcement, а не surfacing (#458).** `.githooks` включается опциональным
-`git config core.hooksPath`, поэтому на сервере скрипт ничего не решает — единственный
-авторитетный барьер для `main` это сама branch protection. Но подключён он через
-`|| exit $?` и **блокирует push**, и это правильное поведение: прежняя формулировка
-«не enforcement / surfacing» описывала не то, что происходит. Печатающий-но-не-блокирующий
-детектор утонул бы в выводе push'а, а дрейф остался бы — ровно silent skip, против которого §IV.
+This is local enforcement, not mere surfacing (#458). Optional `core.hooksPath` means
+the server's branch protection remains the only authoritative `main` barrier, but this
+hook is invoked through `|| exit $?` and deliberately blocks push. A printing-only
+detector would vanish in push output and leave drift as the §IV silent skip it prevents.
+Intentional temporary drift uses `--allow-drift "<reason>"`, not `--no-verify` (which
+also silences `ci_check`); the reason is printed in push output.
 
-Намеренный временный дрейф выражается флагом `--allow-drift "<причина>"`, а не обходится
-через `--no-verify` (который глушит и `ci_check`). Причина печатается, так что принятое
-исключение видно в выводе push'а.
-
-**Почему нет триггера по ветке.** «Проверять только при push в `main`» выглядит логично — push
-в feature-ветку защиту `main` ослабить не может — но push в `main` запрещён политикой репо
-(всегда PR), поэтому такой триггер означал бы «не проверять никогда». Вариант отвергнут; записано
-здесь, чтобы его не переоткрывали.
+There is no branch-specific trigger: checking only pushes to `main` sounds sensible,
+but repository policy prohibits direct pushes to `main` (always PR), so it would mean
+never checking. This rejected option is recorded to prevent reopening it.
 """
 
 from __future__ import annotations
@@ -55,74 +45,73 @@ from typing import Any, NamedTuple
 
 import yaml
 
-# Канон состава required-контекстов ветки `main`.
+# Canonical required-context composition for the `main` branch.
 REVIEW_CONTEXT = "agent-review"
 REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", REVIEW_CONTEXT)
 
-# PR-джобы, сознательно НЕ сделанные required, и почему. Пустая причина — забытое решение,
-# а не принятое, поэтому гард её не принимает.
+# PR jobs deliberately NOT required, with reasons. An empty reason is a forgotten decision,
+# not an accepted one, so the guard rejects it.
 NOT_REQUIRED: dict[str, str] = {}
 
 BRANCH = "main"
-# Плейсхолдеры `{owner}`/`{repo}` подставляет сам `gh`; без ведущего слэша — иначе MSYS
-# на Windows подменит путь (CLAUDE.md §Среда).
+# `gh` substitutes `{owner}`/`{repo}` placeholders; no leading slash, or Windows MSYS
+# rewrites the path (CLAUDE.md §Environment).
 _ENDPOINT = f"repos/{{owner}}/{{repo}}/branches/{BRANCH}/protection"
-# Одиночный GET к GitHub API; щедро, но конечно — эта проверка стоит перед восьмиминутным
-# ci_check, и висеть без вывода ей нельзя.
+# One GitHub API GET: generous but finite, as this check precedes eight-minute
+# ci_check and must not hang silently.
 _GH_TIMEOUT_S = 30
 
 
 def protection_drift(
     actual: Iterable[str], expected: Iterable[str] = REQUIRED_CONTEXTS
 ) -> tuple[list[str], list[str]]:
-    """`(missing, unexpected)` — расхождение по обоим направлениям.
+    """`(missing, unexpected)`: divergence in both directions.
 
-    Сравнение по множеству: порядок в `checks` GitHub не гарантирует. Незаявленный контекст —
-    такое же расхождение, как отсутствующий: канон состава живёт в репо, и «кто-то добавил
-    руками» должно доходить до оператора, а не считаться нормой.
+    Set comparison: GitHub does not guarantee `checks` order. An undeclared context is
+    divergence just like a missing one: composition canon lives in the repository, and a
+    manual addition must reach the operator rather than become normal.
     """
     actual_set, expected_set = set(actual), set(expected)
     return sorted(expected_set - actual_set), sorted(actual_set - expected_set)
 
 
 def contexts_from_protection(payload: Mapping[str, Any]) -> tuple[str, ...]:
-    """Фактические контексты из ответа branch-protection API.
+    """Actual contexts from the branch-protection API response.
 
-    Читается `required_status_checks.checks[*].context` — недеприкейченная форма, та же, что
-    пишется при обновлении. Отсутствие ключа даёт пустой кортеж, то есть **дрейф**, а не сбой:
-    снесённый protection — самый вероятный реальный сценарий, и молчать о нём нельзя.
+    Reads `required_status_checks.checks[*].context`, the non-deprecated form also used
+    for updates. A missing key yields an empty tuple: **drift**, not failure. Removed
+    protection is the likeliest real scenario and must not be silent.
     """
-    # `or {}` на каждом шаге, а не только дефолт `.get`: явный JSON `null` в ответе — это не
-    # отсутствующий ключ, и без него `.get` на `None` кинул бы AttributeError, то есть отказ
-    # инструмента ушёл бы наружу под кодом 1 («дрейф») — ровно та подмена, от которой
-    # `fetch_protection` защищается.
+    # Use `or {}` at each step, not only as `.get` default: explicit JSON null is not a
+    # missing key; otherwise `.get` on None raises AttributeError and tool failure escapes
+    # as code 1 (“drift”), the exact substitution that
+    # `fetch_protection` prevents.
     checks = (payload.get("required_status_checks") or {}).get("checks") or []
     return tuple(check["context"] for check in checks)
 
 
 def load_workflows(directory: Path) -> dict[str, Mapping[Any, Any]]:
-    """Распарсить воркфлоу каталога: имя файла → документ.
+    """Parse directory workflows: filename → document.
 
-    Оба расширения, потому что GitHub Actions принимает и `.yml`, и `.yaml`: гард, который
-    смотрит только на первое, пропустил бы новый PR-джоб в `.yaml` молча и вакуумно позеленел
-    (§IV — в том самом гарде, чья работа это ловить). Пустой файл `safe_load` отдаёт как `None`,
-    нормализуем в `{}`, иначе обход упал бы трейсбеком вместо вердикта.
+    Both extensions matter because GitHub Actions accepts `.yml` and `.yaml`: a guard that
+    saw only the former would silently miss a new PR job in `.yaml` (§IV). `safe_load`
+    returns None for an empty file; normalize to `{}` or the guard raises instead of ruling.
     """
     paths = sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
     return {path.name: yaml.safe_load(path.read_text(encoding="utf-8")) or {} for path in paths}
 
 
 def _triggers(doc: Mapping[Any, Any]) -> Any:
-    """Секция `on:` воркфлоу. YAML 1.1 читает голое `on` как булев `True` — берём оба ключа.
+    """Workflow `on:` section. YAML 1.1 reads bare `on` as boolean `True`, so use both keys.
 
-    Отсюда и `Mapping[Any, Any]` у документа: ключи воркфлоу — не только строки, и сузить тип
-    до `str` значило бы описать не тот объект, который реально приходит из парсера.
+    Hence `Mapping[Any, Any]`: workflow keys are not only strings, and narrowing to `str`
+    would not describe the object the parser actually returns.
     """
     return doc.get("on", doc.get(True, {}))
 
 
 def _runs_on_pull_request(triggers: Any) -> bool:
-    """Триггерится ли воркфлоу на `pull_request` (dict / список / строка)."""
+    """Whether workflow triggers on `pull_request` (dict / list / string)."""
     events = {"pull_request", "pull_request_target"}
     if isinstance(triggers, Mapping):
         return bool(events.intersection(triggers))
@@ -133,20 +122,20 @@ def _runs_on_pull_request(triggers: Any) -> bool:
     return False
 
 
-# Фильтры на `pull_request`-триггере: с ними джоб отчитывается не на каждом PR, а required-контекст
-# обязан отчитаться на любом — иначе он навсегда «Expected».
+# Filters on `pull_request` make a job report on only some PRs, while a required context
+# must report on every PR or remain “Expected” forever.
 _TRIGGER_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")
 
 
 class _Job(NamedTuple):
-    """Определение джоба вместе с фильтрами воркфлоу, который его несёт."""
+    """Job definition together with filters of the workflow that carries it."""
 
     definition: Mapping[str, Any]
     filters: tuple[str, ...]
 
 
 def _pull_request_filters(triggers: Any) -> tuple[str, ...]:
-    """Фильтры на `pull_request`-триггере, из-за которых джоб отчитается не на каждом PR."""
+    """`pull_request` trigger filters that stop a job reporting on every PR."""
     if not isinstance(triggers, Mapping):
         return ()
     filters: set[str] = set()
@@ -160,13 +149,12 @@ def _pull_request_filters(triggers: Any) -> tuple[str, ...]:
 def _pull_request_jobs(
     workflows: Mapping[str, Mapping[Any, Any]],
 ) -> tuple[dict[str, _Job], list[str]]:
-    """Эффективное имя check-run'а → джоб, плюс список имён, встретившихся дважды.
+    """Effective check-run name → job, plus names found twice.
 
-    Имя контекста — это `name:` джоба, если он задан, иначе ключ джоба. Сверка по ключу
-    сломалась бы молча при добавлении `name:`, оставив required-контекст навсегда в статусе
-    «Expected»; при `enforce_admins: true` это заперло бы мёрдж, включая PR с починкой.
-    Коллизия имён возвращается отдельно, а не затирается молча: какой из двух джобов отчитается
-    под этим контекстом — неопределённость, а не деталь.
+    Context is job `name:` when set, otherwise job key. Key comparison would silently break
+    when `name:` is added, leaving a required context “Expected” forever and locking merges
+    under `enforce_admins: true`. Return name collisions separately: which job reports is
+    uncertainty, not a detail.
     """
     jobs: dict[str, _Job] = {}
     duplicates: list[str] = []
@@ -184,7 +172,7 @@ def _pull_request_jobs(
 
 
 def _declared_problems(declared: tuple[str, ...], jobs: Mapping[str, _Job]) -> list[str]:
-    """Проблемы объявленных контекстов: нет джоба, матрица, фильтр на триггере."""
+    """Declared-context problems: missing job, matrix, or trigger filter."""
     problems: list[str] = []
     for context in declared:
         job = jobs.get(context)
@@ -211,7 +199,7 @@ def _declared_problems(declared: tuple[str, ...], jobs: Mapping[str, _Job]) -> l
 def _undeclared_problems(
     declared: tuple[str, ...], jobs: Mapping[str, _Job], excluded: Mapping[str, str]
 ) -> list[str]:
-    """Проблемы остальных: решение не принято, исключение без причины, протухшее исключение."""
+    """Other problems: no decision, unexplained exclusion, or stale exclusion."""
     problems: list[str] = []
     for context in sorted(jobs):
         if context in declared:
@@ -239,11 +227,11 @@ def declaration_problems(
     declared: Iterable[str] = REQUIRED_CONTEXTS,
     excluded: Mapping[str, str] = NOT_REQUIRED,
 ) -> list[str]:
-    """Расхождения объявления с воркфлоу репо — оффлайн-половина гарда.
+    """Declaration/workflow divergence: the guard's offline half.
 
-    Ловит то, что сетевая половина увидеть не может: контекст без джоба (вечный «Expected»),
-    джоб с матрицей или с фильтром на триггере (контекст отчитается не всегда), новый PR-джоб,
-    про который решение «required или нет» не принято, и протухшее/противоречивое исключение.
+    Catches what network checking cannot: context without job (permanent “Expected”), matrix
+    or trigger-filtered job (context does not always report), a new undecided PR job, and
+    stale or contradictory exclusion.
     """
     jobs, duplicates = _pull_request_jobs(workflows)
     declared = tuple(declared)
@@ -259,11 +247,11 @@ def declaration_problems(
 
 
 def fetch_protection() -> Mapping[str, Any]:
-    """Прочитать branch protection через `gh api`; отказ инструмента → exit 2.
+    """Read branch protection through `gh api`; tool failure → exit 2.
 
-    Отдельный код 2 (а не пустой словарь) намеренно: транзиентный сбой `gh` (auth, rate-limit,
-    сеть) не должен быть истолкован как «required-контекстов нет», то есть как дрейф — это ложный
-    диагноз с противоположным лечением.
+    Code 2 rather than an empty dictionary is deliberate: transient gh failure (auth,
+    rate limit, network) must not mean “no required contexts,” i.e. drift—a false diagnosis
+    with the opposite remedy.
     """
     try:
         result = subprocess.run(
@@ -274,8 +262,8 @@ def fetch_protection() -> Mapping[str, Any]:
             timeout=_GH_TIMEOUT_S,
         )
     except subprocess.TimeoutExpired:
-        # Без таймаута зависший `gh` (прокси, DNS-чёрная дыра) повесил бы pre-push без вывода —
-        # а `CLAUDE.md` §Среда прямо учит оператора не убивать долгий pre-push.
+        # Without timeout, hanging gh (proxy or DNS black hole) blocks pre-push silently;
+        # CLAUDE.md §Environment explicitly tells operators not to kill long pre-push.
         print(
             f"error: `gh api {_ENDPOINT}` не ответил за {_GH_TIMEOUT_S} с — проверка не выполнена.",
             file=sys.stderr,
@@ -308,7 +296,7 @@ def fetch_protection() -> Mapping[str, Any]:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """Напечатать фактический состав контекстов и вернуть вердикт кодом выхода."""
+    """Print actual context composition and return the verdict through exit code."""
     parser = argparse.ArgumentParser(
         description=f"Сверить required status checks ветки `{BRANCH}` с объявлением в этом файле."
     )
@@ -332,11 +320,10 @@ def main(argv: list[str] | None = None) -> None:
         return
 
     if options.allow_drift:
-        # #458: без этого выхода единственный способ запушить при намеренно снятом
-        # чеке — `--no-verify`, который глушит и `ci_check`. Гейт, регулярно
-        # требующий обхода, приучает обходить, и в следующий раз обход проглотит
-        # настоящий красный. Здесь дрейф принимается, но НЕ становится невидимым:
-        # причина печатается в вывод push'а.
+        # #458: without this exit, push after intentionally removing a check requires
+        # `--no-verify`, which also suppresses ci_check. A gate that regularly needs
+        # bypass teaches bypass, which next hides a real red result. Drift is accepted
+        # but NOT invisible: its reason is printed in push output.
         print(f"accepted: дрейф принят намеренно — {options.allow_drift}")
         return
 

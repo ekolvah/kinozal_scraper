@@ -8,7 +8,7 @@ PR→issue auto-linking hung on two fragile assumptions in the implementer prose
   1. a `(closes #N)` keyword in the *commit body* — squash-merge rebuilds the
      commit from the PR title and DROPS the feature-commit body, keyword and all;
   2. a hand-typed keyword in the PR body — which #319 wrote in Russian
-     («Закрывает #140»), and GitHub only parses English `close/fix/resolve`.
+     (a Russian “closes #140”), while GitHub only parses English `close/fix/resolve`.
 
 An English `Closes #N` in the PR *body* survives squash (the linkage is computed
 from the body at PR-creation time, not from any commit). So this script derives N
@@ -85,16 +85,14 @@ def has_closing_reference(view_json: str) -> bool:
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
-    # `None` при запрошенном захвате = захват сломался (#364: поток-читатель умер).
-    # Раньше здесь стоял `or ""` по каждому call-site — он подменял отказ пустотой,
-    # то есть «gh ничего не ответил», и скрипт шёл дальше по фантомным данным.
-    # Ненулевой returncode исключением НЕ является: вызывающий сам решает, и путь
-    # печати ошибки обязан доехать (#410).
+    # `None` with requested capture means capture failed (#364: the reader thread died).
+    # Each call site formerly used `or ""`, replacing failure with emptiness—“gh returned
+    # nothing”—and letting the script proceed on phantom data. A nonzero return code is
+    # NOT an exception: the caller decides, and its error-reporting path must execute (#410).
     if result.stdout is None or result.stderr is None:
-        # Код 2, как в сиблинге `verify_pr_link.py`: инфра-сбой обязан отличаться
-        # от вердикта. Код 1 здесь занят легитимными исходами («PR NOT linked»,
-        # «gh pr create failed»), и слить с ними сломанный захват значило бы
-        # повторить ту же ошибку в другой форме (#410).
+        # Code 2, as in sibling `verify_pr_link.py`: infrastructure failure must differ
+        # from a verdict. Code 1 is used for legitimate outcomes (“PR NOT linked”,
+        # “gh pr create failed”); merging capture failure into them repeats #410.
         print(
             f"error: capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",
@@ -128,9 +126,8 @@ def _existing_pr(branch: str) -> dict[str, Any] | None:
 def _create_pr(title: str, body: str) -> str:
     result = _run(["gh", "pr", "create", "--base", "main", "--title", title, "--body", body])
     if result.returncode != 0:
-        # `or "error: …"` здесь остаётся: это обработка ЛЕГИТИМНО пустого stderr
-        # (команда упала молча), а не воркэраунд отказа захвата — тот теперь
-        # ловится в `_run` (#410).
+        # `or "error: …"` remains for LEGITIMATELY empty stderr (a command failed
+        # silently), not as a capture-failure workaround; `_run` catches that (#410).
         print(result.stderr.strip() or "error: gh pr create failed", file=sys.stderr)
         sys.exit(1)
     lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
@@ -142,14 +139,13 @@ def _edit_pr_body(url: str, body: str) -> None:
 
 
 def _closing_refs_json(url: str) -> str | None:
-    """JSON со ссылками закрытия, либо `None` — если прочитать не удалось.
+    """JSON with closing references, or `None` when it could not be read.
 
-    Раньше проверки `returncode` не было и упавший `gh pr view` возвращал `"{}"` —
-    неотличимо от «PR не залинкован», из-за чего скрипт доходил до фейкового
-    вердикта `NOT linked`, а причина (сбой gh) не доходила до оператора вовсе.
-    Возврат `None`, а не `sys.exit`: этот вызов живёт **внутри retry-цикла**, и
-    транзиентный rate-limit не должен убивать прогон после того, как PR уже создан
-    — он должен стоить одной неуспешной попытки (#410)."""
+    Previously no return-code check meant failed `gh pr view` returned `"{}"`,
+    indistinguishable from an unlinked PR; the script reached a false `NOT linked`
+    verdict while the gh failure never reached the operator. Return `None`, not
+    `sys.exit`: this call lives **inside the retry loop**, so transient rate limiting
+    after PR creation costs one failed attempt rather than the whole run (#410)."""
     result = _run(["gh", "pr", "view", url, "--json", "closingIssuesReferences"])
     if result.returncode != 0:
         print(
@@ -174,12 +170,10 @@ def _linkage_confirmed(url: str) -> bool:
         if attempt < LINKAGE_ATTEMPTS - 1:
             time.sleep(LINKAGE_DELAY_S)
     if not last_read_ok:
-        # Вердикт «ссылок нет» правомерен, только если ПОСЛЕДНЕЕ чтение удалось.
-        # Считать достаточным любое успешное чтение нельзя: первое штатно пустое —
-        # GitHub считает `closingIssuesReferences` асинхронно (#321), — поэтому
-        # «одно раннее успешное + серия сбоев» означает, что мы не наблюдали
-        # финального состояния вовсе, и `False` был бы вердиктом по данным,
-        # которых нет (#410).
+        # “No references” is valid only if the FINAL read succeeded. Any successful read
+        # is insufficient: the first is normally empty because GitHub computes
+        # `closingIssuesReferences` asynchronously (#321). One early success plus later
+        # failures means final state was never observed, so False would judge absent data (#410).
         print(
             f"error: the final linkage read for {url} failed — linkage is unknown, not absent.",
             file=sys.stderr,

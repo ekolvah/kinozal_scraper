@@ -1,10 +1,8 @@
-"""RED tests for #142: LLMTrailerStrategy (стратегия A — Gemini structured-output).
+"""RED tests for #142: the Gemini structured-output trailer strategy.
 
-Контракт парсинга детерминируется double'ом (§I/§II): `FakeJsonGenerator` отдаёт
-зафиксированный JSON — тесты пришпиливают честный `None`, §IV-видимость degraded-веток
-(различимый `reason` на каждую), clamp `confidence`, экономию токенов (пустой пул — без
-вызова модели). `GeminiJsonGenerator` тестируется через `patch(genai.GenerativeModel)` —
-устоявшийся паттерн `test_gemini_enricher.py`. Качество модели меряет harness, не unit-тест.
+A fake JSON generator makes parsing deterministic (§I/§II), pinning honest
+`None`, distinct degraded-branch reasons, confidence clamping, and the empty-pool
+call budget. Model quality belongs to the harness rather than unit tests.
 """
 
 from __future__ import annotations
@@ -27,7 +25,7 @@ from kinozal_scraper.trailer_strategy import Candidate, FilmProfile
 
 
 class FakeJsonGenerator:
-    """Double границы JsonGenerator: отдаёт канонный JSON, ловит промпт и счётчик вызовов."""
+    """JSON-generator boundary double returning fixed data and recording calls."""
 
     def __init__(self, response: str) -> None:
         self._response = response
@@ -51,7 +49,7 @@ def _candidates() -> list[Candidate]:
     ]
 
 
-# ── LLMTrailerStrategy: контракт парсинга/None-ветки ──────────────────────────
+# ── LLMTrailerStrategy: parsing contract / None branches ───────────────────────
 
 
 class TestLLMTrailerStrategy(unittest.TestCase):
@@ -89,8 +87,8 @@ class TestLLMTrailerStrategy(unittest.TestCase):
         self.assertIn("missing video_id", pick.reason)
 
     def test_non_object_json_becomes_visible_none(self) -> None:
-        # Синтаксически валидный JSON, но не object (список/число) → data["video_id"]
-        # падает TypeError, а не KeyError/JSONDecodeError — отдельная §IV-ветка.
+        # Valid JSON that is not an object raises TypeError rather than the
+        # KeyError/JSONDecodeError paths, so it needs a distinct visible branch.
         gen = FakeJsonGenerator("[1, 2]")
         pick = LLMTrailerStrategy(gen).pick(_film(), _candidates())
         self.assertIsNone(pick.video_id)
@@ -124,7 +122,7 @@ class TestLLMTrailerStrategy(unittest.TestCase):
         self.assertIn("Man on Fire", gen.last_prompt)
 
 
-# ── GeminiJsonGenerator: structured-output + маппинг ошибок ротации ────────────
+# ── GeminiJsonGenerator: structured output + rotation-error mapping ────────────
 
 
 class _FakeCandidate:

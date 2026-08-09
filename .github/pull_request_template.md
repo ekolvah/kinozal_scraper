@@ -1,20 +1,20 @@
 <!--
-PR template для kinozal_scraper. Все секции обязательны.
+PR template for kinozal_scraper. All sections are required.
 
-PR — это ОТЧЁТ по плану из issue (что реально сделано + доказательство), а не копия
-issue. `Test plan` и `Docs touched` зеркалят одноимённые issue-секции как ПЛАН→ФАКТ
-(галочки = прогнано). `Risk & Rollback` — delivery-only: у неё counterpart'а в issue
-нет и быть не может (blast-radius известен только по факту диффа).
+The PR is a REPORT on the issue plan (what was actually done + evidence), not a copy of the
+issue. `Test plan` and `Docs touched` mirror the identically named issue sections as PLAN→FACT
+(checks = executed). `Risk & Rollback` is delivery-only: it has no and cannot have an issue counterpart
+(blast radius is known only from the resulting diff).
 
-Если issue нет (тривиальный фикс) — всё равно заполни все секции.
+If there is no issue (a trivial fix), still complete every section.
 -->
 
 ## Summary
 
 <!--
-2-3 предложения: что сделано и зачем. Linker `Closes #N` (или `Refs #N`) обязателен.
-Divergence: совпало с issue `## Implementation outline`? Отклонения/сюрпризы — одной строкой
-(или «совпало с планом»).
+2–3 sentences: what was done and why. The linker `Closes #N` (or `Refs #N`) is required.
+Divergence: did it match issue `## Implementation outline`? State deviations/surprises in one line
+(or “matched the plan”).
 -->
 
 Closes #
@@ -22,7 +22,7 @@ Closes #
 ## Agent record
 
 <!--
-Короткая provenance-запись, без промптов или chain-of-thought.
+Brief provenance record, without prompts or chain-of-thought.
 - Implementer: <agent / model or version if known>
 - Reviewer / fixer: <agent or none>
 - CI evidence: <local ci_check result and PR checks URL/status>
@@ -45,26 +45,26 @@ Closes #
 ## Test plan
 
 <!--
-Markdown-чеклист. Должен зеркалить issue'шный `## Test plan` с галочками если прогнано.
-Плюс локальные команды, которые ты реально запускал.
+Markdown checklist. It must mirror the issue `## Test plan`, checking items that were run.
+Also list the local commands you actually ran.
 -->
 
-- [ ] `python scripts/ci_check.py` — green локально
-- [ ] CI на PR — green
+- [ ] `python scripts/ci_check.py` — green locally
+- [ ] PR CI — green
 
 ## Risk & Rollback
 
 <!--
-Проверяемо за 30 сек. Для тривиального изменения — одна строка «low risk, revert-safe».
-- Blast-radius: изменение изолировано или задевает несвязанное (крон-пайплайн,
-  Sheets-дедуп, Telegram-доставка, Gemini)?
-- Rollback: чистый `git revert` PR — или есть необратимые эффекты (уже отправленные
-  Telegram-сообщения, записи в Google Sheets)?
-- Мониторинг: за чем следить после мержа (ближайший крон-ран run-script.yml)?
+Verifiable in 30 seconds. For a trivial change, use the single line “low risk, revert-safe”.
+- Blast radius: is the change isolated, or does it affect unrelated functionality (cron pipeline,
+  Sheets deduplication, Telegram delivery, Gemini)?
+- Rollback: a clean `git revert` PR, or are there irreversible effects (already-sent
+  Telegram messages, Google Sheets entries)?
+- Monitoring: what should be monitored after merge (the next run-script.yml cron run)?
 -->
 
 ## Docs touched
 
 <!--
-Список изменённых `.md` файлов (docs/architecture/*, CLAUDE.md, MEMORY.md, …) или явно "none — behaviour unchanged". Должен зеркалить issue'шный `## Docs to update`.
+List changed `.md` files (docs/architecture/*, CLAUDE.md, MEMORY.md, …), or explicitly state "none — behaviour unchanged". It must mirror the issue `## Docs to update`.
 -->

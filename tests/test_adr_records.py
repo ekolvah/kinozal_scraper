@@ -1,28 +1,28 @@
-"""Структурный гард каталога `docs/adr/` (#426).
+"""Structural guard for the `docs/adr/` catalogue (#426).
 
-**Что стережём.** Обоснования решений живут записями MADR в `docs/adr/`, и весь смысл
-механизма — **стабильный ID, у которого есть тело в репо и статус**: только тогда
-state-док может сослаться на решение, а не пересказывать его рядом с собой. Гард
-защищает ровно те свойства, без которых ID перестаёт быть адресом: имя по конвенции,
-уникальный номер, известный статус, `superseded by`, ведущий в существующую запись,
-и обязательный минимум секций.
+**What is guarded.** Decision rationales live in MADR records in `docs/adr/`, and the entire point of
+the mechanism is a **stable ID with a body in the repository and a status**: only then can a
+state document refer to a decision rather than restating it beside itself. The guard protects precisely
+the properties without which an ID ceases to be an address: a conventional name,
+a unique number, a known status, `superseded by` that leads to an existing record,
+and the mandatory minimum set of sections.
 
-**Закрытый набор статусов — наша политика, а не MADR.** Апстрим отдаёт `status`
-свободной строкой («These are optional metadata elements»); без закрытого набора не
-выражается append-only-дисциплина (смена решения = новая запись со ссылкой вперёд,
-а не правка старой). Канон набора и правило входа в каталог — `project-map.md`
-§Canonical-home (**не** запись `0001`: политика меняется, а принятая запись — нет);
-здесь константа, которая канону подчинена.
+**The closed status set is our policy, not MADR's.** Upstream exposes `status` as
+a free-form string (“These are optional metadata elements”); without a closed set, append-only
+discipline cannot be expressed (a decision change = a new record with a forward reference,
+not an edit to the old one). The canon for the set and the rule for entering the catalogue is `project-map.md`
+§Canonical-home (**not** record `0001`: policy changes, while an accepted record does not);
+the constant here is subordinate to that canon.
 
-**Границы гарда, честно.** Проверки структурные: запись-заготовку с незаполненными
-`{placeholder}` из шаблона гард **не отличит** от настоящей — секции на месте, статус
-известен, зелено. Он не судит и о том, достойно ли решение записи (cost-of-change —
-семантический вопрос) и не актуально ли обоснование. Presence ≠ correctness, ровно как
-в `test_doc_headers.py`: гард гарантирует, что **есть с чем спорить** на ревью.
+**Guard boundaries, honestly.** The checks are structural: the guard **cannot distinguish**
+a draft record with unfilled `{placeholder}`s from the template from a real one—the sections are present, the status
+is known, and it is green. Nor does it judge whether a decision merits a record (cost of change is a
+semantic question) or whether its rationale is still current. Presence ≠ correctness, just as in
+`test_doc_headers.py`: the guard ensures there is **something to debate** in review.
 
-**Скоуп производен от glob**, а не от списка: следующая запись попадает под инвариант
-сама. Гард на пустой каталог — против того же §IV-вакуума, что в `test_doc_headers.py`
-и `test_agent_frontmatter.py`: «нечего проверять» обязано отличаться от «всё в порядке».
+**Scope is derived from the glob**, not from a list: the next record enters the invariant
+automatically. The guard against an empty catalogue counters the same §IV vacuum as `test_doc_headers.py`
+and `test_agent_frontmatter.py`: “nothing to check” must differ from “everything is fine”.
 """
 
 from __future__ import annotations
@@ -41,33 +41,30 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ADR_DIR = _REPO_ROOT / "docs" / "adr"
 _TEMPLATE = _ADR_DIR / "template.md"
 
-# `NNNN-slug.md` — конвенция MADR. Номер отдельной группой: он и есть адрес записи.
+# MADR uses `NNNN-slug.md`; the captured number is the record address.
 _RECORD_NAME = re.compile(r"^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 
-# Статусы MADR минус свободная форма. Дом набора — запись 0001 (см. docstring модуля).
+# Closed MADR status set; repository policy is canonical in `project-map.md`.
 _STATIC_STATUSES = frozenset({"proposed", "rejected", "accepted", "deprecated"})
 _SUPERSEDED_BY = re.compile(r"^superseded by ADR-(\d{4})$")
 
-# Состав MADR **minimal** (`template/adr-template-minimal.md`, тег 4.0.0). `Consequences`
-# и `Confirmation` — `###` под `## Decision Outcome`, поэтому h2-парсер их не видит и
-# требовать не должен: это шаблон апстрима, а не наше послабление.
+# Minimal MADR 4.0.0 h2 sections. `Consequences` and `Confirmation` are h3
+# subsections of `Decision Outcome`, so the h2 parser must not require them.
 _REQUIRED_SECTIONS = ("Context and Problem Statement", "Considered Options", "Decision Outcome")
 
 
 def _record_files() -> list[Path]:
-    """Все `.md` каталога, кроме шаблона.
+    """Return every catalogue Markdown file except the template.
 
-    Фильтровать по `_RECORD_NAME` здесь нельзя: файл с кривым именем тогда молча
-    выпал бы из набора и `test_filename_matches_convention` не покраснел бы никогда.
+    Do not prefilter by `_RECORD_NAME`; malformed names must reach the test.
     """
     return sorted(p for p in _ADR_DIR.glob("*.md") if p.name != _TEMPLATE.name)
 
 
 def _frontmatter_status(text: str) -> str | None:
-    """Значение `status` из YAML-frontmatter записи, либо `None`.
+    """Return the record's YAML-frontmatter `status`, or `None`.
 
-    Парсер — `yaml`, как в `test_agent_frontmatter.py`: третью реализацию разбора
-    frontmatter в репо не заводим.
+    Reuse YAML parsing rather than adding another frontmatter implementation.
     """
     if not text.startswith("---\n"):
         return None
@@ -82,13 +79,13 @@ def _frontmatter_status(text: str) -> str | None:
 
 
 def _record_number(name: str) -> str | None:
-    """Номер записи по имени файла, либо `None`, если имя не по конвенции."""
+    """Return the record number from a conventional filename, otherwise `None`."""
     match = _RECORD_NAME.match(name)
     return match.group(1) if match else None
 
 
 def _filename_problem(name: str) -> str | None:
-    """Описание нарушения конвенции имени, либо `None`."""
+    """Return a filename-convention problem, otherwise `None`."""
     if _RECORD_NAME.match(name):
         return None
     return (
@@ -98,7 +95,7 @@ def _filename_problem(name: str) -> str | None:
 
 
 def _status_problem(status: str | None) -> str | None:
-    """Описание нарушения формы статуса, либо `None`. Резолв цели — не здесь."""
+    """Return a status-shape problem; target resolution is handled separately."""
     if status is None:
         return (
             "нет строкового `status` в YAML-frontmatter — по записи нельзя понять, действует "
@@ -113,7 +110,7 @@ def _status_problem(status: str | None) -> str | None:
 
 
 def _superseded_target(status: str | None) -> str | None:
-    """Номер записи, на которую указывает `superseded by`, либо `None`."""
+    """Return the record number named by `superseded by`, otherwise `None`."""
     if status is None:
         return None
     match = _SUPERSEDED_BY.match(status)
@@ -121,11 +118,11 @@ def _superseded_target(status: str | None) -> str | None:
 
 
 def _dangling_superseded(status: str | None, known_numbers: frozenset[str]) -> str | None:
-    """Номер цели `superseded by`, которой нет среди записей, либо `None`.
+    """Return a `superseded by` target number absent from the records, otherwise `None`.
 
-    Отдельной функцией, а не проверкой в теле теста: пока ни одна запись не отменена,
-    тест на реальном каталоге скипается, и без синтетики логика резолва не была бы
-    проверена **вовсе** — зелёный гейт по пустому множеству.
+    This is a separate function rather than a check in the test body: while no record has been
+    superseded, the real-catalogue test is skipped, and without synthetic cases the resolution logic
+    would not be tested **at all**—a green gate over an empty set.
     """
     target = _superseded_target(status)
     if target is None or target in known_numbers:
@@ -134,19 +131,19 @@ def _dangling_superseded(status: str | None, known_numbers: frozenset[str]) -> s
 
 
 def _missing_sections(text: str) -> list[str]:
-    """Обязательные MADR-секции, которых в записи нет или которые пусты."""
+    """Return required MADR sections that are absent or empty."""
     return find_gaps(text, required=_REQUIRED_SECTIONS)
 
 
 def _duplicate_numbers(names: Sequence[str]) -> list[str]:
-    """Номера, встретившиеся больше одного раза."""
+    """Return record numbers that appear more than once."""
     numbers = [number for name in names if (number := _record_number(name))]
     return sorted(number for number, count in Counter(numbers).items() if count > 1)
 
 
 class TestAdrCatalogue:
     def test_catalogue_is_not_empty(self) -> None:
-        """Пустой каталог = гард ничего не проверяет, оставаясь зелёным (§IV)."""
+        """An empty catalogue would leave a vacuously green guard (§IV)."""
         assert _record_files(), (
             f"в {_ADR_DIR} нет ни одной записи — параметризованные проверки ниже "
             f"проверяют пустой набор, и 'нечего проверять' становится неотличимо от "
@@ -154,11 +151,11 @@ class TestAdrCatalogue:
         )
 
     def test_template_exists_and_is_not_a_record(self) -> None:
-        """Шаблон обязан лежать рядом и обязан быть невалиден как запись.
+        """The adjacent template must exist but remain invalid as a record.
 
-        Он и есть источник `{placeholder}`-ов: попади он в набор записей, гард
-        краснел бы на нём вечно, а обойти это фильтром «кроме заготовок» значило бы
-        завести тихий opt-out для настоящих записей.
+        It is the source of `{placeholder}`s: if it entered the record set, the guard
+        would stay red on it forever, while avoiding that with a “except drafts” filter would
+        create a silent opt-out for real records.
         """
         assert _TEMPLATE.is_file(), (
             f"нет {_TEMPLATE}: запись создаётся копированием шаблона, без него формат "
@@ -168,10 +165,10 @@ class TestAdrCatalogue:
         assert _filename_problem(_TEMPLATE.name) is not None
 
     def test_record_numbers_are_unique(self) -> None:
-        """Дубль номера делает ссылку `ADR-NNNN` неоднозначной при зелёном гарде.
+        """A duplicate number makes the `ADR-NNNN` reference ambiguous with a green guard.
 
-        Случай не гипотетический: две параллельные ветки заводят по записи, каждая
-        берёт «следующий свободный» номер, и обе правы поодиночке.
+        This case is not hypothetical: two parallel branches each create a record, each
+        takes the “next free” number, and each is correct in isolation.
         """
         duplicates = _duplicate_numbers([p.name for p in _record_files()])
         assert not duplicates, (
@@ -210,8 +207,8 @@ class TestAdrRecord:
 
 
 class TestRecordPredicates:
-    """Негативные ветки — на синтетике: реальный каталог валиден по построению,
-    и без этих кейсов гард доказывал бы лишь сам себя."""
+    """Negative branches use synthetic data: the real catalogue is valid by construction,
+    and without these cases the guard would prove only itself."""
 
     @pytest.mark.parametrize(
         "name",

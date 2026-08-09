@@ -1,29 +1,29 @@
-"""Бюджет always-load контекста (#375).
+"""Budget for always-loaded context (#375).
 
-**Что стережём.** `CLAUDE.md` и файлы `.claude/rules/*.md` **без** `paths:` во frontmatter
-грузятся в каждую сессию целиком, до первого слова задачи (`project-map.md` §«Честно про
-токены»). Это безусловная плата, взимаемая независимо от темы сессии, — то есть прямой
-предмет приоритета (2) цель-функции. На 29.07.2026 она составляла 21 135 B (~5.3k токенов),
-и выросла до этой цифры **молча**: ~3.8 КБ прироста дали #416/#417, добавлявшие тактики в
-`mindset.md`. Рецидив наблюдаемый, а не гипотетический, — отсюда гейт.
+**What is guarded.** `CLAUDE.md` and `.claude/rules/*.md` files **without** `paths:` in frontmatter
+load in full into every session, before the task's first word (`project-map.md` §“Honestly about
+tokens”). This is an unconditional charge levied independently of a session's topic—therefore a direct
+subject of objective-function priority (2). On 2026-07-29 it was 21,135 B (~5.3k tokens),
+and it grew to that figure **silently**: #416/#417 added ~3.8 KB of tactics to
+`mindset.md`. Recurrence is observed rather than hypothetical—hence the gate.
 
-**Это tripwire, а не норматив качества.** Тест не утверждает «текст хороший» и не может:
-«сколько здесь правила, а сколько прозы-обоснования» — семантическое суждение, которое репо
-сознательно не скриптует (`project-map.md`). Он утверждает ровно одно: рост платы —
-**осознанная правка одной строки на ревью**, а не невидимый дрейф. Именно этим он отличается
-от отвергнутого в ledger-записи **AA** гейта «док не длиннее N строк»: там строки были
-*прокси* качества дока (под порогом ужимается формулировка, а не археология → гейт зелен,
-когда дефект замаскирован), здесь байты — сама взимаемая плата, а порог — храповик.
+**This is a tripwire, not a quality standard.** The test does not claim “the text is good” and cannot:
+“how much is rule and how much is rationale prose” is a semantic judgment the repository
+deliberately does not script (`project-map.md`). It asserts exactly one thing: growth of the charge is
+an **intentional one-line edit in review**, not invisible drift. This is what distinguishes it
+from the “document no longer than N lines” gate rejected in ledger entry **AA**: there, lines were a
+*proxy* for document quality (below the threshold the wording shrinks, not the archaeology → the gate is green
+while the defect is masked); here, bytes are the charge itself and the threshold is a ratchet.
 
-**Чего гейт НЕ ловит (границы скоупа).** Сессионная преамбула шире этого набора: в неё
-входят ещё `description:` сабагентов и слэш-команд и индекс `MEMORY.md`. Зелёный тест
-поэтому **не** значит «вся плата под контролем» — cost-shifting в те носители (равно как и
-перенос текста в `docs/architecture/*`, который агент всё равно читает по требованию) он
-не увидит. Расширение скоупа — отдельное решение, здесь только честно названная граница.
+**What the gate does NOT catch (scope boundaries).** The session preamble is wider than this set: it also
+includes subagent and slash-command `description:` fields and the `MEMORY.md` index. A green test
+therefore does **not** mean “the whole charge is under control”—it will not see cost shifting into
+those carriers (nor moving text into `docs/architecture/*`, which the agent still reads on demand).
+Expanding the scope is a separate decision; this boundary is simply named honestly here.
 
-**Главного он тоже не видит: объявленная плата ≠ уплаченная.** Байты множатся на число
-turn'ов через `cache_read`, и этот множитель здесь не измеряется вовсе. Фактический расход
-меряет `scripts/token_trend.py` (#464); тесты — `test_token_trend.py`.
+**It also cannot see the main thing: stated charge ≠ paid charge.** Bytes are multiplied by the number
+of turns through `cache_read`, and this multiplier is not measured here at all. Actual consumption is measured
+by `scripts/token_trend.py` (#464); its tests are `test_token_trend.py`.
 """
 
 from __future__ import annotations
@@ -38,34 +38,24 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ROOT_MEMORY = _REPO_ROOT / "CLAUDE.md"
 _RULES_DIR = _REPO_ROOT / ".claude" / "rules"
 
-# Файлы, чьё присутствие в наборе — принятое решение, а не случайность (см.
-# `test_expected_files_are_in_scope`).
+# These files are intentionally in scope; see `test_expected_files_are_in_scope`.
 _EXPECTED_ALWAYS_LOAD = (
     _ROOT_MEMORY,
     _RULES_DIR / "mindset.md",
     _RULES_DIR / "workflow.md",
 )
 
-# Порог = достигнутое + ~200 B. Это **не** «сколько можно потратить»: запас нужен лишь чтобы
-# однострочная правка не краснила CI мгновенно, и он сознательно **меньше** стоимости одного
-# правила (#369 стоил 950 B) — то есть бамп ради норматива штатен, а не аварийен.
-# Почему это **не** «рутинный штамп», которого опасался #375, закладывая запас пожирнее: толстый
-# запас покупает тихий рост ровно на свою величину, а именно тихий рост (+3.8 КБ по #416/#417)
-# гейт и заводился ловить. Норматив от нарратива различает не редкость бампа, а число, которое
-# бамп обязывает назвать в PR. Аварийный случай прежний: бамп ради текста, который при чтении
-# диффа оказывается нарративом «как мы к этому пришли», а не правилом, — такой текст переезжает
-# в тело issue/PR под указатель `(#N)`, а не в бюджет.
-# Храповик ходит и вниз: #452 вынес цель-функцию и «скрипты > инструкции» из
-# `mindset.md` в `principles.md`, а planner-шаги — из `workflow.md` в `agent-process.md`.
-# Плата не исчезла, она **переехала** в on-demand доки (см. §«Чего гейт НЕ ловит»);
-# не опустить порог значило бы забанковать освободившийся запас под тихий рост.
+# The threshold is current size plus a small allowance. It is a review ratchet,
+# not permission to spend: substantive growth should name its byte cost, while
+# narrative belongs in the issue or PR. Lowering the threshold after moving rules
+# to on-demand documents prevents banking the freed space for silent growth.
 _BUDGET_BYTES = 10_000
 
 _FRONTMATTER_PATHS_KEY = re.compile(r"^paths\s*:", re.MULTILINE)
 
 
 def _frontmatter(text: str) -> str:
-    """Блок между первой и второй строкой `---`, либо пусто."""
+    """Return the block between the first two `---` lines, or empty text."""
     if not text.startswith("---\n"):
         return ""
     end = text.find("\n---", 4)
@@ -77,27 +67,27 @@ def _is_path_scoped(path: Path) -> bool:
 
 
 def _rule_files() -> list[Path]:
-    """`rglob`, а не плоский `glob`, — как в `test_doc_headers.py` (#421).
+    """Use `rglob`, not a flat `glob`, as in `test_doc_headers.py` (#421).
 
-    Спека (`project-map.md` tier-таблица) пишет скоуп как `.claude/rules/*.md`, так что
-    плоский glob формально ей не противоречит. Но тогда два гейта на одном каталоге отвечали
-    бы на «что такое rules-файл» по-разному: будущий `.claude/rules/<sub>/x.md` попал бы под
-    header-гард и **не** попал бы под бюджет — то есть уехал бы из-под платы молча.
+    The specification (`project-map.md` tier table) writes the scope as `.claude/rules/*.md`, so
+    a flat glob would not formally contradict it. But then two guards over the same directory would
+    answer “what is a rules file?” differently: a future `.claude/rules/<sub>/x.md` would enter the
+    header guard and **not** the budget, silently moving out from under the charge.
     """
     return sorted(_RULES_DIR.rglob("*.md"))
 
 
 def _always_load_files() -> list[Path]:
-    """Набор **выводится**, а не перечисляется: новый always-load rule попадёт под бюджет сам."""
+    """Derive the set so every new always-load rule enters the budget."""
     return [_ROOT_MEMORY, *(p for p in _rule_files() if not _is_path_scoped(p))]
 
 
 def _normalized_size(path: Path) -> int:
-    """Байты при LF-переводах строк.
+    """Count bytes with LF line endings.
 
-    `.gitattributes` в репо нет, а у мейнтейнера `core.autocrlf=true`: рабочее дерево
-    локально CRLF, в CI — LF. Разница на этом наборе — ~230 B, то есть порядка 10% всего
-    выигрыша #375; без нормализации гейт был бы «зелёный у меня, красный в CI».
+    The repository has no `.gitattributes`, while the maintainer has `core.autocrlf=true`: the worktree is
+    locally CRLF and CI is LF. The difference across this set is ~230 B, about 10% of the whole
+    #375 gain; without normalization, the gate would be “green for me, red in CI”.
     """
     return len(path.read_bytes().replace(b"\r\n", b"\n"))
 
@@ -117,13 +107,13 @@ class TestAlwaysLoadBudget:
 
     @pytest.mark.parametrize("path", _EXPECTED_ALWAYS_LOAD, ids=lambda p: p.name)
     def test_expected_files_are_in_scope(self, path: Path) -> None:
-        """Поимённо, а не «набор непуст».
+        """Pin by name, rather than checking “the set is non-empty”.
 
-        Главный способ обнулить бюджет — дописать `paths:` во frontmatter `mindset.md`:
-        файл выпадет из набора, сумма **упадёт**, тест позеленеет, а always-load-правила
-        окажутся молча выключены (§IV). Проверка на непустоту это пропускает — в наборе
-        остались бы два других файла. Поэтому гард написан на весь каталог поимённо, а не
-        на один файл и не на «набор непуст» (#416, #375).
+        The primary way to zero out the budget is to add `paths:` to `mindset.md` frontmatter:
+        the file leaves the set, the sum **falls**, the test turns green, and always-load rules
+        are silently disabled (§IV). A non-empty check permits this—the other two files would
+        remain in the set. Therefore the guard is written by name for the whole catalogue, not
+        for one file and not for “the set is non-empty” (#416, #375).
         """
         assert path in _always_load_files(), (
             f"{path.name} выпал из always-load набора — вероятно, у него появился `paths:` "
@@ -132,11 +122,9 @@ class TestAlwaysLoadBudget:
         )
 
     def test_path_scoped_rule_is_excluded(self) -> None:
-        """Пинится **механизм фильтра**, а не конкретный файл.
+        """Pin the filter mechanism rather than a specific scoped file.
 
-        `testing.md` взят как единственный существующий носитель `paths:`; если он
-        переедет или сменит скоуп, красный тест означает «фильтр больше нечем проверить»,
-        а не «сломался бюджет».
+        If no scoped rule remains, the failure says the filter has no witness.
         """
         path_scoped = [p for p in _rule_files() if _is_path_scoped(p)]
         assert path_scoped, (

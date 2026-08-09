@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
-"""Eval-harness подбора трейлера (#139, эпик трейлеров).
+"""Trailer-selection evaluation harness (#139, trailer epic).
 
-Читает golden-set (`tests/fixtures/trailer_golden.json`), прогоняет
-`TrailerStrategy` по ЗАМОРОЖЕННЫМ кандидатам офлайн (без сети/квоты),
-классифицирует каждый фильм Hit/Wrong/Miss ОТНОСИТЕЛЬНО эталона `correct` и
-печатает взвешенную скоркарту. Метрика — раньше оптимизации: baseline красный,
-порог затягивается по мере #141/#144.
+Reads golden set (`tests/fixtures/trailer_golden.json`), runs `TrailerStrategy` over
+FROZEN offline candidates (no network/quota), classifies each film Hit/Wrong/Miss against
+`correct`, and prints a weighted scorecard. Metric comes before optimization: baseline is
+red, with threshold tightening through #141/#144.
 
-Эталон `correct` — один id, accept-set (`list[str]` равноценных RU-дубляжей) или
-null. Fail-loud (§IV/§VI): битая запись golden-set (пустой набор/accept-set,
-отсутствующее поле, дубль `video_id`, `correct` неверного типа, id accept-set вне
-пула) → GoldenSetError + exit≠0, НИКОГДА не деградирует в тихий Miss.
+`correct` reference is one id, accept set (`list[str]` of equivalent RU dubs), or null.
+Fail loud (§IV/§VI): corrupt golden record (empty set/accept set, missing field, duplicate
+`video_id`, invalid `correct`, accept id outside pool) → GoldenSetError + exit≠0, NEVER
+silently degrades to Miss.
 
-`--record` (dev-only, live) разово пересобирает снимок `candidates` из YouTube;
-без `API_KEY` — явный fail-fast, не тихий no-op. Фикстуры frozen: `--record` —
-для первичного посева / сознательного рефреша, не рутинный прогон.
+`--record` (dev-only, live) rebuilds `candidates` snapshot from YouTube once; missing
+`API_KEY` fails fast, not silently. Fixtures are frozen: use it for initial seeding or
+intentional refresh, not routine runs.
 """
 
 from __future__ import annotations
@@ -29,8 +28,8 @@ from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import parse_qs, urlsplit
 
-# Standalone-run bootstrap: mirror pytest's pythonpath=["src"] так, чтобы
-# `import kinozal_scraper` резолвился без editable install (как в ci_check.py).
+# Standalone-run bootstrap: mirror pytest's pythonpath=["src"] so
+# `import kinozal_scraper` resolves without editable install (as in ci_check.py).
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from kinozal_scraper.kinozal_pipeline import (  # noqa: E402
@@ -53,14 +52,14 @@ _OUTCOMES: tuple[Outcome, ...] = ("hit", "wrong", "miss")
 
 _FIXTURES = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 _DEFAULT_GOLDEN = _FIXTURES / "trailer_golden.json"
-# Пришпиленный исход DELIVERY-скоркарты (их в выводе три — pick / delivery / TMDB).
-# Гейт — `tests/test_eval_baseline.py`, а не запись в `ci_check` CHECKS: `ci_check`
-# и так гоняет pytest, а pre-push — ci_check, так что второй реестр не нужен (#379).
+# Pinned DELIVERY scorecard outcome (output has three: pick / delivery / TMDB).
+# The gate is `tests/test_eval_baseline.py`, not ci_check CHECKS: ci_check already runs
+# pytest and pre-push runs ci_check, so a second registry is unnecessary (#379).
 BASELINE_PATH = _FIXTURES / "trailer_baseline.json"
 
 
 class GoldenSetError(ValueError):
-    """Golden-set повреждён/невалиден — измерять по нему нельзя (fail-loud)."""
+    """Golden set is corrupt/invalid and cannot be measured (fail loud)."""
 
 
 @dataclass
@@ -69,29 +68,27 @@ class GoldenCase:
     correct: str | list[str] | None
     candidates: list[Candidate]
     note: str
-    # #329: замороженный снимок TMDB-видео (опционален — записи до #329 грузятся
-    # с пустым списком; evaluate_tmdb по ним даёт Miss, пока не записан снимок).
+# #329: frozen TMDB-video snapshot (optional—pre-#329 records load with an empty
+# list; evaluate_tmdb returns Miss until a snapshot is recorded).
     tmdb_videos: list[TmdbVideo] = field(default_factory=list)
-    # #380: кандидаты пула, про которых ВЕРИФИЦИРОВАНО, что это другая работа
-    # (основание — в `note`). Отвечает на вопрос, которого accept-set задать не
-    # может: «чужой фильм» против «недозаписанный дубляж того же». Ground truth
-    # про ПУЛ, а не про исход, поэтому переживает улучшение стратегии; в скоринге
-    # не участвует (веса — вне скоупа #380), `wrong` за него даёт `classify`.
+# #380: pool candidates VERIFIED as another work (evidence in `note`). Answers what an
+# accept set cannot: “another film” versus an incompletely recorded dub of the same one.
+# Ground truth concerns the POOL, not outcome, so it survives strategy improvement; it
+# does not participate in scoring (weights outside #380 scope), while `classify` marks wrong.
     trap: list[str] = field(default_factory=list)
 
 
 def default_strategy() -> TrailerStrategy:
-    """Стратегия «под оценкой». #141 — язык-aware `HeuristicStrategy` (был #139
-    baseline `FirstResultStrategy`): язык первичен (RU>EN), каст — вторичный
-    тай-брейк. Привязанный known-gap guard (#138-кейсы) стал audible → инвертирован."""
+    """Strategy under evaluation. #141 language-aware `HeuristicStrategy` replaced #139
+    baseline `FirstResultStrategy`: language is primary (RU>EN), cast secondary tie-break.
+    The pinned known-gap guard (#138 cases) became audible and was inverted."""
     return HeuristicStrategy()
 
 
 def classify(correct: str | list[str] | None, pick_id: str | None) -> Outcome:
-    """Исход относительно эталона. `correct` — один id, accept-set (несколько
-    равноценных RU-дубляжей) или NONE. Null-ветка явная: при correct=NONE пустой
-    pick — Hit (правильно ничего не выбрать), непустой — Wrong. Иначе Hit, если
-    pick ∈ accept-set."""
+    """Outcome against reference. `correct` is one id, an accept set (equivalent RU
+    dubs), or NONE. Null branch is explicit: correct=NONE plus empty pick is Hit,
+    nonempty pick is Wrong. Otherwise Hit means pick ∈ accept set."""
     if correct is None:
         return "hit" if pick_id is None else "wrong"
     if pick_id is None:
@@ -101,7 +98,7 @@ def classify(correct: str | list[str] | None, pick_id: str | None) -> Outcome:
 
 
 def score(outcomes: list[Outcome]) -> int:
-    """Hit +1 / Miss 0 / Wrong −2 — чужой трейлер хуже честного §IV-маркера."""
+    """Hit +1 / Miss 0 / Wrong −2: an unrelated trailer is worse than an honest §IV marker."""
     return sum(_SCORE[o] for o in outcomes)
 
 
@@ -162,9 +159,9 @@ def _parse_candidates(raw: Any, where: str) -> list[Candidate]:
 
 
 def _parse_tmdb_videos(raw: Any, where: str) -> list[TmdbVideo]:
-    """Опциональный снимок TMDB-видео. Fail-loud (§IV): битый video (нет
-    `key`/`iso_639_1`/`type`/`site`, не-str поля) → GoldenSetError, НЕ тихий дроп —
-    иначе смещённый пул (потерянное RU-видео) запекается в замороженный снимок."""
+    """Optional TMDB-video snapshot. Fail loud (§IV): corrupt video (missing
+    `key`/`iso_639_1`/`type`/`site` or non-str fields) → GoldenSetError, never silent
+    drop, or a biased pool (lost RU video) becomes frozen in the snapshot."""
     if not isinstance(raw, list):
         raise GoldenSetError(f"{where}: 'tmdb_videos' must be a list, got {type(raw).__name__}")
     out: list[TmdbVideo] = []
@@ -192,13 +189,11 @@ def _parse_tmdb_videos(raw: Any, where: str) -> list[TmdbVideo]:
 
 
 def _parse_correct(raw: Any, valid_ids: set[str], where: str) -> str | list[str] | None:
-    """`correct` — str | accept-set (list[str]) | null. Fail-loud (B2/S2):
-    пустой accept-set (тихий коллапс в null-семантику, маскирует Miss/Wrong) и
-    не-str элемент отвергаются; каждый id accept-set обязан быть в `valid_ids` —
-    union пулов YouTube-`candidates` И TMDB-`tmdb_videos` (dual-source ground truth:
-    валидный TMDB-key вне YouTube-пула легитимен, но typo-id, которого нет НИГДЕ,
-    тихо превратил бы верный pick в wrong). Legacy single-str сохраняет miss-branch
-    идиому (эталон-вне-пула → Miss) и от cross-check освобождён."""
+    """`correct` is str | accept set (list[str]) | null. Fail loud (B2/S2): reject an
+    empty accept set (silent null-semantics collapse masking Miss/Wrong) and non-str members.
+    Every accept id must be in `valid_ids`, the union of YouTube `candidates` and TMDB
+    `tmdb_videos`: a valid TMDB key outside YouTube is legitimate, but a nowhere-present typo
+    would silently turn a correct pick wrong. Legacy single-str retains out-of-pool → Miss."""
     if raw is None or isinstance(raw, str):
         return raw
     if isinstance(raw, list):
@@ -224,14 +219,12 @@ def _parse_correct(raw: Any, valid_ids: set[str], where: str) -> str | list[str]
 def _parse_trap(
     raw: Any, pool_ids: set[str], correct: str | list[str] | None, where: str
 ) -> list[str]:
-    """Верифицированные чужие кандидаты. Fail-loud (§IV/§VI) наравне с остальным
-    набором: опечатка в id иначе тихо разоружила бы разметку — кейс выглядел бы
-    размеченным, не будучи им, и гейт «полюс жив» считал бы пустышку.
+    """Verified unrelated candidates. Fail loud (§IV/§VI) like the rest of the set:
+    an id typo would silently disarm labeling, making a case look labeled when it is not.
 
-    Сверка с пулом `candidates`, а НЕ с union'ом candidates|tmdb (в отличие от
-    `correct`): ловушка осмысленна только среди того, что стратегия реально
-    ранжирует. Пересечение с accept-set — противоречие в ground truth (кандидат
-    не может быть одновременно эталоном и чужой работой), а не уточнение."""
+    Check against `candidates`, not candidates|tmdb union unlike `correct`: a trap only
+    matters among what strategy actually ranks. Overlap with accept set contradicts ground
+    truth—a candidate cannot be both reference and unrelated work."""
     if not isinstance(raw, list):
         raise GoldenSetError(f"{where}: 'trap' must be a list, got {type(raw).__name__}")
     accept: set[str] = set()
@@ -295,16 +288,13 @@ def evaluate(
 def evaluate_tmdb(
     cases: list[GoldenCase],
 ) -> tuple[list[tuple[GoldenCase, str | None, Outcome]], int]:
-    """Прогон TMDB-источника: `pick_trailer` по ЗАМОРОЖЕННОМУ `tmdb_videos`,
-    классификация против того же accept-set `correct`. Тот же контракт, что и
-    `evaluate` (стратегия), — скоркарты сравнимы бок о бок.
+    """TMDB-source run: `pick_trailer` over FROZEN `tmdb_videos`, classified against
+    the same `correct` accept set. It shares `evaluate`'s contract, so scorecards compare.
 
-    Scope: только кейсы с непустым `tmdb_videos`-снимком. Синтетические
-    logic-фикстуры HeuristicStrategy (#138/#140 — placeholder-id вроде
-    `dune2_official`, которые реальный YouTube-id из TMDB структурно НЕ может
-    hit'нуть) снимка не несут (`_record_tmdb` их обнуляет) → вне cross-source
-    сравнения. Реальный «TMDB ничего не нашёл» — непустой снимок без eligible
-    видео → `pick_trailer`→None→Miss (не путать с out-of-scope)."""
+    Scope is cases with nonempty `tmdb_videos`. Synthetic HeuristicStrategy logic fixtures
+    (#138/#140, placeholder ids such as `dune2_official` that real TMDB YouTube ids cannot
+    hit) carry no snapshot (`_record_tmdb` clears them), so are outside cross-source comparison.
+    Actual “TMDB found nothing” is nonempty snapshot with no eligible video → None → Miss."""
     rows: list[tuple[GoldenCase, str | None, Outcome]] = []
     for case in cases:
         if not case.tmdb_videos:
@@ -316,31 +306,30 @@ def evaluate_tmdb(
 
 
 class _FrozenRetrieval:
-    """Retrieval-стаб для delivery-прогона: отдаёт замороженный пул кейса.
+    """Retrieval stub for delivery run: returns the case's frozen pool.
 
-    Внешняя граница (§II) — заменяется законно; всё, что за ней (`select_trailer`),
-    остаётся настоящим прод-кодом."""
+    The external boundary (§II) is legitimately replaced; everything beyond it
+    (`select_trailer`) remains real production code."""
 
     def __init__(self, pool: list[Candidate]) -> None:
         self._pool = pool
 
-    # `_profile` с подчёркиванием: сигнатуру диктует интерфейс retrieval, а пул уже
-    # заморожен — ARG002-ратчет (#236) в `scripts/**` не освобождён, в отличие от
-    # `tests/**`, и глушить его per-file-ignore ради одного стаба неправильно.
+    # `_profile` has an underscore because retrieval dictates the signature while the pool
+    # is frozen. The ARG002 ratchet (#236) remains enabled in `scripts/**`, unlike
+    # `tests/**`; a per-file ignore for one stub would be wrong.
     def search_candidates(self, _profile: FilmProfile) -> list[Candidate]:
         return list(self._pool)
 
 
 def _pick_id_from_reply(reply: str, where: str) -> str | None:
-    """Ответ прод-доставки → `video_id` | None. Fail-loud на всём остальном.
+    """Production-delivery reply → `video_id` | None. Fail loud for everything else.
 
-    Маркеры сверяются с ИМПОРТИРОВАННЫМИ константами, а не с копиями строк: реворд
-    маркера в проде иначе тихо превратил бы miss в «непарсибельный ответ». `video_id`
-    достаётся из query-параметра, а не срезом по префиксу, — формат URL живёт в
-    `select_trailer`, дублировать его здесь нечего.
+    Compare markers with IMPORTED constants, not copied strings: production rewording would
+    otherwise silently turn Miss into “unparsable reply.” Extract `video_id` from query rather
+    than prefix slicing because URL format belongs to `select_trailer`.
 
-    Error-маркер — сбой ИНСТРУМЕНТА (retrieval-стаб бросить не может), и списать его
-    в `miss` значило бы тихо просадить метрику и подумать на подбор (§IV)."""
+    Error marker is TOOL failure (the retrieval stub cannot throw); treating it as `miss`
+    would silently lower the metric and blame selection (§IV)."""
     if reply == _TRAILER_MISS_MARKER:
         return None
     if reply == _TRAILER_ERROR_MARKER:
@@ -355,16 +344,16 @@ def evaluate_delivery(
     cases: list[GoldenCase],
     select: Callable[[FilmProfile, Any], str] = select_trailer,
 ) -> tuple[list[tuple[GoldenCase, str | None, Outcome]], int]:
-    """Прогон через ПРОД-контракт доставки, а не только через `pick` (#379).
+    """Run through the PRODUCTION delivery contract, not only `pick` (#379).
 
-    `evaluate` меряет `TrailerStrategy.pick`; #359 сломал слой НАД ним
-    (`kinozal_pipeline.select_trailer` — post-pick политика, §IV-маркеры, формат URL),
-    поэтому pick-скоркарта была бы одинаковой до и после регресса. Здесь golden-set
-    едет через прод-функцию и её ответ разбирается обратно в `video_id`.
+    `evaluate` measures `TrailerStrategy.pick`; #359 broke the layer ABOVE it
+    (`kinozal_pipeline.select_trailer`: post-pick policy, §IV markers, URL format), so a
+    pick scorecard would be identical before and after regression. Here golden set travels
+    through production function and its reply parses back to `video_id`.
 
-    `select` параметризован симметрично `evaluate(strategy, cases)`: дефолт — настоящая
-    прод-функция, а инъекция нужна, чтобы доказать срабатывание гейта на
-    контрфактической политике (`tests/test_eval_baseline.py`), не держа её в `src`.
+    `select` is parameterized like `evaluate(strategy, cases)`: default is real production
+    function; injection proves gate firing on counterfactual policy
+    (`tests/test_eval_baseline.py`) without keeping it in `src`.
     """
     rows: list[tuple[GoldenCase, str | None, Outcome]] = []
     for i, case in enumerate(cases):
@@ -374,14 +363,13 @@ def evaluate_delivery(
     return rows, score([o for _, _, o in rows])
 
 
-# ── baseline-храповик поверх delivery-скоркарты (#379) ────────────────────────
+# ── baseline ratchet over delivery scorecard (#379) ───────────────────────────
 
 
 @dataclass
 class BaselineEntry:
-    """Пришпиленный исход одного кейса. `i` рядом с `film`, потому что `ru_title`
-    в наборе НЕ уникален («Гладиатор 2» встречается дважды) и своп двух одноимённых
-    кейсов проверка по одному имени не увидела бы."""
+    """Pinned outcome of one case. `i` accompanies `film` because `ru_title` is NOT
+    unique in the set, so checking only its name would miss a swap of namesake cases."""
 
     i: int
     film: str
@@ -390,9 +378,8 @@ class BaselineEntry:
 
 @dataclass
 class BaselineReport:
-    """Вердикт сравнения. Чистые данные — ни I/O, ни exit: гейт (pytest) и печать
-    зовут одну и ту же `compare_to_baseline`, поэтому «в CLI зелено, а в тесте
-    красно» структурно невозможно."""
+    """Comparison verdict. Pure data: no I/O or exit. Gate (pytest) and printing use
+    the same `compare_to_baseline`, structurally preventing CLI-green/test-red divergence."""
 
     moved: list[tuple[str, Outcome, Outcome]]
     baseline_score: int
@@ -425,8 +412,8 @@ def build_baseline(rows: list[tuple[GoldenCase, str | None, Outcome]]) -> list[B
 
 
 def load_baseline(path: str | Path) -> list[BaselineEntry]:
-    """Fail-loud как у golden-set: битый baseline — это неизмеримый гейт, а не
-    повод сравнить «как получится»."""
+    """Fail loud as golden set: corrupt baseline makes the gate unmeasurable, not a
+    reason to compare “as best as possible.”"""
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(raw, list) or not raw:
         raise GoldenSetError(f"{path}: baseline must be a non-empty list")
@@ -455,16 +442,15 @@ def save_baseline(path: str | Path, entries: list[BaselineEntry]) -> None:
 def compare_to_baseline(
     baseline: list[BaselineEntry], rows: list[tuple[GoldenCase, str | None, Outcome]]
 ) -> BaselineReport:
-    """Чистое сравнение исходов. Расхождение — red в ЛЮБУЮ сторону.
+    """Pure outcome comparison. Any divergence is red.
 
-    Улучшение тоже красное намеренно: «зелёное с предупреждением» воспроизводит ровно
-    тот дефект, который чинит #379, — сигнал, который никто не обязан прочитать (§IV).
-    Плюс с приходом wrong-кейсов (#380) суммарно-положительная дельта сможет прятать
-    своп `hit→wrong`, а пофильмовое сравнение — нет. `--update-baseline` в том же PR
-    делает улучшение видимым в диффе и ревьюабельным.
+    Improvement is intentionally red: “green with warning” recreates #379's defect, a
+    signal nobody must read (§IV). With wrong cases (#380), positive aggregate delta can
+    hide hit→wrong; per-film comparison cannot. `--update-baseline` makes improvement
+    visible and reviewable in the same PR.
 
-    Рассинхрон (длина / индекс / имя) — `GoldenSetError`: сравнивать позиционно
-    разъехавшиеся наборы значит тихо сопоставлять разные фильмы."""
+    Out-of-sync length/index/name → `GoldenSetError`: positional comparison of diverged
+    sets would silently compare different films."""
     if len(baseline) != len(rows):
         raise GoldenSetError(
             f"baseline out of sync: {len(baseline)} entries vs {len(rows)} cases — "
@@ -491,8 +477,8 @@ def _print_scorecard(rows: list[tuple[GoldenCase, str | None, Outcome]], total: 
     tally: dict[Outcome, int] = {"hit": 0, "wrong": 0, "miss": 0}
     for case, pick_id, outcome in rows:
         tally[outcome] += 1
-        # §IV-атрибуция (#380): «wrong» само по себе не отличает «взял чужую
-        # работу» от «взял недозаписанный дубляж той же» — маркер называет первое.
+        # §IV attribution (#380): “wrong” alone cannot distinguish another work from an
+        # incompletely recorded dub of the same work; this marker names the former.
         trap = " TRAP" if pick_id is not None and pick_id in case.trap else ""
         print(
             f"  {outcome.upper():5}{trap} {case.film.ru_title!r} → "
@@ -515,29 +501,25 @@ def _require_api_key() -> str:
 
 
 def _record(golden_path: str | Path) -> int:
-    """dev-only live: пересобрать пулы кандидатов в golden-снимке.
+    """Dev-only live: rebuild candidate pools in the golden snapshot.
 
-    `search_candidates` вызывается без try/except **осознанно** (#383): при
-    тотальном отказе retrieval (все ветки union упали, напр. 429) он поднимает
-    `TrailerRetrievalError` и прогон падает целиком. Это желаемое поведение —
-    записать `candidates: []`, вызванный квотой, значит отравить baseline,
-    по которому потом меряется качество подбора. `write_text` идёт после цикла,
-    так что частично перезаписанного файла не остаётся.
+    `search_candidates` deliberately has no try/except (#383): universal retrieval
+    failure raises `TrailerRetrievalError` and fails the run. Recording quota-caused
+    `candidates: []` would poison the baseline used to measure selection. `write_text`
+    follows the loop, so no partially overwritten file remains.
 
-    Свежий payload перевалидируется ДО записи (#380): пулы дрейфуют — повторная
-    запись «Крайних мер» через час уже не вернула пришпиленный `qpMTP6obUeo`, — а
-    `correct`/`trap` ссылаются на конкретные id. Записать такой пул молча значит
-    уронить следующую ЗАГРУЗКУ у всех, кто просто запустил `pytest`, и без намёка
-    на причину; проверка здесь называет уехавшие id на месте (§IV/§V).
+    Revalidate fresh payload BEFORE writing (#380): pools drift, while `correct`/`trap`
+    reference concrete ids. Silently recording it would break the next pytest load without
+    cause; validation names drifted ids at the point of recording (§IV/§V).
     """
     key = _require_api_key()
-    cases = load_golden_set(golden_path)  # валидируем перед перезаписью
+    cases = load_golden_set(golden_path)  # Validate before overwrite.
     from dataclasses import asdict
 
     from googleapiclient.discovery import build
 
-    # §II: тот же union-retrieval, что и прод/будущая композиция — не вторая копия
-    # query-build+snippet-map (был `_search_candidates`). RU попадает в записанный пул.
+    # §II: same union retrieval as production/future composition, not a second copy of
+    # query building plus snippet mapping (formerly `_search_candidates`). RU enters pool.
     from kinozal_scraper.youtube import search_candidates
 
     youtube = build("youtube", "v3", developerKey=key)
@@ -554,12 +536,11 @@ def _record(golden_path: str | Path) -> int:
 
 
 def _record_tmdb(golden_path: str | Path) -> int:
-    """dev-only live: пересобрать снимок `tmdb_videos`, ПЕРЕИСПОЛЬЗУЯ
-    `TmdbClient.resolve` (§II — не вторая копия query-build, как `_record` тянет
-    `search_candidates`). Без `TMDB_TOKEN` — fail-fast (KeyError в конструкторе).
-    Малформный ответ (нет `key`) резолвер дропает; всё остальное — fail-loud при
-    следующей загрузке снимка (`_parse_tmdb_videos`)."""
-    cases = load_golden_set(golden_path)  # валидируем перед перезаписью
+    """Dev-only live: rebuild `tmdb_videos` snapshot, REUSING `TmdbClient.resolve`
+    (§II, not a second query builder like `_record` uses `search_candidates`). Missing
+    `TMDB_TOKEN` fails fast (constructor KeyError). Resolver drops malformed no-key output;
+    everything else fails loud on next snapshot load (`_parse_tmdb_videos`)."""
+    cases = load_golden_set(golden_path)  # Validate before overwrite.
     from dataclasses import asdict
 
     from kinozal_scraper.tmdb_trailer import TmdbClient
@@ -567,9 +548,9 @@ def _record_tmdb(golden_path: str | Path) -> int:
     client = TmdbClient()
     raw = json.loads(Path(golden_path).read_text(encoding="utf-8"))
     for entry, case in zip(raw, cases, strict=True):
-        # Scope = реальные cross-source кейсы (accept-set-форма `correct: list`).
-        # Синтетические logic-фикстуры (`str`/`null` correct) обнуляются: не тратим
-        # TMDB-квоту на вымышленные тайтлы и не запекаем их шум в снимок (§IV).
+        # Scope = real cross-source cases (`correct: list` accept-set form). Synthetic
+        # logic fixtures (`str`/`null` correct) clear: do not spend TMDB quota on invented
+        # titles or freeze their noise into snapshot (§IV).
         if isinstance(case.correct, list):
             entry["tmdb_videos"] = [asdict(v) for v in client.resolve(case.film)]
         else:
@@ -582,9 +563,8 @@ def _record_tmdb(golden_path: str | Path) -> int:
 
 
 def _ensure_utf8_stdout() -> None:
-    """Скоркарта печатает кириллические названия; дефолтная Windows-консоль
-    (cp1252) иначе роняет harness UnicodeEncodeError'ом. Root cause — кодировка
-    консоли, не логика."""
+    """Scorecard prints Cyrillic titles; default Windows console (cp1252) otherwise
+    crashes harness with UnicodeEncodeError. Root cause is console encoding, not logic."""
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
@@ -633,9 +613,9 @@ def main(argv: list[str] | None = None) -> int:
         save_baseline(BASELINE_PATH, build_baseline(delivery_rows))
         print(f"baseline updated → {BASELINE_PATH}")
         return 0
-    # Печать вердикта — информационная; красноту даёт `tests/test_eval_baseline.py`
-    # (единственный носитель гейта, #379). Сравнивающая функция у них общая, поэтому
-    # «в CLI зелено, в тесте красно» невозможно.
+    # Printing verdict is informational; `tests/test_eval_baseline.py` makes it red (the
+    # sole gate carrier, #379). Both use one comparison function, so CLI-green/test-red
+    # is impossible.
     print(compare_to_baseline(load_baseline(BASELINE_PATH), delivery_rows).text)
 
     if args.threshold is not None and total < args.threshold:

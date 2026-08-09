@@ -1,42 +1,40 @@
-"""Гард на битые внутренние ссылки и якоря в `.md` (#427).
+"""Guard against broken internal `.md` links and anchors (#427).
 
-**Что стережём.** Доки ссылаются друг на друга якорями секций
-(`pipeline.md#trailer-retrieval-and-selection`), а якорь GitHub генерит **из текста
-заголовка** — то есть переименование секции молча рвёт все входящие указатели. Ровно это
-и делает #427: снимает номера тасок из 12 заголовков в 6 файлах, под которыми висит 17
-входящих вхождений в 7 файлах. Детерминируемый шаг «убедись, что ни одна ссылка не
-провисла» — случай `principles.md` §Scripts over instructions: exit-code, а не пункт в
-чек-листе ревьюера.
+**What it guards.** Docs refer to one another by section anchors
+(`pipeline.md#trailer-retrieval-and-selection`), while GitHub generates an anchor **from the
+heading text** — so renaming a section silently breaks every incoming reference. This is exactly
+what #427 does: it removes task numbers from 12 headings in 6 files with 17 incoming occurrences
+in 7 files. The deterministic “ensure no link dangles” step is an instance of `principles.md`
+§Scripts over instructions: an exit code, not a reviewer checklist item.
 
-**Почему `markdown-it-py`, а не регексп.** Две вещи регексп даёт неверно. Ссылка внутри
-```-блока — не ссылка, а пример; и текст заголовка нужен *отрендеренный* (`` `X` `` → `X`),
-иначе slug не совпадёт с тем, что делает GitHub. Парсер уже прямая dev-зависимость (#426),
-так что §VII-платы за него нет.
+**Why `markdown-it-py`, not regex.** Regex gets two things wrong. A link inside a ``` block is not
+a link but an example; and heading text must be *rendered* (`` `X` `` → `X`), otherwise the slug
+will not match GitHub's. The parser is already a direct development dependency (#426), so there is
+no §VII cost for it.
 
-**Code-span считается указателем наравне со ссылкой.** `project-map.md` держит часть
-deep-dive-указателей в backticks (`` `testing.md#eval-harness--trailer-selection` ``) —
-по ним не кликают, но гниют они так же. Гард, зелёный при сгнившем указателе, — это §IV
-silent-skip, ради которого его и заводят. Требуем якорь: голое `` `file.md` `` — упоминание
-файла, а не адрес, и проверять его значило бы краснеть на прозе. Обратная сторона: **пример**
-якоря в прозе гард примет за настоящий указатель, поэтому иллюстрацию пиши двойными
-backtick'ами (`` `file.md#anchor` `` — так её и держат `project-map.md` и `ci.md`), иначе
-она уедет в проверку и покраснеет.
+**A code span counts as a reference just like a link.** `project-map.md` keeps some deep-dive
+references in backticks (`` `testing.md#eval-harness--trailer-selection` ``) — they are not
+clicked, but rot the same way. A guard that is green with a rotten reference is the §IV silent skip
+it exists to prevent. An anchor is required: bare `` `file.md` `` is a file mention, not an address,
+and checking it would turn prose red. The converse is that the guard accepts an **anchor example**
+in prose as a real reference, so write illustrations in double backticks (`` `file.md#anchor` `` —
+as `project-map.md` and `ci.md` do); otherwise it enters the check and turns red.
 
-**Скоуп — `git ls-files`, а не обход файловой системы.** `.claude/worktrees/` gitignored
-и содержит полные копии репо со старыми доками: `rglob` дал бы красный локально и зелёный
-в CI. Скоуп производен от индекса git, поэтому следующий `.md` попадает под инвариант
-автоматически. Существование цели тоже сверяется **с индексом** и **лексически** (см.
-`resolve_target`): любое обращение к ФС — `Path.exists()`, `Path.resolve()` — на Windows
-регистронезависимо, и ссылка `Pipeline.md#…` прошла бы локально, чтобы упасть в CI на
-Linux, — тот же local-green/CI-red раскол, ради которого выбран `git ls-files`.
+**Scope is `git ls-files`, not a filesystem walk.** `.claude/worktrees/` is gitignored and contains
+full repository copies with old docs: `rglob` would be red locally and green in CI. Scope derives
+from the git index, so the next `.md` is covered by the invariant automatically. Target existence
+is also checked **against the index** and **lexically** (see `resolve_target`): any filesystem access
+— `Path.exists()`, `Path.resolve()` — is case-insensitive on Windows, and `Pipeline.md#…` would pass
+locally only to fail in CI on Linux: the same local-green/CI-red split for which `git ls-files` was
+chosen.
 
-**Границы гарда, честно.** Ловятся *нерезолвящиеся* ссылки, но не
-*неверные-но-резолвящиеся*: указатель на существующий файл, переставший быть домом темы
-(случай `principles.md` «coverage gaps → `testing.md`» до #427), для гарда неотличим от
-верного. Тот же «presence ≠ correctness», что в `test_doc_headers.py` и
-`test_adr_records.py`; расхождение ловит человек на ревью. Второй предел — **форма**:
-проверяются markdown-ссылки и code-span'ы, но не `![](x.png)` (`image`-токен) и не сырой
-`<a href>`/`<img src>` (`html_inline`); сегодня в отслеживаемых `.md` нет ни одного такого.
+**Guard boundaries, honestly.** It catches *unresolvable* links, but not *wrong-but-resolvable*
+ones: a reference to an existing file that ceased to be a topic’s home (the pre-#427
+`principles.md` “coverage gaps → `testing.md`” case) is indistinguishable from a correct one to the
+guard. This is the same “presence ≠ correctness” as in `test_doc_headers.py` and
+`test_adr_records.py`; a human catches the discrepancy in review. The second boundary is **form**:
+it checks Markdown links and code spans, but neither `![](x.png)` (`image` token) nor raw
+`<a href>`/`<img src>` (`html_inline`); there are none of either in tracked `.md` files today.
 """
 
 from __future__ import annotations
@@ -57,17 +55,17 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _MD = MarkdownIt("commonmark")
 
-# Правила github-slugger: текст заголовка → lower → выбросить всё, кроме `\w`,
-# пробела и дефиса → пробелы в дефисы. `re.UNICODE` не декоративен: `_` и кириллица
-# обязаны выжить (`#kinozal_pipeline`, `#operations--как-прод-прогон-исполняется`).
-# Dedupe-суффиксы (`-1` на втором одноимённом заголовке) намеренно не реализованы:
-# в репо нет ни одной ссылки на дублирующийся заголовок, и спекулятивная ветка
-# стоила бы больше, чем страхует (§VII).
+# github-slugger rules: heading text → lower → drop everything except `\w`, spaces,
+# and hyphens → spaces to hyphens. `re.UNICODE` is not decorative: `_` and Cyrillic
+# must survive (`#kinozal_pipeline` and an existing Cyrillic anchor).
+# Dedupe suffixes (`-1` on a second heading with the same name) are deliberately not implemented:
+# the repository has no link to a duplicate heading, and a speculative branch would cost more
+# than it protects (§VII).
 _SLUG_DROP = re.compile(r"[^\w\s-]", re.UNICODE)
 
-# Схемы, которые гард не трогает: живость внешнего URL — сеть в CI, чужая доступность
-# и другой класс флака. Детект по форме, а не по денилисту из четырёх схем: денилист
-# отправил бы `//host/x` или `vscode:` резолвиться как путь на диске.
+# Schemes the guard does not touch: external URL liveness means network in CI, another party’s
+# availability, and a different class of flake. Detect by form, not a denylist of four schemes:
+# a denylist would resolve `//host/x` or `vscode:` as a path on disk.
 _SCHEMELESS_EXTERNAL = ("mailto:", "tel:", "//")
 
 
@@ -75,18 +73,18 @@ def _is_external(href: str) -> bool:
     return "://" in href or href.startswith(_SCHEMELESS_EXTERNAL)
 
 
-# Code-span засчитывается за указатель, только если несёт якорь.
+# A code span counts as a reference only if it contains an anchor.
 _CODE_SPAN_REF = re.compile(r"^[\w./-]+\.md#\S+$", re.UNICODE)
 
-# Каталоги, которые обязаны попасть в скоуп. Проверка идёт по каждому отдельно, а не по
-# непустоте объединения: переезд одного каталога остался бы зелёным за счёт остальных —
-# «нечего проверять» стало бы неотличимо от «всё в порядке» (§IV, жанр
+# Directories that must be included in scope. Each is checked separately rather than for a
+# non-empty union: moving one directory would remain green due to the others — “nothing to
+# check” would become indistinguishable from “everything is fine” (§IV, as in
 # `test_doc_headers.py::test_every_scoped_directory_contributes`).
 _EXPECTED_SCOPE_DIRS = ("docs/architecture", "docs/adr", ".claude/rules", ".claude/commands")
 
 
 def slugify(heading_text: str) -> str:
-    """Якорь GitHub по тексту заголовка (правила github-slugger)."""
+    """GitHub anchor from heading text (github-slugger rules)."""
     return _SLUG_DROP.sub("", heading_text.strip().lower()).replace(" ", "-")
 
 
@@ -99,7 +97,7 @@ def _inline_text(inline_token: Token) -> str:
 
 
 def anchors_of(markdown: str) -> set[str]:
-    """Множество якорей, которые GitHub сгенерит для заголовков документа."""
+    """Set of anchors that GitHub will generate for document headings."""
     tokens = _MD.parse(markdown)
     return {
         slugify(_inline_text(tokens[i + 1]))
@@ -109,9 +107,9 @@ def anchors_of(markdown: str) -> set[str]:
 
 
 def link_targets(markdown: str) -> list[str]:
-    """Внутренние указатели документа: `[](…)`-ссылки и code-span'ы с якорем.
+    """Internal document references: `[](…)` links and code spans with an anchor.
 
-    ```-блоки отсеиваются самим парсером: их содержимое — токен `fence`, а не `inline`.
+    ``` blocks are excluded by the parser itself: their content is a `fence` token, not `inline`.
     """
     targets: list[str] = []
     for token in _MD.parse(markdown):
@@ -120,11 +118,11 @@ def link_targets(markdown: str) -> list[str]:
         for child in token.children or []:
             if child.type == "link_open":
                 href = child.attrGet("href")
-                # `attrGet` типизирован как `str | int | float | None` (атрибуты в markdown-it
-                # общие для всех токенов); href — всегда строка, но сузить надо явно.
+                # `attrGet` is typed as `str | int | float | None` (markdown-it attributes
+                # are shared by all tokens); href is always a string, but must be narrowed explicitly.
                 if isinstance(href, str) and not _is_external(href):
-                    # `unquote`: markdown-it percent-энкодит нелатиницу в href, а якорь
-                    # сравнивается с slug'ом заголовка, который остаётся кириллицей.
+                    # `unquote`: markdown-it percent-encodes non-Latin text in href, while an anchor
+                    # is compared with the heading slug, which remains Cyrillic.
                     targets.append(unquote(href))
             elif child.type == "code_inline" and _CODE_SPAN_REF.match(child.content):
                 targets.append(child.content)
@@ -132,12 +130,12 @@ def link_targets(markdown: str) -> list[str]:
 
 
 def resolve_target(target: str, source: str) -> tuple[str, str]:
-    """`(путь цели относительно корня репо, якорь)` — **чисто лексически**.
+    """`(target path relative to repository root, anchor)` — **purely lexically**.
 
-    Ни `Path.resolve()`, ни `os.path.realpath`: на Windows они канонизируют регистр
-    существующего пути, и ссылка `Pipeline.md#…` сравнилась бы с `pipeline.md` как
-    равная — зелено локально, красно в CI на Linux. `posixpath.normpath` схлопывает
-    `..` не трогая ФС, и сравнение остаётся регистрозависимым на любой платформе.
+    Neither `Path.resolve()` nor `os.path.realpath`: on Windows they canonicalize the case
+    of an existing path, so `Pipeline.md#…` would compare equal to `pipeline.md` — green
+    locally and red in CI on Linux. `posixpath.normpath` collapses `..` without touching the
+    filesystem, and comparison remains case-sensitive on every platform.
     """
     path_part, _, anchor = target.partition("#")
     if not path_part:
@@ -151,11 +149,11 @@ def target_problem(
     is_tracked: Callable[[str], bool],
     anchors_for: Callable[[str], set[str]],
 ) -> str | None:
-    """Что не так с указателем `target` из файла `source`, или `None` если всё цело.
+    """What is wrong with reference `target` from file `source`, or `None` if all is valid.
 
-    Пути — repo-relative posix-строки. `is_tracked` / `anchors_for` — инъекции, чтобы
-    предикат был проверяем на синтетике. `is_tracked` принимает и каталоги, и не-`.md`:
-    доки ссылаются на `docs/adr/` и на `.py`.
+    Paths are repository-relative POSIX strings. `is_tracked` / `anchors_for` are injections
+    so the predicate can be tested on synthetic data. `is_tracked` accepts both directories
+    and non-`.md` files: docs refer to `docs/adr/` and `.py`.
     """
     dest, anchor = resolve_target(target, source)
     if not is_tracked(dest):
@@ -181,7 +179,7 @@ def _tracked_files() -> tuple[str, ...]:
 
 @lru_cache(maxsize=1)
 def _tracked_paths() -> frozenset[str]:
-    """Файлы **и** их каталоги — цель ссылки бывает и тем, и другим."""
+    """Files **and** their directories — a link target can be either."""
     paths: set[str] = set()
     for file in _tracked_files():
         paths.add(file)
@@ -230,7 +228,7 @@ class TestDocLinks:
 
 
 class TestLinkPredicates:
-    """Предикаты на синтетике: без них гард доказывал бы сам себя на зелёном репо."""
+    """Predicates on synthetic data: without them, the guard would prove itself on a green repo."""
 
     @pytest.mark.parametrize(
         ("heading", "expected"),
@@ -262,11 +260,11 @@ class TestLinkPredicates:
         assert target_problem("nope.md", "a.md", tracked, lambda _: set()) is not None
 
     def test_case_mismatch_is_reported(self) -> None:
-        """Регистр значим на любой платформе.
+        """Case is significant on every platform.
 
-        `Path.resolve()` на Windows подставил бы каноничный регистр существующего файла,
-        и `B.md` прошло бы локально, чтобы упасть в CI на Linux — тот самый раскол, ради
-        которого сверка идёт с индексом git и **лексически**.
+        `Path.resolve()` on Windows would substitute the canonical case of an existing file,
+        and `B.md` would pass locally only to fail in CI on Linux — the very split for which
+        checking uses the git index and is **lexical**.
         """
         tracked = {"a.md", "b.md"}.__contains__
         assert target_problem("B.md", "a.md", tracked, lambda _: set()) is not None
@@ -287,7 +285,7 @@ class TestLinkPredicates:
 
     def test_code_span_anchor_is_checked(self) -> None:
         assert link_targets("см. `testing.md#eval-harness`") == ["testing.md#eval-harness"]
-        # Голое упоминание файла — не адрес: проверять его значило бы краснеть на прозе.
+        # A bare file mention is not an address: checking it would turn prose red.
         assert link_targets("файл `testing.md` описывает") == []
 
     def test_cyrillic_anchor_is_decoded(self) -> None:

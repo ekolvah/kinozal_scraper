@@ -155,10 +155,11 @@ class TestSoldoutFetchTransport(unittest.TestCase):
     """The pipeline must fetch through the shared http_fetch helper (curl_cffi +
     impersonate), not a local requests wrapper — issue #217.
 
-    С #396 helper именно **терпеливый**: Cloudflare режет датацентровые IP, и
-    единственное, что отличает доехавший прогон от недоехавшего, — разнесены ли
-    попытки во времени. Быстрый `fetch_html` здесь означал бы возврат к одному
-    эффективному броску в сутки, то есть к 12 красным ночным прогонам подряд.
+    Since #396 the helper is deliberately **patient**: Cloudflare blocks data-
+    center IPs, and whether attempts are spread over time is the only difference
+    between a completed and failed run. Using fast `fetch_html` here would return
+    to one effective attempt per day and the observed 12 consecutive red nightly
+    runs.
     """
 
     def test_pipeline_uses_patient_fetch(self) -> None:

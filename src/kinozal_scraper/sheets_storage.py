@@ -1,4 +1,4 @@
-"""Storage Protocol: Google Sheets + InMemoryStorage, дедуп/row-schema."""
+"""Storage Protocol: Google Sheets + InMemoryStorage, dedup/row schema."""
 
 from __future__ import annotations
 

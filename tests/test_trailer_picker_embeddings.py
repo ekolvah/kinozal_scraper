@@ -1,12 +1,12 @@
-"""RED tests for #143: EmbeddingTrailerStrategy (стратегия B — re-ranker на эмбеддингах).
+"""RED tests for #143: `EmbeddingTrailerStrategy` (strategy B—an embedding re-ranker).
 
-Контракт скоринга детерминируется double'ом (§I/§II): `FakeEmbedder` отдаёт
-зафиксированные векторы — тесты пришпиливают argmax-выбор, порог→честный `None`
-(штатный отказ, БЕЗ warning — как `video_id is None` в стратегии A), §IV-видимость
-аномалии контракта (length-mismatch → None + WARNING), pure-косинус (zero-вектор →
-0.0, не ZeroDivisionError), экономию токенов (пустой пул — без вызова движка).
-`GeminiEmbedder` тестируется через `patch(genai.embed_content)` — устоявшийся паттерн
-`test_gemini_enricher.py`. Качество модели меряет harness live-прогоном, не unit-тест.
+The scoring contract is made deterministic by a double (§I/§II): `FakeEmbedder` returns
+fixed vectors—the tests pin argmax selection, threshold → honest `None`
+(a normal refusal, WITHOUT a warning—as `video_id is None` in strategy A), §IV visibility
+of a contract anomaly (length mismatch → None + WARNING), pure cosine (a zero vector →
+0.0, not ZeroDivisionError), and token economy (an empty pool—without an engine call).
+`GeminiEmbedder` is tested through `patch(genai.embed_content)`—the established pattern in
+`test_gemini_enricher.py`. The harness measures model quality in a live run, not a unit test.
 """
 
 from __future__ import annotations
@@ -38,7 +38,7 @@ def _candidates() -> list[Candidate]:
 
 
 class FakeEmbedder:
-    """Double границы Embedder: отдаёт зафиксированные векторы, ловит тексты и счётчик."""
+    """Embedder boundary double returning fixed vectors and recording calls."""
 
     def __init__(self, vectors: list[list[float]]) -> None:
         self._vectors = vectors
@@ -62,29 +62,29 @@ class TestCosine(unittest.TestCase):
         self.assertAlmostEqual(_cosine([1.0, 0.0], [0.0, 1.0]), 0.0)
 
     def test_zero_vector_cosine_is_zero_not_crash(self) -> None:
-        # Нулевой вектор → деление на 0; должно деградировать в 0.0, не ZeroDivisionError.
+        # A zero vector must degrade to 0.0 rather than raise ZeroDivisionError.
         self.assertEqual(_cosine([0.0, 0.0], [1.0, 1.0]), 0.0)
 
 
-# ── EmbeddingTrailerStrategy: скоринг / None-ветки ────────────────────────────
+# ── EmbeddingTrailerStrategy: scoring / None branches ─────────────────────────
 
 
 class TestEmbeddingTrailerStrategy(unittest.TestCase):
     def test_picks_most_similar_candidate(self) -> None:
-        # film ‖ ru_01 (cos=1), en_01 ортогонален (cos=0) → выбор ru_01.
+        # The film matches ru_01 (cos=1); en_01 is orthogonal (cos=0).
         emb = FakeEmbedder([[1.0, 0.0], [1.0, 0.0], [0.0, 1.0]])
         pick = EmbeddingTrailerStrategy(emb, threshold=0.5).pick(_film(), _candidates())
         self.assertEqual(pick.video_id, "ru_01")
 
     def test_below_threshold_returns_visible_none(self) -> None:
-        # Оба кандидата ортогональны film (cos=0) < порога → честный None + reason.
+        # Both candidates are orthogonal and below threshold: honest None plus reason.
         emb = FakeEmbedder([[1.0, 0.0], [0.0, 1.0], [0.0, 1.0]])
         pick = EmbeddingTrailerStrategy(emb, threshold=0.5).pick(_film(), _candidates())
         self.assertIsNone(pick.video_id)
         self.assertIn("below threshold", pick.reason)
 
     def test_below_threshold_does_not_warn(self) -> None:
-        # Штатный отказ (honest-None-эквивалент) — НЕ аномалия, warning не эмитим.
+        # A normal honest-None outcome is not anomalous and emits no warning.
         emb = FakeEmbedder([[1.0, 0.0], [0.0, 1.0], [0.0, 1.0]])
         with self.assertLogs("kinozal_scraper.trailer_picker_embeddings", level="WARNING") as cm:
             logging.getLogger("kinozal_scraper.trailer_picker_embeddings").warning("probe")
@@ -98,8 +98,8 @@ class TestEmbeddingTrailerStrategy(unittest.TestCase):
         self.assertEqual(emb.calls, 0)
 
     def test_length_mismatch_returns_visible_none(self) -> None:
-        # Движок вернул != N+1 векторов (аномалия контракта) → None + reason + WARNING.
-        emb = FakeEmbedder([[1.0, 0.0], [1.0, 0.0]])  # 2 вместо 3 (film + 2 cand)
+        # Returning other than N+1 vectors is a visible contract anomaly.
+        emb = FakeEmbedder([[1.0, 0.0], [1.0, 0.0]])  # 2 instead of film + 2 candidates
         with self.assertLogs("kinozal_scraper.trailer_picker_embeddings", level="WARNING") as cm:
             pick = EmbeddingTrailerStrategy(emb, threshold=0.5).pick(_film(), _candidates())
         self.assertIsNone(pick.video_id)
@@ -123,7 +123,7 @@ class TestEmbeddingTrailerStrategy(unittest.TestCase):
         self.assertIn("Man on Fire 2026 Trailer", joined)
 
 
-# ── GeminiEmbedder: живой движок + маппинг ошибок ротации ──────────────────────
+# ── GeminiEmbedder: live engine + rotation-error mapping ───────────────────────
 
 
 class _FakeEmbedding:

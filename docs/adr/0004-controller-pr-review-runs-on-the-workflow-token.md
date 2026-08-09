@@ -4,146 +4,136 @@ date: 2026-08-08
 decision-makers: ekolvah
 ---
 
-# Ревью PR по самому ревью-контроллеру идёт на токене воркфлоу, а не на токене GitHub App
+# Review of a PR changing the review controller uses the workflow token, not a GitHub App token
 
 ## Context and Problem Statement
 
-PR, меняющий `.github/workflows/claude-review.yml`, не получал ревью носителем 1 **вообще**:
-`anthropics/claude-code-action` завершался успешно, напечатав
-`Skipping action due to workflow validation`, — required-контекст `claude-review` при этом
-зеленел. Ни одного вызова модели, ни одного комментария; прогон 31242341386 на PR #481 —
-воспроизведение: `Classify review outcome` напечатал `valid=false`, а enforcement выпустил
-PR по карв-ауту.
+ A PR changing `.github/workflows/claude-review.yml` received no review from carrier 1 **at all**:
+`anthropics/claude-code-action` completed successfully after printing
+`Skipping action due to workflow validation`, while the required `claude-review` context
+turned green. There was no model invocation and no comment; run 31242341386 on PR #481 reproduced this:
+`Classify review outcome` printed `valid=false`, while enforcement released the PR under the carve-out.
 
-Корень — в обмене OIDC на токен GitHub App Anthropic. Токен выдаётся только тому прогону, чей
-файл воркфлоу совпадает с версией на дефолтной ветке; на PR, который этот файл и правит, обмен
-отказывает (`workflow_not_found_on_default_branch`), и экшен трактует отказ как повод тихо
-пропустить работу (`WorkflowValidationSkipError`).
+The cause is OIDC exchange for the Anthropic GitHub App token. A token is issued only to a run whose workflow
+file matches the version on the default branch; on a PR that edits that file, exchange fails
+(`workflow_not_found_on_default_branch`) and the action treats that failure as a reason to silently skip work
+(`WorkflowValidationSkipError`).
 
-Компенсацией в #455 была **политика**: для контроллерных PR пустой outcome — не красный чек,
-а `::warning::`, а полноту диффа перед мержем гарантирует ручное IDE-ревью мейнтейнера.
-Политика закрывала симптом ценой дыры в обязательном гейте: единственный класс PR, который
-меняет сам механизм ревью, ревью и не проходил. Вопрос (#483): как вернуть этот класс PR
-под обычный гейт.
+The #455 compensation was a **policy**: for controller PRs an empty outcome was not a red check but
+`::warning::`, and the maintainer’s manual IDE review guaranteed the complete diff before merge. That policy
+covered the symptom at the cost of a hole in the required gate: the only class of PR that changes the review
+mechanism was not reviewed. Question (#483): how can this PR class return to the normal gate?
 
 ## Decision Drivers
 
-* **Гейт обязателен ровно там, где он важнее всего.** Изменение контроллера — это изменение
-  того, чем проверяются все остальные изменения; исключение именно здесь — худшее из возможных
-  мест для исключения.
-* **Отсутствие ревью обязано быть видимым (§IV).** Зелёный чек без единого вызова модели —
-  это silent skip в чистом виде, и он доходил до мейнтейнера только как строчка в логе.
-* **Ручная политика не проверяема машиной.** «Мейнтейнер посмотрел дифф в IDE» не оставляет
-  следа на head SHA и не отличимо от «не посмотрел».
-* **Модельная авторизация не должна меняться.** Ревью работает на подписке
-  (`claude_code_oauth_token`); любое решение, требующее платного API-ключа, задачу не решает
-  (тот же довод, что в [ADR-0003](0003-second-carrier-for-the-required-review-gate.md)).
-* **Права джоба — часть модели доверия.** Экшен исполняет код с head PR; выданный ему скоуп
-  и есть то, чем этот код располагает.
+* **The gate is mandatory precisely where it matters most.** A controller change changes what checks all other
+  changes; an exception there is the worst possible location for an exception.
+* **The absence of review must be visible (§IV).** A green check without one model invocation is a pure silent
+  skip and reached the maintainer only as a log line.
+* **Manual policy is not machine-verifiable.** “The maintainer viewed the diff in the IDE” leaves no head-SHA
+  trace and is indistinguishable from “did not view it.”
+* **Model authorization must not change.** Review operates on a subscription (`claude_code_oauth_token`); any
+  solution requiring a paid API key does not solve the task (the same argument as [ADR-0003](0003-second-carrier-for-the-required-review-gate.md)).
+* **Job permissions are part of the trust model.** The action executes code from the PR head; its granted scope
+  is what that code possesses.
 
 ## Considered Options
 
-* Задать `github_token: ${{ github.token }}` входом экшена
-* Оставить карв-аут и ручное IDE-ревью (статус-кво #455)
-* Отдельный «bootstrap»-воркфлоу с дефолтной ветки, ревьюящий контроллерные PR
-* Собственное GitHub App с ключом в секретах репозитория
+* Set `github_token: ${{ github.token }}` as action input
+* Keep the carve-out and manual IDE review (the #455 status quo)
+* A separate “bootstrap” workflow from the default branch that reviews controller PRs
+* A proprietary GitHub App with a key in repository secrets
 
 ## Decision Outcome
 
-Выбран **явный `github_token`**. Апстрим кладёт значение входа в `OVERRIDE_GITHUB_TOKEN`, и
-`setupGitHubToken()` возвращает его **до** обмена OIDC — то есть валидация «файл воркфлоу
-совпадает с дефолтной веткой» не выполняется вовсе, а не обходится. Контроллерный PR получает
-обычный вердикт, и карв-аут снят вместе со своей причиной: `scripts/check_agent_review_outcome.py`
-больше не знает про пути, `scripts/review_gate.py` — про controller-классификацию, а политика
-ручного IDE-ревью из `agent-process.md` **отменена** (запись [ADR-0003](0003-second-carrier-for-the-required-review-gate.md)
-этим не затрагивается: носителей по-прежнему два и failover тот же).
+Chosen: **an explicit `github_token`**. Upstream puts the input value in `OVERRIDE_GITHUB_TOKEN`, and
+`setupGitHubToken()` returns it **before** OIDC exchange—so “workflow file matches the default branch” validation
+does not run at all rather than being bypassed. The controller PR receives a normal verdict, and the carve-out
+is removed with its cause: `scripts/check_agent_review_outcome.py` no longer knows paths,
+`scripts/review_gate.py` no longer knows controller classification, and the manual IDE-review policy in
+`agent-process.md` is **repealed** ([ADR-0003](0003-second-carrier-for-the-required-review-gate.md) is unaffected:
+there are still two carriers and the same failover).
 
-Вместе с обменом снято право `id-token: write`: под собственным токеном экшен App-токен не
-запрашивает, и оставленное право было бы второй, невидимой в чеке моделью доверия. Комментарии
-(tracking, сводка, inline) покрываются `pull-requests: write`; коммитов экшен здесь не делает.
-Модельная авторизация не тронута — это второй, независимый кред.
+`id-token: write` is removed with the exchange: with its own token the action does not request an App token,
+and retaining the permission would be a second trust model invisible in the check. `pull-requests: write`
+covers tracking, summary, and inline comments; the action makes no commits here. Model authorization is unchanged—
+it is a second, independent credential.
 
 ### Consequences
 
-* Good, потому что класс PR, менявший сам гейт, снова проходит гейт: пустой outcome теперь
-  красный на любом пути, и «ревью не было» неотличимо от «ревью не было» больше нигде.
-* Good, потому что удалена целая ветка политики: путевая классификация, её опции CLI
-  (`--repo`/`--pr`), её вердикт `escalate` в `review_gate.py` и абзац процесса. Меньше кода —
-  меньше того, что расходится с реальностью.
-* Good, потому что контроллерный PR стал собственной проверкой совместимости: ревью исполняет
-  версию воркфлоу с head, поэтому сломанный контроллер краснеет на себе, а не на следующем
-  чужом PR.
-* Bad, потому что контроллерный PR верифицирует сам себя: ревью запускает код с head. Это
-  **остаточное допущение доверия**, а не устранённый риск — при одном мейнтейнере и приватном
-  репозитории head пишет тот же человек, который мержит. Компенсация не машинная, а
-  структурная: enforcement-скрипты всегда чекаутятся с дефолтной ветки (сломанный head может
-  покрасить чек, но не превратить отсутствие ревью в зелёный), и контроллерный PR держится
-  узким по составу. На форке это допущение неверно — там верификатор-форк остаётся под
-  общим правилом «ни один required-контекст на форке не является доказательством».
-* Neutral: токен воркфлоу и токен App различаются по автору комментариев и по скоупу.
-  Комментарии ревью теперь публикуются от `github-actions[bot]`.
+* Good, because the PR class that changes the gate again passes the gate: an empty outcome is now red on every
+  path, and “there was no review” is no longer treated differently anywhere.
+* Good, because a whole policy branch is removed: path classification, its CLI options (`--repo`/`--pr`), its
+  `escalate` verdict in `review_gate.py`, and the process paragraph. Less code means less that can diverge from reality.
+* Good, because a controller PR becomes its own compatibility check: review executes the workflow version at head,
+  so a broken controller turns itself red rather than the next unrelated PR.
+* Bad, because a controller PR verifies itself: review runs code from head. This is a **residual trust assumption**,
+  not eliminated risk—under one maintainer and a private repository, the same person writes head and merges it.
+  The compensation is structural, not mechanical: enforcement scripts always check out from the default branch
+  (a broken head can turn the check red but cannot turn no review green), and the controller PR remains narrowly
+  scoped. This assumption is false on a fork, where the verifier fork remains governed by the general rule that
+  “no required context on a fork is evidence.”
+* Neutral: workflow and App tokens differ in comment author and scope. Review comments now publish as `github-actions[bot]`.
 
 ### Confirmation
 
-Гарды:
+Guards:
 `tests/test_agent_review_workflow.py::TestReviewOutcomeGate::test_review_uses_workflow_token_instead_of_app_token_exchange`
-(вход задан и равен `${{ github.token }}`),
-`::test_enforcement_steps_pass_no_controller_classification_options` (воркфлоу снят с
-классификации одним движением с CLI),
+(input is set and equals `${{ github.token }}`),
+`::test_enforcement_steps_pass_no_controller_classification_options` (workflow removed from
+classification in one change with the CLI),
 `tests/test_check_agent_review_outcome.py::TestOutcome::test_an_empty_outcome_is_unavailable_on_every_pr`,
 `tests/test_review_gate.py::TestEvidence::test_controller_paths_are_not_special_in_the_verdict`,
 `tests/test_agent_process.py::TestAgentProcess::test_review_outcome_enforcement_is_documented_without_a_path_exception`.
 
-Чего гарды не доказывают — что живой прогон действительно проходит: это чужая сторона
-контракта. Проверяется на PR, который вносит саму правку (он контроллерный по построению):
-в логе нет `Skipping action due to workflow validation`, `Classify review outcome` печатает
-`valid=true`, выполняется `Enforce Claude review outcome`, шаг `Codex review` пропущен, а на
-PR появляется сводка с `Reviewed head SHA:`. Если под токеном воркфлоу откажет какая-то запись
-в GitHub, недостающий скоуп добавляется тем же PR.
+What guards do not prove is that a live run actually passes: that is an external side of the contract. Verify
+it on the PR making the change (it is inherently a controller PR): the log lacks `Skipping action due to workflow validation`,
+`Classify review outcome` prints `valid=true`, `Enforce Claude review outcome` runs, `Codex review` is skipped,
+and a PR summary with `Reviewed head SHA:` appears. If an operation in GitHub fails under the workflow token,
+add the missing scope in the same PR.
 
 ## Pros and Cons of the Options
 
-### Явный `github_token`
+### Explicit `github_token`
 
-* Good, потому что это документированный вход экшена, а не обход валидации: она просто не
-  выполняется, когда токен уже есть.
-* Good, потому что правка — одна строка входа плюс снятое право, и она обратима.
-* Bad, потому что теряется изоляция «ревью работает под чужим, не-репозиторным токеном».
+* Good, because this is a documented action input, not a validation bypass: validation simply does not run
+  when a token already exists.
+* Good, because the change is one input line plus a removed permission, and it is reversible.
+* Bad, because the isolation of “review runs under an external, non-repository token” is lost.
 
-### Статус-кво: карв-аут и ручное IDE-ревью
+### Status quo: carve-out and manual IDE review
 
-* Good, потому что ничего не стоит и уже работает.
-* Bad, потому что оставляет дыру в обязательном гейте ровно на классе PR, меняющем гейт, и
-  подменяет машинное доказательство обещанием человека.
+* Good, because it costs nothing and already works.
+* Bad, because it leaves a hole in the required gate precisely for the PR class that changes the gate, and
+  replaces machine evidence with a human promise.
 
-### Отдельный bootstrap-воркфлоу с дефолтной ветки
+### Separate bootstrap workflow from the default branch
 
-* Good, потому что ревьюер не берётся с head — самоверификация исчезает по-настоящему.
-* Bad, потому что требует `pull_request_target` с чекаутом чужого кода либо второго
-  required-контекста; первое — известный класс уязвимости, второе AND-ится с существующим
-  и ухудшает доступность (тот же довод, что в ADR-0003).
-* Bad, потому что заводит вторую копию промпта и второй дом контракта ревью.
+* Good, because the reviewer is not taken from head—self-verification genuinely disappears.
+* Bad, because it requires `pull_request_target` checking out foreign code or a second required context; the first
+  is a known vulnerability class, while the second is ANDed with the existing one and reduces availability (the same
+  argument as ADR-0003).
+* Bad, because it creates a second copy of the prompt and a second home for the review contract.
 
-### Собственное GitHub App
+### Proprietary GitHub App
 
-* Good, потому что даёт точный скоуп прав и стабильную идентичность автора комментариев.
-* Bad, потому что решает не ту задачу: валидация «воркфлоу совпадает с main» — свойство
-  апстримного обмена, и своё App его не отменяет, а лишь заменяет один токен другим ценой
-  приватного ключа в секретах и его ротации.
+* Good, because it provides exact permission scope and a stable comment-author identity.
+* Bad, because it solves the wrong task: “workflow matches main” validation is a property of upstream exchange,
+  and a proprietary App does not remove it, only exchanges one token for another at the cost of a private key in
+  secrets and its rotation.
 
 ## More Information
 
-* Issue: [#483](https://github.com/ekolvah/kinozal_scraper/issues/483). Отменяет политику
-  ручного IDE-ревью контроллерных PR, введённую в #455.
-* Механизм сверен по исходникам `anthropics/claude-code-action@v1`, а не выведен из пробы:
-  `action.yml` — вход `github_token` пробрасывается в окружение как `OVERRIDE_GITHUB_TOKEN`;
-  `src/github/token.ts` — `setupGitHubToken()` возвращает переданный токен раньше обмена OIDC,
-  а отказ обмена распознаётся `isWorkflowValidationError()` и превращается в
-  `WorkflowValidationSkipError`, то есть в успешное завершение без работы.
-* Наблюдение дефекта: прогон
-  [31242341386](https://github.com/ekolvah/kinozal_scraper/actions/runs/31242341386) на PR #481.
-* Следствия в state-доках: [`ci.md`](../architecture/ci.md#required-status-checks-branch-protection)
-  и [`agent-process.md`](../architecture/agent-process.md#review-outcome-enforcement).
-* Пересмотреть запись стоит, если у репозитория появится второй мейнтейнер или внешние
-  контрибьюторы с правом пуша в ветки репозитория: тогда остаточное допущение самоверификации
-  перестанет быть приемлемым и понадобится ревьюер, не берущийся с head.
+* Issue: [#483](https://github.com/ekolvah/kinozal_scraper/issues/483). Repeals the controller-PR manual
+  IDE-review policy introduced in #455.
+* The mechanism was checked against `anthropics/claude-code-action@v1` source, not inferred from a trial:
+  `action.yml` passes the `github_token` input to the environment as `OVERRIDE_GITHUB_TOKEN`;
+  `src/github/token.ts` has `setupGitHubToken()` return the supplied token before OIDC exchange, while
+  `isWorkflowValidationError()` recognizes exchange failure and converts it to `WorkflowValidationSkipError`,
+  meaning successful completion without work.
+* Defect observation: run [31242341386](https://github.com/ekolvah/kinozal_scraper/actions/runs/31242341386) on PR #481.
+* State-document consequences: [`ci.md`](../architecture/ci.md#required-status-checks-branch-protection)
+  and [`agent-process.md`](../architecture/agent-process.md#review-outcome-enforcement).
+* Revisit the record if the repository gains a second maintainer or external contributors with permission to push
+  repository branches: then the residual self-verification assumption will become unacceptable and require a reviewer
+  not taken from head.

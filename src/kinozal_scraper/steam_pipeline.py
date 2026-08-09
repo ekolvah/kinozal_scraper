@@ -1,4 +1,4 @@
-"""Steam charts + appdetails + перевод (run_steam_pipeline)."""
+"""Steam charts + appdetails + translation (run_steam_pipeline)."""
 
 from __future__ import annotations
 

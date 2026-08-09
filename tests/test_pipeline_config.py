@@ -336,11 +336,10 @@ class TestLoadSourcesConfig(unittest.TestCase):
         self.assertIn("sources", config)
 
     def test_at_most_one_enabled_soldout_source(self) -> None:
-        # Бюджет терпеливого ретрая (#396) — 288 минут НА ИСТОЧНИК, а
-        # `run_soldout_pipeline` перебирает все включённые источники своего типа
-        # последовательно. Второй такой источник не сломал бы ни один тест, а в проде
-        # молча вылез бы за `timeout-minutes` и оборвал прогон посередине. Добавляешь
-        # второй — сначала реши, откуда возьмётся время (ADR-0002).
+        # The patient retry budget (#396) is 288 minutes per source, while
+        # `run_soldout_pipeline` processes enabled sources of this type serially.
+        # A second source would keep tests green but exceed `timeout-minutes` in
+        # production. Before adding one, account for its time budget (ADR-0002).
         sources_path = Path(__file__).resolve().parents[1] / "sources.json"
         if not sources_path.exists():
             self.skipTest("sources.json not found")
@@ -405,7 +404,7 @@ class TestLoadSourcesConfig(unittest.TestCase):
 
 class TestRussianEnrichPrompts(unittest.TestCase):
     """Pin-tests for #88: both GitHub sources must emit the same Russian
-    two-line `summary_ru` (Для кого / Зачем) so notifications read uniformly.
+    two-line `summary_ru` (audience / purpose) so notifications read uniformly.
     """
 
     def setUp(self) -> None:

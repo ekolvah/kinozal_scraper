@@ -72,12 +72,13 @@ class TestRunner:
 
 
 class TestTrackedFilesCaptureFailure:
-    """Сломанный захват `git ls-files` — «file set is unknown», не пустой список (#410).
+    """Broken `git ls-files` capture means unknown scope, not an empty list (#410).
 
-    Пин на **различающее** решение, а не на факт проверки: пустой список тихо
-    доезжает до секрет-гейта, и тот печатает «no files to scan — refusing to
-    report a vacuous pass». Сообщение верное по форме и **ложное по причине** —
-    оператор идёт искать, почему репозиторий пуст, вместо того чтобы чинить захват.
+    This pins the **distinguishing** decision rather than mere validation: an
+    empty list quietly reaches the secret gate, which prints "no files to scan —
+    refusing to report a vacuous pass." The message has the right form but the
+    **wrong cause**, sending the operator to investigate an empty repository
+    instead of fixing capture.
     """
 
     def test_none_stdout_exits_two(

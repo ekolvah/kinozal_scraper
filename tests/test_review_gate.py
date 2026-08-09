@@ -223,11 +223,12 @@ class TestEvidence:
     def test_controller_paths_are_not_special_in_the_verdict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """#483: ревью-контроллер ревьюится как всё остальное, значит и вердикт обычный.
+        """#483: the review controller is reviewed normally, so its verdict is normal.
 
-        Пока носитель 1 был недостижим на таких PR, зелёный чек не доказывал, что ревью
-        было, и гейт эскалировал на ручной IDE-просмотр. Ревью работает — эскалация
-        превратилась бы в `escalate` на каждом PR по агентному процессу.
+        While carrier 1 was unreachable for these PRs, a green check did not
+        prove a review existed and the gate escalated to manual IDE inspection.
+        Now that review works, keeping the exception would yield `escalate` on
+        every agent-process PR.
         """
         payload = _pr_payload(files=[{"path": ".github/workflows/agent-review.yml"}])
         monkeypatch.setattr(subprocess, "run", _gh_double(payload, _runs_payload(_ROUND_2)))

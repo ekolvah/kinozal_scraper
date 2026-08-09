@@ -1,13 +1,13 @@
-"""RED tests for #351: `set_issue_priority.py` — выставить Priority issue в Project 1.
+"""RED tests for #351: `set_issue_priority.py`—set an issue's Priority in Project 1.
 
-Приоритет issue живёт как single-select поле Priority в GitHub Project 1. Механика
-(«добавь в проект + выставь поле») — детерминированный gh-вызов, который по канону
-`principles.md` §Scripts over instructions вынесен в скрипт с exit-code вместо прозы/памяти.
+Issue priority lives as the Priority single-select field in GitHub Project 1. The mechanism
+(“add to project + set field”) is a deterministic `gh` invocation which, following
+`principles.md` §Scripts over instructions, is extracted into a script with an exit code rather than prose or memory.
 
-`gh` — единственная внешняя граница, мокается через `subprocess.run` seam (§II — не
-мок внутренней логики), как `scripts/open_pr.py`. Захардкоженные option-ID — главный
-источник дрейфа, поэтому любой ненулевой exit `gh` обязан быть видимой аномалией
-(§IV), а не ложным подтверждением (`test_edit_failure_exits_nonzero`).
+`gh` is the only external boundary and is mocked through the `subprocess.run` seam (§II—not a mock
+of internal logic), like `scripts/open_pr.py`. Hard-coded option IDs are the main
+source of drift, so any nonzero `gh` exit must be a visible anomaly
+(§IV), not a false confirmation (`test_edit_failure_exits_nonzero`).
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from scripts.set_issue_priority import (
 
 class TestOptionIdForLevel:
     def test_maps_each_level(self) -> None:
-        # Контракт зашитых option-id (сверено с `gh project field-list 1`).
+# Contract for option IDs verified against `gh project field-list 1`.
         assert option_id_for_level("High") == "b9005885"
         assert option_id_for_level("Medium") == "ca573e2f"
         assert option_id_for_level("Low") == "3a2c2352"
@@ -40,7 +40,7 @@ class TestOptionIdForLevel:
         assert option_id_for_level("LOW") == option_id_for_level("Low")
 
     def test_rejects_unknown_level(self) -> None:
-        # Мусор → видимый ValueError, не тихий None/дефолт.
+        # Invalid data raises a visible ValueError, never a silent None/default.
         with pytest.raises(ValueError):
             option_id_for_level("Urgent")
 
@@ -51,12 +51,9 @@ class TestItemIdFromAddJson:
 
     @pytest.mark.parametrize("bad", ["{}", "", "not json", None])
     def test_raises_on_missing_id(self, bad: str | None) -> None:
-        # Пусто / битый JSON → видимая ошибка, не непонятный TypeError позже.
-        # `None` в параметрах остаётся как контрактная тотальность самой pure-функции:
-        # через `_run` он теперь недостижим (сломанный захват ловится там и выходит
-        # кодом 2, #410), но функция обязана оставаться тотальной по своему типу
-        # `str | None` — а не полагаться на то, что её единственный сегодняшний
-        # вызывающий отсеял этот вход.
+        # Empty or malformed JSON fails visibly. `_run` now rejects capture
+        # failure with exit 2 (#410), but this pure function remains total for its
+        # declared `str | None` input rather than relying on today's caller.
         with pytest.raises(ValueError):
             item_id_from_add_json(bad)
 
@@ -121,9 +118,10 @@ class TestPriorityFromProjectJson:
 
 
 class _GhDispatcher:
-    """Дубль внешней границы `gh`: диспатчит `subprocess.run` по argv, пишет вызовы
-    в `calls`. Позволяет проверить оркестрацию `main()` (какие команды и с какими
-    флагами), не трогая сеть/GitHub."""
+    """`gh` boundary double dispatching by argv and recording calls.
+
+    It verifies `main()` orchestration without touching the network or GitHub.
+    """
 
     def __init__(self, *, edit_fails: bool = False, project_payload: str | None = None) -> None:
         self.edit_fails = edit_fails
@@ -166,7 +164,7 @@ class TestMain:
         edit_i = next(i for i, c in enumerate(joined) if c.startswith("gh project item-edit"))
         assert add_i < edit_i, "item-add должен идти до item-edit"
         edit_cmd = next(c for c in disp.calls if c[:3] == ["gh", "project", "item-edit"])
-        # Правильные id: item из add, field/project — константы, option — по уровню High.
+        # IDs: item from add, field/project constants, option selected for High.
         assert "PVTI_item" in edit_cmd
         assert PRIORITY_FIELD_ID in edit_cmd
         assert PROJECT_ID in edit_cmd
@@ -183,8 +181,7 @@ class TestMain:
     def test_edit_failure_exits_nonzero(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        # B1: item-edit упал (протухший option-id / отзыв доступа к Project / auth) →
-        # видимый сбой, НЕ ложное подтверждение из уже полученного item-id (§IV).
+        # A failed edit is visible, never a false success from the earlier item ID.
         disp = _GhDispatcher(edit_fails=True)
         monkeypatch.setattr(subprocess, "run", disp)
         with pytest.raises(SystemExit) as exc:

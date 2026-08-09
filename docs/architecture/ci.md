@@ -1,21 +1,18 @@
 # CI and quality gates
 
-**На какой вопрос отвечает этот файл:** какие автоматические гейты качества стоят
-на пути изменения и на чём они работают. Ось — «гейт», а не «GitHub Actions»:
-поэтому сюда же заезжает **локальный** plan-стадийный `architect-reviewer`
-(`.claude/agents/`), который в CI не запускается, но по
-[`principles.md §VII`](principles.md#vii-simplicity-first) стоит гейтом наравне с
-cloud-ревью. Модельная поверхность агентного тулинга (обе половины) описана в
-§«Model pinning» — это её единственный дом.
+**Question this document answers:** which automated quality gates stand on the change path and
+what they operate on. Its axis is "gate", not "GitHub Actions": consequently it also includes the
+**local** planning-stage `architect-reviewer` (`.claude/agents/`), which does not run in CI but is a
+gate alongside cloud review under [`principles.md` §VII](principles.md#vii-simplicity-first). The
+model surface of agent tooling (both halves) is described in §"Model pinning" — its only home.
 
-**Чего здесь нет.** Как прод-прогон эксплуатируется — расписание, env-переменные и секреты,
-изоляция падений, алертинг, runbook'и оператора → [`operations.md`](operations.md) (#418).
-**И как гейт стал таким, какой он есть** — история решения живёт в issue/PR, не в теле дока
-([`project-map.md` §«Что описывает документация»](project-map.md#что-описывает-документация-текущее-состояние-не-история-и-не-идеи)).
-Операционный критерий, по которому фраза остаётся здесь: **её отсутствие заставит агента либо
-совершить неверное действие, либо переделать уже отвергнутую работу**. Отвергнутый инструмент или
-правило — строкой по месту своего гейта; инструмент целиком, у которого своей секции нет, — в
-[§«Consciously not adopted»](#consciously-not-adopted) (#419).
+**What is not here.** How the production run is operated — schedule, environment variables and
+secrets, failure isolation, alerting, operator runbooks → [`operations.md`](operations.md) (#418).
+**How a gate became what it is** is decision history and lives in the issue/PR, not the document
+body ([`project-map.md` §"What documentation describes"](project-map.md#what-documentation-describes-current-state-not-history-or-ideas)).
+The operational criterion for a sentence remaining here is: **without it, an agent would either act
+incorrectly or redo rejected work**. A rejected tool or rule is a row beside its gate; a whole tool
+without its own section is in [§"Consciously not adopted"](#consciously-not-adopted) (#419).
 
 ## Local pre-commit
 
@@ -27,7 +24,10 @@ python scripts/ci_check.py
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
 ruff format → ruff lint → detect-secrets → pytest → pip-audit (runtime) →
-pip-audit (dev) → requirements consistency → mypy → import contracts. (Module-docstring presence
+pip-audit (dev) → requirements consistency → mypy → import contracts → language. The `language`
+check runs `scripts/check_language.py` locally and in the matching `ci.yml` step; it enforces
+English-only tracked Markdown prose and Python commentary. Its exit `0` is compliant text, `1`
+is a policy violation, and `2` means trustworthy evidence could not be obtained. (Module-docstring presence
 is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
 see the lint gates below.)
 
@@ -210,21 +210,21 @@ is deliberately **not** edited: §II is tool-agnostic canon, so the tool mention
 lives here and in `runtime.md`, not in the constitution.
 
 **Сознательно не взято здесь:** контракт «оркестраторы импортируют только Protocol-модули» —
-сегодня **невыразим**: `Protocol`-классы лежат в одном модуле со своими конкретными
-реализациями. Пересмотр — вместе с Protocol-extraction рефакторингом (#234 Out of scope).
+is currently **inexpressible**: `Protocol` classes reside in the same module as their concrete
+implementations. Revisit with the Protocol-extraction refactor (#234 Out of scope).
 
 ### Lint gates and ratchets (ruff)
 
-Все четыре набора правил едут на существующем `check_lint` — без новой зависимости и без
-отдельного шага реестра. У ruff **нет нативного baseline**, поэтому ценность у ратчетов
-**forward**: новый или изменённый код через порог валит CI, легаси grandfather'ится.
+All four rule sets run in existing `check_lint` — without a new dependency or a separate registry
+step. Ruff has **no native baseline**, so ratchets provide **forward** value: new or changed code
+over the threshold fails CI while legacy is grandfathered.
 
-| Правила (issue) | Тип | Что ловит | Порог / известная дыра |
+| Rules (issue) | Type | What it catches | Threshold / known gap |
 |---|---|---|---|
-| `C901`, `PLR0912`, `PLR0915` (#233) | ратчет | разрастание метода (цикломатика / ветки / стейтменты) | `max-complexity = 12` — **выровнен с дефолтным порогом веток PLR0912**, а не подогнан под сегодняшний код (защита от Goodhart/байкшеддинга); PLR0912/PLR0915 на дефолтах ruff (12 / 50). **Дыра:** blanket `# noqa` позволяет grandfathered-функции расти дальше незамеченной — ратчет защищает новый код и новые функции, не замороженную шестёрку. Настоящий фикс — распил (#251, §V documented-mitigation) |
-| `ERA001` (#235) | ратчет | закомментированный код | Репо намерено **чистым**. `tests/**` **не** исключены: мёртвый код мёртв независимо от роли файла |
-| `ARG001`, `ARG002`, `SLF001` (#236) | ратчет | неиспользуемый аргумент функции/метода, доступ к приватному члену чужого объекта | 110 существующих хитов триажированы поштучно, реальных мёртвых параметров в `src/` — ноль. `SLF001` в `src/` **нулевой**: два хита (`RotatingGeminiEnricher` лез в `GeminiEnricher._model_name` из двух мест) были одной настоящей §II-утечкой и сняты публичным свойством `model_name`, а не noqa. **Не выбраны** `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) — сознательный defer (#236 Out of scope) |
-| `D100`, `D104`, `D419` (#253) | **presence-гейт** (порога нет) | отсутствующий / пустой module- и package-docstring | Репо чисто, скоуп репо-широкий: `src/`, `scripts/`/root **и `tests/`** (#433). `D101`/`D103` (класс/функция) сознательно **не** выбраны — гейт только уровня модуля. **Дыра:** `D100`/`D104` флагают только *публичные* модули, поэтому проскочит и будущий `src/kinozal_scraper/_internal.py` (сегодня такого нет), и три живых хелпера `tests/_*.py` — докстринги у них есть, но гейтом это не удерживается. Вторая дыра, общая для всех lint-гейтов: `extend-exclude` в `[tool.ruff]` выносит целое дерево из-под `ruff check`, и config-пинящие гарды этого не видят |
+| `C901`, `PLR0912`, `PLR0915` (#233) | ratchet | method growth (cyclomatic complexity / branches / statements) | `max-complexity = 12` — **aligned with PLR0912's default branch threshold**, not tuned to current code (protection against Goodhart/bikeshedding); PLR0912/PLR0915 stay at Ruff defaults (12 / 50). **Gap:** blanket `# noqa` lets a grandfathered function grow further unnoticed — the ratchet protects new code and new functions, not the frozen six. The real fix is splitting (#251, §V documented-mitigation) |
+| `ERA001` (#235) | ratchet | commented-out code | The repository is intentionally **clean**. `tests/**` are **not** excluded: dead code is dead regardless of file role |
+| `ARG001`, `ARG002`, `SLF001` (#236) | ratchet | unused function/method argument; access to another object's private member | 110 existing hits were triaged individually; real dead parameters in `src/`: zero. `SLF001` in `src/` is **zero**: two hits (`RotatingGeminiEnricher` accessed `GeminiEnricher._model_name` from two places) were one real §II leak, removed with public property `model_name`, not noqa. `ARG003`/`004`/`005` (classmethod/staticmethod/lambda) were **not selected** — conscious defer (#236 Out of scope) |
+| `D100`, `D104`, `D419` (#253) | **presence gate** (no threshold) | missing / empty module and package docstring | The repository is clean; scope is repository-wide: `src/`, `scripts/`/root **and `tests/`** (#433). `D101`/`D103` (class/function) were consciously **not** selected — the gate is module-level only. **Gap:** `D100`/`D104` flag only *public* modules, so both a future `src/kinozal_scraper/_internal.py` (none exists today) and three live `tests/_*.py` helpers can pass; they have docstrings, but the gate does not hold them. A second gap shared by all lint gates: `extend-exclude` in `[tool.ruff]` removes a whole tree from `ruff check`, and config-pinning guards do not see that |
 
 #### Stable first-party classification
 
@@ -243,25 +243,24 @@ per-run cost.
 
 **Конвенция глушения — одна на все четыре, и именно её пинят гарды:**
 
-- **Настоящий false positive глушится per-site** `# noqa: <точные коды>` с причиной — никогда
-  per-file: per-file-ignore ослепляет весь файл к *новым* хитам. Живые примеры per-site:
-  шесть grandfathered-функций на `def`-строке (#233) и два Protocol-conformance стаба
-  (`NullEnricher.enrich`'s `item`, `InMemoryStorage.append_rows`'s `headers`), чей параметр
-  требует интерфейс, а использует не эта реализация.
-- **`# noqa` — escape hatch для FP, а не для настоящего срабатывания детектора.** Единственный
-  хит `ERA001` (иллюстративный комментарий-схема `# [dedupe_key, title, ...]`, который ruff
-  разбирает как список) был исправлен **переформулировкой в прозу**: код никогда не был мёртвым,
-  и глушение обучило бы хатч на не-исключении (§IV).
-- **`tests/**` исключаются категорически только там, где роль файла меняет смысл правила.**
-  Для ARG/SLF — да (`per-file-ignores` `"tests/**"`): white-box-тесты по §II законно зовут
-  приватные хелперы напрямую, а сигнатуры моков диктует мокируемый вызываемый объект, не
-  использование. Для `ERA001` — **нет**: мёртвый код мёртв независимо от роли файла. Для
-  `D100`/`D104`/`D419` — **больше нет** (#433): исключение стояло на историческом основании
-  («старый `check_headers.py` сканировал только `src/`»), а не на роли файла, и отозвано —
-  module-docstring в `tests/` это единственная навигация по 25 тысячам строк, и 41 файл из 60
-  писал его добровольно ещё до гейта. То есть в `per-file-ignores` для `tests/**` остались три
-  кода одного набора с одним основанием; поверхностный паттерн «тестам всегда дают
-  per-file-ignore» отсюда **не** карго-культить.
+- **A real false positive is silenced per site** with `# noqa: <exact codes>` and a reason — never
+  per file: a per-file ignore blinds the whole file to *new* hits. Live per-site examples are six
+  grandfathered functions on their `def` line (#233) and two Protocol-conformance stubs
+  (`NullEnricher.enrich`'s `item`, `InMemoryStorage.append_rows`'s `headers`), whose parameter is
+  required by the interface but unused by that implementation.
+- **`# noqa` is an escape hatch for an FP, not a real detector hit.** The only `ERA001` hit (the
+  illustrative diagram comment `# [dedupe_key, title, ...]`, which Ruff parses as a list) was fixed
+  **by rewriting it as prose**: the code was never dead, and silencing would train the hatch on a
+  non-exception (§IV).
+- **`tests/**` are categorically excluded only where file role changes a rule's meaning.** For
+  ARG/SLF, yes (`per-file-ignores` `"tests/**"`): §II white-box tests legitimately call private
+  helpers directly, and mock signatures are dictated by the mocked callable, not usage. For
+  `ERA001`, **no**: dead code is dead regardless of file role. For `D100`/`D104`/`D419`, **no
+  longer** (#433): the exclusion had historical basis ("old `check_headers.py` scanned only
+  `src/`"), not file role, and was revoked — a module docstring in `tests/` is the only navigation
+  across 25 thousand lines, and 41 of 60 files wrote one voluntarily before the gate. Thus
+  `per-file-ignores` for `tests/**` retain three codes from one set on one rationale; do **not**
+  cargo-cult the superficial pattern "tests always receive a per-file ignore" from this.
 - **У каждого правила — anti-drift-гард** (`tests/test_complexity_ratchet.py`,
   `test_ruff_dead_code_rule.py`, `test_ruff_arg_slf_rules.py`, `test_ruff_docstring_rule.py` — все
   в жанре `test_ruff_silence_rules.py`), но **глубина у них разная, и это не выровнено**:
@@ -510,41 +509,41 @@ change is now its own compatibility check, because the review runs on the PR hea
 `Claude review` step reporting schema validation means the reviewer is unavailable, so fix or
 revert the controller change on that branch rather than weakening the gate.
 
-**Сознательно временное:** `show_full_output: true` (полный SDK-транскрипт в логах Actions) —
-включён, пока стабилизируется поведение ревью; он шумит и может вынести наружу внутренний
-model-chatter. **Триггер снятия:** цикл ревью перестал требовать разбора транскрипта, то есть
-когда в последний раз транскрипт понадобился для диагностики — а не «когда-нибудь».
+**Deliberately temporary:** `show_full_output: true` (the full SDK transcript in Actions logs) is
+enabled while review behaviour stabilizes; it is noisy and can expose internal model chatter.
+**Removal trigger:** the review loop no longer requires transcript analysis — that is, when the
+transcript was last needed for diagnosis, not “someday”.
 
 ### Coverage-first prompt: no filtering at the search stage
 
-**Механизм дефекта — причина существования контракта, а не археология.** Модель следует
-инструкции-фильтру (`Skip nitpicks — ruff handles formatting/lint`) **буквально**: находка
-делается, признаётся ниже заявленной планки и молча не докладывается — а отфильтрованная находка
-неотличима от отсутствующей (§IV). Тот же дефект имеет вторую форму на **выходе**: предписание
-«post exactly "✅ Review complete — no blocking issues found."» запрещало добавить что-либо ещё,
-так что прогон с тремя should-fix и нулём blocking обязан был напечатать одну строку. Снять фильтр
-на входе, оставив на выходе, — починить половину. По этому же механизму написан и
+**The defect mechanism is why the contract exists, not archaeology.** The model follows a filter
+instruction (`Skip nitpicks — ruff handles formatting/lint`) **literally**: it makes a finding,
+rates it below the stated threshold, and silently does not report it — while a filtered finding is
+indistinguishable from its absence (§IV). The same defect has a second form at **output**: the
+instruction “post exactly "✅ Review complete — no blocking issues found."” prohibited adding
+anything else, so a run with three should-fix and zero blocking had to print one line. Removing the
+input filter while retaining the output filter fixes half the problem. The same mechanism defines
 `.claude/agents/architect-reviewer.md`.
 
-Контракт — **grade, never drop**:
+The contract is **grade, never drop**:
 
-- каждая находка репортится с `severity` (blocking / should-fix / nice-to-have) и `confidence`
-  (high / medium / low) — фильтрует человек, не модель;
-- `blocking` — конкретная планка (неверное поведение, падающий или отсутствующий тест на
-  изменённое поведение, вводящий в заблуждение результат, утёкший секрет, нарушение конвенции
-  `CLAUDE.md`), а не качественное слово «nitpick»;
-- то, что уже ловит детерминированный гейт (ruff / mypy в `ci_check.py`), градуируется
-  `nice-to-have, duplicate of ci_check` — ранжируется последним, потому что покрыто другим
-  исполнителем, а не утаивается;
-- **инлайн несёт только blocking / should-fix**, чтобы инлайн-канал не тонул; остальное — в
-  summary, где перечислены все находки по severity. Фиксированная однострочная summary
-  применима только к «не найдено ничего ни на одной severity».
+- every finding is reported with `severity` (blocking / should-fix / nice-to-have) and `confidence`
+  (high / medium / low) — a human filters, not the model;
+- `blocking` is a concrete bar (wrong behaviour, a failing or missing test for changed behaviour, a
+  misleading result, a leaked secret, or a `CLAUDE.md` convention violation), not the qualitative
+  word “nitpick”;
+- anything already caught by a deterministic gate (ruff / mypy in `ci_check.py`) is graded
+  `nice-to-have, duplicate of ci_check` — ranked last because another executor covers it, not
+  withheld;
+- **only blocking / should-fix go inline** so the inline channel does not drown; the rest go in the
+  summary, which lists every finding by severity. A fixed one-line summary applies only to “nothing
+  found at any severity”.
 
-`tests/test_agent_review_workflow.py` гардит **форму**: нет suppression-императива в начале
-строки промпта, `severity` + `confidence` присутствуют, нет gag-строки `no blocking issues`.
-Семантику он не проверяет — фильтр, перефразированный как «be selective», проходит; качественная
-половина (что планка blocking остаётся конкретной, а исключение про ruff — не императивным)
-держится этой прозой и ревью, не exit-code'ом.
+`tests/test_agent_review_workflow.py` guards **form**: no suppression imperative at the start of a
+prompt line, `severity` + `confidence` present, and no `no blocking issues` gag line. It does not
+check semantics — a filter reworded as “be selective” passes; the qualitative half (that the
+blocking bar remains concrete and the ruff exception non-imperative) is upheld by this prose and
+review, not an exit code.
 
 ### Model pinning and what a stale pin looks like
 
@@ -555,41 +554,41 @@ files themselves (the workflow's `claude_args`, the agent's frontmatter); there 
 **no registry document listing which agent runs on which model**, because a copy of the config is
 exactly the thing that drifts away from it.
 
-`agent-review.yml` несёт `claude_args: |` / `--model claude-opus-5`; frontmatter агента —
+`agent-review.yml` contains `claude_args: |` / `--model claude-opus-5`; the agent frontmatter has
 `model: claude-opus-5` + `effort: high`.
 
-Четыре факта, без которых пин чинят неправильно:
+Four facts without which the pin is fixed incorrectly:
 
-1. **У экшена нет входа `model`.** `claude_args` — документированный passthrough в Claude CLI
-   (`action.yml`: "Additional arguments to pass to Claude CLI"), и это важнее, чем выглядит:
-   GitHub Actions **молча игнорирует неизвестный `with:`**, поэтому опечатка в имени входа
-   оставила бы ревью неприпиненным при всех зелёных статических проверках.
-2. **`effort` по умолчанию наследует уровень сессии** — не `high`. Без пина одна и та же
-   plan-стадийная проверка строже или мягче в зависимости от того, чья сессия её запустила;
-   пин делает строгость гейта решением репозитория.
-3. **PR, правящий сам `agent-review.yml`, проверяет outcome только при его наличии.** Пустой
-   outcome даёт видимое предупреждение; `clean` и `rework` проходят, `blocking` краснит.
-   Контракт промпта и разрешённая модель проверяются на следующем несвязанном PR.
-4. **Гард отвергает только короткие алиасы** (`opus`/`sonnet`/`haiku`/`fable`) — любой полный id
-   проходит. Уведомления «вышла новая модель» нет: ревизия происходит **по красному джобу**, не
-   по календарю. Пин **family-level** намеренно: у этого поколения нет датированного snapshot-id,
-   поэтому point-release внутри Opus 5 принимается, смена поколения — нет.
+1. **The action has no `model` input.** `claude_args` is the documented Claude CLI passthrough
+   (`action.yml`: "Additional arguments to pass to Claude CLI"), and this matters more than it
+   appears: GitHub Actions **silently ignores an unknown `with:`**, so a typo in the input name
+   would leave review unpinned with every static check green.
+2. **`effort` defaults to inheriting the session level** — not `high`. Without a pin, the same
+   plan-stage review is stricter or looser depending on whose session starts it; the pin makes gate
+   strictness a repository decision.
+3. **A PR changing `agent-review.yml` itself checks outcome only when it has one.** An empty
+   outcome produces a visible warning; `clean` and `rework` pass, while `blocking` turns red.
+   Prompt contract and permitted model are checked on the next unrelated PR.
+4. **The guard rejects only short aliases** (`opus`/`sonnet`/`haiku`/`fable`) — any full ID passes.
+   There is no “a new model was released” notification: revision happens **because of a red job**,
+   not by calendar. The pin is deliberately **family-level**: this generation has no dated snapshot
+   ID, so a point release within Opus 5 is accepted, while a generation change is not.
 
-**Протухший пин громкий, и это дизайн.** Снятый или опечатанный id — видимая ошибка на каждом PR
+**A stale pin is loud, by design.** A removed or mistyped ID is a visible error on every PR
 (`There's an issue with the selected model (…)` / `Agent terminated early due to an API error`);
-Claude Code **не** откатывается молча на сессионную модель. Но резолв модели выше по стеку, и
-frontmatter в нём не первый, поэтому пин **не** защищает от трёх вещей:
-`CLAUDE_CODE_SUBAGENT_MODEL` в шелле оператора; per-invocation аргумента `model` у Agent-тула —
-**единственная из трёх достижима изнутри репо**, `.claude/commands/plan.md` спавнит
-`architect-reviewer` именно так, и ничто не мешает передать `model`/`effort` и тихо победить пин;
-организационного allowlist'а `availableModels` — при исключении пиннутого значения Claude Code
-**молча** пропускает его и берёт унаследованную модель. Записано, чтобы «припинено» не читалось
-как более сильная гарантия, чем оно есть.
+Claude Code does **not** silently fall back to the session model. But model resolution is higher in
+the stack, and frontmatter is not first there, so the pin does **not** protect against three things:
+`CLAUDE_CODE_SUBAGENT_MODEL` in the operator's shell; the Agent tool's per-invocation `model`
+argument — **the only one of the three reachable from inside the repository**,
+`.claude/commands/plan.md` starts `architect-reviewer` exactly this way, and nothing prevents
+passing `model`/`effort` and silently defeating the pin; the organisational `availableModels`
+allowlist — when it excludes the pinned value, Claude Code **silently** skips it and takes the
+inherited model. This is recorded so “pinned” is not read as a stronger guarantee than it is.
 
-**Два гарда, один денилист.** `tests/test_agent_review_workflow.py` проверяет воркфлоу,
-`tests/test_agent_frontmatter.py` — frontmatter агента, оба импортируют общий набор из
-`tests/_model_pin_policy.py`. Это **денилисты**, поэтому объединение строго консервативнее: может
-только отвергнуть лишнее, но не пропустить.
+**Two guards, one denylist.** `tests/test_agent_review_workflow.py` checks the workflow,
+`tests/test_agent_frontmatter.py` checks agent frontmatter; both import the shared set from
+`tests/_model_pin_policy.py`. These are **denylists**, so their union is strictly more conservative:
+it can only reject too much, not let something through.
 
 ### One-time setup
 
@@ -605,35 +604,35 @@ No separate Anthropic API billing — usage counts against the Pro/Max subscript
 
 ## Production workflow (`run-script.yml`)
 
-Прод-крон засчитан как **E2E-smoke гейт** в [`principles.md`](principles.md) §Quality Gates — это
-единственная сторона прод-воркфлоу, отвечающая на вопрос этого файла. Расписание, порядок шагов,
-собственный `pytest` smoke-gate воркфлоу, изоляция падений и алертинг — один дом,
+The production cron is counted as an **E2E smoke gate** in [`principles.md`](principles.md) §Quality Gates—this is
+the only facet of the production workflow that answers this file's question. Scheduling, step order,
+the workflow's own `pytest` smoke gate, failure isolation, and alerting belong to one home,
 [`operations.md` § Production workflow](operations.md#production-workflow-run-scriptyml).
 
 ## Consciously not adopted
 
-**Что попадает сюда:** «не взяли инструмент или правило Y» — и только инструмент целиком,
-у которого нет своей секции-гейта выше (иначе строкой по месту гейта). Остальные ветки маршрута
-«куда идёт решение» — [`project-map.md`](project-map.md) §Canonical-home, там его канон.
+**What belongs here:** “tool or rule Y was not adopted”—and only a whole tool
+without its own gate section above (otherwise, a line at the gate's location). The other branches of the
+“where the decision goes” route are in [`project-map.md`](project-map.md) §Canonical-home, its canon.
 
-- **`pre-commit` (#255) — no-go.** **Root reason:** каждый хук пинит версию тула через `rev:` и
-  запускает его в **изолированном venv** — это второй источник версии тула помимо
-  `requirements-dev.txt` (сегодня `python -m ruff`/`mypy` берут единственную залоченную версию),
-  то есть системный возврат того же local↔CI drift-класса (#153). Резкая иллюстрация —
-  `mypy`: его изолированный
-  venv не видит зависимостей проекта, вынуждая держать `additional_dependencies:` —
-  скопированный руками дубль набора зависимостей вне `requirements.txt`. **Ловушка частичной
-  миграции:** file-линтеры в `pre-commit`, остальные гейты скриптами ⇒ две пересекающиеся
-  системы и **трёхсторонний** parity (`pre-commit` config ↔ `CHECKS` ↔ `ci.yml`), чья третья
-  грань **негардится** — рост поверхности вместо выигрыша. Половина проверок вообще не
-  file-линтеры (`requirements`, `imports` — своя логика), под `pre-commit` они остались бы
-  скриптами в `local`-хуках с нулевым выигрышем. **Revisit (wait-for-pain):** частичный
-  `pre-commit` только для file-линтеров — *iff* появится реальная контрибьюторская боль от
-  ручного управления версиями хуков.
-- **`tox`/`nox` (#255) — no.** Решают матрицу **версий Python**; проект прибит к одной 3.12.
-  **Revisit:** появится настоящее требование мульти-версионной матрицы.
-- **Spec Kit (#114) — снят.** Его роль — спека → план → таски — покрыта локальным
-  `/plan #N` → `$implement-issue #N`, который живёт в репо, гейтится
-  `scripts/validate_issue_sections.py` и держит план в теле issue, а не в отдельном дереве
-  артефактов. Плата за внешний фреймворк — `/speckit-*`-команды и spec-файлы поверх того же
-  контракта. **Revisit:** появится потребность, которой локальный flow не покрывает.
+- **`pre-commit` (#255)—no-go.** **Root reason:** every hook pins a tool version through `rev:` and
+  runs it in an **isolated venv**—a second source of the tool version besides
+  `requirements-dev.txt` (today `python -m ruff`/`mypy` use the single locked version),
+  meaning a systematic return of the same local↔CI drift class (#153). A sharp illustration is
+  `mypy`: its isolated
+  venv cannot see project dependencies, forcing `additional_dependencies:`—
+  a manually copied duplicate of the dependency set outside `requirements.txt`. **The partial-migration
+  trap:** file linters in `pre-commit`, other gates as scripts ⇒ two overlapping
+  systems and **three-way** parity (`pre-commit` config ↔ `CHECKS` ↔ `ci.yml`), whose third
+  edge is **unguarded**—more surface area instead of benefit. Half the checks are not
+  file linters at all (`requirements`, `imports` have their own logic); under `pre-commit`, they would remain
+  scripts in `local` hooks with zero benefit. **Revisit (wait-for-pain):** partial
+  `pre-commit` only for file linters—*iff* contributors experience real pain from
+  manual hook-version management.
+- **`tox`/`nox` (#255)—no.** They solve a matrix of **Python versions**; the project is pinned to one, 3.12.
+  **Revisit:** a real requirement for a multi-version matrix emerges.
+- **Spec Kit (#114)—removed.** Its role—specification → plan → tasks—is covered by local
+  `/plan #N` → `$implement-issue #N`, which lives in the repository, is gated by
+  `scripts/validate_issue_sections.py`, and keeps the plan in the issue body rather than a separate
+  artifact tree. The cost of an external framework is `/speckit-*` commands and spec files on top of the same
+  contract. **Revisit:** a need emerges that the local flow does not cover.

@@ -1,42 +1,41 @@
-"""Общий дом политики ретрая транзиентных HTTP-ответов — два набора кодов (#365).
+"""Shared home for the transient-HTTP response retry policy — two code sets (#365).
 
-Три прод-транспорта поднимают **разные** классы `HTTPError` (`curl_cffi` и stdlib
-`requests` — иерархии без общего предка), но политика «что считать транзиентным»
-у них одна и должна меняться в одном месте. Предикат строится по кортежу классов,
-а не по наличию атрибута `.response`: duck-typing здесь ловил бы чужие исключения,
-которые случайно несут такой атрибут.
+Three production transports raise **different** `HTTPError` classes (`curl_cffi` and
+stdlib `requests` have hierarchies with no common ancestor), but they share one policy for
+what is transient and it must change in one place. The predicate uses a tuple of classes,
+not the presence of a `.response` attribute: duck typing here would catch unrelated
+exceptions that happen to carry that attribute.
 
-**Почему наборов два, а не один.** Разница ровно в 403/429:
+**Why two sets rather than one.** They differ exactly at 403/429:
 
-- `ANTIBOT_TRANSIENT_CODES` — HTML-транспорт за Cloudflare (`http_fetch`). Здесь 403 —
-  это анти-бот-челлендж, и его транзиентность **замерена** (#306: 200 три минуты
-  спустя на том же коммите), поэтому он ретраится.
-- `API_TRANSIENT_CODES` — JSON-API (GitHub Search, Steam Store). Здесь 403/429 — это
-  rate limit, у которого есть собственное окно сброса: GitHub
-  [документирует](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
-  «You should not retry your request until after the time specified by the
-  `x-ratelimit-reset` header» и прямо предупреждает, что «continuing to make requests
-  while you are rate limited may result in the banning of your integration».
-  Backoff в 1/2/4 s это окно не закрывает — он лишь добавляет три холостых запроса в
-  тот же счётчик. Уважение `Retry-After` — отдельная задача; пока источники делают
-  один-два запроса за прогон, дешевле не ретраить вовсе и показать отказ (§IV).
-  **Для Steam Store это решение по аналогии, а не по источнику:** публичного
-  контракта у `appdetails` нет, окно сброса не документировано и не замерено —
-  разница записана в `coverage-gaps.md` **M2**, чтобы не читаться как замер.
+- `ANTIBOT_TRANSIENT_CODES` is the Cloudflare-backed HTML transport (`http_fetch`). Here,
+  403 is an anti-bot challenge, and its transience was **measured** (#306: 200 three minutes
+  later on the same commit), so it is retried.
+- `API_TRANSIENT_CODES` is for JSON APIs (GitHub Search, Steam Store). Here 403/429 are
+  rate limits with their own reset window: GitHub
+  [documents](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api)
+  “You should not retry your request until after the time specified by the
+  `x-ratelimit-reset` header” and explicitly warns that “continuing to make requests
+  while you are rate limited may result in the banning of your integration”. A 1/2/4-second
+  backoff does not close that window — it only adds three futile requests to the same
+  counter. Honouring `Retry-After` is a separate task; while sources make one or two
+  requests per run, it is cheaper to not retry at all and show the failure (§IV).
+  **For Steam Store this decision is by analogy, not by source evidence:** `appdetails`
+  has no public contract, its reset window is neither documented nor measured — the
+  difference is recorded as **M2** in `coverage-gaps.md` so it is not read as a measurement.
 
-**Расписаний тоже два, и они ортогональны наборам кодов.** Анти-бот-набор применяется
-в двух режимах: быстром (все источники) и терпеливом (только soldout, #396) — там
-попытки разнесены на минуты, потому что блокировка вероятностная и сжатые ретраи
-попадают в одно и то же решение Cloudflare. Обоснование чисел — у самой политики ниже.
+**There are also two schedules, orthogonal to the code sets.** The anti-bot set operates in
+two modes: fast (all sources) and patient (soldout only, #396) — attempts there are minutes
+apart because the block is probabilistic and compressed retries hit the same Cloudflare
+decision. The rationale for the numbers is with the policy itself below.
 
-Оба набора намеренно расходятся с `sheets_storage._TRANSIENT_CODES`, который
-исключает 403 как fail-fast permission-fault: три соседних слоя трактуют 403
-по-разному **осознанно**, «унифицировать» их нельзя.
+Both sets deliberately diverge from `sheets_storage._TRANSIENT_CODES`, which excludes 403 as
+a fail-fast permission fault: three neighbouring layers treat 403 differently **by design**;
+they must not be “unified”.
 
-Ретраятся только HTTP-**ответы**. Сетевые ошибки (`Timeout`/`ConnectionError`) не
-доходят до `raise_for_status`, поэтому предикат пропускает их по конструкции —
-принятая граница, записанная пробелом **M** в `coverage-gaps.md` (§V: не ретраим
-то, чего не наблюдали).
+Only HTTP **responses** are retried. Network errors (`Timeout`/`ConnectionError`) do not reach
+`raise_for_status`, so the predicate excludes them by construction — an accepted boundary,
+recorded as gap **M** in `coverage-gaps.md` (§V: do not retry what was not observed).
 """
 
 from __future__ import annotations

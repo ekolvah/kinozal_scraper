@@ -27,14 +27,14 @@ def _load_new_branch_module() -> Any:
 
 
 class TestRunReturnsString(unittest.TestCase):
-    """`stdout is None` при запрошенном захвате — видимая аномалия, не пустая строка.
+    """Requested capture returning `stdout is None` is visible, not empty text.
 
-    **Инверсия пин-теста #109 (#410).** Раньше `_run` нормализовал `None` в `""`,
-    потому что причина была неизвестна и `None` считался причудой платформы. #364
-    показал, что это симптом: поток-читатель умирал на `UnicodeDecodeError`,
-    оставляя буфер пустым. Причина закрыта явным `encoding` + гардом, поэтому
-    `None` теперь означает настоящий отказ захвата — и нормализация превратилась в
-    подмену отказа пустой строкой (§IV) в скрипте, который сам является гейтом.
+    **Inversion of the #109 pin test (#410).** `_run` used to normalize `None`
+    to `""` because its cause was unknown and treated as a platform quirk. #364
+    showed it is a symptom: the reader thread died on `UnicodeDecodeError` and
+    left the buffer empty. Explicit `encoding` plus a guard fixes that cause, so
+    `None` now means real capture failure; normalization would replace failure
+    with an empty string (§IV) inside a script that is itself a gate.
     """
 
     def test_none_stdout_raises_with_command_in_message(self) -> None:
@@ -50,8 +50,8 @@ class TestRunReturnsString(unittest.TestCase):
         self.assertIn("git branch -vv", str(caught.exception))
 
     def test_none_stdout_is_legitimate_without_capture(self) -> None:
-        # `capture=False` — вывод идёт в консоль, `stdout is None` штатный исход.
-        # Падение здесь означало бы fail-fast-перекос: аномалии нет.
+        # With `capture=False`, output goes to the console and `stdout is None`
+        # is normal. Failing here would be a fail-fast imbalance: no anomaly exists.
         new_branch = _load_new_branch_module()
         fake_proc: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
             args=["git"], returncode=0, stdout=None, stderr=None
@@ -71,13 +71,13 @@ class TestRunReturnsString(unittest.TestCase):
 
 
 class TestPruneGoneBranchesSurfacesNoneStdout(unittest.TestCase):
-    """Инверсия #109-пин-теста (#410): молчаливое продолжение → видимая аномалия.
+    """Invert the #109 pin test (#410): silent continuation becomes visible.
 
-    Раньше тест требовал «must not raise» и отчёт `pruned: 0 merged branches`.
-    Проблема ровно в этом отчёте: он неотличим от честного «нечего удалять»,
-    хотя на деле список веток не был получен вообще. После #364 `None` при
-    запрошенном захвате означает сломанный захват — оператор должен это увидеть,
-    а не прочитать успокаивающую цифру.
+    The old test required "must not raise" and a `pruned: 0 merged branches`
+    report. That report was the defect: it looked exactly like an honest
+    "nothing to delete" even when no branch list was obtained. After #364,
+    `None` during requested capture means capture is broken; the operator must
+    see that rather than a reassuring number.
     """
 
     def test_none_stdout_from_git_branch_is_visible(self) -> None:

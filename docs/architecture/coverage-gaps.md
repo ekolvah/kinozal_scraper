@@ -74,32 +74,33 @@ decision goes to" route — and the rule itself — live in
   not from the missing retry. Recorded so it isn't re-opened as «retry doesn't work».
 
 - **N. LLM / embedding / TMDB trailer-picker strategies built but deliberately NOT in the prod
-  hot path (#144/#315).** Прод `enrich_with_trailer` отбирает детерминированным `HeuristicStrategy`
-  (#141); `LLMTrailerStrategy` (#142), `EmbeddingTrailerStrategy` (#143) и `tmdb_trailer.pick_trailer`
-  (#329) остаются eval-only. **Обоснование выбора (negative-ROI, wrong=0 на golden-set) — канон в
+  hot path (#144/#315).** Production `enrich_with_trailer` selects with deterministic `HeuristicStrategy`
+  (#141); `LLMTrailerStrategy` (#142), `EmbeddingTrailerStrategy` (#143), and `tmdb_trailer.pick_trailer`
+  (#329) remain eval-only. **The selection rationale (negative ROI, wrong=0 on the golden set) is
+  canonical in
   [pipeline.md § Trailer retrieval and selection](pipeline.md#trailer-retrieval-and-selection)**,
-  здесь не дублируем. Coverage-следствие (дом здесь): чистые selection-слои этих стратегий **покрыты**
-  unit-тестами; без покрытия только живые Gemini-движки (строки ниже). Записано, чтобы «почему
-  LLM-picker не в проде?» не переоткрывали.
+  and is not duplicated here. Coverage consequence (its home is here): the pure selection layers
+  of these strategies **are covered** by unit tests; only live Gemini engines are uncovered (rows
+  below). Recorded to prevent reopening "why is the LLM picker not in production?".
 
-  **Смежный вывод, зафиксированный тут же: отбор по `confidence` не добавляется — гипотеза
-  проверена дважды, обе проверки против.** Прод-ничьи частые (в run `30066249488` 5 из 6 picks —
-  `ambiguous (conf=0.3)`), и гипотеза «ничья → произвольный выбор → чужая ссылка» реализуема:
-  подавление picks с `confidence < 0.5` в miss-маркер. Замер её опровергает (#359): на 28
-  golden-кейсах 26 hit → 16, 2 miss → 12, wrong 0 → 0 — все 10 подавленных picks были
-  **попаданиями**, потому что `confidence=0.3` означает «несколько одинаково хороших трейлеров
-  одного фильма» (дубляж №1 vs №2), ровно то, что моделируют accept-set'ы. Тот набор не содержал
-  ни одного `wrong`, поэтому выигрыш политики показать физически не мог; на наборе с
-  верифицированным чужим кандидатом (`trap`, #380) она даёт 26 → 14 и **не трогает `wrong` вовсе**
-  — реальный чужой pick идёт с `confidence=0.9`, уникальным топ-рангом. Порог по уверенности
-  ортогонален наблюдаемому классу ошибок. Вместо политики — диагностика: `video_id` в
-  success-breadcrumb. Каст как разрыватель ничьих — wontfix (#377). Golden-запись по «Суете» не
-  добавлена: верифицируемо неверного кандидата в захваченном пуле нет (все 5 — трейлеры того же
-  сериала), а догадка в эталоне отравляет eval.
+  **A related conclusion recorded here: do not add `confidence` selection — the hypothesis was
+  tested twice, both tests reject it.** Production ties are common (in run `30066249488`, 5 of 6
+  picks were `ambiguous (conf=0.3)`), and the hypothesis "tie → arbitrary selection → wrong link"
+  can be implemented by suppressing picks with `confidence < 0.5` to a miss marker. Measurement
+  disproves it (#359): on 28 golden cases, 26 hit → 16, 2 miss → 12, wrong 0 → 0 — all 10 suppressed
+  picks were **hits**, because `confidence=0.3` means "several equally good trailers for one film"
+  (dub #1 vs #2), exactly what accept sets model. That set had no `wrong`, so it could physically
+  show no policy benefit; on a set with a verified foreign candidate (`trap`, #380), the policy
+  yields 26 → 14 and **does not change `wrong` at all** — the real wrong pick has
+  `confidence=0.9`, a unique top rank. The confidence threshold is orthogonal to the observed error
+  class. Use diagnostics instead: `video_id` in the success breadcrumb. Cast as a tie breaker is
+  wontfix (#377). No golden record for "Vanity Fair" was added: the captured pool has no verifiably
+  wrong candidate (all five are trailers for the same series), and a guess in the reference poisons
+  evaluation.
 
-  **Open-world caveat:** `wrong`-кейсов найдено 3 на ~150 проверенных живых пиков — класс редкий
-  (~1%), и набор представляет его тонко; пополняется из реальных инцидентов (прод-лог несёт
-  `video_id` → `videos.list` → верификация вручную).
+  **Open-world caveat:** 3 `wrong` cases were found among ~150 checked live picks — the class is
+  rare (~1%), so the set represents it thinly; it grows from real incidents (the production log
+  carries `video_id` → `videos.list` → manual verification).
 
 - **O. Request-side Gemini API-contract drift — caught by runtime visibility, not a unit test (#340).** When Google changes what the API accepts (e.g. 3.x models reject `thinking_budget=0`, #338), a unit test with a `_FakeClient` **cannot** catch it: the fake encodes our assumption about the request contract and can only confirm it. A live-E2E against real Gemini is a scope-skip (credentials/flake/quota). So the standing safety net is **runtime visibility, not a test**: a `400 INVALID_ARGUMENT` is classified as `ModelConfigRejected` → ERROR log + operator Telegram alert + red job (`config_rejected_models`), instead of a silent `TryNextModel` that green rotation hides. The one unit-testable guard is a **contract test on a real `google.genai.errors.ClientError`** (`test_real_client_error_invalid_argument_routes_to_config_rejected`) — it fails loudly if our `.status` detection drifts from the SDK's actual error shape (which would otherwise ship the whole fix as a green-tested no-op). Recorded so the live-E2E isn't re-opened as work-for-work.
 - **P. Prompt-injection resistance of the *real model* — offline structural tests only, no live eval (#308).**
@@ -135,314 +136,307 @@ decision goes to" route — and the rule itself — live in
   loss. Both accepted because the disambiguating signal (a distinct year) is genuinely absent; recorded so
   a year-titled namesake collision isn't re-opened as a regression.
 - **S. Anti-bot 403: root cause is the *egress IP*, and it can only be observed in prod (#358).**
-  Замер 2026-07-25 тем же `curl_cffi==0.15.0`, что и прод: локально (residential IP)
-  `impersonate="chrome"` → 200, **без** impersonate → 403, `chrome124`/`chrome131` → те же 200;
-  в CI (датацентровый IP GitHub Actions) → 403 семь суток подряд (18–24.07), при этом 14.07 и 17.07
-  тот же CI получал 200. В теле блока **нет** `cdn-cgi/challenge-platform` и turnstile. Выводы,
-  записанные чтобы их не переоткрывали: (1) TLS-фингерпринт (#217) **исправен** — пин свежего
-  `impersonate`-таргета лечит ничего; (2) **Playwright бесполезен** — решать нечего, это плоский
-  WAF-отказ, а не JS-челлендж; (3) причина — репутация датацентрового IP (вероятностный bot score),
-  лечится только другим egress'ом (прокси / self-hosted runner) — решение оператора, вынесено в
-  отдельную issue. **Почему это не тест:** воспроизвести можно лишь с CI-IP, а исход зависит от
-  внешнего скоринга — любой «тест» мерил бы погоду у Cloudflare. Стоящая на этом месте страховка —
-  **видимость** (§IV): `describe_block` пишет per-attempt WARNING (`cf-ray`, `cf-mitigated`,
-  Cloudflare error code, `<title>`, размер тела), по которому следующий инцидент разбирается из
-  лога, а не повторным ручным замером. Сам форматтер — pure и покрыт unit'ами
-  (`TestBlockDiagnostics`) поверх **реальной** блок-страницы `tests/fixtures/cloudflare_block_403.html`
-  (IP/Ray-ID обезличены): reality-anchor держит контракт «сигнал в `<title>`, а не в префиксе тела»
-  — первые ~200 символов настоящей страницы это `<!DOCTYPE html> <!--[if lt IE 7]>…`.
+  Measurement on 2026-07-25 with the same `curl_cffi==0.15.0` as production: locally (residential
+  IP), `impersonate="chrome"` → 200, **without** impersonation → 403, and
+  `chrome124`/`chrome131` → the same 200; in CI (a GitHub Actions datacentre IP) → 403 for seven
+  consecutive days (18–24 July), while that same CI received 200 on 14 and 17 July. The block body
+  contains neither `cdn-cgi/challenge-platform` nor turnstile. Conclusions recorded to prevent
+  reopening: (1) the TLS fingerprint (#217) is **correct** — pinning a newer `impersonate` target
+  fixes nothing; (2) **Playwright is useless** — there is nothing to solve; this is a flat WAF
+  denial, not a JS challenge; (3) the cause is datacentre-IP reputation (a probabilistic bot score),
+  remediable only by other egress (proxy / self-hosted runner) — an operator decision in a separate
+  issue. **Why this is not a test:** it can be reproduced only with a CI IP and the result depends
+  on external scoring — any "test" would measure Cloudflare weather. The safety net here is
+  **visibility** (§IV): `describe_block` logs a per-attempt WARNING (`cf-ray`, `cf-mitigated`,
+  Cloudflare error code, `<title>`, body size), allowing the next incident to be diagnosed from the
+  log rather than another manual measurement. The formatter itself is pure and unit-covered
+  (`TestBlockDiagnostics`) against the **real** block page
+  `tests/fixtures/cloudflare_block_403.html` (IP/Ray-ID anonymised): the reality anchor holds the
+  contract "signal in `<title>`, not in the body prefix" — the first ~200 characters of the real
+  page are `<!DOCTYPE html> <!--[if lt IE 7]>…`.
 
-- **T. YouTube throttle/retry: механизм отвергнут замером, поэтому тестов на него нет и не будет (#384).**
-  Напрашивающийся `tenacity` (`wait_exponential`, 3 попытки, глобальный give-up) отвергнут
-  замером 2026-07-26 (Service Usage API): `search.list` — **100 запросов в сутки**, квота
-  дефолтная и поднятой быть не может (billing выключен), а прогон на 170 фильмов просит 340. Лимит
-  считается **в запросах за сутки**, поэтому паузами не лечится: пейсинг раздаёт те же 100 ровнее,
-  retry отбирает квоту у следующего фильма. Вместо него — остановка обогащения по первому квотному
-  отказу (`YoutubeQuotaExhausted`, покрыто `TestQuotaStop` + `TestQuotaDetection`); rationale — в
-  [`pipeline.md`](pipeline.md#trailer-retrieval-and-selection). Записано сюда, чтобы
-  `tenacity`+`sleep` не переоткрыли как «очевидно недостающий retry»: это не пробел покрытия, а
-  отсутствующий по замеру код. Единственный путь к полному охвату — смена источника (TMDB), не retry.
-  **Что покрыто, а не пропущено:** предикат квотных ошибок нужен и существует — `_is_quota_error`
-  пинится reality-anchor'ом на настоящем `googleapiclient.errors.HttpError` (429 legacy `errors[]`,
-  403 `quotaExceeded`, ErrorInfo `details[]` в SCREAMING_SNAKE), потому что `.reason` — человеческий
-  текст, а машинный код живёт в `error_details`. Фиксированный бюджет запросов на прогон
-  (`_TRAILER_RUN_BUDGET = 45`) отвергнут по той же причине: угаданное число, ломается на втором
-  прогоне в сутки и занижает охват на одноветочных items.
+- **T. YouTube throttle/retry: rejected by measurement, so there are and will be no tests for it (#384).**
+  The tempting `tenacity` (`wait_exponential`, three attempts, global give-up) was rejected by a
+  2026-07-26 measurement (Service Usage API): `search.list` has **100 requests per day**, the quota
+  is default and cannot be raised (billing is disabled), while a 170-film run requests 340. The
+  limit is counted **in requests per day**, so pauses cannot fix it: pacing merely distributes the
+  same 100 more evenly and retry takes quota from the next film. Instead, enrichment stops at the
+  first quota failure (`YoutubeQuotaExhausted`, covered by `TestQuotaStop` + `TestQuotaDetection`);
+  rationale is in [`pipeline.md`](pipeline.md#trailer-retrieval-and-selection). This is recorded so
+  `tenacity`+`sleep` is not reopened as an "obviously missing retry": it is not a coverage gap but
+  code absent by measurement. The only path to full coverage is a source change (TMDB), not retry.
+  **What is covered, not skipped:** the quota-error predicate is needed and exists —
+  `_is_quota_error` is pinned by a reality anchor on real `googleapiclient.errors.HttpError` (429
+  legacy `errors[]`, 403 `quotaExceeded`, ErrorInfo `details[]` in SCREAMING_SNAKE), because
+  `.reason` is human text while the machine code lives in `error_details`. A fixed per-run request
+  budget (`_TRAILER_RUN_BUDGET = 45`) was rejected for the same reason: it is a guessed number,
+  fails on the second run of the day, and undercovers one-branch items.
 
-- **U. Качество подбора трейлера для игр измеряется ОДНИМ кейсом (#385, #412).**
-  Игровой класс представлен в golden-set одним **живым** кейсом `Marvel Человек-Паук 2`
-  (пул записан 2026-07-29 через прод-`search_candidates`, accept-set — четыре официальных трейлера
-  PlayStation/Marvel Entertainment, `trap` — четыре трейлера одноимённого фильма 2026). Синтетику
-  не добавляем: догадка в эталоне отравляет eval (#359). Один кейс — это
-  полюс, а не метрика класса: §III запрещает обещать «трейлеры для игр подбираются
-  хорошо», кейс лишь фиксирует, что этот конкретный класс промаха не проходит молча.
-  **Чем он окупается:** дизайн «базовая часть названия — fallback при пустом relevant» садится в
-  скоркарту как `WRONG` — полное название с изданием подряд входит в заголовок нарезки костюмов,
-  и до настоящих трейлеров отбор не доходит; без кейса такая правка уехала бы в прод зелёной.
-  **Per-item ground-truth метки «это игра» нет:** дискриминатор живёт в грамматике заголовка, а не
-  в категории листинга, поэтому будущая игровая под-метрика восстановит метку из формы
-  raw-заголовка (`x64`/`RU` во 2-м сегменте + хвост `PC (Windows)`), а не из категории (#412).
-  **Четыре границы, сознательно оставленные открытыми (#412):**
-  1. **Скобка-часть во 2-м сегменте** (`… / Dune (Part Two) / …`) схлопнула бы базу до франшизы,
-     и `_title_tokens_in` со своим numeric-skip пропустил бы чужой ролик. Класс замерен и почти
-     пуст: 1 заголовок из 238 со скобкой во 2-м сегменте (`Heroes of Might and Magic IV (4)
-     (Complete)`), причём номер части там уже в самом названии, так что схлопывания нет. Гард-тест
-     не пишем — фиксировать нечего; при появлении класса это станет багом с живым примером.
-  2. **Запрос по-прежнему уходит с изданием** (`Marvel's Spider-Man 2 (Digital Deluxe Edition)
-     2025 trailer`): срез живёт только в relevance. По замеру пул при этом нормальный (кейс HIT),
-     то есть мы зависим от терпимости YouTube к лишним токенам — если она изменится, промах
-     проявится как обычный miss-маркер.
-  3. **Baseline-гейт не сторожит `html.unescape`**: golden-фикстура мигрирована в декодированную
-     форму (как её отдаёт `--record` через прод-`search_candidates`), поэтому уход unescape из
-     `_search_one` оставит скоркарту зелёной. Регрессию ловит только
-     `tests/test_youtube.py::TestSearchCandidates::test_html_entities_decoded`.
-  4. **Год у игр — год репака, а не релиза.** Профиль игры несёт год kinozal-раздачи (2025 у
-     PC-порта), а официальные трейлеры сняты в 2023–2024. Кейс проходит год-фильтр лишь
-     потому, что в заголовках этих трейлеров года нет вообще; заголовок вида `… (2023) Launch
-     Trailer` был бы отброшен `title_year_matches`. Эффект предсуществующий, а **достижим** он
-     ровно с тех пор, как игры доходят до retrieval с настоящим названием (#412).
-  **Известное смещение, которое это скрывает:** `HeuristicStrategy._rank` (`trailer_strategy.py`)
-  первично ранжирует по кириллице в заголовке кандидата — правило, выведенное для фильмов с русским
-  дубляжом (#141/#315). У игры название латиницей и русского дубляжа не бывает, поэтому русский
-  лец-плей может обойти официальный трейлер. Эффект **предсуществующий**, не регрессия — записан
-  здесь, чтобы его не открыли как новый баг и не «починили» правку ранжирования без метрики,
-  которой пока нет (#385). На единственном игровом кейсе смещение не выстреливает: русские
-  кандидаты в пуле — трейлеры одноимённого фильма 2026, их отсекает год. То есть один кейс его не
-  опровергает и не подтверждает.
+- **U. Trailer-selection quality for games is measured by ONE case (#385, #412).**
+  The game class is represented in the golden set by one **live** case `Marvel Человек-Паук 2`
+  (pool recorded on 2026-07-29 through production `search_candidates`; accept set — four official
+  PlayStation/Marvel Entertainment trailers; `trap` — four trailers for the 2026 namesake film).
+  Do not add synthetic data: a guess in the reference poisons evaluation (#359). One case is a
+  pole, not a class metric: §III forbids promising "game trailers are selected well"; it merely
+  establishes that this particular miss class does not pass silently.
+  **Why it pays for itself:** the design "base title part — fallback when relevant is empty" enters
+  the scorecard as `WRONG` — the full edition title occurs consecutively in a costume-compilation
+  title, so selection never reaches real trailers; without this case, such a change would reach
+  production green. **There is no per-item ground-truth "this is a game" label:** the discriminator
+  lives in title grammar, not listing category, so a future game sub-metric reconstructs the label
+  from raw-title form (`x64`/`RU` in the second segment + `PC (Windows)` suffix), not category (#412).
+  **Four consciously open boundaries (#412):**
+  1. **A parenthetical part in the second segment** (`… / Dune (Part Two) / …`) would collapse the
+     base to the franchise, and `_title_tokens_in` with its numeric skip would accept another work.
+     The class is measured and nearly empty: 1 of 238 titles has a parenthesis in the second segment
+     (`Heroes of Might and Magic IV (4) (Complete)`), and its part number is already in the title,
+     so no collapse occurs. No guard test is written — there is nothing to fix; if the class appears,
+     it becomes a bug with a live example.
+  2. **The query still includes the edition** (`Marvel's Spider-Man 2 (Digital Deluxe Edition)
+     2025 trailer`): trimming exists only in relevance. Measurement shows a normal pool (the case is
+     HIT), so we depend on YouTube tolerating extra tokens; if that changes, the miss appears as an
+     ordinary miss marker.
+  3. **The baseline gate does not guard `html.unescape`:** the golden fixture migrated to decoded
+     form (as `--record` produces it through production `search_candidates`), so removing unescape
+     from `_search_one` leaves the scorecard green. Only
+     `tests/test_youtube.py::TestSearchCandidates::test_html_entities_decoded` catches the regression.
+  4. **A game's year is the repack year, not release year.** The game profile carries the Kinozal
+     listing year (2025 for the PC port), while official trailers were made in 2023–2024. The case
+     passes the year filter only because these trailer titles contain no year; a title like
+     `… (2023) Launch Trailer` would be rejected by `title_year_matches`. The effect predates this
+     work, but has been **reachable** precisely since games reach retrieval with their real title
+     (#412).
+  **Known bias this hides:** `HeuristicStrategy._rank` (`trailer_strategy.py`) primarily ranks by
+  Cyrillic in a candidate title — a rule derived for films with Russian dubbing (#141/#315). A game
+  has a Latin-script name and no Russian dub, so a Russian let's-play can outrank an official trailer.
+  The effect **predates this work**, not a regression; it is recorded here to prevent reopening it as
+  a new bug or "fixing" ranking without a metric that does not yet exist (#385). The bias does not
+  fire on the only game case: the Russian candidates in the pool are trailers for the 2026 namesake
+  film and the year rejects them. Thus one case neither disproves nor confirms it.
 
-- **V. Секрет-гейт: захваченные HTML-фикстуры вне скана, а ушедшие с `pre-commit` хуки не
-  заменяются (#389).** `ci_check` шаг `secrets` покрыт `tests/test_secrets_gate.py` (подсадной ключ →
-  non-zero, чистый файл → 0, сбой `git ls-files` и пустой список → видимый `exit 1`). **Вне скана
-  сознательно:** `tests/fixtures/**/*.html` — захваченная чужая разметка, где хеши ассетов дают
-  high-entropy FP по построению (15 находок на две фикстуры). Исключение файлом, а не baseline'ом:
-  baseline при совпадении переписывает себя и возвращает rc=3, а перегенерация — это кнопка «сделать
-  гейт зелёным» для настоящего утёкшего ключа (rationale — [`ci.md`](ci.md#secret-scan-secrets)).
-  Цена: ключ, вписанный **внутрь** такой фикстуры, гейтом не ловится — остаётся серверный слой
-  (GitHub push protection). **Второе — не пробел, а отсутствующий код:** вместе с `.pre-commit-config.yaml`
-  ушли `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer`; они не
-  исполнялись **ни разу** (`core.hooksPath` = `.githooks`), поэтому регрессии нет и замену им этот PR
-  не заводит. Записано, чтобы «а где проверка YAML?» не переоткрыли как пробел покрытия: это
-  осознанный не-скоуп, отдельная единица (`agent-process.md`, Governance conventions).
+- **V. Secret gate: captured HTML fixtures are outside the scan, and hooks that left with
+  `pre-commit` are not replaced (#389).** The `ci_check` `secrets` step is covered by
+  `tests/test_secrets_gate.py` (planted key → non-zero, clean file → 0, `git ls-files` failure and
+  empty list → visible `exit 1`). **Consciously outside the scan:** `tests/fixtures/**/*.html` —
+  captured third-party markup where asset hashes produce high-entropy false positives by construction
+  (15 findings in two fixtures). Exclude by file, not baseline: on a match the baseline rewrites
+  itself and returns rc=3, while regeneration is a button to make the gate green for a genuinely
+  leaked key (rationale — [`ci.md`](ci.md#secret-scan-secrets)). The cost is that a key written
+  **inside** such a fixture is not caught by this gate; the server-side layer remains (GitHub push
+  protection). **The second item is not a gap but absent code:**
+  `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer` left with
+  `.pre-commit-config.yaml`; they ran **zero times** (`core.hooksPath` = `.githooks`), so there is
+  no regression and this PR does not add replacements. Recorded so "where is YAML validation?" is
+  not reopened as a coverage gap: it is conscious non-scope, a separate unit
+  (`agent-process.md`, Governance conventions).
 
-- **W. Промпты ревьюеров: форма стережётся, семантика — нет (#374, #392).** Оба
-  ревьюера — cloud (`.github/workflows/agent-review.yml`) и локальный
-  (`.claude/agents/architect-reviewer.md`) — не несут severity-фильтра *на стадии
-  поиска*: модель исполняет такой фильтр буквально, и находка молча не доходит до PR. Гарды
-  ловят **известные формы**, и каждый — свои, потому что промпты разные:
-  `tests/test_agent_review_workflow.py` (англоязычный промпт) — императив
-  подавления в начале строки, наличие `severity` **и** `confidence`, отсутствие
-  gag-строки `no blocking issues`; `tests/test_agent_frontmatter.py`
-  (русскоязычный промпт, поэтому не regex по началу строки, а снятые формулировки
-  дословно) — `не раздувай` / `беспощаден` / `краткость по умолчанию` не вернулись,
-  наличие `confidence` и `blocking`. Второй применяется **только** к агентам,
-  декларирующим findings-контракт (#407) — прочим агентам эти токены не нужны.
-  **Сознательно НЕ
-  покрыта семантическая перефразировка** («будь избирателен», «only report what
-  matters»): проверка смысла промпта — это LLM-вызов на каждый прогон suite, то есть
-  дороже и менее детерминированно, чем предмет проверки; а регексп по открытому
-  множеству формулировок даёт change-detector, скроенный под текущий текст (карв-аут
-  «разрешено, если рядом слово ruff» — ровно такой детектор, забракованный на
-  architect-review, #374). Остаточная защита —
-  проза [`ci.md`](ci.md#coverage-first-prompt-no-filtering-at-the-search-stage) и
-  сам plan-ревьюер. Записано, чтобы «а почему нет теста на промпт» не переоткрыли:
-  тест есть, отклонена именно семантическая его половина.
+- **W. Reviewer prompts: form is guarded, semantics are not (#374, #392).** Neither reviewer —
+  cloud (`.github/workflows/agent-review.yml`) nor local
+  (`.claude/agents/architect-reviewer.md`) — contains a severity filter *at the discovery stage*:
+  the model follows such a filter literally and a finding silently never reaches the PR. Guards
+  catch **known forms**, with different guards because the prompts differ:
+  `tests/test_agent_review_workflow.py` (English prompt) checks a suppression imperative at line
+  start, presence of `severity` **and** `confidence`, and absence of the gag line
+  `no blocking issues`; `tests/test_agent_frontmatter.py` (Russian prompt, so not a start-of-line
+  regex but removed wording verbatim) ensures `не раздувай` / `беспощаден` /
+  `краткость по умолчанию` do not return, and requires `confidence` and `blocking`. The latter
+  applies **only** to agents declaring the findings contract (#407); other agents do not need these
+  tokens. **Semantic paraphrase is consciously NOT covered** ("be selective", "only report what
+  matters"): checking prompt meaning would require an LLM call for every suite run, therefore cost
+  more and be less deterministic than the subject under test; while a regex over an open set of
+  phrasings creates a change detector tailored to current text (the carve-out "allowed if `ruff` is
+  nearby" is exactly such a detector, rejected for architect review, #374). Residual protection is
+  the prose in [`ci.md`](ci.md#coverage-first-prompt-no-filtering-at-the-search-stage) and the plan
+  reviewer itself. Recorded so "why is there no prompt test?" is not reopened: the test exists;
+  only its semantic half was rejected.
 
-- **X. Кодировка subprocess: гард стережёт сторону родителя, не ребёнка (#364).**
-  `tests/test_subprocess_encoding.py` (AST по `scripts/**`, `src/**`, `tests/**`)
-  требует явный `encoding` у вызова, который захватывает вывод в текстовом режиме —
-  без него Windows декодит кодовой страницей ОС и теряет весь вывод на первом
-  кириллическом байте. **Сознательно не покрыта половина ребёнка:** дочерний Python
-  пишет в pipe своей ANSI-кодировкой, пока не получит `PYTHONUTF8=1`/`-X utf8`, и
-  такой call-site гард пометит зелёным. Статически это не проверить: нужный env
-  собирается в рантайме (`ci_check` передаёт `-X utf8` детект-секретам,
-  `test_github_trending_pipeline` — `PYTHONUTF8` в собранном `env`), а требовать
-  флаг у **каждого** запуска Python дало бы ложные срабатывания там, где вывод
-  заведомо ASCII. **Общий `run_text()`-хелпер отвергнут, а не отложен (#410),** и причина
-  техническая: репо-корень **никогда не на `sys.path`** при документированном CLI
-  `python scripts/foo.py` (`sys.path[0]` = `scripts/`, editable-install добавляет
-  только `src/`) — механика уже описана в `scripts/issue_branch.py`. Каждый
-  скрипт получил бы importlib-бутстрап (~8 строк), то есть бойлерплейта больше,
-  чем удаляемого кода, а `python -m scripts.foo` сломал бы CLI, `settings.json`,
-  pre-push и доки. Плюс три call-site в хелпер не влезают в принципе
-  (`ci_check._run` и `new_branch._run(capture=False)` намеренно **не** захватывают
-  вывод, `ci_check._tracked_files` намеренно **бинарный**). Инвариант вместо
-  хелпера держит **правило в самом гарде** — и, в отличие от хелпера, оно ещё и
-  мешает написать дефолт заново. И **отклонён `PYTHONUTF8=1` как единственное
-  лекарство** — он чинит обе половины сразу, но живёт в состоянии среды, невидим
-  на свежем клоне и не защищает call-site, запущенный иначе; гарантия слабее, чем
-  у гейта на исходнике. Записано, чтобы «а почему не хелпер / не переменная среды»
-  не переоткрыли как work-for-work.
+- **X. Subprocess encoding: the guard protects the parent side, not the child (#364).**
+  `tests/test_subprocess_encoding.py` (AST over `scripts/**`, `src/**`, `tests/**`) requires explicit
+  `encoding` on a call that captures text-mode output — without it, Windows decodes with the OS code
+  page and loses all output at the first Cyrillic byte. **The child half is consciously uncovered:**
+  child Python writes to the pipe in its ANSI encoding until it receives `PYTHONUTF8=1`/`-X utf8`,
+  and the call-site guard marks such a case green. This cannot be checked statically: the necessary
+  environment is assembled at runtime (`ci_check` passes `-X utf8` to detect-secrets;
+  `test_github_trending_pipeline` puts `PYTHONUTF8` in constructed `env`), while requiring a flag on
+  **every** Python launch would create false positives where output is known ASCII. A shared
+  `run_text()` helper was **rejected, not deferred (#410)** for a technical reason: the repository
+  root is **never on `sys.path`** under documented CLI `python scripts/foo.py`
+  (`sys.path[0]` = `scripts/`; editable install adds only `src/`) — mechanics already documented in
+  `scripts/issue_branch.py`. Every script would need an importlib bootstrap (~8 lines), more
+  boilerplate than removed code, while `python -m scripts.foo` would break the CLI, `settings.json`,
+  pre-push, and documentation. In addition, three call sites cannot use a helper in principle:
+  `ci_check._run` and `new_branch._run(capture=False)` deliberately **do not** capture output, while
+  `ci_check._tracked_files` is deliberately **binary**. Instead of a helper, the invariant is held
+  by a **rule in the guard itself** — unlike a helper, it also prevents reintroducing the default.
+  `PYTHONUTF8=1` as the **sole remedy was also rejected**: it fixes both halves at once, but lives in
+  environment state, is invisible in a fresh clone, and does not protect a call site launched
+  differently; its guarantee is weaker than a source gate. Recorded so "why not a helper / environment
+  variable?" is not reopened as work-for-work.
 
-  **Границы правила «дефолт на выводе запрещён» (#410).** Оно распознаёт
-  `<выражение>.stdout or …` / `.stderr or …` по **атрибуту слева от `or`** и
-  сознательно НЕ ловит: (а) переприсваивание в промежуточную переменную
-  (`out = proc.stdout` → `out or ""`), (б) `getattr(proc, "stdout") or ""`,
-  (в) эквивалент через `if proc.stdout is None: proc.stdout = ""`. Расширять до
-  трассировки значений — это уже поток данных, а не синтаксис: цена растёт
-  качественно, а ловится тот же один класс. Правило гарантирует, что **прямая**
-  идиома не вернётся; обходной формы сегодня в репо нет ни одной, и её появление
-  ловит человек на ревью. Правило намеренно узкое ещё и потому, что широкое
-  («любой `or ""`») флагало бы легитимные дефолты (`os.environ.get(...) or ""`),
-  и его пришлось бы ослаблять — а глушить pytest-ассерт нечем, `noqa` у него нет.
+  **Boundaries of the "output default is forbidden" rule (#410).** It recognises
+  `<expression>.stdout or …` / `.stderr or …` by the **attribute left of `or`**, and
+  consciously does NOT catch: (a) reassignment to an intermediate variable
+  (`out = proc.stdout` → `out or ""`), (b) `getattr(proc, "stdout") or ""`,
+  (c) the equivalent `if proc.stdout is None: proc.stdout = ""`. Expanding to value
+  tracing is data flow, not syntax: its cost rises qualitatively while catching the same one class.
+  The rule guarantees that the **direct** idiom cannot return; the repository has no indirect form
+  today, and a human catches one in review. It is deliberately narrow also because a broad rule
+  ("any `or ""`") would flag legitimate defaults (`os.environ.get(...) or ""`) and would have to be
+  weakened — a pytest assertion has no `noqa` with which to silence it.
 
-  **Покрыты не все новые ветки — осознанно (#410).** Тестами закреплены три
-  **различающих** решения, где перепутать исходы дорого: `check_red` → код 2
-  («гейт сломан»), а не 1 («тесты не красные») — `/implement` шаг 3 трактует их
-  по-разному; `hooks._run_ruff` → сигнал `setup_broken`, а не исключение (иначе
-  stderr уходит пользователю, но не агенту); `ci_check._tracked_files` →
-  «file set is unknown», а не вводящее в заблуждение «no files to scan». Ветки в
-  `open_pr`/`set_issue_priority`/`issue_branch`/`validate_issue_sections`/
-  `verify_pr_link` остались **без отдельных тестов**: у них один и тот же исход
-  («видимая ошибка вместо пустоты»), различающего решения там нет, и пять копий
-  одного теста были бы change-detector'ами. Их защищает правило гарда: вернуть
-  дефолт нельзя, не покраснив `test_no_output_defaults`. Записано, чтобы пропуск
-  был решением, а не забывчивостью.
+  **Not every new branch is covered — consciously (#410).** Tests pin three **distinguishing**
+  decisions where confusing outcomes is costly: `check_red` → code 2 ("gate broken"), not 1
+  ("tests are not red") — `/implement` step 3 treats them differently; `hooks._run_ruff` →
+  `setup_broken` signal, not exception (otherwise stderr reaches the user but not the agent);
+  `ci_check._tracked_files` → "file set is unknown", not misleading "no files to scan". Branches
+  in `open_pr`/`set_issue_priority`/`issue_branch`/`validate_issue_sections`/`verify_pr_link` remain
+  **without dedicated tests**: they have the same outcome ("visible error instead of emptiness"),
+  no distinguishing decision, and five copies of one test would be change detectors. The guard rule
+  protects them: the default cannot return without making `test_no_output_defaults` red. Recorded so
+  the omission is a decision, not forgetfulness.
 
-- **Z. Целостность relative-ссылок между `.md` гейтом не стережётся (#418).** Переезд
-  runtime-половины `ci.md` в `operations.md` перецелил 8 входящих указателей, половина
-  из которых — проза и комментарии в коде, а не markdown-ссылки. Гейта на «файл
-  существует + якорь резолвится» **нет**, и он сознательно не заведён здесь: это
-  отдельная логическая единица (запись в `CHECKS` + parity-строка в `ci.yml` + тесты +
-  цена на каждом прогоне), а не довесок к docs-PR. Важнее — **найденный инцидент им бы
-  и не ловился**: комментарий в `test_kinozal_pipeline.py` ссылался на `ci.md:435`, то
-  есть **по номеру строки**; файл существовал, якоря не было вовсе, и ссылка протухла
-  молча. Root cause того класса — сами line-number-ссылки, он снят заменой обеих таких
-  ссылок на якоря секций. Записано, чтобы будущий link-checker не обосновывали этим
-  инцидентом — он про другой класс.
+- **Z. Relative-link integrity between `.md` files is not guarded (#418).** Moving the runtime half
+  of `ci.md` to `operations.md` retargeted eight incoming pointers, half of which were prose and
+  code comments rather than Markdown links. There is **no** "file exists + anchor resolves" gate,
+  and it is consciously not introduced here: it is a separate logical unit (a `CHECKS` entry +
+  parity row in `ci.yml` + tests + cost on every run), not an add-on to a documentation PR. More
+  importantly, **it would not have caught the discovered incident**: a comment in
+  `test_kinozal_pipeline.py` linked to `ci.md:435`, i.e. **by line number**; the file existed, there
+  was no anchor at all, and the link silently went stale. The root cause for that class is line-number
+  links themselves; it was removed by replacing both such links with section anchors. Recorded so a
+  future link checker is not justified by this incident — it concerns another class.
 
-- **AA. «Док не должен снова разрастись» гейтом не стережётся (#419).** Свёртка `ci.md`
-  (618 → 417 строк) убрала накопленную археологию решений, у которой уже есть дом — тела
-  соответствующих issue (#235, #255, #396). Напрашивающийся анти-рецидив-гейт «файл не длиннее N строк»
-  отвергнут как **Goodhart**: под порогом ужимается формулировка, а не археология, то есть
-  гейт зелен ровно тогда, когда дефект замаскирован. Семантическое суждение «сколько здесь
-  прозы-обоснования, а сколько правила» — тот же класс, что детектор семантических дублей,
-  который репо сознательно не строит (`project-map.md`); детектор дал бы ложное покрытие
-  (§IV). **Настоящий анти-рецидив здесь — формат, а не правило:** в строку таблицы или
-  ledger'а пост-мортем физически не влезает, в свободную секцию — влезает. Формат > проза >
-  гейт. Записано, чтобы «а почему нет гейта на объём доков» не переоткрыли как
-  work-for-work. **Граница записи:** она про доки, читаемые по требованию, где размер — лишь
-  *прокси* качества. Для always-load набора гейт наоборот заведён
-  (`tests/test_always_load_budget.py`, #375): там байты — не прокси, а сама плата с каждой
-  сессии, и порог работает храповиком, а не нормативом качества. Различает эти случаи вопрос
-  «метрика — прокси или сама стоимость», а не «размер гейтить нельзя».
+- **AA. "The document must not grow again" is not guarded (#419).** Compacting `ci.md`
+  (618 → 417 lines) removed accumulated decision archaeology that already has a home — the relevant
+  issue bodies (#235, #255, #396). The tempting anti-recurrence gate "file must have no more than N
+  lines" was rejected as **Goodhart**: below a threshold, wording is compressed rather than
+  archaeology removed, so the gate is green precisely when the defect is hidden. The semantic
+  judgement "how much is rationale prose here and how much is rule" is the same class as the
+  semantic-duplicate detector the repository consciously does not build (`project-map.md`); such a
+  detector would provide false coverage (§IV). **The real anti-recurrence here is format, not rule:**
+  a post-mortem cannot physically fit in a table or ledger row but does fit in a free section.
+  Format > prose > gate. Recorded so "why is there no documentation-size gate?" is not reopened as
+  work-for-work. **Recording boundary:** this concerns documentation read on demand, where size is
+  only a *proxy* for quality. For the always-load set, conversely, a gate exists
+  (`tests/test_always_load_budget.py`, #375): there bytes are not a proxy but the charge in every
+  session, and the threshold acts as a ratchet rather than a quality norm. The question that
+  distinguishes the cases is "is the metric a proxy or the cost itself?", not "size cannot be gated".
 
-- **AB. Бюджет always-load меряет у́же сессионной преамбулы (#375).** `test_always_load_budget`
-  считает `CLAUDE.md` + `.claude/rules/*.md` без `paths:`, но в преамбулу входят ещё
-  `description:` сабагентов и слэш-команд и индекс `MEMORY.md`. Один порог на разнородную сумму
-  мешал бы диагностику — красный тест не сказал бы, где вырос, — поэтому **cost-shifting туда
-  гейт сознательно не ловит** (равно как и перенос текста в `docs/architecture/*`, который агент
-  всё равно читает по требованию). Прирост именно в agent/command-frontmatter — повод завести
-  **второй** счётчик, а не расширять этот.
+- **AB. The always-load budget measures a narrower set than the session preamble (#375).**
+  `test_always_load_budget` counts `CLAUDE.md` + `.claude/rules/*.md` without `paths:`, but the
+  preamble also includes subagent and slash-command `description:` fields and the `MEMORY.md`
+  index. One threshold over this heterogeneous sum would impede diagnosis — a red test would not say
+  where growth occurred — so **the gate consciously does not catch cost shifting there** (nor moving
+  text into `docs/architecture/*`, which the agent still reads on demand). Growth specifically in
+  agent/command frontmatter is a reason to add a **second** counter, not extend this one.
 
-- **AC. Дата в доке маркером датируемого не стережётся (#428).** Гард на форму ссылки
-  (`tests/test_doc_narrative.py`) взял две ветки из трёх, объявленных в issue; третья —
-  «`20\d\d-\d\d-\d\d` вне явного маркера замера» — **не взята**. Причина: нарушений ноль,
-  прецедента рецидива нет, и канон (`project-map.md` §«Что описывает документация») про
-  даты не говорит ничего — единственным определением правила стал бы сам предикат. Его
-  закрытый словарь маркеров (`замер`, `проверено`, `measured`, …) пришлось бы выводить из
-  семи живых строк, то есть подгонять под текст: первое же законное «по состоянию на
-  2026-08-01» дало бы красный CI на верном доке, а режим сопровождения свёлся бы к
-  «покраснело → дописал слово». Записано, чтобы ветку не переоткрыли как забытую: вернуться
-  — когда появится **измеренный** рецидив и правило о датах в каноне, а не наоборот.
+- **AC. A date in documentation is not guarded by a marker for dated material (#428).** The
+  link-form guard (`tests/test_doc_narrative.py`) took two of three branches announced in the issue;
+  the third — "`20\d\d-\d\d-\d\d` outside an explicit measurement marker" — was **not taken**.
+  There are zero violations, no recurrence precedent, and the canon (`project-map.md` §"What
+  documentation describes") says nothing about dates, so the predicate itself would be the only
+  rule definition. Its closed marker vocabulary (`замер`, `проверено`, `measured`, …) would have to
+  be inferred from seven live lines, fitting the text: the first legitimate "as of 2026-08-01" would
+  make CI red for a correct document, and maintenance would become "it turned red → add a word".
+  Recorded so the branch is not reopened as forgotten: revisit when there is a **measured** recurrence
+  and a date rule in the canon, not vice versa.
 
-- **AD. Сетевая половина сверки branch protection не гоняется в CI (#436).**
-  `scripts/check_branch_protection.py` сверяет объявленный состав required-контекстов с
-  фактическим. Покрыто unit-тестами всё, кроме одного шага — реального `gh api` за конфигом:
-  у `GITHUB_TOKEN` нет скоупа `administration`, а classic branch protection не видна через
-  ruleset-эндпоинт (тот отдаёт `[]`), так что CI-прогон потребовал бы положить в secrets
-  отдельный admin-токен. **Отвергнуто по цене, а не по невозможности**: долгоживущий секрет
-  приносит ротацию, а протухший токен красит job без реального дрейфа и учит игнорировать
-  детектор. Компенсация — прогон из `.githooks/pre-push` на каждый push (чаще правдоподобного
-  cron'а) плюс оффлайн-гард `tests/test_branch_protection.py`, который держит in-repo половину
-  (объявление ↔ джобы воркфлоу) в CI. Вернуться — при переезде enforcement'а на rulesets,
-  который сделал бы конфиг читаемым обычным repo-read.
-- **AE. Потерянный постер soldout — детектор не заводим.** Уведомление уходит без картинки,
-  дедуп в Sheets фиксирует отправку, второй попытки не будет. Раньше это почти не срабатывало
-  (страница и так не пробивалась); терпеливый ретрай поднимает долю доставляющих суток и вместе
-  с ней — частоту этого исхода. Замер: 3 успеха из 8 по картиночному пути против 1 из 4 по
-  странице, то есть постеры режутся **отдельно**, и «вылечатся тем же обходом» — гипотеза.
-  Терпеливую политику на них намеренно не распространяем: она умножается на число items и съела
-  бы прогон целиком (гард —
-  `test_http_fetch.py::TestPatientHtml::test_fetch_bytes_stays_on_the_fast_transport`).
-  Деградация **видима** — `WARNING` из `telegram_notifier._send_one`, не тихий пропуск, — поэтому
-  отдельный детектор был бы вторым сигналом о том, о чём уже сказано. Триггер пересмотра: первая
-  жалоба на уведомление без картинки; сам обход отслеживается отдельной задачей (#441). Решение
-  целиком — [ADR-0002](../adr/0002-soldout-cloudflare-spread-retries.md).
-- **AF. «Успеха по soldout не было N суток» — не детектируется.** Алерт привязан к прогону, а не
-  к состоянию источника: пустые сутки штатны, поэтому «сегодня не пробились» и «источник умер
-  неделю назад» снаружи неразличимы. Единственное лекарство — состояние между прогонами (ячейка
-  «последний успех» + правило устаревания), и его цена сейчас выше пользы: прогон один в сутки,
-  значит и алерт приходит не чаще раза в сутки — тот же объём шума, что был до фикса. Наблюдаемый
-  триггер пересмотра — **первый реально пропущенный сбой** (источник лежал, а узнали не из
-  алерта), а не «когда алерты надоедят».
+- **AD. The network half of branch-protection verification is not run in CI (#436).**
+  `scripts/check_branch_protection.py` compares the declared composition of required contexts with
+  the actual one. Unit tests cover everything except one step — real `gh api` for configuration:
+  `GITHUB_TOKEN` lacks `administration` scope, and classic branch protection is not visible through
+  the ruleset endpoint (it returns `[]`), so a CI run would require a separate admin token in
+  secrets. **Rejected for cost, not impossibility:** a long-lived secret requires rotation, while an
+  expired token turns the job red without real drift and teaches people to ignore the detector.
+  Compensation is `.githooks/pre-push` on every push (more frequent than a plausible cron), plus
+  offline guard `tests/test_branch_protection.py`, which keeps the in-repository half
+  (declaration ↔ workflow jobs) in CI. Revisit when enforcement moves to rulesets that make the
+  configuration readable with ordinary repository read access.
+- **AE. Do not add a detector for a lost Soldout poster.** The notification goes without an image,
+  Sheets dedup records it as sent, and there will be no second attempt. Previously this almost never
+  occurred (the page itself was unreachable); patient retry raises the share of days that deliver,
+  and with it the frequency of this outcome. Measurement: 3 successes out of 8 on the image path vs
+  1 out of 4 on the page, meaning posters are blocked **separately**, so "they will be fixed by the
+  same workaround" is a hypothesis. Patient policy is deliberately not applied to them: it
+  multiplies by item count and would consume the entire run (guard:
+  `test_http_fetch.py::TestPatientHtml::test_fetch_bytes_stays_on_the_fast_transport`). The
+  degradation is **visible** — a `WARNING` from `telegram_notifier._send_one`, not a silent skip —
+  so a separate detector would be a second signal for what is already stated. Revisit trigger: the
+  first complaint about a notification without an image; the workaround itself is tracked by a
+  separate task (#441). Full decision: [ADR-0002](../adr/0002-soldout-cloudflare-spread-retries.md).
+- **AF. "There has been no Soldout success for N days" is not detected.** The alert is tied to a
+  run, not source state: an empty day is normal, so "we could not reach it today" and "the source
+  died a week ago" are externally indistinguishable. The only remedy is state between runs (a
+  "last success" cell + staleness rule), and its cost currently exceeds benefit: there is one run
+  per day, hence an alert no more than once a day — the same noise volume as before the fix. The
+  observable revisit trigger is the **first genuinely missed failure** (the source was down and we
+  did not learn it from the alert), not "when alerts become annoying".
 
-- **AH. Проводка `publish_run_summary` в `__main__` не покрыта (#459).** Сама функция и
-  форматтер протестированы (`test_alerting.py::TestPublishRunSummary`), но факт «оба
-  GitHub-`__main__` её зовут, и зовут *до* `sys.exit(1)`» — часть общего scope-skip'а на
-  `if __name__ == "__main__"` (см. таблицу ниже): mypy держит импорт, cron держит smoke.
-  Отдельный статический гард на порядок вызовов был бы гардом на две строки кода.
+- **AH. Wiring `publish_run_summary` in `__main__` is not covered (#459).** The function and
+  formatter are tested (`test_alerting.py::TestPublishRunSummary`), but the fact that "both GitHub
+  `__main__` blocks call it, and call it *before* `sys.exit(1)`" is part of the general scope skip
+  for `if __name__ == "__main__"` (see the table below): mypy holds the import and cron holds the
+  smoke test. A separate static guard for call order would guard two code lines.
 
-- **AI. Пустой `url` в конфиге проходит валидацию, и `soldout` на нём скипается зелёным (#459).**
-  `validate_sources_config` проверяет **наличие** ключа (`_REQUIRED_SOURCE_FIELDS - source.keys()`),
-  а не непустоту, поэтому `"url": ""` доходит до рантайма целиком. У `soldout` url — это
-  `{{SOLDOUT_URL}}`, а `build_macro_context` дефолтит макрос в `""`: при незаданной
-  `vars.SOLDOUT_URL` прогон зелёный, доставки нет, единственный след — WARNING в логе шага.
-  Это ровно та форма тишины, против которой заведена операторская сводка, и установлено это
-  было при работе над ней (#459).
-  **Почему не починено там же:** очевидный фикс (непустой `url` → `ConfigError`) уронил бы
-  загрузку конфига **каждого прогона** в текущей прод-конфигурации — `run-script.yml`
-  задаёт `KINOZAL_URLS` и никогда `KINOZAL_TOP_URL`, поэтому `sources.json` разворачивает
-  kinozal-url в `""` всегда. (Сам kinozal от этого не страдает: url из конфига он не читает
-  вовсе, а отсутствие URL даёт ему красный результат с причиной.) То есть чинить нужно вместе
-  с развязкой «url в конфиге vs url в env», а это отдельная единица работы.
-  Наблюдаемый триггер пересмотра — **любая работа над `SOLDOUT_URL`/конфиг-схемой url**, а не
-  «когда-нибудь потом»; до тех пор гейт — обычный код-ревью `sources.json`.
-- **AJ. Метрика расхода токенов принципиально не гейтится в `ci_check`/CI (#464).**
-  У `ci_check.py` один реестр `CHECKS` на локальный прогон и на CI, а данные метрики —
-  транскрипты Claude Code на машине мейнтейнера, которых в CI нет. Запись в `CHECKS` дала бы
-  либо красный CI всегда, либо skip-по-отсутствию-данных — то есть ровно ту тишину, против
-  которой метрика и заводится. Роль гейта берёт `SessionStart` hook: он запускается сам каждую
-  сессию и печатает **только** аномалию, а `tests/test_token_trend.py::TestHookRegistration`
-  стережёт, что регистрация хука не отвалится (без него скрипт повторил бы судьбу eval'а
-  из #361 — метрика есть, никто не гоняет). Под тестом — чистая логика (парсинг, агрегация,
-  ledger, детектор), **оба формата вывода** и `main()` в обоих режимах на подставном каталоге;
-  непокрытым остаётся `transcript_dir()` — правило slug'а апстрима, проверяемое только
-  фактическим запуском. Его отказ при этом не тихий: если `~/.claude/projects` есть, а нашего
-  каталога в нём нет, хук печатает `transcripts_not_found` вместо того, чтобы молчать.
-  Пересмотр — если появится общий носитель dev-телеметрии, который CI сможет прочитать.
+- **AI. An empty config `url` passes validation, and `soldout` skips green on it (#459).**
+  `validate_sources_config` checks **presence** of the key (`_REQUIRED_SOURCE_FIELDS - source.keys()`),
+  not non-emptiness, so `"url": ""` reaches runtime intact. For `soldout`, the URL is
+  `{{SOLDOUT_URL}}`, and `build_macro_context` defaults the macro to `""`: with unset
+  `vars.SOLDOUT_URL`, the run is green, there is no delivery, and the only trace is a WARNING in the
+  step log. This is exactly the silence against which the operator summary was created, established
+  while working on it (#459). **Why it was not fixed there:** the obvious fix (non-empty `url` →
+  `ConfigError`) would fail config loading on **every run** in current production configuration —
+  `run-script.yml` sets `KINOZAL_URLS` and never `KINOZAL_TOP_URL`, so `sources.json` always expands
+  the Kinozal URL to `""`. (Kinozal itself does not suffer: it does not read a config URL at all,
+  and missing URL gives it a red result with a reason.) Thus it must be fixed together with
+  decoupling "URL in config vs URL in environment", a separate work unit. Observable revisit trigger:
+  **any work on `SOLDOUT_URL`/the URL config schema**, not "someday"; until then, the gate is ordinary
+  code review of `sources.json`.
+- **AJ. Token-consumption metric is fundamentally not gated in `ci_check`/CI (#464).**
+  `ci_check.py` has one `CHECKS` registry for local runs and CI, but metric data are Claude Code
+  transcripts on the maintainer machine, absent from CI. An entry in `CHECKS` would either make CI
+  always red or skip for missing data — exactly the silence against which the metric exists. The
+  `SessionStart` hook takes the gate role: it runs itself every session and prints **only** an anomaly;
+  `tests/test_token_trend.py::TestHookRegistration` guards against losing hook registration (without
+  it, the script would repeat eval's fate from #361 — a metric that nobody runs). Tests cover pure
+  logic (parsing, aggregation, ledger, detector), **both output formats**, and `main()` in both modes
+  on a substitute directory; only `transcript_dir()` remains uncovered — an upstream slug rule
+  testable only by actual run. Its failure is not silent: if `~/.claude/projects` exists but lacks
+  our directory, the hook prints `transcripts_not_found` rather than remaining silent. Revisit if a
+  shared development-telemetry carrier appears that CI can read.
 
-- **AK. Второй носитель review-гейта не проверен живым прогоном (#478).** Носитель 2 — Codex
-  code review через GitHub-интеграцию — покрыт структурно (`TestFallbackCarrier`: порядок шагов,
-  условие запуска, привязка вердикта к head SHA, ограниченное ожидание, имя выхода, атрибуция
-  продюсера, красный гейт при пропущенном носителе) и поведенчески на своём адаптере
-  (`tests/test_request_codex_review.py`: чей review считается вердиктом, отбор по head SHA,
-  перевод состояния в словарь исходов, round-trip нагрузки через сам enforcement-скрипт).
-  Гардами **не** доказаны две вещи, обе — про чужую сторону контракта: (1) что Codex вообще
-  отвечает на `@codex review`, оставленный `github-actions[bot]`, а не человеком, и (2) что
-  он выставляет состояние review так, как просит `AGENTS.md` § Code Review Rules — публично
-  документировано лишь то, что в GitHub он поднимает находки уровня P0/P1, то есть его планка
-  уже нашей coverage-first. **Пропуск сознательный, не тихий:** оба отказа выглядят как
-  «вердикта нет» → пустая нагрузка → красный `agent-review` с явным `::warning::`, кто именно
-  не ответил. Непроверенная ветка не может ослабить гейт — только не сработать, и это видно
-  красной проверкой, а не зелёным PR без ревью. Класс тот же, что у **AD** (сетевая половина
-  branch-protection): проверяется только живым прогоном против чужого сервиса.
-  **Триггер закрытия — первый прогон, где Codex оставил review на head SHA**: ссылка на run и на
-  сам review попадает в `## Agent record` issue, и эта запись снимается. Решение целиком —
+- **AK. The second review-gate carrier has not been verified by a live run (#478).** Carrier 2 —
+  Codex code review through the GitHub integration — is structurally covered (`TestFallbackCarrier`:
+  step order, launch condition, verdict tied to head SHA, bounded wait, output name, producer
+  attribution, red gate for a missing carrier) and behaviourally covered by its adapter
+  (`tests/test_request_codex_review.py`: whose review counts as a verdict, selection by head SHA,
+  state conversion to the outcome dictionary, round-trip payload through the enforcement script).
+  Guards **do not** prove two things, both on the other side of the contract: (1) that Codex answers
+  an `@codex review` posted by `github-actions[bot]`, not a human, at all; and (2) that it sets the
+  review state requested by `AGENTS.md` § Code Review Rules — public documentation says only that it
+  raises P0/P1 findings in GitHub, so its bar is already above our coverage-first policy. **The skip
+  is conscious, not silent:** both failures look like "no verdict" → empty payload → red
+  `agent-review` with an explicit `::warning::` identifying who did not answer. The unverified branch
+  cannot weaken the gate; it can only not work, which appears as a red check rather than a green PR
+  without review. It is the same class as **AD** (the network half of branch protection): testable
+  only by a live run against an external service. **Closure trigger: the first run where Codex leaves
+  a review on the head SHA**; a link to the run and the review goes into the `## Agent record` issue,
+  and this entry is removed. Full decision:
   [ADR-0003](../adr/0003-second-carrier-for-the-required-review-gate.md).
 
-- **AL. Что ревью носителя 1 действительно запускается под токеном воркфлоу, гардами не
-  доказано (#483).** Структурно закреплён только вход (`github_token: ${{ github.token }}`) и
-  снятие карв-аута; что апстрим при этом не выполняет валидацию воркфлоу и что под этим токеном
-  экшену хватает прав на свои записи в PR — чужая сторона контракта, проверяемая живым прогоном.
-  Класс тот же, что у **AK** и **AD**. **Пропуск не тихий, но сигнал — не красный чек:** при
-  возврате прежнего поведения пустой outcome носителя 1 даёт `valid=false`, а это условие
-  запуска носителя 2 (#478), и его `clean` красит проверку зелёным. Регресс виден по тому, что
-  `Classify review outcome` печатает `valid=false` и шаг `Codex review` **выполняется** (лог и
-  `## Agent record`); красным `agent-review` станет только если и носитель 2 не ответил.
-  Нехватка прав — как ошибка записи в логе шага. **Триггер закрытия — прогон на PR, который
-  вносит саму правку**: он контроллерный по построению, и его лог (`valid=true`, выполненный
-  `Enforce Claude review outcome`, сводка с `Reviewed head SHA:`) попадает в `## Agent record`.
-  Решение целиком — [ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
+- **AL. Guards do not prove that carrier-1 review actually runs under the workflow token (#483).**
+  Only the input (`github_token: ${{ github.token }}`) and removal of the carve-out are structurally
+  pinned; whether upstream then does not validate the workflow and whether the action has rights to
+  its PR records under that token is the other side of the contract, testable by a live run. It is
+  the same class as **AK** and **AD**. **The skip is not silent, but the signal is not a red check:**
+  if former behaviour returns, an empty carrier-1 outcome gives `valid=false`, which launches carrier
+  2 (#478), and its `clean` makes the check green. Regression is visible because
+  `Classify review outcome` prints `valid=false` and `Codex review` **runs** (log and
+  `## Agent record`); `agent-review` becomes red only if carrier 2 also does not answer. Missing
+  permissions appear as a write error in the step log. **Closure trigger: a run on the PR that makes
+  this change**; it is controller-shaped by construction, and its log (`valid=true`, executed
+  `Enforce Claude review outcome`, summary with `Reviewed head SHA:`) enters `## Agent record`.
+  Full decision: [ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
@@ -456,9 +450,9 @@ decision goes to" route — and the rule itself — live in
 
 | Module | Reason | Mitigation |
 |---|---|---|
-| `youtube.py::Youtube` (live-client wrapper: `__init__` + `search_candidates` method) | Requires live YouTube API (`build()` + `API_KEY`) | Pure retrieval `search_candidates(client, profile)`/`_search_one` **is** directly tested (`test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140); only the thin live-`build()` wrapper is untested. Прод ходит через `search_candidates` + `HeuristicStrategy`, одиночного `get_trailer_url` в модуле нет (#144) |
+| `youtube.py::Youtube` (live-client wrapper: `__init__` + `search_candidates` method) | Requires live YouTube API (`build()` + `API_KEY`) | Pure retrieval `search_candidates(client, profile)`/`_search_one` **is** directly tested (`test_youtube.py::TestSearchCandidates` via an injected fake `client`, the DI boundary, #140); only the thin live-`build()` wrapper is untested. Production uses `search_candidates` + `HeuristicStrategy`; the module has no standalone `get_trailer_url` (#144) |
 | `tmdb_trailer.py::TmdbClient` (`resolve`/`_get`/`_find_movie_id`) | Requires live `TMDB_TOKEN` + network — retrieval boundary (DI, mirror of `youtube.py`) | Pure selection `pick_trailer` **is** directly tested (`test_tmdb_trailer.py`, 7 cases); only the network boundary is untested, same §II precedent as `youtube.py`'s live-client wrapper (#329) |
 | `text_utils.py` | Small utility | Indirect coverage via `test_kinozal_pipeline.py::TestTitleYearMatches` |
 | `*_pipeline.py` `if __name__ == "__main__"` blocks | CLI wiring of live `gspread`/env — needs live credentials | **Scope-skip**, guarded two ways since the package migration ([#237](https://github.com/ekolvah/kinozal_scraper/issues/237)): (1) **mypy is load-bearing** — `pip install -e .` + native package resolution means mypy type-checks the `__main__` block (incl. its `from kinozal_scraper.X import …`), catching a mis-wired/mis-renamed import that the import-only `test_package_importable.py` cannot; (2) the daily cron as §IV «cron = E2E smoke». The large uncovered blocks in `coverage.py` are these runners, not logic gaps |
 | Package import-resolution & repo layout | A module failing to resolve as `kinozal_scraper.X`, or source drifting back to a flat `src/*.py` layout | `test_package_importable.py::TestPackage` (all modules import as `kinozal_scraper.X`); `test_repo_layout.py::TestLayout`. (The #237 B1 empty-/nested-scan guard moved off the retired `test_check_headers.py` — [#253](https://github.com/ekolvah/kinozal_scraper/issues/253) replaced `check_headers.py` with ruff `D100`/`D104`/`D419`; the "mis-pointed/empty `src/` scanned nothing" failure mode is now subsumed by these two guards, which fire strictly harder — 17 hard-coded imports + layout-drift — than the old zero-file check) |
-| Telethon session rotation (mint a `StringSession`, set the secret, revoke the old session in the Telegram app) | Interactive login against live Telegram, performed by an operator roughly once per incident | **Scope-skip** (#386, replaces the `crypto.py` glue entry that left with the module): there is no automatable surface — the code side *is* covered (`require_env` rejects an empty secret, `TestTelethonReaderAuth` pins StringSession-only auth and a fail-fast on a revoked session). The recipe lives in [operations.md](operations.md#minting-a-new-telethon_session); deliberately a doc snippet, not a script — a once-a-year human interactive is not the deterministic pipeline step "скрипты > инструкции" targets |
+| Telethon session rotation (mint a `StringSession`, set the secret, revoke the old session in the Telegram app) | Interactive login against live Telegram, performed by an operator roughly once per incident | **Scope-skip** (#386, replaces the `crypto.py` glue entry that left with the module): there is no automatable surface — the code side *is* covered (`require_env` rejects an empty secret, `TestTelethonReaderAuth` pins StringSession-only auth and a fail-fast on a revoked session). The recipe lives in [operations.md](operations.md#minting-a-new-telethon_session); deliberately a doc snippet, not a script — a once-a-year human interactive is not the deterministic pipeline step "scripts > instructions" targets |

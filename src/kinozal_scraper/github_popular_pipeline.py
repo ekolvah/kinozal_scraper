@@ -1,4 +1,4 @@
-"""GitHub new-popular источник (run_github_popular_pipeline)."""
+"""GitHub new-popular source (run_github_popular_pipeline)."""
 
 from __future__ import annotations
 

@@ -61,7 +61,7 @@ def option_id_for_level(level: str) -> str:
 def item_id_from_add_json(output: str | None) -> str:
     """Extract the project item id from `gh project item-add --format json` output.
 
-    Tolerates `stdout=None` (грабля #109: Windows+git-bash can hand back None even
+    Tolerates `stdout=None` (#109: Windows+git-bash can hand back None even
     with text=True) and any missing/blank/malformed payload → ValueError, so a broken
     add is a visible error, not a later opaque TypeError on a None item id."""
     try:
@@ -103,8 +103,8 @@ def priority_from_project_json(output: str | None, issue_url: str) -> str | None
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
-    # `None` = захват сломался (#364), а не «gh промолчал». Дефолт на этом месте
-    # подменял бы отказ пустотой — ровно то, что чинит #410.
+    # `None` means capture failed (#364), not “gh was silent.” A default here
+    # would replace failure with emptiness—the exact problem #410 fixes.
     if result.stdout is None or result.stderr is None:
         raise RuntimeError(
             f"capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
@@ -117,8 +117,8 @@ def _checked(cmd: list[str], what: str) -> str:
     """Run `cmd`; on non-zero exit print stderr and exit 1 (§IV visible failure)."""
     result = _run(cmd)
     if result.returncode != 0:
-        # `or f"error: …"` — обработка легитимно пустого stderr, не воркэраунд:
-        # отказ захвата теперь ловится в `_run` (#410).
+        # `or f"error: …"` handles legitimately empty stderr, not a workaround:
+        # `_run` now catches capture failure (#410).
         print(result.stderr.strip() or f"error: {what} failed", file=sys.stderr)
         sys.exit(1)
     return result.stdout

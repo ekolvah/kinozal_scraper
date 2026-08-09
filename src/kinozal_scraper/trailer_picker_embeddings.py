@@ -1,17 +1,16 @@
-"""#143: стратегия B подбора трейлера — re-ranker на эмбеддингах (Gemini).
+"""#143: trailer-selection strategy B — embedding re-ranker (Gemini).
 
-`EmbeddingTrailerStrategy` реализует `TrailerStrategy` (`trailer_strategy.py`):
-эмбеддит `FilmProfile` и пул `Candidate` одним батчем, считает косинус в памяти
-(векторная БД не нужна на ≤10 кандидатов) и берёт argmax; если лучший косинус ниже
-порога — **честный `None`** (§IV-эквивалент «нет достаточно похожего», как
-`video_id is None` в стратегии A). Прод-кандидат: качество меряется на golden-set
-vs A (#142) / пред-фильтр (#141), победитель — #144. Здесь чистый selection-слой +
-движок; композиция heuristic→B и прод/eval-wiring несёт #144.
+`EmbeddingTrailerStrategy` implements `TrailerStrategy` (`trailer_strategy.py`): it
+embeds `FilmProfile` and the `Candidate` pool in one batch, computes cosine in memory
+(no vector DB is needed for ≤10 candidates), and takes argmax. Below threshold means
+an **honest `None`** (§IV equivalent of “nothing similar enough,” like `video_id is None`
+in strategy A). Quality is measured on a golden set against A (#142) and prefilter
+(#141); #144 selects and wires the winner. This module is the pure selection layer and engine.
 
-`Embedder` — узкая DI-граница (§II): unit-тесты подставляют double с
-зафиксированными векторами, `GeminiEmbedder` — прод-реализация через `genai`.
-Таксономия ошибок ротации (`QuotaExhausted/ModelUnavailable/TryNextModel`) и
-классификатор — общие с `gemini_enricher.py` / стратегией A, не переизобретаются.
+`Embedder` is a narrow DI boundary (§II): unit tests inject a double with fixed vectors,
+and `GeminiEmbedder` is the production `genai` implementation. Rotation error taxonomy
+(`QuotaExhausted/ModelUnavailable/TryNextModel`) and classifier are shared with
+`gemini_enricher.py` and strategy A, not recreated.
 """
 
 from __future__ import annotations
@@ -27,9 +26,9 @@ from kinozal_scraper.trailer_strategy import Candidate, FilmProfile, TrailerPick
 
 logger = logging.getLogger(__name__)
 
-# Стартовый порог косинуса — прод-кандидат, тюнится harness'ом на golden-set в #144.
+# Initial cosine threshold is a production candidate tuned by the #144 golden-set harness.
 SIMILARITY_THRESHOLD = 0.5
-# task_type="semantic_similarity" — эмбеддинги оптимизированы под сравнение пар (не retrieval).
+# `task_type="semantic_similarity"` optimizes embeddings for pair comparison, not retrieval.
 EMBED_MODEL = "models/text-embedding-004"
 
 
@@ -38,8 +37,8 @@ class Embedder(Protocol):
 
 
 def _cosine(a: list[float], b: list[float]) -> float:
-    """Косинус двух векторов. Нулевой вектор (норма 0) → 0.0 (degraded-visible, не
-    ZeroDivisionError/NaN): пустой эмбеддинг = «не похож ни на что», штатный 0."""
+    """Cosine of two vectors. A zero vector (norm 0) → 0.0 (visible degradation,
+    not ZeroDivisionError/NaN): an empty embedding is normally similar to nothing."""
     dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = math.sqrt(sum(x * x for x in a))
     norm_b = math.sqrt(sum(y * y for y in b))
@@ -49,8 +48,8 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def _film_text(film: FilmProfile) -> str:
-    """Что эмбеддим для фильма: оба названия (RU+original) + год + каст — сигналы,
-    по которым косинус ловит семантическое соответствие кандидату."""
+    """Film embedding input: both titles (RU+original), year, and cast—the signals
+    by which cosine detects semantic correspondence to a candidate."""
     parts = [film.ru_title, film.original_title]
     if film.year:
         parts.append(str(film.year))
@@ -64,10 +63,10 @@ def _candidate_text(candidate: Candidate) -> str:
 
 
 class EmbeddingTrailerStrategy:
-    """`TrailerStrategy` через эмбеддинги + косинус. Пустой пул → честный `None`
-    БЕЗ вызова движка (runtime-токены не тратятся). Below-threshold — штатный отказ
-    (§IV-маркер в проде на #144, БЕЗ warning); length-mismatch — аномалия контракта
-    движка (None + warning, зеркалит malformed-json в стратегии A)."""
+    """`TrailerStrategy` through embeddings and cosine. An empty pool → honest `None`
+    WITHOUT calling the engine (no runtime tokens spent). Below threshold is normal
+    rejection (§IV marker in #144 production, no warning); length mismatch is an engine
+    contract anomaly (None + warning, mirroring malformed JSON in strategy A)."""
 
     def __init__(self, embedder: Embedder, threshold: float = SIMILARITY_THRESHOLD) -> None:
         self._embedder = embedder
@@ -91,7 +90,7 @@ class EmbeddingTrailerStrategy:
             key=lambda pair: pair[1],
         )
         if best_score < self._threshold:
-            # Честный отказ: похожего нет. НЕ аномалия — reason виден, warning не эмитим.
+            # Honest rejection: nothing is similar. Not an anomaly; expose the reason, no warning.
             return TrailerPick(
                 None, 0.0, f"best cosine {best_score:.3f} below threshold {self._threshold:.3f}"
             )
@@ -100,14 +99,14 @@ class EmbeddingTrailerStrategy:
 
 
 class GeminiEmbedder:
-    """Живой движок эмбеддингов — собрат `GeminiEnricher`/`GeminiJsonGenerator`: один
-    батч-вызов `genai.embed_content` (`task_type="semantic_similarity"`). API-ошибки →
-    общий классификатор (`QuotaExhausted/ModelUnavailable/TryNextModel`). У эмбеддингов
-    нет `finish_reason`/MAX_TOKENS, поэтому truncation-ветки стратегии A тут нет.
-    `model_name` property зеркалит собратьев, чтобы #144 обернул `list[GeminiEmbedder]`
-    экстракцией ротации, не переписыванием.
+    """Live embedding engine, sibling of `GeminiEnricher`/`GeminiJsonGenerator`: one
+    `genai.embed_content` batch call (`task_type="semantic_similarity"`). API errors use
+    the shared classifier (`QuotaExhausted/ModelUnavailable/TryNextModel`). Embeddings
+    have no `finish_reason`/MAX_TOKENS, so strategy A's truncation branch does not apply.
+    The `model_name` property mirrors its siblings so #144 wraps `list[GeminiEmbedder]`
+    with rotation extraction, not a rewrite.
 
-    `client` (genai.Client) прокидывается в конструктор (§II — готовый клиент, не credentials).
+    `client` (genai.Client) is injected into the constructor (§II: ready client, not credentials).
     """
 
     def __init__(self, client: GenaiClient, model_name: str = EMBED_MODEL) -> None:
@@ -125,8 +124,8 @@ class GeminiEmbedder:
                 contents=texts,
                 config=types.EmbedContentConfig(task_type="SEMANTIC_SIMILARITY"),
             )
-            # Извлечение внутри try: malformed-ответ (embeddings=None) → TypeError
-            # идёт через ту же таксономию (→ TryNextModel), а не сырым краком мимо неё.
+            # Extract inside try: malformed output (`embeddings=None`) → TypeError through
+            # the same taxonomy (→ TryNextModel), not an unclassified raw crash.
             embeddings = response.embeddings
             if embeddings is None:
                 raise TypeError("embed_content returned no embeddings")

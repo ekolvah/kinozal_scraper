@@ -63,9 +63,9 @@ def _refs_json(pr: str) -> str:
         encoding="utf-8",
     )
     if result.stdout is None or result.stderr is None:
-        # Захват сломался (#364) — это инфра-сбой, тот же класс, что ненулевой rc
-        # ниже, и он обязан прийти под кодом 2, а не превратиться в пустой `"{}"`
-        # (то есть в ложный вердикт «линковки нет») (#410).
+        # Capture failed (#364): this is infrastructure failure, the same class as the
+        # nonzero rc below, and must return code 2 rather than become empty `"{}"`
+        # (a false “no linkage” verdict) (#410).
         print(
             f"error: capture failed for `gh pr view {pr}` (rc={result.returncode}): "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",

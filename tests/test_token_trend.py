@@ -1,17 +1,16 @@
-"""Unit-тесты фактического расхода токенов dev-сессий (`scripts/token_trend.py`, #464).
+"""Unit tests for actual token consumption of development sessions (`scripts/token_trend.py`, #464).
 
-Дефект, который чинится: приоритет (2) цель-функции не измерялся ничем, и «кажется, задачи
-стали дороже» нельзя было ни подтвердить, ни привязать к коммиту.
+Defect addressed: goal-function priority (2) was not measured, and “tasks seem to have become
+more expensive” could neither be confirmed nor tied to a commit.
 
-Уровень выбран по bug-taxonomy: вся детерминированная логика — чистые функции над строками
-JSONL, поэтому тесты работают на inline-фикстурах и **не** читают реальный `~/.claude`.
-I/O остаётся тонкой обёрткой (`collect`, `run_hook`), как в `scripts/hooks.py`.
+The level follows the bug taxonomy: all deterministic logic is pure functions over JSONL lines,
+so tests use inline fixtures and do **not** read the real `~/.claude`. I/O remains a thin wrapper
+(`collect`, `run_hook`), as in `scripts/hooks.py`.
 
-§IV-заметка: у метрики два разных «нет данных». Отсутствие каталога транскриптов в чужой среде
-(cloud-ревьюер, другая машина) — штатный тихий no-op: иначе текст ошибки попадал бы в контекст
-каждой ревью-сессии навсегда. А вот каталог со своими файлами, из которых не разобралось ни
-одной usage-записи, — schema drift апстрима, то есть видимая аномалия: без неё метрика умирает
-молча при зелёных тестах.
+§IV note: the metric has two distinct “no data” states. No transcript directory in a foreign environment
+(cloud reviewer, other machine) is a normal silent no-op, otherwise error text would enter every review-session
+context forever. A directory with its own files but no parsed usage record is upstream schema drift—a visible
+anomaly; without it, the metric dies silently while tests are green.
 """
 
 from __future__ import annotations
@@ -64,7 +63,7 @@ def _entry(
     cache_1h: int = 0,
     uuid: str = "u-1",
 ) -> dict:
-    """Одна `assistant`-строка транскрипта в форме, которую пишет Claude Code."""
+    """One `assistant` transcript line in the form written by Claude Code."""
     entry = {
         "type": "assistant",
         "timestamp": timestamp,
@@ -99,7 +98,7 @@ def _line(**kwargs: object) -> str:
 def _stats(
     branch: str, *, turns: int = 10, per_turn: float = 1000.0, first: str = "2026-08-01"
 ) -> BranchStats:
-    """Агрегат с заданной ценой turn'а — для тестов детектора."""
+    """Aggregate with a specified per-turn cost—for detector tests."""
     return BranchStats(
         branch=branch,
         turns=turns,
@@ -134,7 +133,7 @@ class TestParse:
         assert len(records) == 1
 
     def test_records_without_request_id_not_collapsed(self) -> None:
-        """8 таких записей есть в реальных данных: дедуп по `None` схлопнул бы их в одну."""
+        """Real data has 8 such records: deduplication by `None` would collapse them to one."""
         records, _ = parse_lines(
             [
                 _line(request_id=None, uuid="u-1", output_tokens=5),
@@ -155,12 +154,12 @@ class TestParse:
         assert [a.kind for a in anomalies] == ["malformed_line"]
 
     def test_non_assistant_lines_are_not_anomalies(self) -> None:
-        """Штатные типы строк молчат — граница предыдущего теста."""
+        """Normal line types remain silent—the boundary of the previous test."""
         _, anomalies = parse_lines([json.dumps({"type": "user", "message": {}}), _line()])
         assert anomalies == []
 
     def test_renamed_usage_field_yields_zero_records(self) -> None:
-        """Schema drift апстрима виден как отсутствие записей, а не как «роста нет»."""
+        """Upstream schema drift is visible as missing records, not as “no growth.”"""
         drifted = {"type": "assistant", "message": {"model": "m", "token_usage": {}}}
         records, _ = parse_lines([json.dumps(drifted)])
         assert records == []
@@ -173,13 +172,13 @@ class TestEffectiveCost:
         assert effective_tokens(cached) == pytest.approx(effective_tokens(fresh) * 0.1)
 
     def test_one_hour_cache_write_costlier_than_five_minute(self) -> None:
-        """В реальных данных доминирует `ephemeral_1h` — вес 2.0 против 1.25."""
+        """Real data is dominated by `ephemeral_1h`—weight 2.0 versus 1.25."""
         write_5m = UsageRecord("t", "s", "b", "claude-opus-5", False, 0, 0, 0, 1000, 0)
         write_1h = UsageRecord("t", "s", "b", "claude-opus-5", False, 0, 0, 0, 0, 1000)
         assert effective_tokens(write_1h) > effective_tokens(write_5m)
 
     def test_weights_selected_per_model(self) -> None:
-        """Переезд на другую модель двигает сводную величину, а не прячется в ней."""
+        """Moving to another model changes the aggregate rather than hiding within it."""
         assert model_scale("claude-sonnet-5") < model_scale("claude-opus-5")
         assert model_scale("claude-haiku-4-5") < model_scale("claude-sonnet-5")
         opus = UsageRecord("t", "s", "b", "claude-opus-5", False, 1000, 0, 0, 0, 0)
@@ -204,7 +203,7 @@ class TestAggregate:
         assert stats.per_turn == pytest.approx(stats.effective / 2)
 
     def test_main_branch_bucketed_apart_from_issue_branches(self) -> None:
-        """`main` — 37% turn'ов и разнороден: планирование, ревью, чтение."""
+        """`main` is 37% of turns and heterogeneous: planning, review, and reading."""
         records, _ = parse_lines(
             [_line(request_id="a", branch="main"), _line(request_id="b", branch="issue-9-x")]
         )
@@ -229,10 +228,10 @@ class TestAggregate:
         assert [s.branch for s in ordered] == ["issue-1-a", "issue-2-b"]
 
     def test_sidechain_turns_excluded_from_denominator(self) -> None:
-        """Субагенты — дешёвые turn'ы: в знаменателе они маскировали бы реальный рост.
+        """Subagents are cheap turns: in the denominator, they would mask actual growth.
 
-        Spawn субагента — рекомендованная тактика (`mindset.md`), так что ветка с ними
-        разбавляла бы `per_turn` и детектор выдавал бы `steady` на растущей плате.
+        Spawning a subagent is a recommended tactic (`mindset.md`), so a branch with them would
+        dilute `per_turn` and the detector would report `steady` despite a rising cost.
         """
         records, _ = parse_lines(
             [
@@ -245,7 +244,7 @@ class TestAggregate:
         assert stats.per_turn == pytest.approx(stats.effective)
 
     def test_synthetic_records_excluded_from_denominator(self) -> None:
-        """Служебные записи не биллятся: turn'ом они не являются, а `per_turn` занижали бы."""
+        """Service records are not billed: they are not turns and would lower `per_turn`."""
         records, _ = parse_lines(
             [
                 _line(request_id="a", output_tokens=100),
@@ -260,7 +259,7 @@ class TestAggregate:
         assert (stats.turns, stats.per_turn) == (0, 0.0)
 
     def test_empty_timestamp_does_not_pin_first_seen(self) -> None:
-        """Пустой timestamp иначе навсегда оставлял бы ветку в начале baseline-окна."""
+        """An empty timestamp would otherwise leave the branch at the start of the baseline window forever."""
         records, _ = parse_lines(
             [
                 _line(request_id="a", timestamp="", branch="issue-9-x"),
@@ -290,7 +289,7 @@ class TestHealth:
         assert health_anomalies([], [], files_seen=0) == []
 
     def test_empty_model_is_an_unknown_weight(self) -> None:
-        """Пустая модель получает нейтральный вес — единственный неизвестный вес без сигнала."""
+        """An empty model receives a neutral weight—the only unknown weight with no signal."""
         records = [UsageRecord("t", "s", "b", "", False, 1, 0, 0, 0, 0)]
         assert [a.kind for a in health_anomalies(records, [], files_seen=1)] == ["unknown_model"]
 
@@ -309,24 +308,24 @@ class TestLedger:
         assert restored == fresh
 
     def test_existing_branch_not_double_counted(self) -> None:
-        """Свежий агрегат замещает запись ledger'а, а не суммируется с ней."""
+        """A fresh aggregate replaces a ledger entry rather than adding to it."""
         ledger = {"issue-1-a": _stats("issue-1-a", turns=5)}
         fresh = {"issue-1-a": _stats("issue-1-a", turns=9)}
         assert merge_ledger(ledger, fresh)["issue-1-a"].turns == 9
 
     def test_partial_recount_does_not_shrink_history(self) -> None:
-        """Ветка старше окна чтения: часть транскриптов вычищена ретенцией.
+        """A branch is older than the read window: retention removed some transcripts.
 
-        Свежий агрегат по ней неполон, и замещение стёрло бы полную запись — ветка «худела»
-        бы молча, а недосчёт читался бы как падение расхода. Долгоживущие бакеты (`main` —
-        37 % turn'ов по замеру) страдали бы первыми.
+        Its fresh aggregate is incomplete, and replacement would erase the complete entry—the branch
+        would silently “lose weight,” and undercounting would read as reduced consumption. Long-lived buckets
+        (`main` is 37% of measured turns) would suffer first.
         """
         ledger = {"main": _stats("main", turns=900)}
         fresh = {"main": _stats("main", turns=12)}
         assert merge_ledger(ledger, fresh)["main"].turns == 900
 
     def test_history_outlived_by_ledger_when_transcript_gone(self) -> None:
-        """Ветка, стёртая ретенцией транскриптов, остаётся в базе сравнения."""
+        """A branch erased by transcript retention remains in the comparison base."""
         ledger = {"issue-old": _stats("issue-old", first="2026-06-01")}
         fresh = {"issue-new": _stats("issue-new", first="2026-08-01")}
         assert set(merge_ledger(ledger, fresh)) == {"issue-old", "issue-new"}
@@ -353,14 +352,14 @@ class TestDetect:
         assert detect_growth(old + new).status == "steady"
 
     def test_single_outlier_branch_does_not_trigger(self) -> None:
-        """Медиана, а не среднее: одна длинная рефактор-сессия не двигает вердикт."""
+        """Median, not mean: one long refactoring session does not move the verdict."""
         old = [_stats(f"issue-o{i}", per_turn=100_000, first=f"2026-07-0{i + 1}") for i in range(5)]
         new = [_stats(f"issue-n{i}", per_turn=100_000, first=f"2026-08-0{i + 1}") for i in range(4)]
         new.append(_stats("issue-spike", per_turn=5_000_000, first="2026-08-05"))
         assert detect_growth(old + new).status == "steady"
 
     def test_relative_growth_below_absolute_floor_is_silent(self) -> None:
-        """Удвоение копеечных веток — не деградация, а шум на малой выборке."""
+        """Doubling tiny branches is not degradation, but small-sample noise."""
         old = [_stats(f"issue-o{i}", per_turn=100, first=f"2026-07-0{i + 1}") for i in range(5)]
         new = [_stats(f"issue-n{i}", per_turn=1000, first=f"2026-08-0{i + 1}") for i in range(5)]
         assert detect_growth(old + new).status == "steady"
@@ -370,10 +369,10 @@ class TestDetect:
         assert detect_growth(few).status == "insufficient_data"
 
     def test_turnless_bucket_does_not_move_the_median(self) -> None:
-        """Ветка из одних субагентов даёт `per_turn = 0` — в медиане это гасило бы алерт.
+        """A branch containing only subagents has `per_turn = 0`—in the median this would suppress the alert.
 
-        И осело бы навсегда: после ретенции такой бакет уже нечем пересчитать, а из ledger'а
-        он не уходит.
+        It would persist forever: after retention there is nothing to recalculate that bucket from, and it
+        does not leave the ledger.
         """
         old = [_stats(f"issue-o{i}", per_turn=100_000, first=f"2026-07-0{i + 1}") for i in range(5)]
         new = [_stats(f"issue-n{i}", per_turn=500_000, first=f"2026-08-0{i + 1}") for i in range(5)]
@@ -455,24 +454,24 @@ class TestHookMode:
         assert run_hook({"source": "startup"}, transcripts, tmp_path / "ledger.jsonl") != ""
 
     def test_absent_projects_root_is_silent_noop(self, tmp_path: Path) -> None:
-        """Чужая среда (cloud-ревьюер, другая машина) не шумит в контекст каждой сессии."""
+        """A foreign environment (cloud reviewer, other machine) does not add noise to every session context."""
         missing = tmp_path / "no-claude" / "projects" / "slug"
         assert run_hook({"source": "startup"}, missing, tmp_path / "ledger.jsonl") == ""
 
     def test_missing_slug_dir_surfaces_error(self, tmp_path: Path) -> None:
-        """Своя машина, но каталога репо нет: slug-правило уехало — метрика умерла бы молча."""
+        """Own machine but no repository directory: slug rule drifted—the metric would die silently."""
         projects = tmp_path / "projects"
         projects.mkdir()
         assert run_hook({"source": "startup"}, projects / "slug", tmp_path / "ledger.jsonl") != ""
 
     def test_empty_dir_surfaces_error(self, tmp_path: Path) -> None:
-        """Своя среда, но записей нет — метрика сломалась, и это должно быть видно."""
+        """Own environment but no records—the metric is broken, and that must be visible."""
         transcripts = self._dir_with(tmp_path, [json.dumps({"type": "user"})])
         assert run_hook({"source": "startup"}, transcripts, tmp_path / "ledger.jsonl") != ""
 
     @pytest.mark.parametrize("source", ["resume", "compact", "fork", None])
     def test_non_startup_source_is_silent(self, tmp_path: Path, source: str | None) -> None:
-        """`compact`/`resume` не повторяют алерт внутри одной задачи."""
+        """`compact`/`resume` do not repeat the alert within one task."""
         transcripts = self._dir_with(tmp_path, [json.dumps({"type": "user"})])
         payload = {} if source is None else {"source": source}
         assert run_hook(payload, transcripts, tmp_path / "ledger.jsonl") == ""
@@ -488,7 +487,7 @@ class TestHookMode:
         assert ledger.exists()
 
     def test_collect_skips_files_outside_mtime_window(self, tmp_path: Path) -> None:
-        """Стоимость самого хука не растёт с историей: старые файлы не парсятся."""
+        """Hook cost does not grow with history: old files are not parsed."""
         transcripts = self._dir_with(tmp_path, [_line()])
         stale = transcripts / "old.jsonl"
         stale.write_text(_line(request_id="old", branch="issue-old"), encoding="utf-8")
@@ -498,11 +497,10 @@ class TestHookMode:
         assert {r.branch for r in records} == {"issue-1-a"}
 
     def test_ledger_in_transcript_dir_not_read_as_transcript(self, tmp_path: Path) -> None:
-        """Ledger живёт рядом с транскриптами и переписывается каждую сессию.
+        """The ledger lives beside transcripts and is rewritten every session.
 
-        Если бы `collect` глобил и его, то после ретенции (транскрипты вычищены, ledger
-        остался) выходило бы `files_seen=1, records=0` — вечная ложная «schema drift»
-        в контексте каждой сессии.
+        If `collect` globbed it too, after retention (transcripts removed, ledger retained), it would yield
+        `files_seen=1, records=0`—a permanent false “schema drift” in every session context.
         """
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
@@ -523,9 +521,9 @@ class TestHookMode:
     def test_slow_collect_surfaces_anomaly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Хук убивается по `timeout` без следа, и `write_ledger` (он после парсинга) не успеет.
+        """The hook is killed at `timeout` without a trace, and `write_ledger` (after parsing) cannot run.
 
-        Метрика встала бы навсегда и молча, поэтому приближение к лимиту — видимая аномалия.
+        The metric would stop silently forever, so approaching the limit is a visible anomaly.
         """
         transcripts = self._dir_with(tmp_path, [_line()])
         monkeypatch.setattr(token_trend, "HOOK_TIMEOUT_SECONDS", 0)
@@ -536,7 +534,7 @@ class TestHookMode:
     def test_vanished_file_does_not_crash_collect(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Файл может исчезнуть между `glob` и `stat` — в report-режиме это был бы traceback."""
+        """A file can disappear between `glob` and `stat`—report mode would otherwise traceback."""
         transcripts = self._dir_with(tmp_path, [_line()])
         original = Path.stat
 
@@ -550,7 +548,7 @@ class TestHookMode:
         assert (files_seen, records) == (0, [])
 
     def test_ledger_survives_repeated_writes(self, tmp_path: Path) -> None:
-        """Запись ledger'а атомарна: усечённый файл — потеря всей базы сравнения."""
+        """Ledger writing is atomic: a truncated file loses the entire comparison base."""
         transcripts = self._dir_with(tmp_path, [_line()])
         ledger = tmp_path / "ledger.jsonl"
         run_hook({"source": "startup"}, transcripts, ledger)
@@ -562,10 +560,10 @@ class TestHookMode:
 
 
 class TestEmit:
-    """Вывод кириллицы не должен зависеть от кодовой страницы консоли (`CLAUDE.md` §Среда)."""
+    """Cyrillic output must not depend on the console code page (`CLAUDE.md` §Environment)."""
 
     class _Cp1252Stream:
-        """stdout, который роняет `print` на кириллице — ровно поведение Windows-консоли."""
+        """stdout that makes `print` fail on Cyrillic—the exact Windows console behavior."""
 
         def __init__(self) -> None:
             self.buffer = io.BytesIO()
@@ -585,7 +583,7 @@ class TestEmit:
 
 
 class TestLedgerLocation:
-    """Hook и report должны смотреть в один каталог, иначе история делится надвое."""
+    """Hook and report must use one directory, otherwise history splits in two."""
 
     @staticmethod
     def _run_hook_main(transcripts: Path, monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
@@ -596,7 +594,7 @@ class TestLedgerLocation:
     def test_hook_writes_ledger_beside_payload_transcripts(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Проводка `resolve_transcripts` в `main`: ledger ложится к тем же транскриптам."""
+        """`resolve_transcripts` wiring in `main`: the ledger sits with the same transcripts."""
         transcripts = tmp_path / "projects" / "slug"
         transcripts.mkdir(parents=True)
         (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
@@ -611,10 +609,10 @@ class TestLedgerLocation:
     def test_diverging_dirs_surface_anomaly(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Каталог из payload разошёлся со slug-правилом — оператора нельзя вести в пустоту.
+        """The payload directory diverged from the slug rule—the operator must not be led into emptiness.
 
-        `--report` (единственная инструкция, которую печатает алерт) читает по slug-правилу:
-        промолчав, мы отправили бы его в `нет каталога транскриптов` с кодом 1.
+        `--report` (the only instruction printed by the alert) reads by the slug rule; silence would send the
+        operator to `no transcript directory` with exit code 1.
         """
         real = tmp_path / "projects" / "real"
         real.mkdir(parents=True)
@@ -631,7 +629,7 @@ class TestLedgerLocation:
 
 
 class TestResolveTranscripts:
-    """`SessionStart` приносит `transcript_path` — самый частый путь не должен зависеть от slug'а."""
+    """`SessionStart` provides `transcript_path`—the most common path must not depend on the slug."""
 
     def test_payload_path_wins_over_slug_rule(self, tmp_path: Path) -> None:
         transcripts = tmp_path / "projects" / "slug"
@@ -648,7 +646,7 @@ class TestResolveTranscripts:
 
 
 class TestHookRegistration:
-    """Гард против мёртвого кода: метрика без автотриггера повторит судьбу eval'а (#361)."""
+    """Guard against dead code: a metric without an automatic trigger repeats eval’s fate (#361)."""
 
     @staticmethod
     def _session_start_hooks() -> list[dict]:
@@ -668,12 +666,12 @@ class TestHookRegistration:
         return [hook.get("command", "") for hook in cls._session_start_hooks()]
 
     def test_hook_declares_timeout(self) -> None:
-        """Разбор окна транскриптов — плата wall-clock в каждой сессии: ограничена явно."""
+        """Parsing the transcript window costs wall-clock time in every session: it is explicitly bounded."""
         ours = [h for h in self._session_start_hooks() if "token_trend.py" in h.get("command", "")]
         assert ours and all(isinstance(hook.get("timeout"), int) for hook in ours)
 
     def test_declared_timeout_matches_the_code(self) -> None:
-        """Скрипт предупреждает о приближении к лимиту — значит должен знать его величину."""
+        """The script warns when approaching the limit, so it must know the limit value."""
         ours = [h for h in self._session_start_hooks() if "token_trend.py" in h.get("command", "")]
         assert all(h["timeout"] == token_trend.HOOK_TIMEOUT_SECONDS for h in ours)
 
@@ -681,13 +679,13 @@ class TestHookRegistration:
         assert any("token_trend.py" in command for command in self._session_start_commands())
 
     def test_registered_in_hook_mode(self) -> None:
-        """Без `--hook` скрипт печатал бы таблицу в контекст каждой сессии."""
+        """Without `--hook`, the script would print a table into every session context."""
         commands = [c for c in self._session_start_commands() if "token_trend.py" in c]
         assert all("--hook" in command for command in commands)
 
 
 def _alerting_lines() -> list[str]:
-    """Набор веток, на котором детектор обязан сказать `grown`."""
+    """A branch set for which the detector must report `grown`."""
     lines = []
     for i in range(5):
         lines.append(
@@ -711,7 +709,7 @@ def _alerting_lines() -> list[str]:
 
 
 class TestFormatReport:
-    """Главный человекочитаемый выход метрики — под тестом, а не «тонкий I/O»."""
+    """The metric’s main human-readable output is tested, not treated as “thin I/O.”"""
 
     def test_lists_branches_and_verdict(self) -> None:
         stats = [_stats("issue-1-a", turns=4, per_turn=25_000)]
@@ -720,7 +718,7 @@ class TestFormatReport:
         assert "вердикт" in text
 
     def test_shows_sidechain_share(self) -> None:
-        """Субагенты — отдельная строка расхода, иначе непонятно, что чинить."""
+        """Subagents are a separate cost line; otherwise it is unclear what to fix."""
         stats = [
             BranchStats(
                 branch="issue-1-a",
@@ -738,7 +736,7 @@ class TestFormatReport:
         assert "sidechain" in format_report(stats, detect_growth(stats), []).lower()
 
     def test_turnless_branch_shows_dash_not_zero(self) -> None:
-        """`per-turn 0.0k` рядом с непустым `effective` читается как «ветка бесплатная»."""
+        """`per-turn 0.0k` beside a non-empty `effective` reads as “the branch is free.”"""
         stats = [
             BranchStats(
                 branch="issue-subagents-only",
@@ -764,7 +762,7 @@ class TestFormatReport:
 
 
 class TestReportMode:
-    """`--report` обещан оператору в алерте: неизвестный флаг отправил бы его в тупик."""
+    """`--report` is promised to the operator in the alert: an unknown flag would lead to a dead end."""
 
     def test_report_flag_accepted(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
@@ -778,10 +776,10 @@ class TestReportMode:
         assert "issue-1-a" in capsys.readouterr().out
 
     def test_alert_names_a_flag_the_cli_accepts(self) -> None:
-        """Гард против расхождения текста алерта и реального интерфейса.
+        """Guard against alert text diverging from the real interface.
 
-        В момент, ради которого метрика заведена, алерт не должен отправлять оператора
-        в `unrecognized arguments`.
+        At the moment the metric was created for, the alert must not send the operator to
+        `unrecognized arguments`.
         """
         old = [_stats(f"issue-o{i}", per_turn=1_000, first=f"2026-07-0{i + 1}") for i in range(5)]
         new = [_stats(f"issue-n{i}", per_turn=500_000, first=f"2026-08-0{i + 1}") for i in range(5)]
@@ -797,7 +795,7 @@ class TestExitCodes:
     def test_hook_exits_zero_even_when_alerting(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """`SessionStart` отдаёт stdout в контекст только на exit 0 — ненулевой код съел бы алерт."""
+        """`SessionStart` returns stdout to context only on exit 0—a nonzero code would swallow the alert."""
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
         (transcripts / "a.jsonl").write_text("\n".join(_alerting_lines()), encoding="utf-8")
@@ -810,10 +808,10 @@ class TestExitCodes:
     def test_hook_exits_zero_on_corrupt_ledger(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Невалидный байт в ledger'е — `UnicodeDecodeError`, а это не `OSError`.
+        """An invalid byte in the ledger is `UnicodeDecodeError`, not `OSError`.
 
-        Падение происходит до `write_ledger`, поэтому файл никогда не перезапишется: хук
-        выдавал бы «hook error» каждую сессию, и метрика не могла бы самовылечиться.
+        Failure occurs before `write_ledger`, so the file is never rewritten: the hook would report
+        “hook error” every session and the metric could not self-heal.
         """
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
@@ -827,10 +825,10 @@ class TestExitCodes:
     def test_ledger_with_wrong_field_types_is_an_anomaly_and_gets_repaired(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """`"turns": "12"` проходил конструктор и ронял `merge_ledger` — до `write_ledger`.
+        """`"turns": "12"` passed the constructor and crashed `merge_ledger`—before `write_ledger`.
 
-        Значит файл не переписывался никогда: метрика умирала навсегда. Битая запись должна
-        быть штатной аномалией, тогда ledger лечится сам на следующем же старте.
+        Thus the file was never rewritten and the metric died forever. A malformed record must be a normal
+        anomaly, so the ledger heals itself on the next startup.
         """
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
@@ -869,7 +867,7 @@ class TestExitCodes:
     def test_unexpected_failure_is_reported_to_stdout(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """На exit 0 канал в контекст — stdout; stderr пользователь увидит только на ошибке."""
+        """On exit 0 the channel to context is stdout; the user sees stderr only on failure."""
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
         (transcripts / "a.jsonl").write_text(_line(), encoding="utf-8")
@@ -887,7 +885,7 @@ class TestExitCodes:
     def test_hook_exits_zero_when_stdout_is_closed(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Закрытый stdout — тот же режим отказа, что описан в докстринге `emit`."""
+        """Closed stdout is the same failure mode described in `emit`’s docstring."""
         transcripts = tmp_path / "projects"
         transcripts.mkdir()
         (transcripts / "a.jsonl").write_text("\n".join(_alerting_lines()), encoding="utf-8")

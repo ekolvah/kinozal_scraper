@@ -1,4 +1,4 @@
-"""Fail-fast валидация sources.json + макросы (validate_sources_config)."""
+"""Fail-fast sources.json validation and macros (validate_sources_config)."""
 
 from __future__ import annotations
 

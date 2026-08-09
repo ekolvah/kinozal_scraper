@@ -1,4 +1,4 @@
-"""Notifier Protocol: отправка в Telegram + InMemoryNotifier."""
+"""Notifier Protocol: Telegram delivery and InMemoryNotifier."""
 
 from __future__ import annotations
 
@@ -158,13 +158,13 @@ class TelegramNotifier:
                 continue
             if resp.status_code == 400:
                 return False
-            # 5xx и прочие неожиданные статусы: ретрай с паузой
+            # 5xx and other unexpected statuses: retry after a delay.
             time.sleep(1)
         return False
 
 
 class InMemoryNotifier:
-    """Test double. Контролируемые сбои через fail_ids (send_items) / fail_text (send_text)."""
+    """Test double. Control failures with fail_ids (send_items) / fail_text (send_text)."""
 
     def __init__(self, fail_ids: set[str] | None = None, fail_text: bool = False) -> None:
         self.sent: list[Notification] = []

@@ -1,4 +1,4 @@
-"""Общий слой пайплайна: NormalizedItem, PipelineResult, extract_from_*."""
+"""Shared pipeline layer: NormalizedItem, PipelineResult, extract_from_*."""
 
 from __future__ import annotations
 
@@ -309,7 +309,7 @@ _PLACEHOLDER_RE = re.compile(r"\{(\w+)\}")
 @dataclass
 class Notification:
     id: str  # = NormalizedItem.dedupe_key
-    text: str  # готовый HTML-текст для Telegram
+    text: str  # Ready HTML text for Telegram.
     image_url: str = ""
 
 

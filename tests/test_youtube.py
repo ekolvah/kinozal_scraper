@@ -1,14 +1,13 @@
-"""RED tests for #140: retrieval refactor — `search_candidates` (пул кандидатов).
+"""RED tests for #140: retrieval refactor — `search_candidates` (candidate pool).
 
-`youtube.py` перестаёт отдавать первый url и начинает возвращать `list[Candidate]`
-со snippet-полями. Пул = union запроса по RU + оригинальному названию (retrieval
-breadth под #315), дедуп по `video_id`, БЕЗ year/title-фильтра (фильтр — забота
-selection, `FirstResultStrategy`, не retrieval). Сбой одной ветки union не роняет
-retrieval — best-effort (§IV), но падение ВСЕХ веток = отказ retrieval и поднимает
-`TrailerRetrievalError` (#383): пустой пул от 429 неотличим от честного «ничего не
-нашлось», и в прогоне 2026-07-25 это дало 74 фальшивых «no trailer found». Клиент
-инъектируется, чтобы harness переиспользовал тот же retrieval (§II — убирает дубль
-`eval_trailers._search_candidates`).
+`youtube.py` stops returning the first URL and returns `list[Candidate]` with snippet fields.
+The pool is the union of RU and original-title queries (retrieval breadth under #315), deduplicated
+by `video_id`, WITHOUT year/title filtering (filtering belongs to selection, `FirstResultStrategy`,
+not retrieval). Failure of one union branch does not fail retrieval—best effort (§IV), but failure of
+ALL branches is retrieval failure and raises `TrailerRetrievalError` (#383): a pool empty from 429 is
+indistinguishable from an honest “nothing found,” producing 74 false “no trailer found” outcomes in the
+2026-07-25 run. The client is injected so the harness reuses the same retrieval (§II—removes the
+`eval_trailers._search_candidates` duplicate).
 """
 
 from __future__ import annotations
@@ -37,13 +36,12 @@ def _video_item(video_id: str, title: str, **snippet: str) -> dict[str, Any]:
 
 
 class _FakeClient:
-    """Минимальный дубль googleapiclient youtube-resource: `.search().list(**p).execute()`.
+    """Minimal googleapiclient youtube-resource double: `.search().list(**p).execute()`.
 
-    `by_needle` — список (подстрока-запроса → items | Exception); первая, чья
-    подстрока входит в `q`, определяет ответ. Exception → поднимается на execute()
-    (симулирует сбой одной ветки union). Матч по подстроке (не по точному запросу)
-    держит тест устойчивым к формату query-строки — контракт лишь «название входит
-    в запрос»."""
+    `by_needle` is a list (query substring → items | Exception); the first whose substring
+    occurs in `q` determines the response. Exception → raised from execute() (simulates one
+    union-branch failure). Substring matching rather than exact-query matching keeps the test
+    resilient to query-string format—the contract is only “title is included in the query.”"""
 
     def __init__(self, by_needle: list[tuple[str, Any]]) -> None:
         self.by_needle = by_needle
@@ -104,10 +102,9 @@ class TestSearchCandidates:
         ]
 
     def test_html_entities_decoded(self) -> None:
-        # #412: YouTube отдаёт snippet HTML-escaped, а матчинг названия работает
-        # по токенам — `&#39;` превращается в токен `39`, `&amp;` в `amp`, и
-        # фраза рвётся (`Deadpool & Wolverine` не находит `Deadpool &amp;
-        # Wolverine`). Декодируем на границе протокола, а не в normalize_title.
+        # #412: YouTube returns HTML-escaped snippets, while title matching operates on tokens—
+        # `&#39;` becomes token `39`, `&amp;` becomes `amp`, and the phrase breaks (`Deadpool & Wolverine`
+        # does not find `Deadpool &amp; Wolverine`). Decode at the protocol boundary, not normalize_title.
         client = _FakeClient(
             [
                 (
@@ -130,10 +127,9 @@ class TestSearchCandidates:
         assert candidate.channel == "PlayStation & Insomniac"
 
     def test_logs_actual_queries(self, caplog: Any) -> None:
-        # §IV (#412 review): запрос — единственное место, где видно, что пайплайн
-        # счёл названием. По таким строкам нашли #385; после удаления per-run
-        # классификации листингов новый служебный литерал во 2-м сегменте иначе
-        # уехал бы в YouTube молча, а исход был бы неотличим от честного промаха.
+        # §IV (#412 review): the query is the only place showing what the pipeline considered a title.
+        # These lines found #385; after per-run listing classification was removed, a new service literal in
+        # segment two would otherwise silently reach YouTube and be indistinguishable from an honest miss.
         client = _FakeClient([("Волк", [_video_item("v1", "Волк 2025 трейлер")])])
         profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
         with caplog.at_level(logging.INFO, logger="kinozal_scraper.youtube"):
@@ -143,7 +139,7 @@ class TestSearchCandidates:
         assert "The Wolf 2025 trailer" in logged
 
     def test_pool_unions_ru_and_original_queries(self) -> None:
-        # Ядро #315: RU-трейлер обязан оказаться в пуле рядом с англ., когда он есть.
+        # #315 core: an RU trailer must enter the pool beside English when it exists.
         client = _FakeClient(
             [
                 ("Волк", [_video_item("ru_wolf", "Волк 2025 трейлер на русском")]),
@@ -155,7 +151,7 @@ class TestSearchCandidates:
         assert ids == {"ru_wolf", "eng_wolf"}
 
     def test_dedups_video_id_across_union(self) -> None:
-        # Одно видео найдено обоими запросами → один Candidate, не два.
+        # One video found by both queries → one Candidate, not two.
         dup = _video_item("same", "Волк / The Wolf 2025 trailer")
         client = _FakeClient([("Волк", [dup]), ("The Wolf", [dup])])
         profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
@@ -163,15 +159,14 @@ class TestSearchCandidates:
         assert [c.video_id for c in result] == ["same"]
 
     def test_single_query_when_ru_equals_original(self) -> None:
-        # Нет отдельного оригинала → один запрос, не два (экономия YouTube-квоты).
+        # No separate original → one query, not two (saves YouTube quota).
         client = _FakeClient([("Дюна", [_video_item("v1", "Дюна 2024 трейлер")])])
         profile = FilmProfile(ru_title="Дюна", original_title="Дюна", year=2024)
         search_candidates(client, profile)
         assert len(client.queries) == 1
 
     def test_one_query_failure_still_returns_other_pool(self) -> None:
-        # Сбой одной ветки union (§IV best-effort) не должен ронять retrieval —
-        # отдаём кандидатов уцелевшей ветки.
+        # One union-branch failure (§IV best effort) must not fail retrieval—return candidates from the surviving branch.
         client = _FakeClient(
             [
                 ("Волк", [_video_item("ru_wolf", "Волк 2025 трейлер")]),
@@ -183,9 +178,9 @@ class TestSearchCandidates:
         assert ids == {"ru_wolf"}
 
     def test_all_branches_failed_raises(self) -> None:
-        # #383: пока падает ОДНА ветка — best-effort (тест выше). Когда падают ВСЕ,
-        # пул пуст не потому, что трейлера нет, а потому что retrieval не состоялся;
-        # молча вернуть [] значит выдать инфраструктурный отказ за честный промах.
+        # #383: while ONE branch fails, use best effort (test above). When ALL fail, the pool is empty not
+        # because there is no trailer, but because retrieval did not happen; silently returning [] misreports
+        # infrastructure failure as an honest miss.
         client = _FakeClient(
             [
                 ("Волк", RuntimeError("YouTube 429 rateLimitExceeded")),
@@ -197,24 +192,23 @@ class TestSearchCandidates:
             search_candidates(client, profile)
 
     def test_single_branch_failure_raises_when_titles_collapse(self) -> None:
-        # ru_title == original_title → ветка всего одна, поэтому её падение и есть
-        # «упали все». Иначе тот же 429 читался бы как miss ровно для фильмов без
-        # отдельного оригинального названия.
+        # ru_title == original_title → there is only one branch, so its failure means
+        # “all failed.” Otherwise the same 429 reads as a miss specifically for films without a separate original title.
         client = _FakeClient([("Дюна", RuntimeError("YouTube 429 rateLimitExceeded"))])
         profile = FilmProfile(ru_title="Дюна", original_title="Дюна", year=2024)
         with pytest.raises(TrailerRetrievalError):
             search_candidates(client, profile)
 
     def test_no_year_filter_in_retrieval(self) -> None:
-        # Retrieval = чистый breadth: кандидат с «чужим» годом в title остаётся в
-        # пуле (год-фильтр — забота selection FirstResultStrategy, не retrieval).
+        # Retrieval = pure breadth: a candidate with a “foreign” year in title remains in
+        # the pool (year filtering belongs to FirstResultStrategy selection, not retrieval).
         client = _FakeClient([("Дюна", [_video_item("v_old", "Дюна 2015 трейлер")])])
         profile = FilmProfile(ru_title="Дюна", original_title="Дюна", year=2024)
         ids = [c.video_id for c in search_candidates(client, profile)]
         assert ids == ["v_old"]
 
     def test_skips_non_video_items(self) -> None:
-        # search.list может вернуть channel/playlist — берём только youtube#video.
+        # search.list can return channel/playlist—take only youtube#video.
         client = _FakeClient(
             [
                 (
@@ -231,9 +225,8 @@ class TestSearchCandidates:
 
 
 class _Resp:
-    """Носитель статуса для настоящего `HttpError` (у httplib2-ответа нужны только
-    `.status`/`.reason`). Реальность, которую пинят тесты ниже, — не транспорт, а
-    форма тела: где именно лежит машинный код причины."""
+    """Status carrier for a real `HttpError` (an httplib2 response needs only `.status`/`.reason`).
+    The reality pinned by the tests below is not transport but body shape: where the machine reason code lives."""
 
     def __init__(self, status: int, reason: str = "") -> None:
         self.status = status
@@ -244,9 +237,8 @@ def _http_error(status: int, body: dict[str, Any]) -> HttpError:
     return HttpError(_Resp(status), json.dumps(body).encode("utf-8"))
 
 
-# Настоящие тела ответов YouTube Data API. Legacy-форма (`error.errors[]`) — та,
-# что пришла в прогоне 30143534431; ErrorInfo (`error.details[]`) — новая, куда
-# Google мигрирует, и код причины там в SCREAMING_SNAKE.
+# Real YouTube Data API response bodies. Legacy form (`error.errors[]`) came in run 30143534431;
+# ErrorInfo (`error.details[]`) is the new form Google is migrating to, with reason code in SCREAMING_SNAKE.
 _RATE_LIMIT_429 = {
     "error": {
         "code": 429,
@@ -303,8 +295,8 @@ _FORBIDDEN_403 = {
 
 
 class TestQuotaDetection:
-    """#384: остановка по первому квотному отказу требует отличать «квота кончилась»
-    от «сервер моргнул» — иначе один 500 глушил бы трейлеры на весь прогон."""
+    """#384: stopping on the first quota failure requires distinguishing “quota exhausted”
+    from “server flickered”—otherwise one 500 suppresses trailers for the whole run."""
 
     @pytest.mark.parametrize(
         ("body", "status"),
@@ -313,21 +305,20 @@ class TestQuotaDetection:
     def test_predicate_matches_real_googleapiclient_httperror(
         self, body: dict[str, Any], status: int
     ) -> None:
-        # Reality-anchor: собран настоящий HttpError, а не дубль. Пинится
-        # `error_details`, а НЕ `.reason`: в googleapiclient `self.reason =
-        # data["error"]["message"]` — человеческий текст («Rate Limit Exceeded»),
-        # который Google волен переписать, машинный же код живёт в error_details.
+        # Reality anchor: construct a real HttpError, not a double. Pin `error_details`, NOT `.reason`:
+        # googleapiclient sets `self.reason = data["error"]["message"]`, human text Google can rewrite,
+        # while the machine code lives in error_details.
         assert _is_quota_error(_http_error(status, body)) is True
 
     @pytest.mark.parametrize(("body", "status"), [(_BACKEND_500, 500), (_FORBIDDEN_403, 403)])
     def test_predicate_ignores_non_quota_httperror(self, body: dict[str, Any], status: int) -> None:
-        # 403 без usageLimits-причины — отказ доступа, не квота: остановка прогона
-        # тут была бы ложной. Статуса самого по себе для решения не хватает.
+        # 403 without a usageLimits reason is access denial, not quota: stopping the run would be false.
+        # Status alone is insufficient for the decision.
         assert _is_quota_error(_http_error(status, body)) is False
 
     def test_predicate_survives_body_without_machine_reason(self) -> None:
-        # `error_details` бывает строкой (в теле только `message`) — предикат обязан
-        # ответить «не квота», а не упасть на строке вместо списка.
+        # `error_details` can be a string (body has only `message`)—the predicate must answer
+        # “not quota,” not fail by treating a string as a list.
         assert _is_quota_error(_http_error(429, {"error": {"message": "boom"}})) is False
 
     def test_all_branches_quota_failure_raises_quota_exhausted(self) -> None:
@@ -338,9 +329,8 @@ class TestQuotaDetection:
             search_candidates(client, profile)
 
     def test_mixed_branch_failures_prefer_the_quota_signal(self) -> None:
-        # Квота уже кончилась — то, что вторая ветка успела упасть по другой причине,
-        # этого не отменяет. Выбор по «последнему отказу» потерял бы сигнал и заставил
-        # следующий фильм открывать его заново.
+        # Quota is already exhausted; a second branch failing for another reason does not undo that.
+        # Selecting the “last failure” loses the signal and makes the next film rediscover it.
         client = _FakeClient(
             [
                 ("Волк", _http_error(429, _RATE_LIMIT_429)),
@@ -352,7 +342,7 @@ class TestQuotaDetection:
             search_candidates(client, profile)
 
     def test_generic_failure_raises_plain_retrieval_error(self) -> None:
-        # Сетевой сбой ≠ исчерпанная квота: он роняет один фильм (#383), а не прогон.
+        # Network failure ≠ exhausted quota: it fails one film (#383), not the run.
         client = _FakeClient([("Волк", RuntimeError("boom")), ("The Wolf", RuntimeError("boom"))])
         profile = FilmProfile(ru_title="Волк", original_title="The Wolf", year=2025)
         with pytest.raises(TrailerRetrievalError) as excinfo:

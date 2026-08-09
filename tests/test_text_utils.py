@@ -1,9 +1,9 @@
 """RED tests for #141: normalize_title / has_cyrillic pure helpers.
 
-Обе — вспомогательные для language-aware пред-фильтра (`HeuristicStrategy`):
-`normalize_title` даёт устойчивый substring-матч названия, `has_cyrillic` —
-первичный языковой сигнал (#315 RU>EN). Живут в text_utils рядом с
-`title_year_matches` (§II — общая title-логика не переизобретается).
+Both support the language-aware prefilter (`HeuristicStrategy`):
+`normalize_title` provides stable title substring matching and `has_cyrillic`
+provides the primary language signal (#315 RU>EN). They live beside
+`title_year_matches` so shared title logic is not reinvented (§II).
 """
 
 from __future__ import annotations
@@ -30,14 +30,11 @@ class TestHasCyrillic(unittest.TestCase):
 
 
 class TestOriginalTitle(unittest.TestCase):
-    """#412: второй ` / `-сегмент — оригинальное название ИЛИ служебный токен.
+    """#412: the second ` / ` segment is an original title or service token.
 
-    #385 отличал их по категории листинга (`t=7` → оригинала нет), из-за чего у
-    локализованных игр терялось настоящее английское название и в YouTube уходил
-    только русский запрос, которого там не существует. Дискриминатор переезжает
-    в саму грамматику заголовка: служебные формы перечислены по замеру всех 3764
-    raw-заголовков из Sheets — `x64` (888), `RU` (139), `EN` (1); ничего иного
-    служебного во второй позиции не встречается.
+    Listing category alone lost real English names for localized games (#385).
+    The title grammar now distinguishes the exact service forms observed across
+    all 3,764 raw Sheets titles: `x64` (888), `RU` (139), and `EN` (1).
     """
 
     _GAME_RAW = (
@@ -46,8 +43,7 @@ class TestOriginalTitle(unittest.TestCase):
     )
 
     def test_service_segment_is_not_original(self) -> None:
-        # `x86`/`x32` в выгрузке не встретились, но названы грамматикой #385 —
-        # держим в наборе форм, чтобы первая же такая раздача не поехала мусором.
+        # `x86`/`x32` were absent from the sample but are part of #385's grammar.
         cases = [
             "S.T.A.L.K.E.R. 2 / x64 / RU / Action / 2024 / Portable / PC (Windows)",
             "Old Game / x86 / RU / Action / 2004 / PC (Windows)",
@@ -61,20 +57,19 @@ class TestOriginalTitle(unittest.TestCase):
                 self.assertEqual(original_title(raw), "")
 
     def test_localised_game_keeps_original(self) -> None:
-        # Характеризация: у локализованной игры оригинал есть и он во 2-м сегменте
-        # — целиком, со скобочным суффиксом издания (его снимает уже матчинг).
+        # The complete original title occupies the second segment; later matching
+        # removes the parenthesized edition suffix.
         self.assertEqual(
             original_title(self._GAME_RAW), "Marvel's Spider-Man 2 (Digital Deluxe Edition)"
         )
 
     def test_film_segment_unchanged(self) -> None:
-        # Характеризация: фильмовая грамматика правкой не задета.
+        # Characterization: the film-title grammar remains unchanged.
         self.assertEqual(original_title("Гнев / Man on Fire / 2026 / WEB-DLRip"), "Man on Fire")
 
     def test_short_film_title_is_not_service(self) -> None:
-        # Замер: короткие 2-е сегменты у не-игровых — настоящие названия
-        # (`Silo`, `From`, `Halo`, `Apex`), поэтому дискриминатор — точный
-        # литерал, а не эвристика «короткий → служебный».
+        # Short non-game second segments are real titles, so discriminate by exact
+        # literals rather than a "short means service" heuristic.
         self.assertEqual(original_title("Укрытие (1 сезон) / Silo / 2023 / WEB-DLRip"), "Silo")
 
 

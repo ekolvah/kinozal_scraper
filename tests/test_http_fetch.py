@@ -288,11 +288,10 @@ class TestFetchRetry(unittest.TestCase):
     def test_fetch_html_gives_up_after_max_attempts_reraises(
         self, sleep: unittest.mock.Mock
     ) -> None:
-        # Характеризация быстрой политики (#396). Расписание пиньется здесь, а не
-        # только число попыток: рядом теперь живёт медленный режим, и «поправил
-        # заодно и общий» — самая дешёвая по опечатке и самая дорогая по последствиям
-        # ошибка. 1+2+4 = ~7 с — то самое окно, из-за которого 4 попытки бьют в одно
-        # решение Cloudflare и считаются за один бросок.
+        # Characterize the fast policy (#396). Pin the schedule, not only the
+        # attempt count: the slow mode now sits beside it, so a casual shared edit
+        # would be cheap to make and costly in production. The 1+2+4 ~= 7-second
+        # window makes four attempts hit one Cloudflare decision.
         with (
             unittest.mock.patch(
                 "kinozal_scraper.http_fetch.requests.get",
@@ -372,10 +371,10 @@ class TestFetchRetry(unittest.TestCase):
 
 
 class TestPatientHtml(unittest.TestCase):
-    """soldout тянет HTML разнесёнными попытками; постеры остаются на быстром пути (#396).
+    """Soldout spreads HTML retries while posters stay on the fast path (#396).
 
-    Разделение существенно: медленная политика умножается на число items, и перевод
-    постеров на неё оборвал бы прогон по таймауту вместо того, чтобы его спасти.
+    The split matters because the slow policy multiplies by item count. Applying
+    it to posters would time out the run instead of saving it.
     """
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
@@ -391,8 +390,8 @@ class TestPatientHtml(unittest.TestCase):
         self.assertEqual(mget.call_count, 24)
 
     def test_fetch_html_patient_uses_the_shared_kwargs(self) -> None:
-        # Анти-дрейф: медленный путь обязан ходить теми же kwargs, что быстрый,
-        # иначе «то же самое, только терпеливее» тихо перестанет быть правдой.
+        # Anti-drift: the slow path must use the fast path's kwargs so it remains
+        # the same operation with a more patient schedule.
         with unittest.mock.patch(
             "kinozal_scraper.http_fetch.requests.get", return_value=_ok_html()
         ) as mget:
@@ -402,8 +401,8 @@ class TestPatientHtml(unittest.TestCase):
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_fetch_bytes_stays_on_the_fast_transport(self, _sleep: unittest.mock.Mock) -> None:
-        # Preservation guard: самая вероятная ошибка при правке — «перевести заодно
-        # и постеры». 24 попытки × 12 мин на каждый item съели бы job целиком.
+        # Preservation guard: spreading poster retries would spend 24 attempts
+        # times 12 minutes on every item and consume the entire job.
         with (
             unittest.mock.patch(
                 "kinozal_scraper.http_fetch.requests.get",

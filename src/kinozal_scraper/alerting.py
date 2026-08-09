@@ -1,21 +1,21 @@
-"""Operator-facing reporting — канонический дом (#310, расширен в #459).
+"""Operator-facing reporting — canonical domain (#310, expanded in #459).
 
-Два канала одного концерна «что оператор узнаёт о прогоне»: **алерты** о сбоях
-(Telegram) и **сводка** прогона (лог + GitHub Actions Step Summary). Транспорт
-разный, потребитель один, поэтому дома тоже один — отдельный модуль под сводку
-стоил бы строки в `project-map.md`, тест-файла и раздела доков без выигрыша.
+Two channels answer what an operator learns about a run: failure **alerts**
+(Telegram) and a run **summary** (log + GitHub Actions Step Summary). They have
+different transports but one consumer, so they share a home; a separate summary
+module would add a project-map entry, test file, and documentation section with no gain.
 
-Алертная половина собирает воедино то, что раньше жило только в `telegram_summarizer`: маркер
-`.run/technical_alert_sent` (гейтит generic curl-fallback в `run-script.yml`),
-доставку текста алерта и — новое — читаемый per-source алерт для скрейпинг-
-пайплайнов (`source_id: <ошибка>` вместо немого «run failed + link»).
+The alert half consolidates what previously lived only in `telegram_summarizer`:
+the `.run/technical_alert_sent` marker (which gates generic curl fallback in
+`run-script.yml`), alert-text delivery, and readable per-source scraping-pipeline
+alerts (`source_id: <error>` rather than silent “run failed + link”).
 
-**Топология маркера — job-global.** Все скрейперы + summarizer идут
-последовательными шагами одного GH-job'а с общим workspace; единственный
-потребитель маркера — guard curl-шага `hashFiles(...) == ''`. Поэтому маркер
-означает «≥1 богатый алерт доставлен за этот run», а не «этот шаг доставил».
-При провале доставки 2-го+ алерта backstop — красный run + логи (§III), не curl
-(architect-review B1). Никакой per-step marker-инфры сознательно нет.
+**Marker topology is job-global.** All scrapers and the summarizer run as sequential
+steps in one GH job with a shared workspace; the only consumer is the curl-step guard
+`hashFiles(...) == ''`. The marker therefore means “≥1 rich alert was delivered in this
+run,” not “this step delivered one.” If delivery of a second or later alert fails, the
+backstop is a red run and logs (§III), not curl (architect-review B1). Per-step marker
+infrastructure is deliberately absent.
 """
 
 from __future__ import annotations
@@ -118,11 +118,12 @@ def publish_run_summary(results: list[PipelineResult]) -> None:
 
 
 def format_pipeline_failures(results: list[PipelineResult]) -> str:
-    """Читаемый per-source алерт: `source_id: <первая ошибка>` по каждому failed.
+    """Readable per-source alert: `source_id: <first error>` for each failure.
 
-    Сиблинг `telegram_summarizer.format_technical_alert`, но по `PipelineResult`
-    (`source_id` + `errors`), а не `ChannelProcessResult`. HTML-эскейп — Telegram
-    `parse_mode=HTML` (иначе `<`/`&` в ошибке ломают parser).
+    Sibling of `telegram_summarizer.format_technical_alert`, but operates on
+    `PipelineResult` (`source_id` + `errors`) rather than `ChannelProcessResult`.
+    HTML escaping is required for Telegram `parse_mode=HTML` so `<`/`&` in errors
+    cannot break its parser.
     """
     failed = [r for r in results if not r.ok]
     lines = [
@@ -142,9 +143,9 @@ def format_pipeline_failures(results: list[PipelineResult]) -> str:
 
 
 def format_config_rejection_alert(models: frozenset[str]) -> str:
-    """Читаемый алерт про систематический config-reject Gemini (#340): модели
-    отвергли наш запрос `400 INVALID_ARGUMENT` — это баг запроса, не quota. HTML-
-    эскейп для Telegram `parse_mode=HTML`. Сиблинг `format_pipeline_failures`."""
+    """Readable alert for systematic Gemini config rejection (#340): models rejected
+    our request with `400 INVALID_ARGUMENT`, a request bug rather than quota. HTML
+    escaping supports Telegram `parse_mode=HTML`. Sibling of `format_pipeline_failures`."""
     lines = [
         "⚠️ Gemini config-reject",
         "Модель(и) отвергли запрос (400 INVALID_ARGUMENT) — баг запроса, не quota. "
@@ -156,13 +157,13 @@ def format_config_rejection_alert(models: frozenset[str]) -> str:
 
 
 def alert_config_rejections(notifier: Any, enricher: Any) -> bool:
-    """Если энричер (ротатор) накопил `config_rejected_models`, доставить
-    операторский алерт + пометить technical-marker; вернуть, был ли алерт.
+    """If the enricher (rotator) accumulated `config_rejected_models`, deliver an
+    operator alert, mark the technical marker, and report whether it was sent.
 
-    Caller делает `if alert_config_rejections(...) | report_failures(...): sys.exit(1)`
-    — §IV: систематический config-reject доходит до оператора и краснит джоб, хотя
-    ротация уже доставила уведомления (#340). `getattr` защищает не-ротатор
-    (`NullEnricher`/`GeminiEnricher` не имеют свойства → пусто → False)."""
+    Caller uses `if alert_config_rejections(...) | report_failures(...): sys.exit(1)`:
+    §IV makes systematic config rejection visible to the operator and redens the job
+    although rotation has delivered notifications (#340). `getattr` supports a
+    non-rotator (`NullEnricher`/`GeminiEnricher` lack the property → empty → False)."""
     models: frozenset[str] = getattr(enricher, "config_rejected_models", frozenset())
     if not models:
         return False
@@ -175,12 +176,12 @@ def alert_config_rejections(notifier: Any, enricher: Any) -> bool:
 
 
 def report_failures(notifier: Any, results: list[PipelineResult]) -> bool:
-    """Отправить читаемый алерт по failed-результатам; вернуть, были ли сбои.
+    """Send a readable alert for failed results; return whether failures occurred.
 
-    Caller делает `if report_failures(...): sys.exit(1)` — §IV exit-код сохранён.
-    Маркер ставится ТОЛЬКО при успешной доставке (зеркалит `deliver_results`):
-    при провале `send_text` маркер не пишется, curl-fallback остаётся сетью для
-    этого первого недоставленного алерта, а сам сбой виден в ERROR-логе.
+    Caller uses `if report_failures(...): sys.exit(1)`; §IV preserves the exit code.
+    Mark only successful delivery (mirroring `deliver_results`): after `send_text`
+    fails, do not write the marker, leave curl fallback available for that first
+    undelivered alert, and expose the failure in the ERROR log.
     """
     failed = [r for r in results if not r.ok]
     if not failed:

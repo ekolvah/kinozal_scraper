@@ -1,28 +1,26 @@
 """Anti-drift guards for the cloud review gate (`.github/workflows/agent-review.yml`, #374).
 
-Статический YAML-гард: ни сети, ни кредов — жанр `tests/test_workflow_isolation.py`
-и `tests/test_settings_deny.py`.
+Static YAML guard: no network or credentials — the style of `tests/test_workflow_isolation.py`
+and `tests/test_settings_deny.py`.
 
-**Что стережём.** Промпт cloud-ревьюера содержал severity-фильтр НА СТАДИИ ПОИСКА
-(«Skip nitpicks — ruff handles formatting/lint»). Начиная с Opus 4.7 модели следуют
-такому буквально: находка делается, оценивается ниже планки и молча не публикуется,
-а отфильтрованная находка неотличима от её отсутствия (§IV). Второй экземпляр того
-же дефекта жил на стадии ОТЧЁТА: `post exactly "✅ … no blocking issues found."`
-запрещал дописывать к сводке should-fix находки. Оба класса дают пропущенный
-ревьюером баг — приоритет (1) цель-функции, поэтому гард оправдан: регресс
-корректностный, не resource-only (критерий — `docs/architecture/testing.md`,
-«when a test is NOT worth writing»).
+**What it guards.** The cloud-reviewer prompt contained a severity filter AT THE DISCOVERY STAGE
+(“Skip nitpicks — ruff handles formatting/lint”). Since Opus 4.7, models follow this literally:
+a finding is made, rated below the threshold, and silently not published, while a filtered finding
+is indistinguishable from its absence (§IV). A second instance of the same defect existed at the
+REPORTING stage: `post exactly "✅ … no blocking issues found."` prohibited adding should-fix
+findings to the summary. Both classes produce a reviewer-missed bug — priority (1) of the objective
+function, so the guard is justified: the regression concerns correctness, not resources only
+(criterion: `docs/architecture/testing.md`, “when a test is NOT worth writing”).
 
-**Границы гарда, честно.** Он ловит ИЗВЕСТНУЮ ФОРМУ дефекта (императив подавления
-в начале строки, gag-строка сводки) и НАЛИЧИЕ coverage-first контракта (severity +
-confidence). Переформулировку фильтра другими словами («be selective», «only report
-what matters») exit-code не поймает — семантику промпта скриптом не проверить; её
-держат проза `docs/architecture/ci.md` и architect-review. Ledger
-`docs/architecture/coverage-gaps.md` не пополняется:
-ограничена глубина покрытия, а не отклонено покрытие.
+**Guard boundaries, honestly.** It catches the KNOWN DEFECT FORM (a suppression imperative at the
+start of a line, a summary gag line) and the PRESENCE of the coverage-first contract (severity +
+confidence). An alternative wording of the filter (“be selective”, “only report what matters”) will
+not be caught by an exit code — a script cannot check prompt semantics; `docs/architecture/ci.md`
+prose and architect review uphold it. The `docs/architecture/coverage-gaps.md` ledger is not updated:
+coverage depth is limited, not coverage declined.
 
-Это **cloud-половина** модельного пиннинга. Локальные агенты
-(`.claude/agents/architect-reviewer.md` — `model: opus`, короткий алиас) — #392.
+This is the **cloud half** of model pinning. Local agents
+(`.claude/agents/architect-reviewer.md` — `model: opus`, a short alias) are #392.
 """
 
 from __future__ import annotations
@@ -45,16 +43,16 @@ _ACTION = "anthropics/claude-code-action"
 _AGENTS = Path(__file__).resolve().parent.parent / "AGENTS.md"
 _CODEX_RULES_HEADING = "## Code Review Rules"
 
-# Императивы подавления в начале строки. Карв-аутов нет by design: легитимное
-# сужение (находку, которую уже ловит ruff/mypy, понижаем как дубль детерминированного
-# гейта) записано в промпте НЕ императивом, поэтому исключать нечего. Карв-аут вида
-# «разрешено, если в строке есть слово ruff» был бы скроен ровно под текущий текст
-# (change-detector) и пропускал бы любое подавление, упомянувшее ruff.
+# Suppression imperatives at the start of a line. There are no carve-outs by design: the legitimate
+# narrowing (downgrade a finding already caught by ruff/mypy as a duplicate of a deterministic gate)
+# is written in the prompt NOT as an imperative, so nothing needs exclusion. A carve-out such as
+# “permitted when the line contains ruff” would be tailored precisely to the current text
+# (change detector) and allow any suppression that mentioned ruff.
 _SUPPRESSION = re.compile(r"^\s*(skip|ignore|omit|don't report|do not report)\b", re.IGNORECASE)
 
 
-# Кеш, а не фикстура: файлы читаются только на чтение и за прогон не меняются,
-# а парс 11 KB YAML на каждый ассерт — десятки миллисекунд впустую.
+# Cache rather than fixture: files are read-only and do not change during a run,
+# while parsing 11 KB of YAML for every assertion wastes tens of milliseconds.
 @lru_cache(maxsize=1)
 def _steps() -> list[dict[str, Any]]:
     data = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
@@ -91,7 +89,7 @@ def _codex_step() -> dict[str, Any]:
 
 @lru_cache(maxsize=1)
 def _codex_review_rules() -> str:
-    """Секция `AGENTS.md`, которую Codex code review читает как свой промпт."""
+    """The `AGENTS.md` section that Codex code review reads as its prompt."""
     text = _AGENTS.read_text(encoding="utf-8")
     assert _CODEX_RULES_HEADING in text, (
         f"{_CODEX_RULES_HEADING!r} is the documented place where Codex code review "
@@ -101,14 +99,14 @@ def _codex_review_rules() -> str:
     return section.split("\n## ", 1)[0]
 
 
-# Оба носителя ревьюят по одному контракту (#478). Промпт-гарды ниже параметризованы
-# по ним обоим, иначе носитель 2 мог бы молча переоткрыть политику severity из #458:
-# гард, знающий только про первый носитель, зеленеет на любом тексте второго.
-# Дома у контрактов разные: носитель 1 читает промпт из workflow, носитель 2 —
-# `## Code Review Rules` в `AGENTS.md` (документированная точка настройки Codex
-# code review). Копий по-прежнему две, но каждая — в своём каноническом месте.
-# Список носителей и загрузчик промпта каждого объявлены здесь вместе: разъехавшись,
-# они дали бы гард, дважды проверяющий носителя 1 и молча не проверяющий носителя 2.
+# Both carriers review under one contract (#478). The prompt guards below are parameterized over
+# both, otherwise carrier 2 could silently reopen the severity policy from #458: a guard that knows
+# only the first carrier becomes green for any text in the second.
+# The contracts have different homes: carrier 1 reads its prompt from the workflow, carrier 2 reads
+# `## Code Review Rules` in `AGENTS.md` (the documented configuration point for Codex code review).
+# There are still two copies, but each is in its canonical location.
+# The carrier list and each prompt loader are declared together here: if separated, they could create
+# a guard checking carrier 1 twice and silently not checking carrier 2.
 _CARRIER_PROMPTS: dict[str, Callable[[], str]] = {
     "Claude review": _prompt,
     "Codex review": _codex_review_rules,
@@ -126,12 +124,12 @@ def _fallback_verifier() -> dict[str, Any]:
 
 class TestReviewModelPinned:
     def test_model_pinned_to_full_id(self) -> None:
-        """Модель задаётся флагом CLI `--model` внутри `claude_args`.
+        """The model is set by the `--model` CLI flag within `claude_args`.
 
-        Имя input'а сверено с `action.yml` экшена (`claude_args` — «Additional
-        arguments to pass to Claude CLI»; отдельного input'а `model` у экшена нет),
-        а не угадано: неизвестный `with:`-input GitHub Actions игнорирует МОЛЧА,
-        и гард на выдуманное имя был бы зелёным при отсутствующем пине."""
+        The input name is verified against the action's `action.yml` (`claude_args` is “Additional
+        arguments to pass to Claude CLI”; the action has no separate `model` input), rather than
+        guessed: GitHub Actions SILENTLY ignores an unknown `with:` input, and a guard for an
+        invented name would be green with the pin absent."""
         args = str(_inputs().get("claude_args", ""))
         found = re.search(r"--model\s+(\S+)", args)
         assert found, (
@@ -149,11 +147,11 @@ class TestReviewModelPinned:
 
 @pytest.mark.parametrize("carrier", _CARRIERS)
 class TestCoverageFirstPrompt:
-    """Один контракт поиска и отчёта на оба носителя ревью (#478).
+    """One discovery and reporting contract for both review carriers (#478).
 
-    Носитель 2 добавлен ради доступности, а не ради второго мнения о том, что
-    считать находкой: разъехавшиеся промпты дали бы разный вердикт на одном диффе
-    в зависимости от того, у кого в тот день была квота.
+    Carrier 2 was added for availability, not a second opinion on what counts as a
+    finding: divergent prompts would give different verdicts on the same diff depending
+    on whose quota was available that day.
     """
 
     def test_no_suppression_imperative(self, carrier: str) -> None:
@@ -174,11 +172,11 @@ class TestCoverageFirstPrompt:
         )
 
     def test_summary_not_gagged_to_blocking_only(self, carrier: str) -> None:
-        """Известная форма дефекта на стадии отчёта, а не проверка формулировки.
+        """Known defect form at the reporting stage, not wording verification.
 
-        `post exactly "✅ … no blocking issues found."` — фиксированная сводка,
-        которая при нуле blocking и трёх should-fix обязывает напечатать только её.
-        Фильтр, убранный со входа, возвращался бы на выходе."""
+        `post exactly "✅ … no blocking issues found."` is a fixed summary that, with zero
+        blocking and three should-fix findings, requires printing only itself. The filter
+        removed at input would return at output."""
         prompt = _carrier_prompt(carrier).lower()
         assert "no blocking issues" not in prompt, (
             "the fixed summary string is scoped to blocking findings — should-fix and "
@@ -313,24 +311,24 @@ class TestReviewOutcomeGate:
         assert not _REMOVED_GATE_WORKFLOW.exists()
 
     def test_review_uses_workflow_token_instead_of_app_token_exchange(self) -> None:
-        """#483: без этого входа ревью молча не запускается на PR, меняющих этот файл.
+        """#483: without this input, review silently does not start on PRs changing this file.
 
-        Апстрим кладёт `github_token` в `OVERRIDE_GITHUB_TOKEN`, и `setupGitHubToken()`
-        возвращает его до обмена OIDC на токен GitHub App Anthropic. Без входа обмен
-        выполняется, эндпоинт отвечает `workflow_not_found_on_default_branch` (файл
-        воркфлоу на голове PR ≠ версии в `main`), экшен бросает
-        `WorkflowValidationSkipError` — и job зеленеет за ~26 секунд, ни разу не вызвав
-        модель. Молчаливый скип неотличим от прошедшего ревью (§IV), поэтому вход
-        стережётся, а не «помнится».
+        Upstream puts `github_token` in `OVERRIDE_GITHUB_TOKEN`, and `setupGitHubToken()`
+        returns it before exchanging OIDC for the Anthropic GitHub App token. Without the input,
+        the exchange occurs, the endpoint responds `workflow_not_found_on_default_branch` (the
+        workflow file at the PR head differs from its version in `main`), the action raises
+        `WorkflowValidationSkipError`, and the job turns green in ~26 seconds without ever calling
+        the model. A silent skip is indistinguishable from completed review (§IV), so the input is
+        guarded rather than “remembered”.
         """
         assert _inputs().get("github_token") == "${{ github.token }}"
 
     def test_enforcement_steps_pass_no_controller_classification_options(self) -> None:
-        """#483: воркфлоу и CLI обязаны сниматься с классификации одним движением.
+        """#483: workflow and CLI must be removed from classification in one operation.
 
-        `--repo`/`--pr` существовали только ради карв-аута «контроллерный PR».
-        `_parse_options` на неизвестный аргумент печатает `unexpected argument` и выходит
-        с 2, поэтому забытый в YAML флаг красит **каждый** PR, а не только контроллерный.
+        `--repo`/`--pr` existed only for the “controller PR” carve-out. For an unknown argument,
+        `_parse_options` prints `unexpected argument` and exits with 2, so a flag left in YAML turns
+        **every** PR red, not only a controller PR.
         """
         for name in ("Enforce Claude review outcome", "Enforce Codex review outcome"):
             run = str(_named_step(name)["run"])
@@ -340,25 +338,23 @@ class TestReviewOutcomeGate:
 
 
 class TestFallbackCarrier:
-    """#478: доступность обязательного гейта не должна зависеть от одного провайдера.
+    """#478: required-gate availability must not depend on one provider.
 
-    Контекст ревью — required check при `enforce_admins: true`, поэтому исчерпанная
-    квота Claude сегодня запирает PR целиком. Квоту нельзя опросить заранее — API
-    остатка не существует, — так что «выбрать того, у кого есть квота» реализуется
-    цепочкой отказа: носитель 2 включается ровно тогда, когда носитель 1 не дал
-    годного вердикта.
+    The review context is a required check with `enforce_admins: true`, so an exhausted Claude
+    quota locks the entire PR today. Quota cannot be queried in advance — no remaining-quota API
+    exists — so “select the one with quota” is implemented by a failure chain: carrier 2 starts
+    exactly when carrier 1 produced no usable verdict.
     """
 
     def test_first_carrier_failure_does_not_end_the_job(self) -> None:
-        """Без этого шаг Codex недостижим: упавший шаг обрывает джоб."""
+        """Without this, the Codex step is unreachable: a failed step ends the job."""
         assert _review_step().get("continue-on-error") is True
 
     def test_validity_is_decided_by_the_script_that_owns_the_rule(self) -> None:
-        """§ Один дом политики: `review_gate.py` — «No policy gets a second home».
+        """§ One policy home: `review_gate.py` — “No policy gets a second home”.
 
-        Разбор JSON носителя выражением GitHub Actions продублировал бы правило
-        валидности в `contains()`/`fromJSON()` — в форме, недостижимой ни для одного
-        теста."""
+        Parsing carrier JSON with a GitHub Actions expression would duplicate the validity
+        rule in `contains()`/`fromJSON()` — in a form unreachable by any test."""
         classify = _named_step("Classify review outcome")
 
         assert classify["id"] == "classify"
@@ -381,12 +377,12 @@ class TestFallbackCarrier:
         )
 
     def test_the_fallback_runs_on_a_subscription_not_on_metered_credentials(self) -> None:
-        """Носитель, которому нужен платный ключ, в этом репо не включится никогда.
+        """A carrier needing a paid key will never start in this repository.
 
-        Задача #478 — доступность гейта при исчерпанной квоте; носитель, чьё условие
-        запуска — «выдать отдельный API-ключ», её не решает, он её откладывает.
-        Codex code review работает по подписке ChatGPT через свою GitHub-интеграцию,
-        поэтому у второго носителя нет ни ключа, ни гарда на ключ."""
+        #478 concerns gate availability with an exhausted quota; a carrier whose start condition
+        is “provide a separate API key” does not solve it, it postpones it. Codex code review runs
+        on a ChatGPT subscription through its GitHub integration, so carrier 2 has neither a key
+        nor a guard for a key."""
         raw = _WORKFLOW.read_text(encoding="utf-8")
 
         assert "OPENAI_API_KEY" not in raw, (
@@ -399,7 +395,7 @@ class TestFallbackCarrier:
         )
 
     def test_the_fallback_is_a_deterministic_step_not_an_in_runner_model(self) -> None:
-        """Носитель 2 ревьюит вне этого раннера; здесь только запрос и чтение ответа."""
+        """Carrier 2 reviews outside this runner; this only requests and reads the response."""
         step = _codex_step()
 
         assert "uses" not in step, (
@@ -408,7 +404,7 @@ class TestFallbackCarrier:
         assert "python -m scripts.request_codex_review" in str(step["run"])
 
     def test_the_fallback_verdict_is_keyed_to_the_reviewed_head(self) -> None:
-        """Ревью предыдущего пуша — не вердикт о том, что мержится сейчас."""
+        """A review of the previous push is not a verdict on what merges now."""
         run = str(_codex_step()["run"])
 
         assert "--head-sha" in run and "steps.pr-context.outputs.head_sha" in run, (
@@ -418,7 +414,7 @@ class TestFallbackCarrier:
         assert "--pr" in run and "--repo" in run
 
     def test_the_fallback_wait_is_bounded(self) -> None:
-        """Иначе required-чек висит до шестичасового потолка раннера."""
+        """Otherwise the required check hangs until the runner's six-hour limit."""
         step = _codex_step()
         rendered = str(step.get("run", "")) + str(step.get("timeout-minutes", ""))
 
@@ -428,21 +424,21 @@ class TestFallbackCarrier:
         )
 
     def test_the_fallback_writes_the_payload_enforcement_reads(self) -> None:
-        """Разъехавшиеся имена выхода дали бы молча пустую нагрузку и красный чек
-        с сообщением «ревью недоступно» вместо реального вердикта Codex."""
+        """Divergent output names would silently yield an empty payload and a red check
+        with “review unavailable” instead of the actual Codex verdict."""
         assert "steps.codex-review.outputs.payload" in str(_fallback_verifier()["env"])
         assert _codex_step()["id"] == "codex-review"
 
     def test_the_second_carrier_gets_no_second_prompt_copy_in_the_workflow(self) -> None:
-        """Контракт носителя 2 живёт в `AGENTS.md`, где Codex его и читает.
+        """Carrier 2's contract lives in `AGENTS.md`, where Codex reads it.
 
-        Копия промпта в workflow была бы третьим домом одной политики — и притом
-        домом, который никто не читает: Codex ревьюит вне этого раннера."""
+        A prompt copy in the workflow would be a third home for one policy — and one that
+        nobody reads: Codex reviews outside this runner."""
         assert "prompt" not in _codex_step()
         assert _codex_review_rules().strip(), "the carrier-2 contract must not be empty"
 
     def test_each_enforcement_step_names_its_producer(self) -> None:
-        """Иначе вердикт на PR не отвечает на вопрос «кто это ревьюил»."""
+        """Otherwise the PR verdict does not answer “who reviewed this?”"""
         primary = _named_step("Enforce Claude review outcome")
         fallback = _fallback_verifier()
 
@@ -455,8 +451,8 @@ class TestFallbackCarrier:
         assert "steps.classify.outputs.valid" in str(fallback["if"])
 
     def test_a_skipped_fallback_still_reds_the_check(self) -> None:
-        """Отсутствие второго носителя — не основание считать ревью пройденным (§IV).
+        """The absence of carrier 2 is not grounds to consider review passed (§IV).
 
-        Шаг enforcement фолбэка запускается по `always()`, поэтому при пропущенном
-        Codex он получает пустой outcome и падает с «review unavailable»."""
+        The fallback enforcement step runs under `always()`, so with Codex skipped it receives
+        an empty outcome and fails with “review unavailable”."""
         assert "always()" in str(_fallback_verifier()["if"])

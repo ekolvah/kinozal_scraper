@@ -53,23 +53,23 @@ _MD = MarkdownIt("commonmark")
 
 
 def _split_by_h2(body: str) -> dict[str, str]:
-    """Секции по `## `, разобранные CommonMark-парсером.
+    """Sections headed by `## `, parsed by CommonMark.
 
-    **Почему не regexp.** Markdown не регулярен: заголовок ли строка `## X`, зависит
-    от контекста — fenced code block, indented block, HTML-блок. Свой построчный
-    разбор здесь уже дал дефект: `## <имя обязательной секции>` внутри ``` создавал
-    вторую секцию с тем же ключом и перезаписывал настоящую остатком блока, после чего
-    заполненная секция рапортовалась пустой и `/implement` абортил на несуществующей
-    проблеме (#426). Догонять это заплатками — лестница без конца (первая заплата
-    сама внесла регресс на непарном fence), поэтому разбор отдан
+    **Why not regexp.** Markdown is not regular: whether `## X` is a heading depends
+    on context—a fenced code block, indented block, or HTML block. A custom line parser
+    already caused a defect: `## <required-section name>` inside ``` created
+    a second section with the same key and overwrote the real one with the rest of the block,
+    so a filled section was reported empty and `/implement` aborted on a nonexistent
+    problem (#426). Chasing it with patches is endless (the first patch itself
+    regressed an unmatched fence), so parsing is delegated to the
     [`markdown-it-py`](https://github.com/executablebooks/markdown-it-py) — CommonMark-
-    реализации, уже присутствовавшей в дереве транзитивно. Побочная выгода: парсер
-    видит документ ровно так, как его отрендерит GitHub, — и `Текст` + `---` он тоже
-    считает h2, потому что GitHub считает.
+    implementation already present transitively. A side benefit: it sees the document
+    exactly as GitHub renders it, including `Text` + `---` as
+    h2 because GitHub does.
     """
     lines = body.splitlines()
     tokens = _MD.parse(body)
-    # (заголовок, строка начала самого заголовка, строка начала его содержимого)
+    # (heading, heading-start line, content-start line)
     heads: list[tuple[str, int, int]] = [
         (tokens[i + 1].content.strip(), token.map[0], token.map[1])
         for i, token in enumerate(tokens)
@@ -97,11 +97,11 @@ def handoff_gaps(content: str) -> list[str]:
 
 
 def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
-    """Пустые/отсутствующие секции из `required`.
+    """Empty or missing sections from `required`.
 
-    Набор — параметр, а не константа модуля: второй потребитель того же парсера —
-    гард MADR-записей (`tests/test_adr_records.py`) со своим списком h2. Форк парсера
-    завёл бы вторую реализацию «что такое пустая секция» (#426).
+    The set is a parameter rather than a module constant: the parser's other consumer is
+    the MADR-record guard (`tests/test_adr_records.py`) with its own h2 list. Forking it
+    would create a second definition of an empty section (#426).
     """
     sections = _split_by_h2(body)
     gaps: list[str] = []
@@ -172,9 +172,9 @@ def main() -> None:
     print(f"error: issue #{n} missing/empty sections:", file=sys.stderr)
     for g in gaps:
         print(f"  - {g}", file=sys.stderr)
-    # Самый частый способ «потерять» разом много секций — незакрытый ```: по CommonMark
-    # он поглощает остаток документа, и GitHub рендерит их серым кодом. Подсказка вместо
-    # эвристики-детектора: искать её самим значило бы снова угадывать намерение автора.
+    # The most common way to “lose” many sections is an unclosed ```; under CommonMark it
+    # consumes the rest of the document and GitHub renders it as gray code. Give a hint,
+    # not a detector heuristic: implementing one would again guess author intent.
     print(
         "hint: если секции в body видны глазами — проверь незакрытый ``` выше них: "
         "остаток документа становится кодовым блоком и на GitHub тоже",

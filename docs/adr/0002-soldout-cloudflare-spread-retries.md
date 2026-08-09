@@ -4,182 +4,166 @@ date: 2026-08-01
 decision-makers: ekolvah
 ---
 
-# Soldout пробивает Cloudflare разбросом попыток во времени, а не сменой egress
+# Soldout overcomes Cloudflare by spreading attempts over time, not changing egress
 
 ## Context and Problem Statement
 
-`soldoutticketbox.com` стоит за Cloudflare, который режет датацентровые IP-диапазоны GitHub
-Actions. Замер зафиксировал: тот же код с того же `curl_cffi` даёт 200 с residential-IP и 403 из
-CI; `impersonate`-таргеты `chrome`/`chrome124`/`chrome131` эквивалентны; JS-челленджа нет; отказы
-и редкие успехи приходят из семи разных датацентров. То есть режет **репутация диапазона**, а не
-то, что мы отправляем, и ни смена браузерного профиля, ни headless-браузер тут не работают.
+`soldoutticketbox.com` is behind Cloudflare, which blocks GitHub Actions datacenter IP ranges. Measurement found
+that the same code using the same `curl_cffi` returns 200 from a residential IP and 403 from CI;
+`impersonate` targets `chrome`/`chrome124`/`chrome131` are equivalent; there is no JS challenge; failures and rare
+successes come from seven different datacenters. Thus **range reputation**, not what we send, is blocked; neither
+changing the browser profile nor a headless browser works here.
 
-Плановые ночные прогоны 20.07–31.07.2026 — 12 подряд красные именно на этом шаге.
+Scheduled nightly runs from 20.07–31.07.2026 were red on this step 12 times in succession.
 
-Вопрос: чем это лечить, если менять нечего в самом запросе.
+Question: how should this be fixed when there is nothing to change in the request itself?
 
 ## Decision Drivers
 
-* **Платный egress исключён владельцем безусловно** — ни residential-прокси, ни managed
-  bypass-API не рассматриваются, независимо от эффективности.
-* **Нагрузка на чужой сайт** — новости там появляются примерно раз в неделю, и долбить источник
-  ради ускорения доставки несоразмерно.
-* **Требуемый SLA — не суточный.** События остаются на странице до самого мероприятия, значит
-  пропустить событие нельзя в принципе, можно только доставить позже. Приемлемая задержка —
-  несколько суток.
-* **Простота** — решение не должно приносить состояние между прогонами, новый workflow или
-  переделку алертинга.
+* **Paid egress is unconditionally excluded by the owner**—neither residential proxies nor a managed
+  bypass API are considered, regardless of effectiveness.
+* **Load on a third-party site**—news appears about weekly, and hammering the source to speed delivery is disproportionate.
+* **The required SLA is not daily.** Events stay on the page until the event itself, so they cannot be missed in
+  principle, only delivered later. A delay of several days is acceptable.
+* **Simplicity**—the solution must not introduce state between runs, a new workflow, or alerting redesign.
 
 ## Considered Options
 
-* Разброс попыток внутри одного суточного прогона
-* Больше прогонов в сутки (отдельный workflow с частым cron)
-* Другой egress: residential/ISP-прокси или managed bypass-API
-* Локальный запуск с домашнего residential-IP
-* Отказ от источника
+* Spread attempts within one daily run
+* More runs per day (a separate workflow with frequent cron)
+* Different egress: residential/ISP proxy or managed bypass API
+* Local run from a home residential IP
+* Drop the source
 
 ## Decision Outcome
 
-Выбран **разброс попыток внутри одного прогона**: 24 попытки с фиксированной паузой 720 секунд
-(окно ~4.6 часа) вместо 4 попыток за ~7 секунд. Прогон остаётся один в сутки, в том же
-`run-script.yml`, без состояния между прогонами.
+Chosen: **spread attempts within one run**: 24 attempts with a fixed 720-second delay
+(a ~4.6-hour window) instead of 4 attempts in ~7 seconds. The run remains once per day in the same
+`run-script.yml`, with no state between runs.
 
-Ключевое наблюдение, на котором стоит решение: **попытки с паузой 60 секунд ведут себя
-независимо**, а сжатые в 7 секунд — нет. С одного IP в пределах прогона наблюдались и
-`200→403→403`, и `403→403→200`, тогда как прод со своими 1/2/4-секундными паузами бьёт в одно и
-то же решение Cloudflare и стоит **одной** попытки. Это и объясняет 12 красных суток подряд:
-источник отвергал не 48 запросов, а фактически 12.
+The decision rests on this key observation: **attempts separated by 60 seconds behave independently**, while
+attempts compressed into 7 seconds do not. Both `200→403→403` and `403→403→200` occurred from one IP during a
+run, while production’s 1/2/4-second delays hit the same Cloudflare decision and cost **one** attempt. This
+explains 12 consecutive red days: the source effectively rejected 12, not 48, requests.
 
-### Откуда числа 24 и 720
+### Where 24 and 720 come from
 
-Пересечение трёх ограничений, а не оптимум по одному:
+The intersection of three constraints, not an optimum on one:
 
-* пауза заметно выше замеренных 60 секунд, на которых независимость установлена;
-* окно (~4.6 часа) остаётся под жёстким 6-часовым потолком job'а GitHub Actions. Потолок
-  считается от старта **job'а**, а не шага, и job, убитый по нему, отменяется, а не проваливается
-  — `if: failure()` у fallback-алерта тогда не срабатывает. Поэтому `timeout-minutes: 300`:
-  выше 288-минутного худшего случая политики и на 60 минут ниже потолка, чтобы отказ доезжал
-  своим шагом, а не смертью job'а;
-* плотность равна 24 запросам в сутки — ровно той, на которой делался замер, то есть
-  эмпирически проверенной. Суммарная нагрузка на сайт при этом **падает**: измеритель, делавший
-  свои 24 запроса в сутки, удалён.
+* the delay is materially above the measured 60 seconds at which independence was established;
+* the window (~4.6 hours) stays under GitHub Actions’ hard 6-hour job limit. The limit is measured from **job**
+  start, not the step; a job killed by it is cancelled rather than failed, so the fallback alert’s `if: failure()`
+  does not run. Therefore `timeout-minutes: 300`: above the policy’s 288-minute worst case and 60 minutes below
+  the limit, so failure arrives through its own step rather than job death;
+* density is 24 requests per day—the exact empirically tested measurement density. Total site load **falls**:
+  the measuring tool that made its own 24 daily requests was removed.
 
-Плотная альтернатива (55 попыток с паузой 60 секунд внутри часа) даёт по модели лучшее число, но
-вчетверо увеличивает нагрузку, сужает окно и уходит в профиль, которого никто не мерил, — там
-начинается риск CF-`1015`. Если он всё же появится, это будет видно: `_CF_CODE_RE` в
-`http_fetch.py` вытаскивает `cf-code` в лог.
+A dense alternative (55 attempts with 60-second delays in one hour) gives a better modeled number, but
+quadruples load, narrows the window, and enters an unmeasured profile—where CF-`1015` risk begins. If it
+appears, it will be visible: `_CF_CODE_RE` in `http_fetch.py` extracts `cf-code` to the log.
 
-**Двигать первым, если фикс не сработает, следует ширину окна, а не плотность** — наблюдаемый
-режим отказа это «плохие сутки целиком», против него разброс важнее частоты.
+**If the fix fails, adjust window width before density**—the observed failure mode is “an entire bad day,”
+against which spread matters more than frequency.
 
-### Что здесь наблюдение, а что модель
+### What is observation and what is model
 
-Граница проведена намеренно, потому что цитировать будут именно эти цифры.
+This boundary is deliberate because these exact figures will be cited.
 
-**Наблюдения:** независимость попыток на паузе 60 секунд; при 24 замерах в сутки доставка
-происходила в 4 из 6 полных суток; максимальный разрыв между успехами — 50 часов; отказ
-приходит за 0.04–0.18 с, успех — за 1.3–2.6 с (решение принимается на edge).
+**Observations:** attempt independence at a 60-second delay; with 24 measurements daily, delivery occurred
+on 4 of 6 full days; the maximum gap between successes was 50 hours; failure arrives in 0.04–0.18 s and
+success in 1.3–2.6 s (the decision is made at the edge).
 
-**Модель:** вероятность успеха одной попытки ≈ 7% (8 из 115) держится на выбросе — 3 из 8
-успехов дал один прогон, в тот же день, когда позеленел прод; без него ≈ 4.5%. Независимость
-**между сутками** данными не подтверждается и, похоже, неверна: двое суток дали 0 из 24 при
-полном покрытии. Поэтому оценки вида «вероятность пустой недели» — оптимистичный потолок, а не
-прогноз, и SLA-аргумент на них не опирается: он опирается на наблюдённый разрыв в 50 часов
-против недельной частоты новостей.
+**Model:** the ≈7% single-attempt success probability (8 of 115) rests on an outlier—one run produced 3 of
+the 8 successes, on the day production turned green; without it, ≈4.5%. Data do not support, and apparently
+contradict, independence **between days**: two days gave 0 of 24 with full coverage. Thus “probability of an
+empty week” estimates are an optimistic upper bound, not a forecast, and the SLA argument does not rely on
+them: it relies on the observed 50-hour gap against weekly news frequency.
 
-### Почему без джиттера
+### Why no jitter
 
-Сетка фиксированная. Момент старта и так плавает: GitHub задерживает cron на десятки минут, и
-этого разброса достаточно, чтобы попытки разных суток не ложились в одни и те же минуты.
-Детерминированный шаг взамен даёт воспроизводимость при разборе логов — по номеру попытки сразу
-известно её время.
+The grid is fixed. Start time already varies: GitHub delays cron by tens of minutes, enough to prevent
+attempts on different days from landing in the same minutes. In return, a deterministic interval provides
+reproducibility when reading logs: an attempt number immediately identifies its time.
 
-### Отменённое пред-зарегистрированное правило
+### Repealed preregistered rule
 
-До сбора данных было зафиксировано решающее правило: «если хоть в одни сутки 0 успехов из 24 —
-нужен другой egress». Данные дали именно этот исход, и правило было **отменено сознательно** —
-но не из-за неудобства результата, а потому что мерило требование, которого не существует.
-Величина «≥1 успех в каждые сутки» предполагает суточный SLA, а он придуман: новости выходят раз
-в неделю и висят на странице. Источник изменения — предметная область, поступившая после замера,
-а не сами данные. Записано здесь именно затем, чтобы отличаться от подгонки.
+Before collecting data, a decisive rule was recorded: “if any day has 0 successes out of 24, another egress
+is needed.” The data produced exactly that result, and the rule was **consciously repealed**—not because the
+result was inconvenient, but because it measured a requirement that does not exist. “≥1 success every day”
+assumes a daily SLA, but that SLA is invented: news appears weekly and remains on the page. The source of the
+change is domain knowledge received after measurement, not the data themselves. It is recorded here to distinguish it from fitting.
 
 ### Consequences
 
-* Хорошо: правка укладывается в одну политику ретрая, один вызов и перенос шага; ни состояния,
-  ни нового workflow, ни изменения алертинга.
-* Хорошо: общая политика `retry_antibot_http` не тронута — вывод получен на одном хосте, и
-  распространять его на kinozal/github/steam оснований нет.
-* Хорошо: нагрузка на сторонний сайт снижается относительно периода замера.
-* Плохо: шаг занимает раннер до ~4.6 часа и откладывает вывод job'а и fallback-алерт на те же
-  часы. Поэтому шаг стоит последним — иначе он задерживал бы доставку остальных источников.
-* Плохо: часть суток блок не пробивается вовсе, и красный soldout остаётся ожидаемым состоянием.
-  Детектора «успеха не было N суток» нет — принятый пробел записан в
-  [`coverage-gaps.md`](../architecture/coverage-gaps.md).
-* Плохо: рост доли доставляющих суток впервые делает частым исход «уведомление ушло без
-  постера», а дедуп делает потерю безвозвратной. Тоже записано в `coverage-gaps.md`.
-* Плохо: **транспортные ошибки политикой не ретраятся** — предикат по построению признаёт
-  транзиентными только HTTP-ответы с кодом из набора, поэтому один TCP-reset или DNS-моргание на
-  первой попытке обрывает всё окно и стоит суток доставки. Поведение не новое, но его цена
-  выросла в 24 раза. Оставлено как есть сознательно: замер говорит, что Cloudflare отвечает
-  именно 403, а расширение предиката на сетевые ошибки — решение с другим blast-radius (оно
-  задело бы все источники сразу) и своим замером, которого у нас нет.
+* Good: the change fits one retry policy, one invocation, and moving a step; no state, new workflow, or alerting change.
+* Good: general `retry_antibot_http` policy is untouched—the conclusion comes from one host, with no basis to
+  extend it to kinozal/github/steam.
+* Good: third-party-site load decreases relative to the measurement period.
+* Bad: the step occupies a runner for up to ~4.6 hours and delays job output and fallback alerting by those hours.
+  It is therefore last; otherwise it would delay delivery from other sources.
+* Bad: for part of the day the block is not penetrated at all, and red soldout remains expected. There is no
+  “no success for N days” detector; the accepted gap is recorded in [`coverage-gaps.md`](../architecture/coverage-gaps.md).
+* Bad: increasing the share of delivering days makes “notification sent without poster” common for the first time,
+  while deduplication makes the loss irreversible. This is also recorded in `coverage-gaps.md`.
+* Bad: **the policy does not retry transport errors**—by design, its predicate accepts as transient only HTTP
+  responses with a code from the set, so one TCP reset or DNS flicker on the first attempt ends the entire window
+  and costs a delivery day. The behavior is not new, but its cost grew 24-fold. It is consciously retained:
+  measurement says Cloudflare returns exactly 403, while extending the predicate to network errors is a decision
+  with a different blast radius (it would affect all sources at once) and needs a measurement we do not have.
 
 ### Confirmation
 
-Числа политики пиньются тестами, а не описываются:
-`test_http_retry.py::TestPatientPolicy` (24 попытки, паузы по 720 с, тот же набор кодов),
-`test_http_fetch.py::TestPatientHtml` (24 попытки на 403, общие request-kwargs, постеры остаются
-на быстром транспорте), `test_workflow_isolation.py::TestSoldoutStepPlacement` (шаг последний,
-таймаут под потолком job'а, суточный cron не изменён).
+Tests pin the policy numbers rather than describing them:
+`test_http_retry.py::TestPatientPolicy` (24 attempts, 720-second delays, same code set),
+`test_http_fetch.py::TestPatientHtml` (24 attempts on 403, shared request kwargs, posters stay on fast
+transport), `test_workflow_isolation.py::TestSoldoutStepPlacement` (step last, timeout under job limit,
+daily cron unchanged).
 
-Критерий успеха после мержа — **≥1 зелёный шаг `Run soldout pipeline` за 7 суток**, читается из
-`gh run list --workflow=run-script.yml`. Отдельный измеритель для этого не нужен: `_get_once`
-логирует `cf-ray` и `cf-mitigated` на каждую из 24 попыток, то есть прод-лог даёт ту же
-диагностику. Если критерий не выполнен — открывается локальный запуск с residential-IP.
+The post-merge success criterion is **≥1 green `Run soldout pipeline` step in 7 days**, read with
+`gh run list --workflow=run-script.yml`. No separate measuring tool is needed: `_get_once` logs `cf-ray`
+and `cf-mitigated` for each of 24 attempts, so the production log provides the same diagnosis. If the criterion
+is not met, a local run with a residential IP is opened.
 
 ## Pros and Cons of the Options
 
-### Разброс попыток внутри прогона
+### Spread attempts within a run
 
-* Good, because лечит замеренную причину — корреляцию сжатых попыток, а не симптом.
-* Good, because бесплатно и без новых движущихся частей.
-* Neutral, because не даёт гарантии доставки в конкретные сутки — но недельный SLA этого и не
-  требует.
-* Bad, because занимает раннер часами.
+* Good, because it fixes the measured cause—correlation of compressed attempts—not a symptom.
+* Good, because it is free and introduces no new moving parts.
+* Neutral, because it does not guarantee delivery on a particular day—but the weekly SLA does not require that.
+* Bad, because it occupies a runner for hours.
 
-### Больше прогонов в сутки
+### More runs per day
 
-* Good, because разносит попытки ещё шире — по всем суткам, а не по одному окну.
-* Bad, because требует отдельного workflow: гонять весь `run-script.yml` часто нельзя, там
-  соседние источники и квота Gemini, которая уже упиралась в лимит.
-* Bad, because даёт то же, что выбранный вариант, но дороже по инфраструктуре.
+* Good, because it spreads attempts even wider—across all days, not one window.
+* Bad, because it requires a separate workflow: the whole `run-script.yml` cannot run frequently because it has
+  neighboring sources and Gemini quota, which has already reached its limit.
+* Bad, because it delivers the same result as the selected option at higher infrastructure cost.
 
-### Residential-прокси или managed bypass-API
+### Residential proxy or managed bypass API
 
-* Good, because единственный вариант с доказанным 200 из автоматизации.
-* Bad, because платный — исключено владельцем безусловно.
-* Bad, because приносит долгоживущий секрет и внешнюю зависимость.
+* Good, because it is the only option with a proven automation 200.
+* Bad, because it is paid—unconditionally excluded by the owner.
+* Bad, because it introduces a long-lived secret and external dependency.
 
-### Локальный запуск с домашнего IP
+### Local run from a home IP
 
-* Good, because residential-IP замерен как работающий.
-* Neutral, because остаётся резервом, если выбранный вариант не даст доставки.
-* Bad, because доставка привязана к включённому компьютеру, а наблюдаемость падает — логов в
-  Actions больше нет.
-* Bad, because self-hosted раннер на публичном репозитории — известная дыра (fork-PR исполняет
-  произвольный код), так что пришлось бы гонять скрипт вне Actions.
+* Good, because the residential IP was measured to work.
+* Neutral, because it remains a fallback if the selected option does not deliver.
+* Bad, because delivery depends on a powered-on computer and observability falls—there are no longer Actions logs.
+* Bad, because a self-hosted runner on a public repository is a known vulnerability (a fork PR executes arbitrary
+  code), so the script would have to run outside Actions.
 
-### Отказ от источника
+### Drop the source
 
-* Good, because честно закрывает вопрос и убирает шум.
-* Bad, because источник рабочий, а стоимость доставки — часы ожидания раннера, а не деньги.
+* Good, because it honestly closes the question and removes noise.
+* Bad, because the source works, and delivery costs runner-wait hours rather than money.
 
 ## More Information
 
-Отвергнуто замером и **не переоткрывать**: пин версии `impersonate`, Playwright/headless-браузер
-(JS-челленджа нет, профили эквивалентны), а также гипотезы «дело в конкретном датацентре»,
-«дело во времени суток» и «дело в типе события `schedule` против `workflow_dispatch`» — все
-опровергнуты данными прогонов.
+Rejected by measurement and **do not reopen**: pinning the `impersonate` version, a Playwright/headless browser
+(there is no JS challenge and profiles are equivalent), and the hypotheses “a particular datacenter,” “time of
+day,” and “event type `schedule` versus `workflow_dispatch`” are all disproved by run data.
 
-Эксплуатационная сторона — [`operations.md`](../architecture/operations.md); политика в коде —
-`retry_antibot_patient` в `http_retry.py`.
+The operational side is in [`operations.md`](../architecture/operations.md); the code policy is
+`retry_antibot_patient` in `http_retry.py`.

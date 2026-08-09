@@ -1,14 +1,16 @@
-# Operations — как прод-прогон исполняется и чем конфигурируется
+# Operations — how the production run executes and is configured
 
-**На какой вопрос отвечает этот файл:** как ежедневный прод-прогон эксплуатируется — расписание и
-порядок шагов, чем он конфигурируется (env-переменные и секреты), как изолируются падения
-отдельных источников и куда уходит алерт, какие runbook'и нужны оператору (ротация секрета).
+**Question this document answers:** how the daily production run is operated — its schedule and
+step order, how it is configured (environment variables and secrets), how failures of
+individual sources are isolated and where alerts go, and which runbooks the operator needs
+(secret rotation).
 
-**Чего здесь нет** — один вопрос на файл ([`project-map.md`](project-map.md) §«Конвенция-заголовков»),
-и этот файл собирает разнородные блоки, поэтому граница проговорена явно: гейты качества на пути
-изменения (local `ci_check`, `ci.yml`, cloud-ревью, пиннинг моделей) → [`ci.md`](ci.md); какие есть
-пайплайны, Protocol-границы и data-flow → [`runtime.md`](runtime.md); слои извлечения, контракты
-`extract_from_*` и поведение fetch (включая mirror-fallback kinozal) → [`pipeline.md`](pipeline.md).
+**What is not here** — one question per file ([`project-map.md`](project-map.md) §"Heading
+convention"), and this file assembles heterogeneous blocks, so its boundary is explicit:
+quality gates on the change path (local `ci_check`, `ci.yml`, cloud review, model pinning) →
+[`ci.md`](ci.md); available pipelines, Protocol boundaries, and data flow →
+[`runtime.md`](runtime.md); extraction layers, `extract_from_*` contracts, and fetch behaviour
+(including the Kinozal mirror fallback) → [`pipeline.md`](pipeline.md).
 
 ## Production workflow (`run-script.yml`)
 
@@ -133,40 +135,44 @@ so in practice every source they report has a counter line; the `metrics is None
 branch is defence for a future pipeline that reports messages without instrumenting
 counters, keeping "nobody counted" distinct from "the source fetched nothing".
 
-## Soldout: терпеливый ретрай и место шага в прогоне
+## Soldout: patient retries and the step's position in the run
 
-Единственный источник со **своим** расписанием ретраев. Cloudflare режет датацентровые
-IP-диапазоны GitHub Actions вероятностно, и недельный замер показал, что исход прогона решает не
-число попыток, а их разнос во времени: четыре попытки за ~7 секунд бьют в одно и то же решение
-Cloudflare и стоят одной. Отсюда 12 красных ночных прогонов подряд. Решение и разбор
-альтернатив — [ADR-0002](../adr/0002-soldout-cloudflare-spread-retries.md); политика в коде —
-`retry_antibot_patient` (`http_retry.py`), точка применения — `fetch_html_patient`.
+The only source with **its own** retry schedule. Cloudflare probabilistically blocks the
+datacentre IP ranges of GitHub Actions, and a week-long measurement showed that the outcome is
+decided not by the number of attempts but by their spacing in time: four attempts over ~7
+seconds hit the same Cloudflare decision and count as one. Hence 12 consecutive failed nightly
+runs. The decision and alternatives analysis are in
+[ADR-0002](../adr/0002-soldout-cloudflare-spread-retries.md); the code policy is
+`retry_antibot_patient` (`http_retry.py`), applied at `fetch_html_patient`.
 
-**Что это значит для оператора:**
+**What this means for the operator:**
 
-- **Шаг идёт до ~4.6 часа** (24 попытки с паузой 12 минут). Это норма, а не зависание: каждая
-  пауза печатает строку `WARNING` из `http_retry`, каждая попытка — `[http_fetch] … cf-ray=…
-  cf-mitigated=…` из `_get_once`. Молчащий шаг — единственный признак настоящей проблемы.
-- **Шаг стоит последним, после суммаризатора.** Иначе те же часы ожидания сдвинули бы доставку
-  всех остальных источников. Инвариант статически пиньется
-  `tests/test_workflow_isolation.py::TestSoldoutStepPlacement` — порядок ключей в YAML сам себя
-  не защищает.
-- **`timeout-minutes: 300`** — зажат с двух сторон. Снизу: худший случай самой политики — 288
-  минут, меньше него таймаут убивал бы штатный прогон. Сверху: 360-минутный потолок job'а
-  считается **от старта job'а**, а не шага, и job, убитый по нему, GitHub *отменяет*, а не
-  проваливает — `if: failure()` у fallback-алерта тогда не сработает, и §IV-сигнал пропадёт ровно
-  в той патологии, ради которой таймаут и заведён. Отсюда 60 минут резерва на все предшествующие
-  шаги. Обе границы выведены из констант политики в
-  `tests/test_workflow_isolation.py::TestSoldoutStepPlacement`, а не вписаны числом.
-- **Красный soldout — ожидаемое состояние, а не инцидент.** Часть суток блок не пробивается
-  вовсе; алерт при этом приходит не чаще одного раза в сутки (прогон-то один). Памяти «когда был
-  последний успех» нет сознательно — принятый пробел записан в
+- **The step takes up to ~4.6 hours** (24 attempts with a 12-minute pause). This is normal, not
+  a hang: every pause prints a `WARNING` line from `http_retry`, and every attempt prints
+  `[http_fetch] … cf-ray=… cf-mitigated=…` from `_get_once`. A silent step is the only sign of a
+  real problem.
+- **The step comes last, after the summariser.** Otherwise those same waiting hours would delay
+  delivery from every other source. The invariant is statically pinned by
+  `tests/test_workflow_isolation.py::TestSoldoutStepPlacement` — YAML key order does not protect
+  itself.
+- **`timeout-minutes: 300`** is constrained from both sides. Below: the policy's own worst case
+  is 288 minutes, so a smaller timeout would kill a normal run. Above: the 360-minute job cap is
+  counted **from job start**, not step start, and GitHub *cancels* rather than fails a job killed
+  by it — the fallback alert's `if: failure()` would then not run, and the §IV signal would be
+  lost in exactly the pathology the timeout is for. Hence a 60-minute reserve for all preceding
+  steps. Both limits are derived from policy constants in
+  `tests/test_workflow_isolation.py::TestSoldoutStepPlacement`, not written as numbers.
+- **A failed Soldout is an expected state, not an incident.** For part of the day the block is
+  unreachable altogether; the alert nevertheless arrives no more than once per day (there is
+  only one run). There is deliberately no memory of "when the last success was" — the accepted
+  gap is recorded in
   [`coverage-gaps.md`](coverage-gaps.md).
 
-**Побочный эффект переноса, который иначе прочитают как случайность.** Маркер
-`.run/technical_alert_sent` job-global, и до переноса его почти всегда ставил soldout — он падал
-первым и чаще всех, глуша curl-fallback для более поздних шагов. Теперь маркер ставит тот, кто
-упал раньше, а soldout — последний. Разбирая алертинг, учитывай это при чтении старых прогонов.
+**A side effect of the move that could otherwise be read as accidental.** The
+`.run/technical_alert_sent` marker is job-global, and before the move Soldout almost always set
+it — it failed first and most often, suppressing the curl fallback for later steps. Now the
+marker is set by whatever failed earlier, while Soldout is last. Take this into account when
+reading old runs while investigating alerts.
 
 ## Environment variables
 
@@ -206,10 +212,10 @@ Cloudflare и стоят одной. Отсюда 12 красных ночных
 | Variable | Type | Purpose |
 |---|---|---|
 | `API_KEY` | secret | Kinozal API key |
-| `KINOZAL_URLS` | var | Kinozal page URLs to scrape, формат `label\|url;...`; local fallback — env `KINOZAL_TOP_URL` (plain url). Если не задано ни то ни другое — pipeline логирует ошибку `no URLs configured`. Легаси-имя `URLS` **больше не читается** (clean rename, #263). `sources.json` `url`/`base_url` для скрейпинга **не читается** (только schema-placeholder), см. `kinozal_pipeline.py::_kinozal_urls` |
-| `KINOZAL_EXCLUDED_GENRES` | var | **Опционально.** `;`-разделённый denylist жанров (case-insensitive), напр. `Hidden objects`. Новый элемент, чей жанр (с details-страницы) в списке, **не** уведомляется, но сохраняется в Sheets (dedup). Пусто/не задано → фильтр выключен, details-страницы не запрашиваются (0 оверхеда). См. `kinozal_pipeline.py::_split_by_excluded_genre` (#263) |
-| `KINOZAL_USERNAME` | secret | **Опционально.** Логин аккаунта на зеркале `kinozal.guru` — включает автоматический fallback на зеркало при сбое `kinozal.tv`. Что именно включается и как меняются ссылки — [`pipeline.md` § Kinozal mirror fallback](pipeline.md#kinozal-mirror-fallback). Парный к `KINOZAL_PASSWORD`; **partial** (только один из двух) → WARNING + fallback отключён (не fail) |
-| `KINOZAL_PASSWORD` | secret | **Опционально.** Пароль аккаунта `kinozal.guru`. Парный к `KINOZAL_USERNAME` |
+| `KINOZAL_URLS` | var | Kinozal page URLs to scrape, format `label\|url;...`; local fallback — environment variable `KINOZAL_TOP_URL` (plain URL). If neither is set, the pipeline logs `no URLs configured`. The legacy name `URLS` is **no longer read** (clean rename, #263). `sources.json` `url`/`base_url` is **not read** for scraping (schema placeholder only); see `kinozal_pipeline.py::_kinozal_urls` |
+| `KINOZAL_EXCLUDED_GENRES` | var | **Optional.** `;`-separated denylist of genres (case-insensitive), e.g. `Hidden objects`. A new item whose genre (from the details page) is in the list is **not** notified, but is saved to Sheets (dedup). Empty/unset → filter disabled; details pages are not requested (zero overhead). See `kinozal_pipeline.py::_split_by_excluded_genre` (#263) |
+| `KINOZAL_USERNAME` | secret | **Optional.** Account login for the `kinozal.guru` mirror — enables automatic fallback to the mirror when `kinozal.tv` fails. What is enabled and how links change — [`pipeline.md` § Kinozal mirror fallback](pipeline.md#kinozal-mirror-fallback). Paired with `KINOZAL_PASSWORD`; **partial** (only one of the two) → WARNING + fallback disabled (not failure) |
+| `KINOZAL_PASSWORD` | secret | **Optional.** `kinozal.guru` account password. Paired with `KINOZAL_USERNAME` |
 
 ### telegram_summarizer
 

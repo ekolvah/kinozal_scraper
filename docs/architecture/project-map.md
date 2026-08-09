@@ -1,350 +1,358 @@
-# Project map — где живёт знание и какой файл на какой вопрос отвечает
+# Project map — where knowledge lives and which file answers which question
 
-**На какой вопрос отвечает этот файл:** «какой файл проекта на какой вопрос отвечает» (индекс)
-**и** «где должно жить какое знание» (IA-policy: tier-модель + canonical-home правило). Это две
-половины одного концерна — информационной архитектуры репозитория. **Не добавляй сюда контент,
-не отвечающий на этот вопрос** (детали кода — в deep-dive `docs/architecture/*`; принципы — в
-`principles.md`).
+**Question this document answers:** "which project file answers which question" (the index)
+**and** "where each kind of knowledge belongs" (the IA policy: tier model + canonical-home rule).
+They are two halves of the repository's information architecture. **Do not add content that does
+not answer either question** (code detail belongs in a `docs/architecture/*` deep dive; principles
+belong in `principles.md`).
 
-**Это индекс, не контент.** Одна строка на файл; содержимое самих файлов сюда не копируется
-(иначе индекс станет ещё одним источником рассинхрона). Единственное отступление — `docs/adr/`:
-он индексируется **строкой на каталог**, per-record строк здесь нет. Каталог растёт по записи на
-решение, и per-file индекс разошёлся бы с реальностью на первой же новой записи; навигация внутри
-каталога — по номеру записи, который и есть её адрес.
+**This is an index, not content.** It has one line per file and does not copy the files' contents
+(otherwise the index becomes another source of drift). The only exception is `docs/adr/`: it is
+indexed **by directory**, with no per-record rows here. The directory grows one record per decision,
+and a per-file index would diverge on the first new record; navigation within it is by record number,
+which is its address.
 
-## IA-policy: где живёт знание
+## IA policy: where knowledge lives
 
-### Два слоя графа: навигация (дерево) vs ссылки (не дерево)
+### Two graph layers: navigation (tree) vs references (not a tree)
 
-ИА репозитория — **не** «звезда» и **не** одно дерево, а два намеренно разных слоя; смешение их
-в одной картинке и создаёт ложное ощущение звезды:
+The repository IA is **not** a star and **not** a single tree, but two deliberately different
+layers; merging them into one picture creates the false impression of a star:
 
-- **Containment (навигация)** — оглавление, по которому спускаешься: `CLAUDE.md` → `project-map.md`
-  (этот файл — полный индекс «файл → вопрос») → конкретные доки/исходники. Слой **древовидный,
-  одно-родительский**: полный перечень файлов живёт только здесь; `CLAUDE.md` на него **ссылается,
-  а не дублирует**.
-- **Reference (canonical-home ссылки)** — кто на чей канон-факт ссылается (`§II`, `#bug-taxonomy`,
-  `permissions.deny`). Слой **намеренно НЕ древовидный**: один факт нужен из нескольких контекстов
-  (напр. `principles.md §II` — из `testing.md`, `.claude/rules/testing.md`, `architect-reviewer.md`,
-  `.importlinter`), поэтому keyed-ссылки идут «вверх/вбок». Сделать их деревом нельзя — пришлось бы
-  либо дублировать факт в каждую ветку (перефраз-дрейф, нарушение canonical-home), либо лишить
-  потребителя указателя на канон.
+- **Containment (navigation)** — the table of contents through which to descend: `CLAUDE.md` →
+  `project-map.md` (this file, the complete "file → question" index) → specific documentation or
+  source. The layer is **tree-shaped and single-parented**: the complete file list lives only here;
+  `CLAUDE.md` **links to it rather than duplicating it**.
+- **Reference (canonical-home links)** — which consumer links to which canonical fact (`§II`,
+  `#bug-taxonomy`, `permissions.deny`). This layer is **deliberately not a tree**: one fact is needed
+  in multiple contexts (e.g. `principles.md §II` from `testing.md`, `.claude/rules/testing.md`,
+  `architect-reviewer.md`, and `.importlinter`), so keyed links go upward and sideways. It cannot be
+  made a tree without either duplicating the fact in each branch (paraphrase drift; a canonical-home
+  violation) or denying a consumer its pointer to the canon.
 
-Ребро `principles.md ↔ project-map.md` **двунаправленное намеренно** (principles делегирует IA-policy
-сюда; этот файл описывает tier принципов) — это не цикл-ошибка.
+The `principles.md ↔ project-map.md` edge is **intentionally bidirectional** (`principles` delegates
+the IA policy here; this file describes the tier for principles); it is not a cycle error.
 
-### Tier-модель носителей знания (официальная, Claude Code)
+### Knowledge-carrier tier model (official, Claude Code)
 
-Claude Code задаёт не имена `docs/*` (их стандарт не регламентирует — переименовывать не к чему),
-а **иерархию носителей знания**:
+Claude Code specifies not the names of `docs/*` (its standard does not regulate them, so there is
+nothing to rename) but the **hierarchy of knowledge carriers**:
 
-| Tier | Назначение | Когда загружается |
+| Tier | Purpose | When loaded |
 |---|---|---|
-| `CLAUDE.md` (root) | Тонкий роутер: что за app + env-граблии + указатели. **Цель < 200 строк** | каждую сессию, целиком |
-| `.claude/rules/*.md` | Операционные инструкции, **один файл = одна тема**; можно path-scoped через frontmatter `paths:` | каждую сессию (или только при работе с matching-путями) |
-| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral role catalogue: Codex and Claude adapters for planner/implementer/fixer, the Claude reviewer subagent, control plane, and local hook policies | по вызову / при старте |
-| `docs/architecture/*.md` | Reference: как устроен код (runtime/pipeline/storage/gemini/…) + этот project-map + `principles.md` | по требованию |
-| `docs/adr/*.md` | Explanation: почему решение принято именно такое и какие альтернативы отвергнуты (MADR 4.0.0, append-only) | по ссылке из state-дока |
-| `~/.claude/projects/<repo>/memory/` | Auto-memory: **только машинно/процессно-специфичное** (см. ниже) | `MEMORY.md` индекс — каждую сессию |
+| `CLAUDE.md` (root) | Thin router: what app this is, environment pitfalls, and pointers. **Target: < 200 lines** | Every session, in full |
+| `.claude/rules/*.md` | Operational instructions, **one file = one topic**; can be path-scoped with frontmatter `paths:` | Every session (or only when working on matching paths) |
+| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral role catalogue: Codex and Claude adapters for planner/implementer/fixer, the Claude reviewer subagent, control plane, and local hook policies | On invocation / at start |
+| `docs/architecture/*.md` | Reference: how the code works (runtime/pipeline/storage/gemini/…) plus this project map and `principles.md` | On demand |
+| `docs/adr/*.md` | Explanation: why the decision was made this way and which alternatives were rejected (MADR 4.0.0, append-only) | Linked from a state document |
+| `~/.claude/projects/<repo>/memory/` | Auto-memory: **machine- or process-specific only** (see below) | `MEMORY.md` index every session |
 
-**Честно про токены.** Файлы в `.claude/rules/` *без* `paths:` грузятся каждую сессию ровно как
-`CLAUDE.md` — это **не** «меньше токенов сходу». Выигрыш в: (a) **дедупе** (правило живёт в одном
-месте), (b) **single-responsibility**, (c) **path-scoping** (`paths: [tests/**]` не грузится, когда
-тесты не трогаем — единственный токен-позитивный случай).
+**Be honest about tokens.** `.claude/rules/` files *without* `paths:` load in every session just
+like `CLAUDE.md`; this is **not** immediately fewer tokens. The gain is (a) **deduplication** (a
+rule lives in one place), (b) **single responsibility**, and (c) **path scoping** (`paths:
+[tests/**]` is not loaded when tests are untouched — the only token-positive case).
 
-Суммарный размер этой безусловной платы загейчен `tests/test_always_load_budget.py` (#375):
-порог — храповик, чтобы рост шёл осознанной правкой на ревью, а не молчаливым дрейфом (так
-бюджет вырос на ~3.8 КБ в #416/#417). Чего гейт **не** ловит — ledger-запись **AB** в
-[`coverage-gaps.md`](coverage-gaps.md).
+`tests/test_always_load_budget.py` gates the total size of this unconditional charge (#375): the
+threshold is a ratchet so growth happens through a deliberate review change, not silent drift
+(the budget grew by ~3.8 KB in #416/#417). What the gate **does not** catch is ledger entry **AB**
+in [`coverage-gaps.md`](coverage-gaps.md).
 
-**Объявленная плата ≠ уплаченная.** Байты always-load набора множатся на число turn'ов через
-`cache_read`, и этого множителя храповик не видит. Фактический расход меряет
-`scripts/token_trend.py` (#464) — по транскриптам Claude Code, на ветку и на turn.
+**Declared charge ≠ paid charge.** The bytes in the always-load set multiply by the number of
+turns through `cache_read`, and the ratchet cannot see that multiplier. `scripts/token_trend.py`
+measures actual consumption (#464), from Claude Code transcripts by branch and turn.
 
-### Canonical-home правило
+### Canonical-home rule
 
-> **У каждого факта — ровно один дом. Прочие упоминания — только ссылка, никогда не перефраз.**
+> **Every fact has exactly one home. Other mentions are links only, never paraphrases.**
 
-- **Общие правила для агентов** (процедура, контракты ролей, цель-функция, гейты) → в
-  `docs/architecture/` — их читает любой адаптер, а не только тот, чей каталог их держит.
-  Provider-специфичный файл (`.claude/**`, `.agents/skills/**`, `AGENTS.md`) несёт **только
-  интерфейс и permissions**: как приходит номер issue, чем вызывается сабагент, чем пишется
-  body. Гард — `tests/test_agent_process.py::test_provider_specific_adapter_files_do_not_define_shared_gates`
-  (денилист определений: таксономия severity, лимиты runbook'а, приоритеты цель-функции);
-  имена скриптов и команд в адаптере легитимны — запрещено определение, не указатель (#452).
-- **Операционные процедурные правила** (workflow) держатся **целиком — правило и
-  rationale вместе**, не расщепляются (расщепление само воссоздаёт дубль). Старое место → указатель.
-  **Rationale ≠ нарратив** (#375): остаётся решение + одна фраза «почему оно до сих пор верно»
-  (без неё правило выглядит ритуалом и его снесёт следующий «упрощатель»); уезжает нарратив
-  «как мы к этому пришли» — даты, номера коммитов, что поймало конкретное ревью. Дом нарратива —
-  тело issue/PR, в правиле остаётся голый `(#N)`. Перед удалением — сверить `gh issue view N`,
-  что нарратив там правда есть: часть фактов бывает артефактом сессии.
-- **Обоснование решения** («почему выбрано это, а не то, и почему до сих пор верно») → запись
-  в репозитории со **стабильным ID**, а state-док на неё ссылается. Куда именно — **первое
-  совпадение**: (1) «не покрыли тестом X» → [`coverage-gaps.md`](coverage-gaps.md); (2) «не взяли
-  инструмент или правило Y» → [`ci.md` §Consciously not adopted](ci.md#consciously-not-adopted);
-  (3) «архитектурное решение с высокой ценой разворота, задевающее несколько модулей или доков» →
-  запись MADR в [`docs/adr/`](../adr/); (4) всё остальное записью **не становится** — его дом
-  остаётся телом issue/PR. Фильтр (3) — cost-of-change: если архитектурным считать всякое
-  решение, архитектурным не является ни одно, и каталог вырождается в свалку того же нарратива.
-  Единообразить три дома не пытаемся: ledger по тестам работает как есть. **Почему запись, а не
-  `(#N)`:** номер таски — адрес события во внешнем трекере, без тела в репо и без статуса, поэтому
-  ссылка на него **вынуждает** пересказывать содержимое рядом с собой; ID записи пересказ снимает
-  (обоснование выбора формата и замер — запись `0001` в каталоге).
-- **Политика каталога `docs/adr/`** (дом — здесь, потому что она меняется, а принятая запись —
-  нет): формат [MADR 4.0.0](../adr/template.md) дословно; имя `NNNN-slug.md`, номер — адрес
-  записи; статус — **закрытый набор** `proposed` / `rejected` / `accepted` / `deprecated` /
-  `superseded by ADR-NNNN` (апстрим отдаёт `status` свободной строкой, но без закрытого набора не
-  выражается append-only-дисциплина); **принятая запись не переписывается** — правятся опечатки и
-  битые ссылки, а смена решения выражается новой записью, на которую старая ссылается вперёд;
-  ориентир объёма — до ~200 строк, длинный файл вытесняет из контекста то, ради чего его открыли.
-  Структуру держит `tests/test_adr_records.py`. **Что запись вообще завели — гейтит секция `## ADR`
-  в issue** (`REQUIRED_SECTIONS`): ссылка либо явное `none: <причина>`. Гейт не судит, достойно ли
-  решение записи — это cost-of-change суждение; он гарантирует, что вопрос **задан**, ровно как
-  `## Architect review` гарантирует не качество ревью, а его сознательность (#150).
-- **Формулировки принципов §I–VII** → канон в [`principles.md`](principles.md), ссылка по номеру
-  (`architect-reviewer.md`, `mindset.md`); **нумерацию не трогать**.
-- **Энфорс-факты** (git-запреты) → канон = `.claude/settings.json` `permissions.deny` (+ синхрон-тест
-  `tests/test_settings_deny.py`). **Mirror-файлов не создавать** — дубль по определению.
-- `.claude/rules/`-файл **не** содержит перефраз принципа или строки deny — только ссылку либо
-  процедуру, которой больше нигде нет.
+- **Shared agent rules** (procedure, role contracts, objective function, gates) →
+  `docs/architecture/`, because every adapter reads them, not only the adapter whose directory
+  contains it. A provider-specific file (`.claude/**`, `.agents/skills/**`, `AGENTS.md`) carries
+  **only the interface and permissions**: how an issue number arrives, how a subagent is called,
+  and how a body is written. The guard is
+  `tests/test_agent_process.py::test_provider_specific_adapter_files_do_not_define_shared_gates`
+  (a denylist of definitions: severity taxonomy, runbook limits, objective-function priorities).
+  Script and command names in an adapter are legitimate; defining rather than pointing is forbidden
+  (#452).
+- **Operational procedural rules** (workflow) remain **whole — rule and rationale together**;
+  they are not split (splitting recreates the duplicate). The former location becomes a pointer.
+  **Rationale ≠ narrative** (#375): retain the decision plus one sentence explaining why it is
+  still valid (without it, the rule looks ritualistic and the next "simplifier" will remove it);
+  move the narrative — dates, commit numbers, and what a specific review caught — to the issue/PR
+  body. The rule retains only bare `(#N)`. Before removing it, check `gh issue view N` to ensure
+  the narrative is really there; some facts are session artefacts.
+- **Decision rationale** ("why this was chosen rather than that, and why it remains valid") → a
+  repository record with a **stable ID**, linked by a state document. Its destination is the
+  **first match**: (1) "test X is not covered" → [`coverage-gaps.md`](coverage-gaps.md); (2) "tool
+  or rule Y was not adopted" → [`ci.md` §Consciously not adopted](ci.md#consciously-not-adopted);
+  (3) "an architectural decision costly to reverse and affecting several modules or documents" →
+  a MADR record in [`docs/adr/`](../adr/); (4) everything else does **not** become a record — its
+  home remains the issue/PR body. Filter (3) is cost of change: if every decision is architectural,
+  none is, and the directory degenerates into a dump of the same narrative. The three homes are
+  not forced into uniformity; the testing ledger works as it is. **Why a record rather than
+  `(#N)`:** a task number is an external tracker event address, without repository body or status,
+  so linking it **forces** nearby retelling; a record ID eliminates the retelling (the format
+  rationale and measurement are in directory record `0001`).
+- **`docs/adr/` directory policy** (its home is here because it changes while an accepted record
+  does not): the [MADR 4.0.0](../adr/template.md) format is verbatim; filename `NNNN-slug.md`,
+  with the number as record address; status is the **closed set** `proposed` / `rejected` /
+  `accepted` / `deprecated` / `superseded by ADR-NNNN` (upstream provides `status` as free text,
+  but append-only discipline cannot be expressed without a closed set); an **accepted record is
+  not rewritten** — correct typos and broken links, and express a changed decision in a new record
+  that the old one links to forward. The size guide is up to ~200 lines: a longer file displaces
+  the context for which it was opened. `tests/test_adr_records.py` holds the structure. The `## ADR`
+  issue section (`REQUIRED_SECTIONS`) gates whether a record was considered: a link or explicit
+  `none: <reason>`. The gate does not judge whether the decision merits a record — that is a
+  cost-of-change judgement; it guarantees the question was **asked**, just as `## Architect review`
+  guarantees awareness rather than review quality (#150).
+- **Wording of principles §I–VII** → canonical in [`principles.md`](principles.md), referenced by
+  number (`architect-reviewer.md`, `mindset.md`); **do not change the numbering**.
+- **Enforcement facts** (git prohibitions) → canonical in `.claude/settings.json`
+  `permissions.deny` (+ synchronisation test `tests/test_settings_deny.py`). **Do not create mirror
+  files** — that is a duplicate by definition.
+- A `.claude/rules/` file **does not** paraphrase a principle or deny line; it contains only a link
+  or a procedure that exists nowhere else.
 
-**Граница энфорсится человеком на ревью.** `grep` ловит лишь дословные копии, не семантический
-перефраз; при переносе правила ревьюер проверяет, что в старом месте осталась **ссылка, а не
-пересказ**. Скрипт-детектор семантических дублей сознательно **не строим** — он дал бы ложное
-чувство покрытия (нарушение §IV: зелёный детектор, пропускающий перефраз, хуже честного «проверяет человек»).
+**A human enforces the boundary in review.** `grep` catches only verbatim copies, not semantic
+paraphrase; when a rule moves, the reviewer checks that the former location retains a **link, not a
+retelling**. We deliberately do **not** build a semantic-duplicate detector — it would create false
+coverage (a §IV violation: a green detector that misses paraphrase is worse than an honest "a human
+reviews it").
 
-### Конвенция-заголовков (header = канон, карта = производный индекс)
+### Documentation and commentary language policy
 
-Каждый картируемый файл несёт **header** с единственным вопросом, на который он отвечает:
-docstring для `.py`, верхняя строка-шапка для `.md`. Header — **канонический** ответ (живёт с
-файлом, виден при редактировании — там, где соблазн подмешать чужое; агент читает его JIT, открывая
-файл). Раздел [«Карта файлов»](#карта-файлов) ниже — **производный навигационный индекс**; при
-дрейфе **header wins**. Практическое следствие для автора header'а: писать его **по факту
-содержимого файла**, а не копированием своей строки из «Карты файлов» — копипаста инвертирует
-зависимость, а расхождение с картой означает, что править надо карту.
+All repository documentation prose and Python commentary are English-only. This makes the
+repository legible to every supported agent and contributor without maintaining parallel-language
+rules. The decision, alternatives, and migration rationale are in
+[ADR-0005](../adr/0005-english-repository-documentation.md).
 
-**Форма header'а для `.md` — закрытый набор из двух маркеров** (#421): строка
-`**На какой вопрос отвечает этот файл:**` либо её английский эквивалент
-`**Question this document answers:**`, на языке самого дока, до первого `## `. Принимаются оба,
-потому что репо двуязычен (`principles.md`/`testing.md` англоязычны), и требовать один язык
-значило бы гнать churn-дифф с переводом ради формы. Расширение набора — правка **этой** строки,
-а не теста под файл.
+For mapped Markdown files, the sole accepted question marker is
+`**Question this document answers:**`, before the first `## `. The `_MARKERS` expectation is this
+single English marker; adding an alternative is a policy change, not a per-file test exception.
+`scripts/check_language.py` enforces the English-only policy for tracked Markdown prose and Python
+commentary; code spans and fenced code/data are deliberately outside its prose scope.
 
-**Что считается картируемым файлом** (там же, #421): **`.md` под `docs/architecture/` и
-`.claude/rules/`** — и это единственное правило скоупа, ничего не отсеивается вторым слоем
-поверх него. Два уточнения — почему граница проходит именно так, а не расширение правила:
+**What counts as a mapped file** (there too, #421): **`.md` under `docs/architecture/` and
+`.claude/rules/`**. This is the only scope rule; no second layer filters it. Two clarifications
+explain why the boundary is here rather than expanding the rule:
 
-- **`.claude/agents/*.md` и `.claude/commands/*.md` вне скоупа не «в наказание», а потому что
-  header у них уже есть — во frontmatter `description:`.** Требовать от них ещё и строку-маркер
-  значило бы держать канон в двух местах. Обратный случай подтверждает границу:
-  `.claude/rules/testing.md` frontmatter несёт (`paths:`), но `description:` нет — значит
-  строка-маркер для него обязательна, и скоуп это уже обеспечивает.
-- **`CLAUDE.md` исключён сознательно**: он тонкий роутер, помеченный в «Карте файлов»
-  ❌ kitchen-sink, и требовать от него единственного вопроса значило бы зафиксировать гейтом ту
-  роль, от которой его надо освобождать.
-- **`docs/adr/` лежит вне `docs/architecture/` именно поэтому.** Запись MADR несёт свою шапку
-  (frontmatter `status`/`date` + заголовок решения), и требовать от неё ещё и строки-маркера
-  значило бы держать канон в двух местах — тот же аргумент, что для `.claude/agents/`. Каталог
-  не остаётся без инварианта: его стережёт `tests/test_adr_records.py` (имя, уникальный номер,
-  статус, резолв `superseded by`, обязательные секции).
+- **`.claude/agents/*.md` and `.claude/commands/*.md` are outside scope not as punishment, but
+  because they already have a header — frontmatter `description:`.** Requiring a marker line too
+  would keep the canon in two places. The converse confirms the boundary: `.claude/rules/testing.md`
+  frontmatter has `paths:` but no `description:`, so its marker line is required and the scope
+  already provides that.
+- **`CLAUDE.md` is consciously excluded**: it is a thin router, marked ❌ kitchen-sink in the File
+  map; requiring a single question from it would freeze with a gate the role from which it should be
+  freed.
+- **`docs/adr/` lies outside `docs/architecture/` for the same reason.** A MADR record has its own
+  header (frontmatter `status`/`date` + decision title), so requiring a marker line too would keep
+  the canon in two places — the same argument as for `.claude/agents/`. The directory still has an
+  invariant: `tests/test_adr_records.py` guards name, unique number, status, `superseded by`
+  resolution, and required sections.
 
-**Генерировать карту из заголовков мы сознательно НЕ стали** (#164): per-file текст «на какой вопрос
-отвечает» дословно совпадал бы с docstring — генерируемая карта была бы второй копией канона
-(редундантно с тем, что агент и так читает; статика стареет/жрёт токены; а курируемые суждения
-SR ✅/❌ и дубли скрипт всё равно не выводит). Вместо генератора — дешёвый **presence-lint**
-(ruff `D100`/`D104`/`D419` в `check_lint`, #253 — раньше bespoke `scripts/check_headers.py`):
-каждый публичный `.py` — под `src/`, `scripts/` и `tests/` (#433) — обязан нести непустой module
-docstring, иначе red. Для исходников карта поэтому несёт не per-file копию вопроса,
-а [**роутер уровня концернов**](#исходники-проекта) (концерн → файлы + deep-dive-указатель) —
-orientation, которого в per-file docstring нет.
+We consciously did **not generate the map from headers** (#164): a per-file "which question it
+answers" text would duplicate the docstring verbatim, making the generated map a second copy of the
+canon (redundant with what the agent already reads; static output ages and consumes tokens; the
+script cannot output curated SR ✅/❌ judgements or duplicates anyway). Instead, use inexpensive
+**presence lint** (ruff `D100`/`D104`/`D419` in `check_lint`, #253; formerly bespoke
+`scripts/check_headers.py`): every public `.py` under `src/`, `scripts/`, and `tests/` (#433) must
+carry a non-empty module docstring or be red. The map therefore provides not a per-file question
+copy for source files, but a [**concern-level router**](#project-source) (concern → files + deep-dive
+pointer) — orientation absent from a per-file docstring.
 
-**Форма docstring'а в `tests/` — «жанр: что стережёт»** (`Anti-drift guard for …`,
-`Tests for X.py — …`, `E2E: …`); скобочный указатель на issue — по желанию, у гардов он обычно
-есть, у продуктовых наборов чаще нет предка, к которому вести.
-Это **единственный дом** формата: `D100` держит присутствие, но не содержание, а разложить тесты
-по папкам-категориям вместо этого сознательно отклонено (#433) — переезд стоил бы 71 ссылки на
-пути в прозе и коде и завёл бы молчаливый failure mode «тест лёг не в ту папку». Навигация по
-тестам остаётся `grep`-ом, теперь по осмысленному docstring'у.
+**The `tests/` docstring form is "genre: what it guards"** (`Anti-drift guard for …`,
+`Tests for X.py — …`, `E2E: …`); a parenthetical issue pointer is optional. Guards normally have
+one; product suites often have no ancestor to which to point. This is the format's **only home**:
+`D100` holds presence but not content, and categorising tests into directories was consciously
+rejected (#433) — the move would cost 71 path references in prose and code and create the silent
+failure mode "a test landed in the wrong directory". Test navigation remains `grep`, now over a
+meaningful docstring.
 
-Для `.md` тот же presence загейчен `tests/test_doc_headers.py` (#421) — тестом, а не записью в
-`CHECKS`: `test_ci_check.py::TestStepParity` требует parity реестра с `ci.yml`, поэтому запись
-обязала бы завести ещё и `--only`-шаг ради статической проверки, которую и так гоняет `pytest`.
-Скоуп производен от glob, чтобы следующий arch-док попадал под правило автоматически.
-Целостность самих указателей (ID — это адрес) стережёт `tests/test_doc_links.py` (#427):
-каждая внутренняя ссылка и каждый code-span вида `` `file.md#anchor` `` обязаны резолвиться —
-переименование секции иначе молча рвёт все входящие якоря. **Форму** ссылки на issue
-стережёт `tests/test_doc_narrative.py` (#428): `#N` — скобочный указатель, не член предложения, и в
-заголовке секции запрещён вовсе. Механика всех трёх — [`ci.md`](ci.md#doc-guards).
+For `.md`, `tests/test_doc_headers.py` (#421) gates the same presence by test rather than an entry
+in `CHECKS`: `test_ci_check.py::TestStepParity` requires registry parity with `ci.yml`, so an entry
+would require an additional `--only` step for a static check that `pytest` already runs. Scope is
+derived from a glob so the next architecture document enters the rule automatically. `tests/test_doc_links.py`
+(#427) guards pointer integrity (an ID is an address): every internal link and code span of the form
+`` `file.md#anchor` `` must resolve, otherwise a renamed section silently breaks all incoming anchors.
+`tests/test_doc_narrative.py` (#428) guards issue-link **form**: `#N` is a parenthetical pointer,
+not a sentence member, and is forbidden in a section title. The mechanics of all three are in
+[`ci.md`](ci.md#doc-guards).
 
-**Presence ≠ correctness.** Lint гарантирует, что docstring *есть* и непуст — но не что он *актуален*:
-устаревший, но непустой docstring пройдёт. Ровно так же и `.md`-гард: он гарантирует лишь, что
-**есть с чем спорить** о границе файла, — но не что header соответствует содержимому.
-Расхождение docstring ↔ реальное назначение ловит человек
-на ревью — та же честная §IV-позиция, что и для семантических дублей (зелёный детектор, дающий ложное
-покрытие, хуже честного «проверяет человек»).
+**Presence ≠ correctness.** Lint guarantees that a docstring *exists* and is non-empty, not that it
+is *current*: an outdated non-empty docstring passes. The Markdown guard is the same: it guarantees
+only that there is **something to dispute** about a file boundary, not that the header matches its
+contents. A human catches docstring ↔ actual-purpose divergence in review — the same honest §IV
+position as for semantic duplicates (a green detector that provides false coverage is worse than an
+honest "a human reviews it").
 
-Ровно та же граница у гарда записей `docs/adr/` (`tests/test_adr_records.py`): он держит структуру —
-имя, уникальный номер, статус, резолв `superseded by`, обязательные секции, — но **не** отличает
-запись-заготовку с незаполненными `{placeholder}` от настоящей и не судит, достойно ли решение
-записи (cost-of-change) и не устарело ли обоснование. Это не пробел покрытия, который стоило бы
-закрывать тестом, а тот же класс семантического суждения: детектор здесь дал бы ложное покрытие.
+The `docs/adr/` record guard (`tests/test_adr_records.py`) has the same boundary: it holds the
+structure — name, unique number, status, `superseded by` resolution, and required sections — but
+does **not** distinguish a draft record with unfilled `{placeholder}` from a real one, judge whether
+a decision merits a record (cost of change), or determine whether rationale is outdated. This is not
+a coverage gap worth testing, but the same class of semantic judgement: a detector would provide
+false coverage.
 
-### Что описывает документация: текущее состояние, не история и не идеи
+### What documentation describes: current state, not history or ideas
 
-> **`docs/` описывает текущее реализованное состояние продукта и архитектуры — решения как они
-> есть сейчас. Это не свалка: знание, которое не является «текущим реализованным состоянием»,
-> живёт в своём доме.**
+> **`docs/` describes the currently implemented state of the product and architecture — decisions
+> as they exist now. It is not a dumping ground: knowledge that is not "currently implemented
+> state" lives in its own home.**
 
-- **Смена решения → правка существующего файла, не добавление нового.** Нужно актуальное описание
-  существующих решений, а не changelog: история изменений живёт в git/PR, не в теле дока. Два файла
-  про «как было» и «как стало» = гарантированный рассинхрон.
-- **Обоснование решения → запись со стабильным ID, не абзац в state-доке.** Запрет нарратива без
-  дома для rationale не работает — это измерено (ADR-0001: 174 повествовательных упоминания `#N`
-  из 300). Маршрут — §Canonical-home выше; в state-доке остаётся решение, одна фраза «почему оно
-  до сих пор верно» и ссылка.
-- **Идеи, задачи, roadmap, нереализованные инициативы → GitHub issues** (они переживают переезд на
-  другую машину так же, как репо — это и есть их durable-дом). Прецедент: попытку положить roadmap
-  трейлер-инициативы в `docs/initiatives/` отклонили (#188), а сам scope распределён по issue
-  самой инициативы (#138–#145).
+- **A changed decision → edit the existing file, do not add another.** The need is a current
+  description of existing decisions, not a changelog: change history belongs in git/PR, not a
+  document body. Two files for "before" and "after" guarantee drift.
+- **Decision rationale → a record with a stable ID, not a state-document paragraph.** Banning
+  narrative without a rationale home does not work — this was measured (ADR-0001: 174 narrative
+  mentions of `#N` out of 300). The route is §Canonical-home above; the state document retains the
+  decision, one sentence explaining why it remains valid, and a link.
+- **Ideas, tasks, roadmaps, and unimplemented initiatives → GitHub issues** (they survive moving to
+  another machine just as the repository does; that is their durable home). Precedent: an attempt
+  to put the trailer-initiative roadmap in `docs/initiatives/` was rejected (#188), and the scope
+  itself is distributed across the initiative's issues (#138–#145).
 
-**Форма ссылки** (загейчено `tests/test_doc_narrative.py`, механика — [`ci.md`](ci.md#doc-guards)):
+**Link form** (gated by `tests/test_doc_narrative.py`; mechanics —
+[`ci.md`](ci.md#doc-guards)):
 
-- **`#N` — скобочный указатель, а не член предложения.** Критерий проверяемый: убери скобки —
-  утверждение осталось полным? Тогда форма верна (`` дискриминатор сверяет точный литерал (#385) ``).
-  Если без перехода в трекер фраза неполна (`` Closed by #88. ``, `` RCA #396 установил, что… ``) —
-  это пересказ события, у которого есть свой дом. Гейтится **форма**, а не жанр: хроника,
-  аккуратно уложенная в скобки, пройдёт — её ловит человек на ревью.
-- **В заголовке секции `#N` запрещён — и в скобках тоже.** Якорь GitHub генерится из текста
-  заголовка, поэтому `` ## Eval harness (#139) `` делает адресом секции `#eval-harness-139`:
-  адрес, привязанный к номеру породившей её таски.
-- **Сигил `#` зарезервирован за ссылками на issue/PR.** Правило — `` `agent-process.md` ``,
-  доска — `` `Project 1` ``. Иначе гарду пришлось бы вести открытый словарь левого контекста,
-  который растёт с каждой новой формой записи. Загейчено по **всем** отслеживаемым файлам,
-  не только по `.md`: в `.py`/`.toml` та же ошибка стоит дороже — там `#N` печатается агенту.
-  Ветка — построчный regexp по сырому файлу, поэтому **code-span для неё не escape hatch**:
-  отрицательный пример пишется через метапеременную (`` `workflow #N` ``), за `#` не цифра —
-  и правило можно показать, не покраснев на собственной иллюстрации.
-- **Отрицательный пример формы пишется code-span'ом** — иначе док, объясняющий правило, сам под
-  него краснеет. Это работает для двух markdown-веток; у сигильной escape hatch другой —
-  метапеременная (см. выше).
-- **Записи MADR (`docs/adr/`) — вне скоупа гарда по жанру**: запись есть дом обоснования, она
-  датирована по конструкции и после принятия иммутабельна, так что покрасневший на ней гард не
-  имел бы легального фикса.
+- **`#N` is a parenthetical pointer, not a sentence member.** The criterion is testable: remove the
+  parentheses — does the statement remain complete? Then the form is correct
+  (`` discriminator compares an exact literal (#385) ``). If a phrase is incomplete without
+  visiting the tracker (`` Closed by #88. ``, `` RCA #396 established that… ``), it retells an
+  event with its own home. The gate checks **form**, not genre: a chronicle neatly placed in
+  parentheses passes; a human catches it in review.
+- **`#N` is forbidden in a section title, including in parentheses.** GitHub generates an anchor
+  from title text, so `` ## Eval harness (#139) `` makes the section address `#eval-harness-139`:
+  an address tied to the number of the task that produced it.
+- **The `#` sigil is reserved for issue/PR links.** The rule is `` `agent-process.md` ``; the board
+  is `` `Project 1` ``. Otherwise the guard would need an open dictionary of left contexts that
+  grows with every new notation form. It is gated across **all** tracked files, not only `.md`:
+  in `.py`/`.toml` the same error costs more because `#N` is printed to the agent. The branch is a
+  line-by-line regexp over the raw file, so a **code span is not an escape hatch**: write the
+  negative example through a metavariable (`` `workflow #N` ``), where `#` is not followed by a
+  digit, and the rule can be illustrated without failing on its own example.
+- **Write a negative form example in a code span**; otherwise the document explaining the rule
+  fails it. This works for the two Markdown branches; the sigil branch has a different escape hatch:
+  the metavariable above.
+- **MADR records (`docs/adr/`) are outside the guard's scope by genre**: a record is the rationale
+  home, structurally dated and immutable after acceptance, so a guard failure on it would have no
+  legal fix.
 
-Существующие подсекции — **инстансы** этого зонтика, не отдельные правила: машинно/окружение-специфичное
-→ out-of-repo память ([«Memory ↔ repo»](#memory--repo-resolved-policy) ниже); бэклог/статус-трекер
-→ issues (остаточный долг — [#177](https://github.com/ekolvah/kinozal_scraper/issues/177), см. конец
-файла). Каждый — частный случай «то, что не текущее-реализованное-состояние, живёт не в `docs/`».
+The existing subsections are **instances** of this umbrella, not separate rules: machine/environment-
+specific material → out-of-repository memory (["Memory ↔ repository"](#memory--repository-resolved-policy)
+below); backlog/status tracker → issues (remaining debt —
+[#177](https://github.com/ekolvah/kinozal_scraper/issues/177), see the end of the file). Each is a
+special case of "what is not currently implemented state does not live in `docs/`".
 
-### Memory ↔ repo: resolved-policy
+### Memory ↔ repository: resolved policy
 
-Инстанс зонтика [«Что описывает документация»](#что-описывает-документация-текущее-состояние-не-история-и-не-идеи)
-(машинно-специфичное → не `docs/`). **Проектные инструкции живут в репозитории** (`.claude/`, `docs/`,
-скрипты, шаблоны), а не в приватной out-of-repo Claude-памяти. Out-of-repo память — **только** для машинно/окружение-специфичного
-или стиля работы с конкретным оператором; иначе при клоне на другой машине проектное знание не
-видно → источник истины расщепляется. Это **действующая политика, не backlog**: персона
-`architect-review` раньше жила в памяти, её перенесли в репо (`.claude/agents/architect-reviewer.md`
-+ гейт `validate_issue_sections.py` + `principles.md §Governance`), память удалили (#150). Тот же
-переезд memory→repo — механика приоритета issue (поле Priority в GitHub Project 1): жила в приватной
-памяти, теперь в репо как `scripts/set_issue_priority.py` (зашитые Project/field/option-ID + unit-тесты)
-+ правило [`agent-process.md`](agent-process.md) (агент спрашивает приоритет у пользователя
-→ скрипт), память удалена (#351).
+An instance of ["What documentation describes"](#what-documentation-describes-current-state-not-history-or-ideas)
+(machine-specific → not `docs/`). **Project instructions live in the repository** (`.claude/`,
+`docs/`, scripts, templates), not in private out-of-repository Claude memory. Out-of-repository
+memory is **only** for machine/environment-specific material or a working style with a particular
+operator; otherwise a clone on another machine cannot see project knowledge and the source of truth
+splits. This is **active policy, not backlog**: the `architect-review` persona formerly lived in
+memory, moved to the repository (`.claude/agents/architect-reviewer.md` +
+`validate_issue_sections.py` gate + `principles.md §Governance`), and its memory was deleted (#150).
+The issue-priority mechanism made the same memory→repository move (Priority field in GitHub Project
+1): from private memory to `scripts/set_issue_priority.py` (embedded Project/field/option IDs + unit
+tests) + the [`agent-process.md`](agent-process.md) rule (the agent asks the user for priority →
+script); the memory was deleted (#351).
 
-**Гейт вместо прозы (#353).** Эта политика — сама была прозой и нарушалась дважды за одну сессию
-(process-факты про приоритет и про open_pr link-lag клались в память вместо репо). **Root-cause:**
-детерминируемый триггер (запись файла в memory-каталог) при уже существующей hook-инфраструктуре
-оставили неэнфорснутым — прямое нарушение [`principles.md` §Scripts over instructions](principles.md#scripts-over-instructions). Полностью загейтить
-«эта проза должна быть скриптом» нельзя (семантическое суждение, класс semantic-dup — не строим), но
-частный случай — запись в `.claude/projects/<slug>/memory/` — гейтится тривиально: `scripts/hooks.py`
-(`_is_memory_write` → `memory_write_signal`, PostToolUse exit 2) выдаёт **checkpoint-reminder** «это
-машинно/операторо-специфичное? иначе перенеси в репо». Это forcing-function (осознанная точка
-решения), **не** семантический классификатор и **не** hard-block: предикат «писал в память» ≠
-нарушение «писал процессное знание», поэтому сигнал срабатывает на всех записях (в т.ч. легитимных) —
-false-positive-by-design, для редких memory-записей цена промаха низкая. PreToolUse-блокировка,
-семантический классификатор и Agent Governance Toolkit осознанно out-of-scope.
+**Gate instead of prose (#353).** This policy was itself prose and was violated twice in one
+session (priority and open_pr link-lag process facts were put in memory instead of the repository).
+**Root cause:** a deterministic trigger (writing a file to the memory directory) was left unenforced
+despite existing hook infrastructure — a direct violation of
+[`principles.md` §Scripts over instructions](principles.md#scripts-over-instructions). It is not
+possible to fully gate "this prose must be a script" (a semantic judgement; no semantic-duplicate
+classifier), but the special case — writing to `.claude/projects/<slug>/memory/` — is trivially
+gated: `scripts/hooks.py` (`_is_memory_write` → `memory_write_signal`, PostToolUse exit 2) emits a
+**checkpoint reminder**: "is this machine/operator-specific? Otherwise move it into the repository".
+It is a forcing function (a deliberate decision point), **not** a semantic classifier and **not** a
+hard block: predicate "wrote to memory" ≠ violation "wrote process knowledge", so it signals on all
+writes (including legitimate ones) — false-positive-by-design, with low miss cost for rare memory
+writes. PreToolUse blocking, a semantic classifier, and Agent Governance Toolkit are consciously
+out of scope.
 
-## Карта файлов
+## File map
 
-### `.claude/` и корневые инструкции
+### `.claude/` and root instructions
 
-| Файл | На какой вопрос отвечает | Single-responsibility? |
+| File | Question answered | Single-responsibility? |
 |---|---|---|
-| `~/.claude/CLAUDE.md` (глоб., вне репо) | Кросс-проектное (generic mindset для не-репо проектов). Repo-зеркало операционного mindset = `.claude/rules/mindset.md` | ✅ |
-| `CLAUDE.md` (проект) | Микс: что делает app + Windows-граблии + резюме PR-workflow + индекс arch-доков | ❌ kitchen-sink |
+| `~/.claude/CLAUDE.md` (global, outside the repository) | Cross-project material (generic mindset for non-repository projects). Repository mirror of the operational mindset = `.claude/rules/mindset.md` | ✅ |
+| `CLAUDE.md` (project) | Mix: what the app does + Windows pitfalls + PR-workflow summary + architecture-document index | ❌ kitchen-sink |
 | `docs/architecture/agent-process.md` | Agent-neutral roles, issue hand-off, deterministic gates, and adapter contract | ✅ |
-| `.claude/rules/testing.md` | Операционный чеклист написания тестов (RED-first/doubles/уровень/ci_check) — path-scoped `tests/**`, ссылается на §I/§II | ✅ |
-| `.claude/rules/mindset.md` | Токен-тактики Claude-харнесса в main-сессии + указатели на цель-функцию/принципы/процесс (канона не держит) — always-load | ✅ |
-| `.claude/commands/plan.md` | Claude planner adapter: интерфейс к [`agent-process.md` §Planner runbook](agent-process.md#planner-runbook) (шагов не дублирует) | ✅ |
-| `.claude/commands/implement.md` | Claude implementer/fixer adapter, вызывается как `/implement N`: интерфейс к [`agent-process.md` §Deterministic delivery flow](agent-process.md#deterministic-delivery-flow) и [§Review-gate verdicts](agent-process.md#review-gate-verdicts). Несёт **только** харнесс-специфику (foreground-вызов долгих команд, `Edit`/`Write` вместо heredoc); шагов, exit-кодов и git-запретов не дублирует — предыдущая жирная версия была удалена именно за дубль, поэтому форму шима стережёт `_SHARED_GATE_DEFINITIONS` (#444, #473) | ✅ |
-| `.agents/skills/plan-issue/` | Codex planner adapter, invoked as `$plan-issue #N`; тот же runbook, architect review выполняет сам | ✅ |
+| `.claude/rules/testing.md` | Operational test-writing checklist (RED-first/doubles/level/ci_check) — path-scoped `tests/**`, links to §I/§II | ✅ |
+| `.claude/rules/mindset.md` | Claude-harness token tactics in the main session plus pointers to the objective function/principles/process (holds no canon) — always-load | ✅ |
+| `.claude/commands/plan.md` | Claude planner adapter: interface to [`agent-process.md` §Planner runbook](agent-process.md#planner-runbook) (does not duplicate steps) | ✅ |
+| `.claude/commands/implement.md` | Claude implementer/fixer adapter, invoked as `/implement N`: interface to [`agent-process.md` §Deterministic delivery flow](agent-process.md#deterministic-delivery-flow) and [§Review-gate verdicts](agent-process.md#review-gate-verdicts). Carries **only** harness specifics (foreground invocation of long commands, `Edit`/`Write` instead of heredoc); does not duplicate steps, exit codes, or git prohibitions — its former fat version was removed precisely for duplication, so `_SHARED_GATE_DEFINITIONS` guards the shim shape (#444, #473) | ✅ |
+| `.agents/skills/plan-issue/` | Codex planner adapter, invoked as `$plan-issue #N`; same runbook, performs architect review itself | ✅ |
 | `.agents/skills/implement-issue/` | Codex implementer/fixer adapter, invoked as `$implement-issue #N` | ✅ |
-| `.claude/agents/architect-reviewer.md` | Персона ревьюера плана; контракт (что проверять, формат findings — coverage-first: градация, не фильтрация, #392) и цель-функцию **читает из канона** [`agent-process.md` §Architect review contract](agent-process.md#architect-review-contract) (сабагент не грузит always-load rules — читает сам, копии не держит). Модель/`effort` — пин, политика и границы пина в [`ci.md §Model pinning`](ci.md), гард `tests/test_agent_frontmatter.py` | ✅ |
+| `.claude/agents/architect-reviewer.md` | Plan-reviewer persona; reads its contract (what to check; coverage-first finding format: grade, do not filter, #392) and objective function **from the canon** [`agent-process.md` §Architect review contract](agent-process.md#architect-review-contract) (the subagent does not load always-load rules; it reads them itself and retains no copy). Model/`effort` are pinned; policy and pin boundaries are in [`ci.md` §Model pinning](ci.md), with guard `tests/test_agent_frontmatter.py` | ✅ |
 | `.claude/settings.json`, `.codex/hooks.json`, `scripts/agent_policy.py` | Local deny policy for Claude and Codex; branch protection remains final | ✅ |
-| `.claude/settings.local.json` (gitignored) | Личный режим + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, личный) |
+| `.claude/settings.local.json` (gitignored) | Personal mode + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, personal) |
 
 ### `docs/architecture/`
 
-| Файл | На какой вопрос отвечает | Single-responsibility? |
+| File | Question answered | Single-responsibility? |
 |---|---|---|
-| `principles.md` | Микс: §I–VII принципы (часть — RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow делегирован в `agent-process.md`) | ❌ runtime-принципы + dev-process вместе |
-| `project-map.md` (этот файл) | Какой файл на какой вопрос отвечает + где живёт какое знание (IA-policy) | ✅ |
-| `runtime.md` | Что существует в рантайме и как связано: какие пайплайны, какие Protocol-границы, generic data-flow + модули, сознательно обходящие generic-паттерн (Telethon-direct). Широта, не глубина | ✅ |
-| `pipeline.md` | Как устроен и ведёт себя **один** прогон: слои извлечения, контракты `extract_from_*` → `NormalizedItem`, «новый источник = конфиг, не код», error policy, шаблоны уведомлений, макросы, трейлеры **и поведение fetch** (HTML source config, mirror-fallback kinozal — #418) | ✅ |
-| `storage.md` | Storage Protocol + реализации, DI, EAFP-создание листа и валидация схемы, поиск dedupe-ключа, row-schema, инварианты колонок, порядок записи | ✅ |
-| `testing.md` | Как гарантируем качество: уровни тестов, bug-taxonomy, что мокать (ссылается на `principles.md §II`, не дублирует). Стратегия, не исключения | ✅ |
-| `coverage-gaps.md` | Где мы сознательно **не** тестируем и почему: ledger `A`…`AI` со стабильными буквенными ID + модули без выделенных тестов. Выселен из `testing.md`, чтобы растущий список исключений не смешивался со стратегией | ✅ |
-| `ci.md` | Гейты качества на пути изменения (local pre-commit, `ci.yml`, cloud `agent-review`), live GitHub API context для rerun (body + SHA как недоверенные данные), schema-validated outcome, который детерминированно завершает ordinary review job без marker/polling/retry, и `github_token`, из-за которого PR по самому ревью-контроллеру ревьюится наравне с остальными (#483) + **единственный дом политики модельного пиннинга агентного тулинга** (§Model pinning: обе поверхности — `agent-review.yml` и `.claude/agents/*.md`, границы пина, два гарда). Runtime-половина (env vars, прод-воркфлоу) выселена в `operations.md` (#418); от прод-крона остался только гейт-фасет (E2E-smoke по `principles.md` §Quality Gates). Обоснования решений свёрнуты до операционного минимума (#419): нарратив «как мы сюда пришли» живёт в issue/PR, здесь — только фраза, без которой агент ошибётся или переделает отвергнутое; отвергнутые инструменты — строкой по месту гейта либо в §Consciously not adopted | ✅ |
-| `operations.md` | Как прод-прогон эксплуатируется: расписание и порядок шагов, env-переменные и секреты, изоляция падений (#245) и алертинг (#310), runbook'и оператора (ротация `TELETHON_SESSION`), терпеливый ретрай soldout и место его шага в прогоне (#396). Принял runtime-половину `ci.md` (#418) | ✅ |
-| `gemini.md` | Gemini: model rotation / quota / retry / prompts / call-observability (token+latency `llm_call`-лог + Phoenix dev-recipe, #145) | ✅ |
-| `llm-security.md` | LLM-угрозы enricher'а (OWASP LLM Top 10 → защиты/residual): prompt-injection fence, output-escaping, honest blast radius (#308) | ✅ |
+| `principles.md` | Mix: §I–VII principles (partly RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow delegated to `agent-process.md`) | ❌ runtime principles + development process together |
+| `project-map.md` (this file) | Which file answers which question + where knowledge lives (IA policy) | ✅ |
+| `runtime.md` | What exists at runtime and how it connects: available pipelines, Protocol boundaries, generic data flow, and modules that consciously bypass the generic pattern (Telethon-direct). Breadth, not depth | ✅ |
+| `pipeline.md` | How **one** run is structured and behaves: extraction layers, `extract_from_*` → `NormalizedItem` contracts, "a new source = configuration, not code", error policy, notification templates, macros, trailers, **and fetch behaviour** (HTML source configuration, Kinozal mirror fallback — #418) | ✅ |
+| `storage.md` | Storage Protocol + implementations, DI, EAFP sheet creation and schema validation, dedupe-key lookup, row schema, column invariants, write order | ✅ |
+| `testing.md` | How quality is guaranteed: test levels, bug taxonomy, what to mock (links to `principles.md §II`, does not duplicate it). Strategy, not exceptions | ✅ |
+| `coverage-gaps.md` | Where we consciously **do not** test and why: ledger `A`…`AI` with stable letter IDs + modules without dedicated tests. Moved out of `testing.md` so the growing exception list does not mix with strategy | ✅ |
+| `ci.md` | Quality gates on the change path (local pre-commit, `ci.yml`, cloud `agent-review`), live GitHub API context for reruns (body + SHA as untrusted data), schema-validated outcome that deterministically completes the ordinary review job without marker/polling/retry, and `github_token`, which makes a PR for the review controller itself reviewed like every other PR (#483), plus the **single home for agent-tooling model-pinning policy** (§Model pinning: both surfaces — `agent-review.yml` and `.claude/agents/*.md`, pin boundaries, two guards). The runtime half (environment variables, production workflow) moved to `operations.md` (#418); only the gate facet remains from the production cron (E2E smoke under `principles.md` §Quality Gates). Decision rationales are compressed to the operational minimum (#419): the "how we got here" narrative belongs in the issue/PR; this file retains only the sentence without which an agent would act wrongly or redo rejected work. Rejected tools are a row at their gate or in §Consciously not adopted | ✅ |
+| `operations.md` | How the production run is operated: schedule and step order, environment variables and secrets, failure isolation (#245) and alerting (#310), operator runbooks (`TELETHON_SESSION` rotation), patient Soldout retries, and the step's position in the run (#396). Took the runtime half of `ci.md` (#418) | ✅ |
+| `gemini.md` | Gemini: model rotation / quota / retry / prompts / call observability (token+latency `llm_call` log + Phoenix development recipe, #145) | ✅ |
+| `llm-security.md` | Enricher LLM threats (OWASP LLM Top 10 → safeguards/residual): prompt-injection fence, output escaping, honest blast radius (#308) | ✅ |
 
 ### `docs/adr/`
 
-| Файл | На какой вопрос отвечает | Single-responsibility? |
+| File | Question answered | Single-responsibility? |
 |---|---|---|
-| `docs/adr/` (каталог целиком) | Почему принято именно это решение и что отвергнуто: записи MADR 4.0.0 со стабильным ID `NNNN`, append-only (смена решения = новая запись со `superseded by`). Вход — cost-of-change фильтр (§Canonical-home). `template.md` — шаблон апстрима дословно, гард — `tests/test_adr_records.py` | ✅ |
+| `docs/adr/` (whole directory) | Why this decision was made and what was rejected: MADR 4.0.0 records with stable `NNNN` IDs, append-only (a changed decision = a new record with `superseded by`). Entry is the cost-of-change filter (§Canonical-home). `template.md` is the verbatim upstream template; `tests/test_adr_records.py` is the guard | ✅ |
 
-### Скрипты и шаблоны процесса
+### Process scripts and templates
 
-| Файл | На какой вопрос отвечает |
+| File | Question answered |
 |---|---|
 | `scripts/validate_issue_sections.py` + `scripts/check_orphan_scope.py` | Verifies all nine issue sections, including `Agent handoff`; on a passing issue, also surfaces the non-blocking reminder for an explicit `Out of scope` follow-up without `#N` or `wontfix`/`YAGNI` (#368). Gate for planner and implementer adapters; the reminder itself never changes the exit code |
-| `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: единый каталог ролей, evidence-based next action и bounded escalation; не вызывает провайдеров и не заменяет required gates |
-| `scripts/review_gate.py` | Продолжается ли review/fix-цикл по PR: читает required-контексты на текущем head и число уже отревьюенных head'ов — и отдаёт вердикт exit-кодом (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` — отказ `gh`/захвата, не вердикт). Ничего не меняет и не постит. Правило «чиним только blocking, `should-fix` — решение мейнтейнера» дважды проигнорировали как прозу (#458, #465), поэтому у него теперь exit-код, а не пункт списка ([principles.md §Scripts over instructions](principles.md#scripts-over-instructions)). Severity берётся из уже посчитанного `agent-review` check-run, тело ревью не парсится; бюджет — `fixer.max_runs` из каталога ролей. Прозаический дом — [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
-| `scripts/issue_branch.py` / `scripts/new_branch.py` | Создание ветки `issue-N-*` от свежего origin/main |
-| `scripts/set_issue_priority.py` | Выставить приоритет issue (поле Priority в GitHub Project 1) через `gh project item-add`+`item-edit` с зашитыми Project/field/option-ID; read-only `--check` сверяет exact issue URL и непустое High/Medium/Low до создания ветки. Вызывается агентом по контракту `agent-process.md` (спросил приоритет → setter; implementer pre-flight → checker). Механика переехала memory→repo (#351) |
-| `scripts/check_red.py` | Действительно ли тесты RED перед GREEN (контракт TDD-шага) |
-| `scripts/open_pr.py` | Создание PR с гарантированным `Closes #N` в body + пост-верификация `closingIssuesReferences` (иначе exit 1, §IV): чтобы PR надёжно автозакрывал issue при squash-мёрдже (#320, precedent #319→#140). Pre-flight — делает правый путь дешёвым; enforcement — `verify_pr_link.py` |
-| `scripts/update_pr_body.py` | Явная замена отчёта уже существующего delivery PR: выводит issue из `issue-N-*` head-ветки, оставляет ровно одну каноническую строку `Closes #N`, передаёт произвольный UTF-8 Markdown через `--body-file` и после edit проверяет `closingIssuesReferences`. Обычный re-run `open_pr.py` body не заменяет (#456) |
-| `scripts/verify_pr_link.py` | CI-гейт (workflow `pr-link.yml`): PR из `issue-N` ветки обязан закрывать issue, иначе job red → required check блокирует мёрдж. Отдельный workflow (не `ci.yml`), т.к. триггерится и на `edited` (правка body убирает `Closes #N` → перепроверка), не гоняя тяжёлый `quality` на правку описания. Агент-независимый backstop к `open_pr.py` (переиспользует его чистые функции); enforcement через gate, не прозу (#320) |
-| `scripts/check_branch_protection.py` | Сверка «объявлено в репо ↔ настроено в GitHub» для required status checks ветки `main`; **машинный канон состава** — `REQUIRED_CONTEXTS`/`NOT_REQUIRED` в нём же, доки на них ссылаются. Печатает фактический список всегда; exit `1` — дрейф, `2` — отказ инструмента (не «дрейфа нет»); `--allow-drift "<причина>"` — намеренный временный дрейф выражается флагом с печатью причины, а не обходится `--no-verify` (#458). Зовётся из `.githooks/pre-push` перед `ci_check.py`; в CI не выносится — у `GITHUB_TOKEN` нет скоупа `administration` (#436). Отдельного gate для controller PR нет и не нужно: такой PR проходит те же required-контексты, что и любой другой (#483). Прозаический дом следствий — [`ci.md` §Required status checks](ci.md#required-status-checks-branch-protection) |
-| `scripts/ci_check.py` | Локальный pre-commit/pre-push гейт качества (зеркало CI job) |
-| `scripts/eval_trailers.py` | Eval-harness подбора трейлера: три скоркарты — `TrailerStrategy` (YouTube-pick) + `evaluate_delivery` (прод-`select_trailer`, то что уходит юзеру, #379) + `evaluate_tmdb` (TMDB-источник) по frozen golden-set (Hit/Wrong/Miss относительно `correct`, офлайн) + `--record`/`--record-tmdb`/`--update-baseline`. **Гейт** — `tests/fixtures/trailer_baseline.json` (пофильмовый исход delivery) через `tests/test_eval_baseline.py`, не через запись в `ci_check` CHECKS. У набора две роли: «найди правильный» (accept-set `correct`) и «не бери чужой» (разметка `trap` — верифицированные чужие кандидаты в пуле, #380); deep-dive `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |
-| `scripts/eval_summarizer.py` | RAGAS-eval суммаризатора `summary_ru`: faithfulness/answer_relevancy по frozen golden-set вместо regex `response_pattern` (vibe-check формата). Метрика — LLM-судья, поэтому live/API-gated (dev-run, не CI); граница `_evaluate_dataset` мокается, чистые швы под тестом. RAGAS — dev-only dep. Deep-dive `testing.md#eval-harness--summarizer-faithfulness` (#347) |
+| `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: a single role catalogue, evidence-based next action, and bounded escalation; does not invoke providers or replace required gates |
+| `scripts/review_gate.py` | Whether the PR review/fix cycle continues: reads required contexts at the current head and the number of already reviewed heads, then returns an exit-code verdict (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` is `gh`/capture failure, not a verdict). It changes and posts nothing. The rule "fix only blocking; `should-fix` is the maintainer's decision" was twice ignored as prose (#458, #465), so it now has an exit code rather than a list item ([principles.md §Scripts over instructions](principles.md#scripts-over-instructions)). Severity comes from the already calculated `agent-review` check run, not parsed review body; budget is `fixer.max_runs` from the role catalogue. Prose home: [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
+| `scripts/issue_branch.py` / `scripts/new_branch.py` | Create an `issue-N-*` branch from fresh origin/main |
+| `scripts/set_issue_priority.py` | Set issue priority (the Priority field in GitHub Project 1) through `gh project item-add`+`item-edit` with embedded Project/field/option IDs; read-only `--check` verifies the exact issue URL and non-empty High/Medium/Low before branch creation. The agent invokes it under the `agent-process.md` contract (asked for priority → setter; implementer preflight → checker). The mechanism moved memory→repository (#351) |
+| `scripts/check_red.py` | Whether tests are RED before GREEN (the TDD-step contract) |
+| `scripts/open_pr.py` | Create a PR with guaranteed `Closes #N` in its body + post-verification of `closingIssuesReferences` (otherwise exit 1, §IV), so the PR reliably auto-closes the issue on squash merge (#320, precedent #319→#140). Preflight makes the correct path cheap; enforcement is `verify_pr_link.py` |
+| `scripts/update_pr_body.py` | Explicitly replace the report of an existing delivery PR: derives the issue from the `issue-N-*` head branch, retains exactly one canonical `Closes #N` line, passes arbitrary UTF-8 Markdown through `--body-file`, and verifies `closingIssuesReferences` after edit. An ordinary `open_pr.py` rerun does not replace the body (#456) |
+| `scripts/verify_pr_link.py` | CI gate (workflow `pr-link.yml`): a PR from an `issue-N` branch must close its issue, otherwise the job is red → required check blocks merge. A separate workflow (not `ci.yml`) because it also triggers on `edited` (a body edit removes `Closes #N` → recheck), without running heavy `quality` for a description edit. Agent-neutral backstop for `open_pr.py` (reuses its pure functions); enforcement through a gate, not prose (#320) |
+| `scripts/check_branch_protection.py` | Compares "declared in repository ↔ configured in GitHub" required status checks for branch `main`; the **machine canon of composition** is its own `REQUIRED_CONTEXTS`/`NOT_REQUIRED`, to which documentation links. Always prints the actual list; exit `1` is drift and `2` is tool failure (not "no drift"); `--allow-drift "<reason>"` expresses intentional temporary drift with a printed reason rather than bypassing with `--no-verify` (#458). Called by `.githooks/pre-push` before `ci_check.py`; not put in CI because `GITHUB_TOKEN` lacks `administration` scope (#436). No separate controller-PR gate is needed: such a PR passes the same required contexts as any other (#483). Prose home for consequences: [`ci.md` §Required status checks](ci.md#required-status-checks-branch-protection) |
+| `scripts/ci_check.py` | Local pre-commit/pre-push quality gate (mirror of the CI job) |
+| `scripts/eval_trailers.py` | Trailer-selection evaluation harness with three scorecards: `TrailerStrategy` (YouTube pick), `evaluate_delivery` (production `select_trailer`, the user-visible result, #379), and `evaluate_tmdb` (TMDB source). It uses a frozen golden set with offline Hit/Wrong/Miss outcomes against `correct`, plus `--record`/`--record-tmdb`/`--update-baseline`. The **gate** is the per-film delivery result in `tests/fixtures/trailer_baseline.json`, enforced by `tests/test_eval_baseline.py` rather than a `ci_check` CHECKS entry. The dataset tests both finding an accepted trailer (`correct`) and rejecting verified wrong candidates (`trap`, #380). Deep dive: `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |
+| `scripts/eval_summarizer.py` | RAGAS evaluation of `summary_ru`: faithfulness and answer relevancy against a frozen golden set instead of a `response_pattern` format vibe check. The LLM-as-judge metric is live/API-gated for development, not CI; the `_evaluate_dataset` boundary is doubled and pure seams are tested. RAGAS is a development-only dependency. Deep dive: `testing.md#eval-harness--summarizer-faithfulness` (#347) |
 | `scripts/hooks.py`, `scripts/codex_hooks.py` | Shared post-edit checks plus Codex hook adapter; ruff feedback and pip-compile reminder complement `ci_check.py` |
-| `scripts/token_trend.py` | **Фактический** расход токенов dev-сессий: читает транскрипты Claude Code, считает effective tokens (составляющие взвешены по относительной цене, веса — по модели) на ветку и на turn, детектирует рост по rolling window (медиана + абсолютный пол). Триггер — `SessionStart` hook в `.claude/settings.json`, тихий в норме и **всегда** exit 0 (иначе `SessionStart` выбросит собственный алерт); `--report` — таблица. Транскрипты не durable (`cleanupPeriodDays` = 30 дней), поэтому агрегат по ветке переживает ретенцию в локальном `token_ledger.jsonl`. Дополняет статический храповик `test_always_load_budget.py`: тот стережёт объявленную плату, этот — уплаченную (#464) |
-| `.github/workflows/ci.yml` | Quality job на PR/push (должен зеркалить `ci_check.py`) |
-| `.importlinter` | §II protocol-boundaries как машинный контракт (гейт `imports` в `ci_check`): направление зависимостей + adapter-no-auth; deep-dive `ci.md` (#234) |
+| `scripts/token_trend.py` | Measures **actual** development-session token use from Claude Code transcripts, computing price-weighted effective tokens per branch and turn and detecting rolling-window growth by median plus an absolute floor. A `SessionStart` hook in `.claude/settings.json` is quiet normally and **always** exits 0 so the hook does not emit its own alert; `--report` prints the table. Because transcripts are retained for only 30 days (`cleanupPeriodDays`), branch aggregates survive in local `token_ledger.jsonl`. Complements the static `test_always_load_budget.py` ratchet: that guards declared cost, this measures paid cost (#464) |
+| `.github/workflows/ci.yml` | Quality job on PR/push (must mirror `ci_check.py`) |
+| `.importlinter` | §II protocol boundaries as a machine contract (the `imports` gate in `ci_check`): dependency direction + adapter-no-auth; deep dive `ci.md` (#234) |
 
-### Исходники проекта
+### Project source files
 
-**На какой вопрос отвечает каждый файл — в его module docstring** (канон, JIT при открытии; presence
-гарантируется ruff `D100`/`D104`/`D419` в `check_lint`, #253 — bespoke `headers`-скрипт снят там же).
-Здесь — только **роутер концерн → файлы** + указатель в deep-dive-док
-для orientation, которого в per-file docstring нет. Тесты (`tests/`) и хелперы не перечисляем.
+**Each file's module docstring answers its own question** and is the JIT canonical
+description when the file is opened; ruff `D100`/`D104`/`D419` in `check_lint`
+guarantees presence (#253). This section is only a **concern-to-file router** with
+deep-dive pointers that individual docstrings lack. Tests and helpers are omitted.
 
-| Концерн | Файлы | Deep-dive |
+| Concern | Files | Deep dive |
 |---|---|---|
-| Слой пайплайна (ядро + контракты) | `src/kinozal_scraper/generic_pipeline.py`, `src/kinozal_scraper/pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
-| Extraction/нормализация по источникам | `src/kinozal_scraper/kinozal_pipeline.py`, `src/kinozal_scraper/steam_pipeline.py`, `src/kinozal_scraper/soldout_pipeline.py`, `src/kinozal_scraper/github_popular_pipeline.py`, `src/kinozal_scraper/github_trending_pipeline.py` | `pipeline.md` |
-| Boundaries (Protocol-границы наружу) | `src/kinozal_scraper/sheets_storage.py` (storage), `src/kinozal_scraper/telegram_notifier.py` / `src/kinozal_scraper/telegram_summarizer.py` (notify) / `src/kinozal_scraper/alerting.py` (канонический дом operator-reporting: маркер `.run/technical_alert_sent` + `report_failures` per-source failure-алерт, #310; + `publish_run_summary` — строка метрик прогона в лог и GitHub Step Summary, #459), `src/kinozal_scraper/gemini_enricher.py` / `src/kinozal_scraper/TelegramChannelSummarizer.py` (Gemini), `src/kinozal_scraper/llm_observability.py` (shared `llm_call`-breadcrumb обоих live-Gemini call site: `usage_metadata`-токены + latency, §IV-degraded, #145), `src/kinozal_scraper/http_fetch.py` (единый HTML-fetch: curl_cffi + impersonate, обходит Cloudflare TLS-фингерпринт — #217; `describe_block` — per-attempt диагностика анти-бот-блока `cf-ray`/`cf-mitigated`/error-code/`<title>`, #358) | `storage.md` · `runtime.md` · `gemini.md` |
-| Подбор трейлера (retrieval → selection) | `src/kinozal_scraper/youtube.py` (retrieval: `search_candidates` — union RU+оригинал → `list[Candidate]`, #140), `src/kinozal_scraper/kinozal_pipeline.py` (`build_film_profile` — richer data-prep `FilmProfile` с details.php для harness, #140; `enrich_with_trailer` — **прод-композиция #144**: облегчённый title+year профиль → `select_trailer` (#379 — общая точка входа прода и замера: `search_candidates` → `HeuristicStrategy` → §IV-маркер), RU-приоритет закрывает #315, Gemini НЕ в hot path), `src/kinozal_scraper/trailer_strategy.py` (selection: `FilmProfile`/`Candidate`/`TrailerPick` + `TrailerStrategy` Protocol + baseline `FirstResultStrategy` #139 + language-aware `HeuristicStrategy` #141), `src/kinozal_scraper/trailer_picker_llm.py` (selection стратегия A: `LLMTrailerStrategy` — Gemini structured-output picker + `GeminiJsonGenerator`, #142), `src/kinozal_scraper/trailer_picker_embeddings.py` (selection стратегия B: `EmbeddingTrailerStrategy` — re-ranker на эмбеддингах, косинус+порог, + `GeminiEmbedder`, #143), `src/kinozal_scraper/tmdb_trailer.py` (альт-источник: TMDB `/movie/{id}/videos` — official+язык из метаданных; чистая `pick_trailer` + `TmdbClient` DI, offline-замер на harness, прод не подключён, #329) | `pipeline.md#trailer-retrieval-and-selection` · `testing.md#eval-harness--trailer-selection` |
-| Общая HTTP-политика (не Protocol-граница) | `src/kinozal_scraper/http_retry.py` — единственный дом «что считать транзиентным»: предикат над обеими иерархиями `HTTPError` (curl_cffi + stdlib requests) и **два** набора кодов. 403/429 ретраятся только у HTML-транспорта за Cloudflare (замер #358); у JSON-API это rate limit со своим окном сброса, и по документации GitHub долбёжка в него грозит баном интеграции (#365) | `coverage-gaps.md` **M**/**M2**/**M3** |
-| Утилиты | `src/kinozal_scraper/text_utils.py` | — |
+| Pipeline layer (core and contracts) | `src/kinozal_scraper/generic_pipeline.py`, `src/kinozal_scraper/pipeline_config.py` | `pipeline.md` (config → `principles.md §VI`) |
+| Per-source extraction and normalization | `src/kinozal_scraper/kinozal_pipeline.py`, `src/kinozal_scraper/steam_pipeline.py`, `src/kinozal_scraper/soldout_pipeline.py`, `src/kinozal_scraper/github_popular_pipeline.py`, `src/kinozal_scraper/github_trending_pipeline.py` | `pipeline.md` |
+| Boundaries (outward Protocol boundaries) | `src/kinozal_scraper/sheets_storage.py` (storage); `src/kinozal_scraper/telegram_notifier.py` / `src/kinozal_scraper/telegram_summarizer.py` (notify); `src/kinozal_scraper/alerting.py` (canonical operator-reporting home: `.run/technical_alert_sent`, per-source `report_failures` alerts #310, and `publish_run_summary` metrics in logs and GitHub Step Summary #459); `src/kinozal_scraper/gemini_enricher.py` / `src/kinozal_scraper/TelegramChannelSummarizer.py` (Gemini); `src/kinozal_scraper/llm_observability.py` (shared `llm_call` breadcrumb for both live Gemini call sites: `usage_metadata` tokens and latency, visibly degraded under §IV, #145); `src/kinozal_scraper/http_fetch.py` (shared HTML fetch via curl_cffi impersonation to bypass Cloudflare TLS fingerprinting #217; per-attempt anti-bot diagnostics from `describe_block`, #358) | `storage.md` · `runtime.md` · `gemini.md` |
+| Trailer selection (retrieval → selection) | `src/kinozal_scraper/youtube.py` (retrieval: `search_candidates` unions Russian and original-title queries into `list[Candidate]`, #140); `src/kinozal_scraper/kinozal_pipeline.py` (`build_film_profile` prepares the richer details.php-backed `FilmProfile` for the harness; `enrich_with_trailer` is the **production composition #144**, using a lightweight title/year profile through `select_trailer`, the shared production/evaluation entry point from #379; Russian preference closes #315 and Gemini is not on the hot path); `src/kinozal_scraper/trailer_strategy.py` (selection data types, `TrailerStrategy` Protocol, baseline `FirstResultStrategy` #139, and language-aware `HeuristicStrategy` #141); `src/kinozal_scraper/trailer_picker_llm.py` (strategy A: Gemini structured-output `LLMTrailerStrategy` and `GeminiJsonGenerator`, #142); `src/kinozal_scraper/trailer_picker_embeddings.py` (strategy B: cosine-and-threshold `EmbeddingTrailerStrategy` and `GeminiEmbedder`, #143); `src/kinozal_scraper/tmdb_trailer.py` (alternative TMDB metadata source with pure `pick_trailer` and `TmdbClient` DI, evaluated offline but not connected to production, #329) | `pipeline.md#trailer-retrieval-and-selection` · `testing.md#eval-harness--trailer-selection` |
+| Shared HTTP policy (not a Protocol boundary) | `src/kinozal_scraper/http_retry.py` is the single home for transient-error classification across curl_cffi and stdlib requests, with **two** status-code sets. Only Cloudflare-protected HTML transport retries 403/429 (#358); for JSON APIs those responses are rate limits with their own reset windows, and repeated GitHub API requests can get the integration banned (#365) | `coverage-gaps.md` **M**/**M2**/**M3** |
+| Utilities | `src/kinozal_scraper/text_utils.py` | — |
 
 ---
 
-Остаточный открытый долг трекается в [issue #177](https://github.com/ekolvah/kinozal_scraper/issues/177)
-(инстанс зонтика [«Что описывает документация»](#что-описывает-документация-текущее-состояние-не-история-и-не-идеи):
-бэклог/статус-трекер → issues, не `docs/`); ✅-закрытые пункты — в истории соответствующих PR.
+Residual open debt is tracked in [issue #177](https://github.com/ekolvah/kinozal_scraper/issues/177),
+an instance of the [documentation scope rule](#what-documentation-describes-current-state-not-history-or-ideas):
+backlog and status tracking belong in issues, not `docs/`; completed items remain in their PR history.
