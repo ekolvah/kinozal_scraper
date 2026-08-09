@@ -72,6 +72,9 @@ ignore = [
 # docstring codes — tests/test_ruff_docstring_rule.py pins that.
 "tests/**" = ["ARG001", "ARG002", "SLF001"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["kinozal_scraper", "scripts"]
+
 [tool.ruff.lint.mccabe]
 # Align C901 with PLR0912's default branch threshold (12) rather than tuning to
 # today's code. PLR0912/PLR0915 stay on ruff defaults (12 branches / 50 statements).
