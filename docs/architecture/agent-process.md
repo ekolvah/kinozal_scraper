@@ -39,8 +39,9 @@ are defined only by `REQUIRED_SECTIONS` in
 8. ADR
 9. Agent handoff
 
-`Test plan` names executable test nodes. `Architect review` contains findings
-or `skipped: <reason>`; `ADR` contains a record link or `none: <reason>`.
+`Test plan` names executable test nodes. `Architect review` opens with a
+provenance line — `reviewer: <carrier>` or `skipped: <reason>` — followed by the
+findings; `ADR` contains a record link or `none: <reason>`.
 `Agent handoff` is concise provenance, with all four fields below:
 
 ```md
@@ -101,6 +102,40 @@ planner applies them.
 It is required for every substantive change. A trivial one — a typo, a one-line
 non-behavioural edit — records `skipped: <reason>` in the issue section instead.
 One pass, never a loop.
+
+### Who reviewed, recorded
+
+Not every route has a second carrier for this role. Where one exists, it reviews
+a plan it did not write; where it does not, the planning agent reviews its own
+plan. **Self-review is a legitimate way to satisfy this role and a weaker one**:
+one agent works from shared session context, so it cannot contradict an
+assumption it already made — it is not an independent check, and it does not
+replace the PR review of the diff. What it must never do is pass for
+independent, because a filled section otherwise looks identical whether an
+independent carrier reviewed the plan, its author did, or nobody did (#474).
+
+The section therefore opens with a machine-readable provenance line naming the
+carrier, which
+[`validate_issue_sections.py`](../../scripts/validate_issue_sections.py)
+resolves against `architect_reviewer.adapter_independence` in the role
+catalogue:
+
+```md
+reviewer: <a carrier declared in .agents/orchestration/roles.yaml>
+```
+
+Only the **first non-empty line** of the section counts, because findings prose
+routinely quotes the marker while discussing it. The kind — independent or
+self — is read from the catalogue rather than written by the author, so a
+marker cannot claim independence for a self-review carrier. An unknown carrier
+name is a gap; a self-review passes and prints a non-blocking note naming what
+it is. The gate does not judge how substantial the findings are: it guarantees
+that the carrier was named, exactly as `Agent handoff` guarantees that the
+planner was.
+
+A section written before this rule carries no marker, and an implementer that
+sees one returns the issue to a planner instead of guessing who reviewed it —
+the same rule as for a missing `Agent handoff`.
 
 The reviewer reads the [goal function](principles.md#goal-function) and the
 principles themselves rather than working from memory, then checks the plan
@@ -341,7 +376,8 @@ so naming a provider is a default, not a restriction:
   `architect-reviewer` subagent.
 - Codex `$plan-issue #N` runs the same runbook through the repository skill in
   `.agents/skills/plan-issue/`. Having no local reviewer subagent, it performs
-  the architect review itself against the contract above.
+  the architect review itself and records that in the section's provenance line,
+  as §Who reviewed, recorded requires.
 - Codex `$implement-issue #N` runs the delivery flow through the skill in
   `.agents/skills/implement-issue/`. It implements and fixes; it does not
   invent a replacement plan.

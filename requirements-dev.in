@@ -9,6 +9,11 @@ pip-audit
 pip-tools
 pytest
 pytest-cov
+# The role catalogue is read directly by scripts/agent_orchestrator.py and by the
+# hand-off gate in scripts/validate_issue_sections.py, so the runtime dependency is
+# declared rather than left transitive; types-PyYAML alone typed an import nothing
+# guaranteed to be installed (#474, #406).
+PyYAML
 ragas
 ruff
 types-PyYAML

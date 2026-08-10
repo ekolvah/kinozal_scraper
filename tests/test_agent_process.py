@@ -317,6 +317,43 @@ class TestAgentProcess:
             ]
         assert not offenders, "shared gates defined in provider files: " + "; ".join(offenders)
 
+    def test_architect_reviewer_declares_independence_for_every_adapter(self) -> None:
+        """Whether a carrier reviews its own plan is catalogue data, not prose (#474).
+
+        Sibling of `test_every_declared_role_adapter_resolves_to_its_contract`: keyed on
+        the declared adapters, so a third carrier cannot arrive with its independence
+        unstated. Only `architect_reviewer` declares the map — it is the one role whose
+        value changes what the artifact means, because self-review is the case the
+        `## Architect review` marker exists to make visible.
+        """
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+        )
+        role = catalogue["roles"]["architect_reviewer"]
+        declared = role.get("adapter_independence")
+        assert isinstance(declared, dict), "architect_reviewer declares no adapter_independence"
+        assert set(declared) == set(role["adapters"]), (
+            f"adapter_independence keys {sorted(declared)} do not match "
+            f"adapters {sorted(role['adapters'])}"
+        )
+        assert set(declared.values()) <= {"independent", "self"}, (
+            f"unknown independence values: {sorted(set(declared.values()))}"
+        )
+        assert "self" in declared.values(), (
+            "no carrier is marked self-review, so the gate's visible case became unreachable"
+        )
+
+    def test_architect_contract_names_self_review_and_its_limit(self) -> None:
+        """Permission and its cost travel together, or only the permission survives."""
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        contract = process.split("## Architect review contract", maxsplit=1)[1].split("\n## ")[0]
+        assert "self-review" in contract, "the contract stopped naming self-review"
+        assert "adapter_independence" in contract, (
+            "the contract no longer names the catalogue field the gate reads"
+        )
+        for limit in ("shared session context", "not an independent"):
+            assert limit in contract, f"the contract lost the self-review limit {limit!r}"
+
     def test_canonical_process_defines_the_architect_review_contract(self) -> None:
         process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
         assert "## Architect review contract" in process

@@ -17,6 +17,13 @@
 # anyway, because `adapter_files` is keyed on it. The other two modes declare an
 # explicit `null`: their carrier is route-independent, and a missing key stays a
 # failure, exactly as for `adapter_files`.
+# `adapter_independence` says whether a carrier reviews a plan it did not write.
+# Only `architect_reviewer` declares it, because it is the one role where that
+# answer changes what the artifact means: `scripts/validate_issue_sections.py`
+# reads this map to resolve the `reviewer:` marker in `## Architect review`, so
+# self-review passes the gate while staying visible (#474). Declaring the kind
+# here rather than letting the issue author write it makes the contradiction
+# ("independent" claimed for a self-review carrier) impossible to state.
 roles:
   planner:
     contract: "docs/architecture/agent-process.md#planner-runbook"
@@ -44,6 +51,9 @@ roles:
     adapter_files:
       "Claude architect-reviewer subagent": ".claude/agents/architect-reviewer.md"
       "Codex $plan-issue #N self-review": ".agents/skills/plan-issue/SKILL.md"
+    adapter_independence:
+      "Claude architect-reviewer subagent": "independent"
+      "Codex $plan-issue #N self-review": "self"
     adapter_routes:
       claude: "Claude architect-reviewer subagent"
       codex: "Codex $plan-issue #N self-review"
