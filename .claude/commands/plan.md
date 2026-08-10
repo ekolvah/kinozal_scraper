@@ -15,7 +15,8 @@ and are not copied here. This file contains only harness-specific material.
    the user to run `/compact` before starting. You cannot invoke it; it is a built-in CLI command.
 1. Follow the canonical planner runbook. Obtain context for gaps from the repository (`Read`/`Grep`).
 2. The **`architect-reviewer` subagent** performs the architect review in runbook step 3
-   (persona: `.claude/agents/architect-reviewer.md`), not the main session.
+   (persona: `.claude/agents/architect-reviewer.md`), not the main session. Its provenance
+   line, the first line of `## Architect review`: `reviewer: Claude architect-reviewer subagent`.
 3. Write the body with `gh issue edit $ARGUMENTS --body "<complete text with all 9 sections>"`.
 4. On completion, provide the issue link and hand off to the `implementer`. The user selects the entry point: Codex
    `$implement-issue #$ARGUMENTS` (the repository default) or `/implement $ARGUMENTS` in this session.

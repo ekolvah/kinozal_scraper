@@ -2,7 +2,8 @@
 
 Covers gap detection (missing, empty, whitespace-only, setext headings, headings
 inside fenced blocks, an unterminated fence), the mandatory Architect review and
-ADR sections, and the Cyrillic body decode.
+ADR sections, the review-provenance marker that keeps self-review visible, and
+the Cyrillic body decode.
 """
 
 from __future__ import annotations
@@ -240,6 +241,42 @@ class TestArchitectReviewProvenance:
             _INDEPENDENT_ADAPTER: "independent",
             _SELF_ADAPTER: "self",
         }
+
+    def test_self_review_reaches_the_operator_without_failing_validation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Passing silently would put self-review back where it started (§IV).
+
+        Same shape as the orphan-scope reminder: the exit code stays 0 because
+        self-review is a legitimate route; what changes is that it is said out loud.
+        """
+        monkeypatch.setattr(
+            validator,
+            "_fetch_body",
+            lambda _n: self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"),
+        )
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
+
+        validator.main()
+
+        output = capsys.readouterr().out
+        assert "ok: issue #474" in output
+        assert "self-review" in output
+        assert "not an independent check" in output
+
+    def test_independent_review_says_nothing_extra(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(validator, "_fetch_body", lambda _n: _full_body())
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
+
+        validator.main()
+
+        assert "self-review" not in capsys.readouterr().out
 
 
 class TestAdrSection:

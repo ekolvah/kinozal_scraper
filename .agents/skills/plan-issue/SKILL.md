@@ -20,7 +20,9 @@ Only the interface below is specific to this adapter:
   yourself against
   [the architect review contract](../../../docs/architecture/agent-process.md#architect-review-contract),
   reading it and `docs/architecture/principles.md` rather than working from
-  memory, and record the result in the issue's `## Architect review` section.
+  memory. What self-review does and does not give is defined there, not here.
+- This adapter's provenance line, the first line of `## Architect review`:
+  `reviewer: Codex $plan-issue #N self-review`.
 - Write the body back with
   `gh issue edit <N> --body-file <file>`; keep the file out of the repository.
 - Hand the passing issue to an implementer, by default `$implement-issue #N`.

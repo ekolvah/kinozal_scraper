@@ -19,6 +19,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+import yaml
 from markdown_it import MarkdownIt
 
 check_orphan_scope = importlib.import_module(
@@ -74,7 +75,19 @@ def reviewer_independence() -> dict[str, str]:
     the carrier, and whether that carrier reviews its own plan is a property of the
     carrier, not a claim in the issue body.
     """
-    raise NotImplementedError
+    try:
+        catalogue = yaml.safe_load(_ROLE_CATALOGUE.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise CatalogueError(f"cannot read {_ROLE_CATALOGUE}: {exc}") from exc
+    try:
+        declared = catalogue["roles"][_REVIEWER_ROLE]["adapter_independence"]
+    except (KeyError, TypeError) as exc:
+        raise CatalogueError(
+            f"{_ROLE_CATALOGUE} declares no {_REVIEWER_ROLE}.adapter_independence"
+        ) from exc
+    if not isinstance(declared, dict) or not declared:
+        raise CatalogueError(f"{_REVIEWER_ROLE}.adapter_independence is not a non-empty mapping")
+    return declared
 
 
 def architect_review_provenance(content: str) -> str | None:
@@ -85,12 +98,29 @@ def architect_review_provenance(content: str) -> str | None:
     routinely quotes `reviewer:` or `skipped:` while discussing this very gate, so a
     substring match would go green on exactly the case the gate exists to catch (§IV).
     """
-    raise NotImplementedError
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if first.lower().startswith(SKIP_PREFIX):
+        return "skipped" if first[len(SKIP_PREFIX) :].strip() else None
+    if not first.lower().startswith(REVIEWER_PREFIX):
+        return None
+    adapter = first[len(REVIEWER_PREFIX) :].strip()
+    return reviewer_independence().get(adapter)
 
 
 def architect_review_gaps(content: str) -> list[str]:
     """Return what the section's provenance line is missing, mirroring `handoff_gaps`."""
-    raise NotImplementedError
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if not first.lower().startswith((SKIP_PREFIX, REVIEWER_PREFIX)):
+        return ["reviewer provenance line"]
+    if architect_review_provenance(content) is None:
+        # The line names the right field but not a value the catalogue knows, so the
+        # gap says which half is wrong instead of repeating "provenance line".
+        return (
+            ["skip reason"]
+            if first.lower().startswith(SKIP_PREFIX)
+            else ["declared reviewer adapter"]
+        )
+    return []
 
 
 def _split_by_h2(body: str) -> dict[str, str]:
@@ -154,6 +184,10 @@ def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[st
             missing_fields = handoff_gaps(content)
             if missing_fields:
                 gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
+        elif name == "Architect review":
+            missing_fields = architect_review_gaps(content)
+            if missing_fields:
+                gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
     return gaps
 
 
@@ -204,9 +238,23 @@ def main() -> None:
         print(f"error: issue number must be int (got {sys.argv[1]!r})", file=sys.stderr)
         sys.exit(2)
     body = _fetch_body(n)
-    gaps = find_gaps(body)
+    try:
+        gaps = find_gaps(body)
+    except CatalogueError as exc:
+        # Same class as a failed `gh` capture: the verdict cannot be trusted, so it is
+        # not reported as either pass or fail (§IV).
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(2)
     if not gaps:
         print(f"ok: issue #{n} has all {len(REQUIRED_SECTIONS)} required sections")
+        if architect_review_provenance(_split_by_h2(body)["architect review"]) == SELF_REVIEW:
+            # Non-blocking, like the orphan-scope reminder (#368): self-review is a valid
+            # route, and the point is that it reaches the reader rather than passing as
+            # an independent check.
+            print(
+                f"note: issue #{n} carries a self-review — the plan was reviewed by the agent "
+                "that wrote it, which is not an independent check"
+            )
         for reminder in check_orphan_scope.format_reminders(n, body):
             print(reminder)
         return
