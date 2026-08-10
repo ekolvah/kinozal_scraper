@@ -17,6 +17,7 @@ import json
 import subprocess
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
 from markdown_it import MarkdownIt
 
@@ -50,6 +51,46 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 MIN_CONTENT_CHARS = 5
 
 _MD = MarkdownIt("commonmark")
+
+_ROLE_CATALOGUE = Path(__file__).resolve().parents[1] / ".agents" / "orchestration" / "roles.yaml"
+_REVIEWER_ROLE = "architect_reviewer"
+# The trivial-change escape (#150). It carries no carrier name on purpose: a skipped
+# review has no reviewer to name.
+SKIP_PREFIX = "skipped:"
+REVIEWER_PREFIX = "reviewer:"
+SELF_REVIEW = "self"
+
+
+class CatalogueError(RuntimeError):
+    """The role catalogue could not be read as the source of reviewer names."""
+
+
+def reviewer_independence() -> dict[str, str]:
+    """Map every `architect_reviewer` carrier onto `independent` or `self`.
+
+    The catalogue is the single machine-readable list of carriers, so the gate reads it
+    instead of keeping a second copy in a document or in this script (#474). Reading it
+    also removes the contradiction an author-written kind allowed: the marker names only
+    the carrier, and whether that carrier reviews its own plan is a property of the
+    carrier, not a claim in the issue body.
+    """
+    raise NotImplementedError
+
+
+def architect_review_provenance(content: str) -> str | None:
+    """Classify the section's **first non-empty line**.
+
+    Returns `independent`, `self`, `skipped`, or `None` when the line is not a
+    provenance marker. Only the first line counts: findings prose is free-form and
+    routinely quotes `reviewer:` or `skipped:` while discussing this very gate, so a
+    substring match would go green on exactly the case the gate exists to catch (§IV).
+    """
+    raise NotImplementedError
+
+
+def architect_review_gaps(content: str) -> list[str]:
+    """Return what the section's provenance line is missing, mirroring `handoff_gaps`."""
+    raise NotImplementedError
 
 
 def _split_by_h2(body: str) -> dict[str, str]:

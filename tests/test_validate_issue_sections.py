@@ -18,7 +18,9 @@ from scripts.validate_issue_sections import (
     REQUIRED_SECTIONS,
     _fetch_body,
     _split_by_h2,
+    architect_review_provenance,
     find_gaps,
+    reviewer_independence,
 )
 
 
@@ -46,6 +48,10 @@ def _body_with(sections: tuple[str, ...]) -> str:
     return "\n".join(f"## {s}\n\n{_section_content(s)}\n" for s in sections)
 
 
+_INDEPENDENT_ADAPTER = "Claude architect-reviewer subagent"
+_SELF_ADAPTER = "Codex $plan-issue #N self-review"
+
+
 def _section_content(section: str) -> str:
     if section == "Agent handoff":
         return (
@@ -54,6 +60,10 @@ def _section_content(section: str) -> str:
             "next role: implementer\n"
             "handoff: ready"
         )
+    if section == "Architect review":
+        # Since #474 the section opens with a provenance marker; a body without one
+        # is a gap, so the shared fixture has to carry it.
+        return f"reviewer: {_INDEPENDENT_ADAPTER}\n\nBLOCKING: real finding, long enough."
     return f"Real content для {section} which is long enough."
 
 
@@ -157,6 +167,79 @@ class TestArchitectReviewSection:
         # an 8th section is later added (would not fail for the wrong reason).
         body = _body_with((*_LEGACY_SECTIONS, "Architect review"))
         assert "Architect review" not in find_gaps(body)
+
+
+class TestArchitectReviewProvenance:
+    """Who reviewed the plan is a fact of the section, not a guess (#474).
+
+    A filled section used to look identical whether an independent carrier reviewed
+    the plan, its own author did, or nobody did and the prose was written to fill the
+    gate. The marker cannot prove the review happened — no script can read who typed
+    the text — but it forces the carrier to be **named**, which is what turns a passive
+    default into a written claim, exactly as `planner:` does in `Agent handoff`.
+    """
+
+    @staticmethod
+    def _body(review_section: str) -> str:
+        body = _full_body()
+        return body.replace(_section_content("Architect review"), review_section)
+
+    def test_independent_adapter_marker_passes(self) -> None:
+        assert find_gaps(self._body(f"reviewer: {_INDEPENDENT_ADAPTER}\n\nfindings")) == []
+
+    def test_self_adapter_marker_passes_and_is_reported_as_self(self) -> None:
+        section = f"reviewer: {_SELF_ADAPTER}\n\nfindings"
+        assert find_gaps(self._body(section)) == []
+        assert architect_review_provenance(section) == "self"
+
+    def test_skipped_reason_still_passes(self) -> None:
+        """The trivial route (#150) keeps working unchanged: no carrier to name."""
+        assert find_gaps(self._body("skipped: one-line typo, no design decision")) == []
+        assert architect_review_provenance("skipped: one-line typo") == "skipped"
+
+    def test_architect_review_without_provenance_line_is_a_gap(self) -> None:
+        gaps = find_gaps(self._body("BLOCKING: a real finding written by somebody."))
+        assert gaps == ["Architect review (missing: reviewer provenance line)"]
+
+    def test_marker_only_inside_findings_prose_is_a_gap(self) -> None:
+        """Prose that merely *quotes* the marker must not satisfy the gate.
+
+        This section is the one place in the issue where free-form review text lives,
+        and a review of this very change discusses `reviewer: self` and `skipped:` by
+        name. A substring match would therefore go green on the exact case the gate
+        exists to catch — false coverage worse than no gate at all (§IV).
+        """
+        section = (
+            "SHOULD-FIX: the plan lets a section pass while only quoting\n"
+            f"`reviewer: {_SELF_ADAPTER}` or `skipped:` deep inside the prose."
+        )
+        assert find_gaps(self._body(section)) == [
+            "Architect review (missing: reviewer provenance line)"
+        ]
+        assert architect_review_provenance(section) is None
+
+    def test_unknown_adapter_name_is_a_gap(self) -> None:
+        """The vocabulary is the role catalogue, so a carrier nobody declared is a gap."""
+        gaps = find_gaps(self._body("reviewer: Some Other Agent\n\nfindings"))
+        assert gaps == ["Architect review (missing: declared reviewer adapter)"]
+
+    def test_reviewer_marker_without_adapter_is_a_gap(self) -> None:
+        assert find_gaps(self._body("reviewer:\n\nfindings")) == [
+            "Architect review (missing: declared reviewer adapter)"
+        ]
+
+    def test_marker_only_section_passes(self) -> None:
+        """The gate does not judge how substantial the findings are — a deliberate
+        boundary: scoring review quality by script is the false coverage this change
+        argues against."""
+        assert find_gaps(self._body(f"reviewer: {_SELF_ADAPTER}")) == []
+
+    def test_independence_map_covers_the_declared_carriers(self) -> None:
+        """The gate's vocabulary comes from the catalogue, not from a second copy."""
+        assert reviewer_independence() == {
+            _INDEPENDENT_ADAPTER: "independent",
+            _SELF_ADAPTER: "self",
+        }
 
 
 class TestAdrSection:
