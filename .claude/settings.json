@@ -14,7 +14,13 @@
       "Bash(git reset --hard*)",
       "Bash(gh pr merge*)",
       "Bash(gh repo delete*)",
-      "Bash(sleep:*)"
+      "Bash(sleep:*)",
+      "Bash(ls *)",
+      "Bash(ls)",
+      "Bash(find *)",
+      "Bash(grep -r*)",
+      "Bash(sed -n *)",
+      "Bash(cat *)"
     ]
   },
   "hooks": {

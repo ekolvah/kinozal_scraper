@@ -8,7 +8,10 @@ Parses the kinozal.tv top list on a schedule (GitHub Actions, cron in `.github/w
 Windows + git-bash. Every pitfall below has recurred ≥2 times—do not reopen it.
 
 - **Python**: `python`, NOT `python3` (the latter is a Microsoft Store stub that opens the store).
-- **Utilities**: no `jq`/`sed`/`awk`. Parse JSON/text with pure-Python scripts in `scripts/`.
+- **Utilities**: `jq` and `rg` are **absent**—parse JSON/text with pure-Python scripts in `scripts/`. `sed` and
+  `awk` do exist (`/usr/bin/`), but reading files with them is denied (`permissions.deny`, #485); use
+  `Read`/`Grep` instead. The earlier blanket "no `jq`/`sed`/`awk`" stated a preference as an environment fact,
+  which is why it did not hold.
 - **Paths**: `~/` does not resolve reliably in shell hooks and settings.json. Use absolute paths (`C:/Users/<username>/...` or `$HOME/...` in bash).
 - **PowerShell ≠ bash**: `$null` (not `/dev/null`), `$env:VAR` (not `$VAR`), and backtick for line continuation. Invoke the Bash tool explicitly for POSIX scripts.
 - **`subprocess.run` that captures output**: always use `encoding="utf-8"`, and **never use `or ""` for `stdout`/`stderr`**—`None` means broken capture (the stream reader died while decoding), while a default turns failure into emptiness. `tests/test_subprocess_encoding.py` enforces both rules (#364, #410). If the child is Python, it also needs `PYTHONUTF8=1`/`-X utf8`; this guard does not catch that.

@@ -441,6 +441,14 @@ decision goes to" route — and the rule itself — live in
   this change**; it is controller-shaped by construction, and its log (`valid=true`, executed
   `Enforce Claude review outcome`, summary with `Reviewed head SHA:`) enters `## Agent record`.
   Full decision: [ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
+- **AM. No guard on the composition of the navigation deny list (#485).** The six navigation
+  entries added to `permissions.deny` in `.claude/settings.json` steer the agent from shell
+  navigation to `Grep`/`Read`/`Glob`. A vanished entry costs tokens and nothing else, so by
+  [the rule](testing.md#rule-when-a-test-is-not-worth-writing) it gets a forcing function — the
+  deny list *is* one — rather than a guard test. Do not reopen this as an anti-drift ratchet.
+  What **is** guarded is the neighbouring security invariant: `tests/test_settings_deny.py` pins
+  every `agent_policy.FORBIDDEN_COMMANDS` entry to a deny pattern, and its match was tightened
+  from `in` to `startswith` because the list now hosts two policy classes (#485).
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 

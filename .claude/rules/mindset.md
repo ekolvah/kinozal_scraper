@@ -20,6 +20,24 @@ Always-load (without `paths:`): the tactics are needed in every session, not onl
 
 - **Reading files**: use `Grep` or `Read` with an `offset/limit` for the needed fragment *before* a whole-file
   `Read`. Read the whole file only when it is needed (especially expensive before compaction).
+  This is no longer only advice—the shell route into the filesystem is denied in
+  `.claude/settings.json` (`permissions.deny`, #485), which is the canonical list of patterns.
+  What to reach for instead:
+
+  | denied | use |
+  | --- | --- |
+  | `ls`, `find` | `Glob` |
+  | `grep -r` | `Grep` |
+  | `sed -n '1,80p' <file>` | `Read` with `offset`/`limit` |
+  | `cat <file>` | `Read` |
+  | `cat > <file> <<'EOF'` | `Write`/`Edit` (this was already the rule—see the heredoc entry below) |
+
+  Two deliberate non-goals, so they are not "fixed" later as gaps. **Trimming a pipe is not
+  navigation**: `head`, `tail`, `wc`, and `grep` without `-r` stay allowed because
+  `<cmd> | head -40` has no tool equivalent—only the filesystem-reading forms are denied. And
+  **when a command is denied, switch to the tool, not to another shell route**: reaching for
+  `python -c "print(open(f).read())"` costs more than the `cat` it replaces while looking like
+  compliance.
 - **Spawning a subagent**: only for research requiring >3 round trips on a topic OR an independent parallel
   task. A cold-start agent costs more than a direct call for a single `Grep`/`Read`.
 - **`TodoWrite`**: only if the task truly has ≥3 steps and context loss is likely; do not use it for a single-step
