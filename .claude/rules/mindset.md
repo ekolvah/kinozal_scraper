@@ -20,6 +20,17 @@ Always-load (without `paths:`): the tactics are needed in every session, not onl
 
 - **Reading files**: use `Grep` or `Read` with an `offset/limit` for the needed fragment *before* a whole-file
   `Read`. Read the whole file only when it is needed (especially expensive before compaction).
+  This is no longer only advice—a `PreToolUse` hook denies the shell route into the filesystem and
+  **names the replacement call in the denial**, so the rule arrives at the moment it applies rather
+  than from this file. The policy is canonical in `scripts/navigation_policy.py` (#485); do not
+  restate the rule set here.
+
+  Two consequences worth knowing before the first denial. **Trimming a pipe is not navigation**:
+  `<cmd> | head -40`, `| grep`, `| sed -n` have no tool equivalent and stay allowed—the hook
+  separates the roles by counting file operands, so the same utility is denied on a file and
+  allowed in a pipe. And **when a command is denied, switch to the tool, not to another shell
+  route**: reaching for `python -c "print(open(f).read())"` costs more than the `cat` it replaces
+  while looking like compliance.
 - **Spawning a subagent**: only for research requiring >3 round trips on a topic OR an independent parallel
   task. A cold-start agent costs more than a direct call for a single `Grep`/`Read`.
 - **`TodoWrite`**: only if the task truly has ≥3 steps and context loss is likely; do not use it for a single-step

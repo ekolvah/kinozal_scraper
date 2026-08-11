@@ -147,6 +147,16 @@ functions (`plan_checks`/`classify_ruff_result`) with unit tests
 (`tests/test_hooks.py`); wiring is anti-drift-guarded by
 `tests/test_settings_hooks.py` (mirrors `test_settings_deny.py`).
 
+Claude adds a second event on the same entry point: a `PreToolUse` hook (matcher `Bash`)
+invoking `python -m scripts.hooks pre-bash`, which asks `scripts/navigation_policy.py`
+whether a stage reads the filesystem and, if so, denies it **with the replacement call named**
+(#485). This is the token-economy carrier, deliberately distinct from the security carrier
+`scripts/agent_policy.py`, and the two differ in failure mode: security denies on a malformed
+payload, navigation fails **open**, because a policy that only claims "a cheaper route exists"
+must never brick `Bash`. It is also why the navigation entries are *not* in `permissions.deny`
+— a matching deny rule blocks before the hook runs and would swallow the message
+(`tests/test_navigation_policy.py` guards that).
+
 This is instant feedback that **complements, never replaces** `ci_check.py` (the
 canonical pre-push gate), and is unrelated to the `pre-commit`/`tox` *framework*
 ([consciously declined](#consciously-not-adopted)) — that no-go is about a PR-time

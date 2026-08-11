@@ -110,6 +110,10 @@ measures actual consumption (#464), from Claude Code transcripts by branch and t
 - **Enforcement facts** (git prohibitions) → canonical in `.claude/settings.json`
   `permissions.deny` (+ synchronisation test `tests/test_settings_deny.py`). **Do not create mirror
   files** — that is a duplicate by definition.
+- **Navigation policy** (which shell route a `Read`/`Grep`/`Glob` call replaces) → canonical in
+  `scripts/navigation_policy.py`, delivered as a `PreToolUse` denial message (#485). Separate
+  carrier from the security policy above on purpose; `.claude/rules/mindset.md` links, never
+  restates the rule set.
 - A `.claude/rules/` file **does not** paraphrase a principle or deny line; it contains only a link
   or a procedure that exists nowhere else.
 
@@ -336,7 +340,8 @@ out of scope.
 | `scripts/ci_check.py` | Local pre-commit/pre-push quality gate (mirror of the CI job) |
 | `scripts/eval_trailers.py` | Trailer-selection evaluation harness with three scorecards: `TrailerStrategy` (YouTube pick), `evaluate_delivery` (production `select_trailer`, the user-visible result, #379), and `evaluate_tmdb` (TMDB source). It uses a frozen golden set with offline Hit/Wrong/Miss outcomes against `correct`, plus `--record`/`--record-tmdb`/`--update-baseline`. The **gate** is the per-film delivery result in `tests/fixtures/trailer_baseline.json`, enforced by `tests/test_eval_baseline.py` rather than a `ci_check` CHECKS entry. The dataset tests both finding an accepted trailer (`correct`) and rejecting verified wrong candidates (`trap`, #380). Deep dive: `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |
 | `scripts/eval_summarizer.py` | RAGAS evaluation of `summary_ru`: faithfulness and answer relevancy against a frozen golden set instead of a `response_pattern` format vibe check. The LLM-as-judge metric is live/API-gated for development, not CI; the `_evaluate_dataset` boundary is doubled and pure seams are tested. RAGAS is a development-only dependency. Deep dive: `testing.md#eval-harness--summarizer-faithfulness` (#347) |
-| `scripts/hooks.py`, `scripts/codex_hooks.py` | Shared post-edit checks plus Codex hook adapter; ruff feedback and pip-compile reminder complement `ci_check.py` |
+| `scripts/hooks.py`, `scripts/codex_hooks.py` | Shared post-edit checks plus the Claude and Codex hook adapters; ruff feedback and pip-compile reminder complement `ci_check.py`. `pre-bash` (Claude `PreToolUse`) delegates to `scripts/navigation_policy.py` |
+| `scripts/navigation_policy.py` | Token-economy policy (#485): decides that a shell stage reads the filesystem — by counting file operands, so `grep FILE` is denied while `cmd \| grep` is not — and returns a denial that **names the replacement tool call**. Separate carrier from the security policy `agent_policy.py`, and fails **open**: it claims only that a cheaper route exists |
 | `scripts/token_trend.py` | Measures **actual** development-session token use from Claude Code transcripts, computing price-weighted effective tokens per branch and turn and detecting rolling-window growth by median plus an absolute floor. A `SessionStart` hook in `.claude/settings.json` is quiet normally and **always** exits 0 so the hook does not emit its own alert; `--report` prints the table. Because transcripts are retained for only 30 days (`cleanupPeriodDays`), branch aggregates survive in local `token_ledger.jsonl`. Complements the static `test_always_load_budget.py` ratchet: that guards declared cost, this measures paid cost (#464) |
 | `.github/workflows/ci.yml` | Quality job on PR/push (must mirror `ci_check.py`) |
 | `.importlinter` | §II protocol boundaries as a machine contract (the `imports` gate in `ci_check`): dependency direction + adapter-no-auth; deep dive `ci.md` (#234) |
