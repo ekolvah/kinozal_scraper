@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-"""Session-level PostToolUse hook: instant feedback after Edit/Write (#281).
+"""Session-level Claude hook adapter, plus the shared post-edit checks (#281, #485).
 
-Called by the Claude and Codex adapter hooks after edits. It reads an adapter
-payload from stdin and dispatches two cheap checks
+Two events, one entry point (mirroring `scripts/codex_hooks.py`):
+
+  - `pre-bash` (PreToolUse, matcher `Bash`) → `scripts.navigation_policy`, which denies a
+    shell route into the filesystem *with the replacement call named* (#485). It replaced a
+    static `permissions.deny` block, which could carry no message and could not tell
+    `grep FILE` from `cmd | grep`.
+  - `on-edit` (PostToolUse, matcher `Edit|Write`) → the checks below.
+
+`on-edit` reads an adapter payload from stdin and dispatches two cheap checks
 in ONE process (one python spawn per edit):
 
   - `*.py`            → ruff check-only (`ruff format --check` + `ruff check`,
@@ -44,6 +51,8 @@ import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
+
+from scripts.navigation_policy import navigation_hint
 
 # ruff exit codes: 0 = clean, 1 = lint findings, >=2 = ruff itself errored.
 _RUFF_EXEC_ERROR = 2
@@ -248,18 +257,43 @@ def run_on_edit(
 
 
 def pre_bash_response(payload: dict) -> dict | None:
-    """Return Claude's PreToolUse denial shape when a Bash command reads the filesystem."""
-    raise NotImplementedError
+    """Return Claude's PreToolUse denial shape when a Bash command reads the filesystem.
+
+    Fail-open, unlike the Codex security adapter, which denies on a malformed payload: this
+    policy only claims a cheaper route exists (#485), so a payload bug must degrade to
+    "no opinion" rather than block every `Bash` call in the session.
+    """
+    tool_input = payload.get("tool_input")
+    command = tool_input.get("command") if isinstance(tool_input, dict) else None
+    if not isinstance(command, str):
+        return None
+    hint = navigation_hint(command)
+    if hint is None:
+        return None
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": hint,
+        }
+    }
 
 
 def main() -> None:
-    if len(sys.argv) < 2 or sys.argv[1] != "on-edit":
+    if len(sys.argv) < 2 or sys.argv[1] not in {"on-edit", "pre-bash"}:
         print(
-            "Usage: python scripts/hooks.py on-edit  (reads PostToolUse JSON on stdin)",
+            "Usage: python -m scripts.hooks {on-edit|pre-bash}  (reads the hook JSON on stdin)",
             file=sys.stderr,
         )
         sys.exit(2)
     payload = read_payload(sys.stdin.read())
+    if sys.argv[1] == "pre-bash":
+        # PreToolUse denies via exit 0 + JSON on stdout; exit 2 would discard the JSON and
+        # feed stderr instead, losing the replacement message this hook exists to deliver.
+        response = pre_bash_response(payload)
+        if response is not None:
+            print(json.dumps(response))
+        sys.exit(0)
     code, stderr = run_on_edit(payload)
     if stderr:
         print(stderr, file=sys.stderr)

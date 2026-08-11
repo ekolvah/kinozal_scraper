@@ -441,14 +441,17 @@ decision goes to" route — and the rule itself — live in
   this change**; it is controller-shaped by construction, and its log (`valid=true`, executed
   `Enforce Claude review outcome`, summary with `Reviewed head SHA:`) enters `## Agent record`.
   Full decision: [ADR-0004](../adr/0004-controller-pr-review-runs-on-the-workflow-token.md).
-- **AM. No guard on the composition of the navigation deny list (#485).** The six navigation
-  entries added to `permissions.deny` in `.claude/settings.json` steer the agent from shell
-  navigation to `Grep`/`Read`/`Glob`. A vanished entry costs tokens and nothing else, so by
-  [the rule](testing.md#rule-when-a-test-is-not-worth-writing) it gets a forcing function — the
-  deny list *is* one — rather than a guard test. Do not reopen this as an anti-drift ratchet.
-  What **is** guarded is the neighbouring security invariant: `tests/test_settings_deny.py` pins
-  every `agent_policy.FORBIDDEN_COMMANDS` entry to a deny pattern, and its match was tightened
-  from `in` to `startswith` because the list now hosts two policy classes (#485).
+- **AM. No guard on *which commands* the navigation policy covers (#485).**
+  `scripts/navigation_policy.py` decides that a shell stage reads the filesystem and denies it
+  with the replacement call named. Its **behaviour** is tested (`tests/test_navigation_policy.py`:
+  file-operand forms denied, pipe stages allowed, `sh -c` unwrapped, unparseable input fails
+  open), and so is its **wiring** — including the negative invariant that no `permissions.deny`
+  entry shadows the hook, since a static rule matches first and would swallow the message.
+  What is deliberately *not* pinned is the membership of `_RULES`: `awk` and `wc` are outside it
+  (no tool replaces line counting; `awk` was never measured), and adding or dropping a command
+  costs tokens and nothing else, which
+  [the rule](testing.md#rule-when-a-test-is-not-worth-writing) routes to a forcing function
+  rather than a guard test. Do not reopen the membership list as an anti-drift ratchet.
 
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 

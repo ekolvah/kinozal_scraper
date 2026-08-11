@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -24,7 +25,8 @@ _CLAUDE_SETTINGS = _REPO / ".claude" / "settings.json"
 _OWNED = ("ls", "find", "cat", "sed", "grep", "head", "tail")
 
 
-def _settings() -> dict:
+def _settings() -> Any:
+    """The parsed settings file; shape is asserted by the tests that read it."""
     return json.loads(_CLAUDE_SETTINGS.read_text(encoding="utf-8"))
 
 
@@ -130,7 +132,7 @@ class TestClaudeHookWiring:
         matching = [entry for entry in entries if entry.get("matcher") == "Bash"]
         assert len(matching) == 1
         commands = [hook["command"] for hook in matching[0]["hooks"]]
-        assert any(re.search(r"hooks\.py\"? pre-bash", command) for command in commands)
+        assert any(re.search(r"scripts\.hooks pre-bash", command) for command in commands)
 
     def test_no_static_deny_shadows_the_hook(self) -> None:
         """A matching `permissions.deny` rule blocks before the hook runs, so a static

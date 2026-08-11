@@ -32,13 +32,8 @@ def test_claude_defense_in_depth_covers_shared_policy() -> None:
         match = re.match(r"Bash\((.*)\)$", pattern)
         assert match is not None, f"unexpected Claude deny pattern: {pattern!r}"
         values.append(match.group(1))
-    # `startswith`, not `in`: the deny list also hosts navigation entries (#485), and a
-    # navigation pattern that merely contained a security command's text would silently
-    # satisfy the check after that security entry was removed.
     missing = [
-        command
-        for command in FORBIDDEN_COMMANDS
-        if not any(value.startswith(command) for value in values)
+        command for command in FORBIDDEN_COMMANDS if not any(command in value for value in values)
     ]
     assert not missing, f"Claude deny list drifted from shared policy: {missing}"
 
