@@ -247,6 +247,11 @@ def run_on_edit(
     return run_on_paths([] if path is None else [path], ruff_runner=ruff_runner)
 
 
+def pre_bash_response(payload: dict) -> dict | None:
+    """Return Claude's PreToolUse denial shape when a Bash command reads the filesystem."""
+    raise NotImplementedError
+
+
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] != "on-edit":
         print(
