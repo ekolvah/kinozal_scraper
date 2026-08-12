@@ -1,0 +1,12 @@
+# Codex VS Code app-server metrics to a loopback Grafana Alloy bridge.
+# Copy these tables to ~/.codex/config.toml. Alloy owns the cloud credential.
+
+[analytics]
+enabled = true
+
+[otel]
+environment = "<codex-environment>"
+log_user_prompt = false
+exporter = "none"
+trace_exporter = "none"
+metrics_exporter = { otlp-http = { endpoint = "http://127.0.0.1:4318/v1/metrics", protocol = "binary" } }

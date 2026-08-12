@@ -54,7 +54,7 @@ class TestCodexOtelTemplate:
 
         assert config["analytics"]["enabled"] is True
         otel = config["otel"]
-        assert otel["environment"] == "kinozal-codex-vscode"
+        assert otel["environment"] == "<codex-environment>"
         assert otel["log_user_prompt"] is False
         assert otel["exporter"] == "none"
         assert otel["trace_exporter"] == "none"
@@ -85,6 +85,7 @@ class TestAlloyConfig:
         assert 'otelcol.processor.deltatocumulative "codex"' in alloy
         assert 'otelcol.processor.batch "codex"' in alloy
         assert 'otelcol.exporter.otlphttp "grafana"' in alloy
+        assert 'destination = "stderr"' in alloy
 
     def test_receiver_is_loopback_and_cloud_secrets_are_environment_only(self) -> None:
         alloy = ALLOY_TEMPLATE.read_text(encoding="utf-8")
@@ -92,7 +93,7 @@ class TestAlloyConfig:
         assert 'endpoint = "127.0.0.1:4318"' in alloy
         assert 'sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")' in alloy
         assert 'sys.env("GRAFANA_CLOUD_INSTANCE_ID")' in alloy
-        assert 'sys.env("GRAFANA_SERVICE_ACCOUNT_TOKEN")' in alloy
+        assert 'sys.env("GRAFANA_CLOUD_OTLP_TOKEN")' in alloy
         assert "glc_" not in alloy
         assert not re.search(r"Basic [A-Za-z0-9+/=]{16,}", alloy)
 

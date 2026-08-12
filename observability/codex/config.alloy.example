@@ -1,0 +1,40 @@
+// Codex metrics-only bridge. Run with Alloy 1.18.1 and
+// --stability.level=experimental for deltatocumulative.
+
+logging {
+  destination = "stderr"
+}
+
+otelcol.receiver.otlp "codex" {
+  http {
+    endpoint = "127.0.0.1:4318"
+  }
+
+  output {
+    metrics = [otelcol.processor.deltatocumulative.codex.input]
+  }
+}
+
+otelcol.processor.deltatocumulative "codex" {
+  output {
+    metrics = [otelcol.processor.batch.codex.input]
+  }
+}
+
+otelcol.processor.batch "codex" {
+  output {
+    metrics = [otelcol.exporter.otlphttp.grafana.input]
+  }
+}
+
+otelcol.exporter.otlphttp "grafana" {
+  client {
+    endpoint = sys.env("GRAFANA_CLOUD_OTLP_ENDPOINT")
+    auth     = otelcol.auth.basic.grafana.handler
+  }
+}
+
+otelcol.auth.basic "grafana" {
+  username = sys.env("GRAFANA_CLOUD_INSTANCE_ID")
+  password = sys.env("GRAFANA_CLOUD_OTLP_TOKEN")
+}

@@ -466,6 +466,20 @@ decision goes to" route — and the rule itself — live in
   dashboard import fails, or a captured signal/attribute disappears. Update the values-free
   catalogue only from a new live capture; never make a missing dimension pass as zero.
 
+- **AO. Offline tests cannot prove Codex → Alloy → Grafana delivery or shared-dashboard import
+  (#472).** `tests/test_codex_otel_assets.py` guards metrics-only Codex config, loopback receiver,
+  Delta-to-Cumulative-before-batch routing, environment-only cloud credentials, captured signal
+  references, no-data semantics, and missing attribution. It cannot authenticate to the
+  maintainer's Grafana stack, prove Alloy's experimental processor against a future Codex payload,
+  observe OTLP-to-Prometheus translation, or execute Grafana import/query. The accepted boundary is
+  the credentialed live check in
+  [`operations.md`](operations.md#verify-codex-delivery): Alloy ready, a completed fresh app-server
+  turn, accepted and sent points with zero failed points, destination `codex_*` series, and a
+  successful shared-dashboard query. **Revisit trigger:** Codex exposes compatible Cumulative
+  export, Alloy changes the processor contract, delivery/import fails, or a captured name or
+  attribute disappears. Missing issue, branch, tool-name, or tool-success dimensions remain
+  unavailable rather than zero.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no
