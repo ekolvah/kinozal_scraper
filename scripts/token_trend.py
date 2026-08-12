@@ -898,22 +898,56 @@ def _format_runaway_verdict(verdict: RunawayVerdict, state: RunawayState) -> str
     )
 
 
+def _runaway_anomaly_state_path(payload: dict) -> Path | None:
+    """Find a writable one-shot marker carrier even when the transcript is absent."""
+    raw_transcript = payload.get("transcript_path")
+    if isinstance(raw_transcript, str) and raw_transcript:
+        candidate = Path(raw_transcript)
+        if candidate.parent.is_dir():
+            return runaway_state_path(candidate)
+    fallback = transcript_dir()
+    if not fallback.is_dir():
+        return None
+    session_id = payload.get("session_id")
+    safe_session = re.sub(r"[^A-Za-z0-9_.-]", "-", str(session_id or "unknown"))
+    return fallback / f"{safe_session}{RUNAWAY_STATE_SUFFIX}"
+
+
+def report_runaway_anomaly_once(payload: dict, kind: str, detail: str) -> str:
+    """Persist a marker before blocking; fail open if one-shot delivery is impossible."""
+    state_path = _runaway_anomaly_state_path(payload)
+    if state_path is None:
+        return ""
+    state, _ = load_runaway_state(state_path)
+    if kind in state.reported_anomalies:
+        return ""
+    state = replace(
+        state,
+        reported_anomalies=tuple(sorted({*state.reported_anomalies, kind})),
+    )
+    try:
+        write_runaway_state(state_path, state)
+    except OSError:
+        # Hooks are separate processes. Without a durable marker, emitting would block every
+        # batch forever; silence is the only way to preserve the one-shot operator contract.
+        return ""
+    return _format_runaway_response(
+        f"token-runaway anomaly [{kind}]: {detail}; current turn paused for the operator."
+    )
+
+
 def run_runaway_hook(payload: dict, ledger_path: Path) -> str:
     """Return a `PostToolBatch` block only for a runaway or visible metric failure."""
     if payload.get("agent_id"):
         return ""
     raw_transcript = payload.get("transcript_path")
     if not isinstance(raw_transcript, str) or not raw_transcript:
-        return _format_runaway_response(
-            "token-runaway anomaly [transcript_path]: hook payload has no transcript path; "
-            "current turn paused for the operator."
+        return report_runaway_anomaly_once(
+            payload, "transcript_path", "hook payload has no transcript path"
         )
     transcript_path = Path(raw_transcript)
     if not transcript_path.is_file():
-        return _format_runaway_response(
-            f"token-runaway anomaly [transcript_not_found]: {transcript_path}; "
-            "current turn paused for the operator."
-        )
+        return report_runaway_anomaly_once(payload, "transcript_not_found", str(transcript_path))
     state_path = runaway_state_path(transcript_path)
     state, anomalies = load_runaway_state(state_path)
     if state.warned:
@@ -1015,6 +1049,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.runaway_hook:
+        payload: dict = {}
         try:
             payload = read_payload(sys.stdin.read())
             ledger_root = resolve_runaway_ledger_root(payload)
@@ -1023,12 +1058,9 @@ def main() -> int:
                 emit(text)
         except Exception as exc:  # noqa: BLE001 - hook failure must remain visible JSON
             with contextlib.suppress(Exception):
-                emit(
-                    _format_runaway_response(
-                        f"token-runaway anomaly [{type(exc).__name__}]: {exc}; "
-                        "current turn paused for the operator."
-                    )
-                )
+                text = report_runaway_anomaly_once(payload, type(exc).__name__, str(exc))
+                if text:
+                    emit(text)
         return 0
 
     if args.hook:

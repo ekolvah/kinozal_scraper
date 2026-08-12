@@ -594,6 +594,32 @@ class TestRunawayHookMode:
         assert "ledger" in json.loads(results[0])["reason"]
         assert results[1:] == ["", ""]
 
+    def test_missing_transcript_blocks_only_once(self, tmp_path: Path) -> None:
+        missing = tmp_path / "missing.jsonl"
+        payload = {"session_id": "s-1", "transcript_path": str(missing)}
+
+        results = [
+            token_trend.run_runaway_hook(payload, tmp_path / token_trend.LEDGER_NAME)
+            for _ in range(3)
+        ]
+
+        assert "transcript_not_found" in json.loads(results[0])["reason"]
+        assert results[1:] == ["", ""]
+
+    def test_missing_payload_path_blocks_only_once(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: tmp_path)
+        payload = {"session_id": "s-1"}
+
+        results = [
+            token_trend.run_runaway_hook(payload, tmp_path / token_trend.LEDGER_NAME)
+            for _ in range(3)
+        ]
+
+        assert "transcript_path" in json.loads(results[0])["reason"]
+        assert results[1:] == ["", ""]
+
 
 class TestRunawayMain:
     def test_mode_exits_zero_emits_json_and_uses_transcript_parent_ledger(
@@ -650,15 +676,43 @@ class TestRunawayMain:
             raise RuntimeError("detector failed")
 
         monkeypatch.setattr(token_trend, "run_runaway_hook", boom)
+        outputs = []
+        for _ in range(3):
+            monkeypatch.setattr("sys.argv", ["token_trend.py", "--runaway-hook"])
+            monkeypatch.setattr(
+                "sys.stdin",
+                io.StringIO(json.dumps({"session_id": "s-1", "transcript_path": str(transcript)})),
+            )
+            assert token_trend.main() == 0
+            outputs.append(capsys.readouterr().out)
+
+        output = json.loads(outputs[0])
+        assert output["decision"] == "block"
+        assert "detector failed" in output["reason"]
+        assert outputs[1:] == ["", ""]
+
+    def test_unpersistable_failure_stays_silent(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+
+        def boom(*_args: object, **_kwargs: object) -> str:
+            raise OSError("read-only state")
+
+        monkeypatch.setattr(token_trend, "run_runaway_hook", boom)
+        monkeypatch.setattr(token_trend, "write_runaway_state", boom)
         monkeypatch.setattr("sys.argv", ["token_trend.py", "--runaway-hook"])
         monkeypatch.setattr(
-            "sys.stdin", io.StringIO(json.dumps({"transcript_path": str(transcript)}))
+            "sys.stdin",
+            io.StringIO(json.dumps({"session_id": "s-1", "transcript_path": str(transcript)})),
         )
 
         assert token_trend.main() == 0
-        output = json.loads(capsys.readouterr().out)
-        assert output["decision"] == "block"
-        assert "detector failed" in output["reason"]
+        assert capsys.readouterr().out == ""
 
 
 class TestRunawayHookRegistration:
