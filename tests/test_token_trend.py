@@ -95,6 +95,36 @@ def _line(**kwargs: object) -> str:
     return json.dumps(_entry(**kwargs))  # type: ignore[arg-type]
 
 
+def _operator_line(text: str = "continue") -> str:
+    return json.dumps(
+        {
+            "type": "user",
+            "sessionId": "s-1",
+            "isMeta": False,
+            "message": {"content": [{"type": "text", "text": text}]},
+        }
+    )
+
+
+def _tool_result_line(*, failed: bool) -> str:
+    return json.dumps(
+        {
+            "type": "user",
+            "sessionId": "s-1",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": "tool-1",
+                        "is_error": failed,
+                        "content": "not persisted in detector state",
+                    }
+                ]
+            },
+        }
+    )
+
+
 def _stats(
     branch: str, *, turns: int = 10, per_turn: float = 1000.0, first: str = "2026-08-01"
 ) -> BranchStats:
@@ -394,6 +424,172 @@ class TestDetect:
         main = _stats(MAIN_BUCKET, per_turn=5_000_000, first="2026-08-09")
         few = [_stats(f"issue-o{i}", first=f"2026-08-0{i + 1}") for i in range(3)]
         assert detect_growth([*few, main]).status == "insufficient_data"
+
+
+class TestRunawayClassifier:
+    @staticmethod
+    def _state(*, effective: float, ratio: int, errors: int) -> object:
+        return token_trend.RunawayState(
+            offset=0,
+            assistant_messages=ratio,
+            operator_messages=1,
+            consecutive_errors=errors,
+            effective=effective,
+            seen_usage_keys=(),
+            warned=False,
+        )
+
+    @staticmethod
+    def _ledger() -> list[BranchStats]:
+        return [
+            _stats("issue-1-a", turns=1, per_turn=1_000_000),
+            _stats("issue-2-b", turns=1, per_turn=1_284_000),
+            _stats("issue-3-c", turns=1, per_turn=2_000_000),
+        ]
+
+    def test_known_heavy_tail_crosses_combined_threshold(self) -> None:
+        state = self._state(effective=26_334_000, ratio=34, errors=7)
+
+        verdict = token_trend.classify_runaway(state, self._ledger())
+
+        assert verdict.alert
+        assert verdict.effective_floor == pytest.approx(3_852_000)
+        assert verdict.ratio == 34
+
+    @pytest.mark.parametrize(
+        ("effective", "ratio", "errors"),
+        [
+            (10_000_000, 10, 1),
+            (1_000_000, 50, 1),
+            (1_000_000, 10, 7),
+        ],
+    )
+    def test_cost_ratio_or_errors_alone_stay_silent(
+        self, effective: float, ratio: int, errors: int
+    ) -> None:
+        state = self._state(effective=effective, ratio=ratio, errors=errors)
+        assert not token_trend.classify_runaway(state, self._ledger()).alert
+
+
+class TestRunawayState:
+    @staticmethod
+    def _ledger(path: Path) -> None:
+        path.write_text(
+            "\n".join(
+                ledger_lines(
+                    {
+                        "issue-1-a": _stats("issue-1-a", turns=1, per_turn=100),
+                        "issue-2-b": _stats("issue-2-b", turns=1, per_turn=100),
+                        "issue-3-c": _stats("issue-3-c", turns=1, per_turn=100),
+                    }
+                )
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+
+    def test_incremental_update_reads_only_appended_bytes(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+        first, anomalies = token_trend.update_runaway_state(
+            transcript, token_trend.RunawayState.empty()
+        )
+        original_offset = first.offset
+
+        with transcript.open("a", encoding="utf-8") as handle:
+            handle.write(_line(request_id="appended", output_tokens=2) + "\n")
+        second, anomalies = token_trend.update_runaway_state(transcript, first)
+
+        assert anomalies == []
+        assert second.offset > original_offset
+        assert second.operator_messages == 1
+        assert second.assistant_messages == 1
+        assert second.effective == pytest.approx(10.0)
+
+    def test_warned_state_suppresses_repeat_warning(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        lines = [_operator_line()]
+        lines.extend(
+            _line(request_id=f"r-{index}", output_tokens=4) for index in range(24)
+        )
+        transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        ledger = tmp_path / token_trend.LEDGER_NAME
+        self._ledger(ledger)
+        payload = {"session_id": "s-1", "transcript_path": str(transcript)}
+
+        first = token_trend.run_runaway_hook(payload, ledger)
+        second = token_trend.run_runaway_hook(payload, ledger)
+
+        assert json.loads(first)["decision"] == "block"
+        assert second == ""
+
+    def test_corrupt_or_truncated_state_rebuilds_with_anomaly(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+        state_path = token_trend.runaway_state_path(transcript)
+        state_path.write_text('{"schema": 999, "offset": 9999}', encoding="utf-8")
+        ledger = tmp_path / token_trend.LEDGER_NAME
+        self._ledger(ledger)
+
+        result = token_trend.run_runaway_hook(
+            {"session_id": "s-1", "transcript_path": str(transcript)}, ledger
+        )
+
+        assert "runaway_state_rebuilt" in json.loads(result)["reason"]
+        restored = json.loads(state_path.read_text(encoding="utf-8"))
+        assert restored["schema"] == token_trend.RUNAWAY_STATE_SCHEMA
+        assert restored["offset"] == transcript.stat().st_size
+
+
+class TestRunawayHookMode:
+    def test_alert_is_valid_post_tool_batch_block_json(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        lines = [_operator_line()]
+        lines.extend(
+            _line(request_id=f"r-{index}", output_tokens=4) for index in range(24)
+        )
+        transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        ledger = tmp_path / token_trend.LEDGER_NAME
+        TestRunawayState._ledger(ledger)
+
+        raw = token_trend.run_runaway_hook(
+            {"session_id": "s-1", "transcript_path": str(transcript)}, ledger
+        )
+        payload = json.loads(raw)
+
+        assert payload["decision"] == "block"
+        assert "token-runaway" in payload["reason"]
+        assert "operator" in payload["reason"]
+
+    def test_subagent_invocation_is_silent(self, tmp_path: Path) -> None:
+        assert (
+            token_trend.run_runaway_hook(
+                {
+                    "agent_id": "subagent-1",
+                    "session_id": "s-1",
+                    "transcript_path": str(tmp_path / "missing.jsonl"),
+                },
+                tmp_path / "missing-ledger.jsonl",
+            )
+            == ""
+        )
+
+
+class TestRunawayHookRegistration:
+    def test_post_tool_batch_hook_registered_once(self) -> None:
+        settings = json.loads(
+            (Path(__file__).resolve().parent.parent / ".claude" / "settings.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        commands = [
+            hook.get("command", "")
+            for group in settings.get("hooks", {}).get("PostToolBatch", [])
+            for hook in group.get("hooks", [])
+        ]
+        ours = [command for command in commands if "token_trend.py" in command]
+        assert len(ours) == 1
+        assert "--runaway-hook" in ours[0]
 
 
 class TestFormatAlert:
