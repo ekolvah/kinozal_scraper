@@ -21,10 +21,10 @@ def test_rules_allow_only_delivery_entry_points() -> None:
     text = _text()
     for command in (
         "scripts/push_issue_branch.py",
-        "scripts/open_pr.py",
-        "gh\", \"pr\", \"checks",
+        "scripts/publish_pr_report.py",
+        'gh", "pr", "checks',
         "scripts.review_gate",
-        "gh\", \"run\", \"view",
+        'gh", "run", "view',
     ):
         assert command in text
     assert text.count('decision = "allow"') == 5
