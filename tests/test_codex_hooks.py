@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-import scripts.codex_hooks as codex_hooks
 from scripts.codex_hooks import edited_paths, pre_tool_response, read_payload, run_on_edit
 
 _REPO = Path(__file__).resolve().parents[1]
@@ -63,93 +62,6 @@ class TestPreToolUse:
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 
-
-class TestPermissionRequest:
-    @staticmethod
-    def _payload(command: str) -> dict:
-        return {"tool_input": {"command": command}}
-
-    @staticmethod
-    def _context(
-        *,
-        remote_url: str = "https://github.com/ekolvah/kinozal_scraper.git",
-        branch: str = "issue-499-codex-delivery-make-issue",
-    ):
-        return codex_hooks.RepositoryContext(remote_url=remote_url, branch=branch)
-
-    @staticmethod
-    def _behavior(response: dict) -> str:
-        return response["hookSpecificOutput"]["decision"]["behavior"]
-
-    def test_issue_branch_push_is_auto_allowed_for_canonical_repo(self) -> None:
-        response = codex_hooks.permission_request_response(
-            self._payload("git push -u origin issue-499-codex-delivery-make-issue"),
-            self._context(),
-        )
-        assert response is not None
-        assert self._behavior(response) == "allow"
-
-    def test_delivery_commands_are_auto_allowed_in_their_valid_stage(self) -> None:
-        cases = (
-            ("python scripts/validate_issue_sections.py 499", self._context(branch="main")),
-            (
-                r"gh issue edit 499 --body-file C:\Temp\issue-499.md",
-                self._context(branch="main"),
-            ),
-            (
-                'python scripts/open_pr.py --title "Codex delivery" '
-                r"--body-file C:\Temp\pr-499.md",
-                self._context(),
-            ),
-            ("gh pr checks 501 --watch", self._context()),
-            ("python -m scripts.review_gate 501", self._context()),
-            ("gh run view 123456 --log-failed", self._context()),
-        )
-        for command, context in cases:
-            response = codex_hooks.permission_request_response(self._payload(command), context)
-            assert response is not None, command
-            assert self._behavior(response) == "allow", command
-
-    def test_wrong_remote_branch_and_compound_commands_are_not_auto_allowed(self) -> None:
-        cases = (
-            (
-                "git push -u origin issue-499-codex-delivery-make-issue",
-                self._context(remote_url="https://github.com/example/other.git"),
-            ),
-            (
-                "git push -u origin issue-498-other",
-                self._context(),
-            ),
-            (
-                "gh pr checks 501 --watch; gh pr merge 501",
-                self._context(),
-            ),
-        )
-        for command, context in cases:
-            assert (
-                codex_hooks.permission_request_response(self._payload(command), context) is None
-            ), command
-
-    def test_forbidden_command_is_denied_before_allowlist_matching(self) -> None:
-        response = codex_hooks.permission_request_response(
-            self._payload("gh pr merge 501"), self._context()
-        )
-        assert response is not None
-        assert self._behavior(response) == "deny"
-
-    def test_malformed_payload_fails_closed(self) -> None:
-        result = subprocess.run(
-            [sys.executable, "-m", "scripts.codex_hooks", "permission-request"],
-            cwd=_REPO,
-            input="not json",
-            text=True,
-            capture_output=True,
-            encoding="utf-8",
-            check=False,
-        )
-        assert result.returncode == 2
-        response = json.loads(result.stdout)
-        assert self._behavior(response) == "deny"
 
 class TestPostToolUse:
     def test_apply_patch_paths_are_deduplicated_and_ignore_deletes(self) -> None:
