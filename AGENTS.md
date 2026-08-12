@@ -17,7 +17,10 @@ Claude or Codex adapter is the only permitted executor.
 - Follow RED -> GREEN: write the issue's named tests, prove them with
   `python scripts/check_red.py <test paths>`, commit RED, then implement.
 - Before a PR, run `python scripts/ci_check.py` once in the foreground. Use
-  `python scripts/open_pr.py` to create the PR and leave merging to a human.
+  `python scripts/push_issue_branch.py` to publish the current issue branch,
+  write the report to `.codex/pr-body.md`, then use
+  `python scripts/publish_pr_report.py` to create or update the PR. Leave
+  merging to a human.
 - After every PR push, stay in the review/fix loop defined in
   `agent-process.md`: wait for checks, then ask
   `python -m scripts.review_gate <PR>` whether the loop continues. Its exit code

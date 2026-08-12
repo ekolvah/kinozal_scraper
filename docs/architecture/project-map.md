@@ -107,9 +107,11 @@ measures actual consumption (#464), from Claude Code transcripts by branch and t
   guarantees awareness rather than review quality (#150).
 - **Wording of principles §I–VII** → canonical in [`principles.md`](principles.md), referenced by
   number (`architect-reviewer.md`, `mindset.md`); **do not change the numbering**.
-- **Enforcement facts** (git prohibitions) → canonical in `.claude/settings.json`
-  `permissions.deny` (+ synchronisation test `tests/test_settings_deny.py`). **Do not create mirror
-  files** — that is a duplicate by definition.
+- **Enforcement facts** (git prohibitions) → canonical in
+  `scripts/agent_policy.py`. `.claude/settings.json` and the inactive Codex
+  user-rule template are carrier encodings guarded by
+  `tests/test_settings_deny.py` and `tests/test_codex_delivery_rules.py`; they
+  do not define a second policy.
 - **Navigation policy** (which shell route a `Read`/`Grep`/`Glob` call replaces) → canonical in
   `scripts/navigation_policy.py`, delivered as a `PreToolUse` denial message (#485). Separate
   carrier from the security policy above on purpose; `.claude/rules/mindset.md` links, never
@@ -298,7 +300,7 @@ out of scope.
 | `.agents/skills/plan-issue/` | Codex planner adapter, invoked as `$plan-issue #N`; same runbook, performs architect review itself | ✅ |
 | `.agents/skills/implement-issue/` | Codex implementer/fixer adapter, invoked as `$implement-issue #N` | ✅ |
 | `.claude/agents/architect-reviewer.md` | Plan-reviewer persona; reads its contract (what to check; coverage-first finding format: grade, do not filter, #392) and objective function **from the canon** [`agent-process.md` §Architect review contract](agent-process.md#architect-review-contract) (the subagent does not load always-load rules; it reads them itself and retains no copy). Model/`effort` are pinned; policy and pin boundaries are in [`ci.md` §Model pinning](ci.md), with guard `tests/test_agent_frontmatter.py` | ✅ |
-| `.claude/settings.json`, `.codex/hooks.json`, `scripts/agent_policy.py` | Local deny policy for Claude and Codex; branch protection remains final | ✅ |
+| `.claude/settings.json`, `.codex/hooks.json`, `scripts/agent_policy.py`, `docs/examples/kinozal-delivery.rules` | Local deny policy carriers plus the inactive, maintainer-installed Codex publication allowlist; branch protection remains final | ✅ |
 | `.claude/settings.local.json` (gitignored) | Personal mode + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, personal) |
 
 ### `docs/architecture/`
@@ -313,6 +315,7 @@ out of scope.
 | `testing.md` | How quality is guaranteed: test levels, bug taxonomy, what to mock (links to `principles.md §II`, does not duplicate it). Strategy, not exceptions | ✅ |
 | `coverage-gaps.md` | Where we consciously **do not** test and why: ledger `A`…`AI` with stable letter IDs + modules without dedicated tests. Moved out of `testing.md` so the growing exception list does not mix with strategy | ✅ |
 | `ci.md` | Quality gates on the change path (local pre-commit, `ci.yml`, cloud `agent-review`), live GitHub API context for reruns (body + SHA as untrusted data), schema-validated outcome that deterministically completes the ordinary review job without marker/polling/retry, and `github_token`, which makes a PR for the review controller itself reviewed like every other PR (#483), plus the **single home for agent-tooling model-pinning policy** (§Model pinning: both surfaces — `agent-review.yml` and `.claude/agents/*.md`, pin boundaries, two guards). The runtime half (environment variables, production workflow) moved to `operations.md` (#418); only the gate facet remains from the production cron (E2E smoke under `principles.md` §Quality Gates). Decision rationales are compressed to the operational minimum (#419): the "how we got here" narrative belongs in the issue/PR; this file retains only the sentence without which an agent would act wrongly or redo rejected work. Rejected tools are a row at their gate or in §Consciously not adopted | ✅ |
+| `codex-delivery.md` | One-time VS Code Codex trust/rule setup, least-privilege issue-branch publication boundary, verification, and recovery | ✅ |
 | `operations.md` | How the production run is operated: schedule and step order, environment variables and secrets, failure isolation (#245) and alerting (#310), operator runbooks (`TELETHON_SESSION` rotation), patient Soldout retries, and the step's position in the run (#396). Took the runtime half of `ci.md` (#418) | ✅ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts / call observability (token+latency `llm_call` log + Phoenix development recipe, #145) | ✅ |
 | `llm-security.md` | Enricher LLM threats (OWASP LLM Top 10 → safeguards/residual): prompt-injection fence, output escaping, honest blast radius (#308) | ✅ |
@@ -331,6 +334,8 @@ out of scope.
 | `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: a single role catalogue, evidence-based next action, and bounded escalation; does not invoke providers or replace required gates |
 | `scripts/review_gate.py` | Whether the PR review/fix cycle continues: reads required contexts at the current head and the number of already reviewed heads, then returns an exit-code verdict (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` is `gh`/capture failure, not a verdict). It changes and posts nothing. The rule "fix only blocking; `should-fix` is the maintainer's decision" was twice ignored as prose (#458, #465), so it now has an exit code rather than a list item ([principles.md §Scripts over instructions](principles.md#scripts-over-instructions)). Severity comes from the already calculated `agent-review` check run, not parsed review body; budget is `fixer.max_runs` from the role catalogue. Prose home: [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
 | `scripts/issue_branch.py` / `scripts/new_branch.py` | Create an `issue-N-*` branch from fresh origin/main |
+| `scripts/push_issue_branch.py` | Publish only the clean current `issue-N-*` branch to the canonical `origin`; accepts no caller-controlled remote or refspec |
+| `scripts/publish_pr_report.py` | Create or update only the current issue-branch PR from the fixed ignored `.codex/pr-body.md`; delegates to the canonical create/update link verifiers |
 | `scripts/set_issue_priority.py` | Set issue priority (the Priority field in GitHub Project 1) through `gh project item-add`+`item-edit` with embedded Project/field/option IDs; read-only `--check` verifies the exact issue URL and non-empty High/Medium/Low before branch creation. The agent invokes it under the `agent-process.md` contract (asked for priority → setter; implementer preflight → checker). The mechanism moved memory→repository (#351) |
 | `scripts/check_red.py` | Whether tests are RED before GREEN (the TDD-step contract) |
 | `scripts/open_pr.py` | Create a PR with guaranteed `Closes #N` in its body + post-verification of `closingIssuesReferences` (otherwise exit 1, §IV), so the PR reliably auto-closes the issue on squash merge (#320, precedent #319→#140). Preflight makes the correct path cheap; enforcement is `verify_pr_link.py` |

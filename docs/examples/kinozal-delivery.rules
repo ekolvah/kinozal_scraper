@@ -1,0 +1,55 @@
+# Opt-in user-layer policy for the trusted kinozal_scraper checkout.
+# Copy this file to ~/.codex/rules/ only after reviewing the repository scripts.
+
+prefix_rule(
+    pattern = ["python", "scripts/push_issue_branch.py"],
+    decision = "allow",
+    justification = "Push the validated current issue branch to the canonical origin",
+    match = ["python scripts/push_issue_branch.py"],
+)
+
+prefix_rule(
+    pattern = ["python", "scripts/publish_pr_report.py"],
+    decision = "allow",
+    justification = "Create or update the current issue branch PR from the fixed report path",
+    match = ["python scripts/publish_pr_report.py"],
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "checks"],
+    decision = "allow",
+    justification = "Read and watch PR checks",
+    match = ["gh pr checks 501 --watch"],
+)
+
+prefix_rule(
+    pattern = ["python", "-m", "scripts.review_gate"],
+    decision = "allow",
+    justification = "Read the current PR delivery verdict",
+    match = ["python -m scripts.review_gate 501"],
+)
+
+prefix_rule(
+    pattern = ["gh", "run", "view"],
+    decision = "allow",
+    justification = "Read failed GitHub Actions logs for a delivery PR",
+    match = ["gh run view 123456 --log-failed"],
+)
+
+prefix_rule(
+    pattern = ["git", "push"],
+    decision = "forbidden",
+    justification = "Use python scripts/push_issue_branch.py; direct push is not scoped",
+    match = [
+        "git push origin main",
+        "git push -u origin issue-499-example",
+        "git push --force origin issue-499-example",
+    ],
+)
+
+prefix_rule(
+    pattern = ["gh", "pr", "merge"],
+    decision = "forbidden",
+    justification = "Merge remains a human-only action in the GitHub UI",
+    match = ["gh pr merge 501 --squash"],
+)

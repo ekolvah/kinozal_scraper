@@ -26,14 +26,14 @@ FORBIDDEN_COMMANDS: tuple[str, ...] = (
 _FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str], bool], ...] = (
     (
         "git push to main",
-        re.compile(r"(?:^|[;&|])\s*git\s+push\s+origin\s+(?:main|head:main)(?=\s|:|$)"),
+        re.compile(r"\bgit\s+push\b[^\n;&|]*(?:\s|:)(?:refs/heads/)?main(?=\s|$)"),
         False,
     ),
     (
         "forced push",
         re.compile(
-            r"\bgit\s+push\b[^\n]*\s--force(?:-with-lease)?(?:\s|=|$)"
-            r"|\bgit\s+push\s+-f(?:\s|$)"
+            r"\bgit\s+push\b[^\n;&|]*\s--force(?:-with-lease)?(?:\s|=|$)"
+            r"|\bgit\s+push\b[^\n;&|]*\s-f(?:\s|$)"
         ),
         False,
     ),

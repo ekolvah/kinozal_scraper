@@ -3,6 +3,8 @@
 .claude/settings.local.json
 .claude/worktrees/
 .claude/cache/
+# Ephemeral delivery report consumed only by scripts/publish_pr_report.py.
+.codex/pr-body.md
 # Secrets: MUST live here, not in .git/info/exclude — that file is not versioned,
 # so a fresh clone / second machine / contributor would get the repo unprotected
 # (#387). `.env` carries CREDENTIALS (service-account JSON with private_key),

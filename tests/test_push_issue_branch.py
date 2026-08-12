@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import importlib
+from types import ModuleType
 
 import pytest
 
 
-def _module():
+def _module() -> ModuleType:
     return importlib.import_module("scripts.push_issue_branch")
 
 
@@ -50,3 +51,8 @@ def test_rejects_dirty_worktree() -> None:
             branch="issue-499-codex-delivery-make-issue",
             worktree_status=" M src/example.py",
         )
+
+
+def test_command_line_rejects_caller_supplied_push_arguments() -> None:
+    with pytest.raises(SystemExit, match="2"):
+        _module().main(["--force"])

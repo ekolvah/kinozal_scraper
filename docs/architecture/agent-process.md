@@ -187,13 +187,15 @@ instruction to shorten its own output.
    failing tests, then commits RED before production logic. Implement the
    agreed outline, update required documentation and ADRs, and run the local CI
    gate once in the foreground.
-4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
-   closing reference. Replace an existing delivery PR report only with
-   `python -m scripts.update_pr_body <PR> --body-file <path>`: it re-applies the
-   branch-derived closing line and verifies the resulting linkage. A normal
-   `open_pr.py` re-run remains idempotent and never replaces an existing body.
+4. Publish every new or fixer head with
+   `python scripts/push_issue_branch.py`; its no-argument interface derives and
+   validates the canonical remote plus current `issue-N-*` branch. Write the PR
+   report to the ignored fixed path `.codex/pr-body.md`, then run
+   `python scripts/publish_pr_report.py`. The wrapper derives the issue, title,
+   and current branch PR; it delegates creation to `open_pr.py`, replacement to
+   `update_pr_body.py`, and verifies the resulting issue-closing reference.
    Fix CI findings up to three improving iterations and enter the review/fix
-   loop. After every push, run `gh pr checks <PR> --watch`,
+   loop. After every wrapper push, run `gh pr checks <PR> --watch`,
    inspect a failed CI run with `gh run view <run-id> --log-failed`, then ask
    `python -m scripts.review_gate <PR>` whether the loop continues. Its verdict
    decides, not the agent's reading of the findings; the exit code is the

@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import importlib
 from pathlib import Path
+from types import ModuleType
+from typing import cast
 from unittest.mock import Mock
 
 import pytest
 
 
-def _module():
+def _module() -> ModuleType:
     return importlib.import_module("scripts.publish_pr_report")
 
 
@@ -20,9 +22,10 @@ def test_report_path_is_fixed_inside_repository() -> None:
 
 
 def test_report_path_rejects_symlink() -> None:
-    link = Mock(spec=Path)
-    link.is_file.return_value = True
-    link.is_symlink.return_value = True
+    mock_link = Mock(spec=Path)
+    mock_link.is_file.return_value = True
+    mock_link.is_symlink.return_value = True
+    link = cast("Path", mock_link)
     with pytest.raises(ValueError, match="regular non-symlink"):
         _module().read_report(link)
 

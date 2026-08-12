@@ -28,14 +28,19 @@ Do not replace a missing plan with an invented implementation.
    green. Update `## Docs to update` and any ADR named by the issue.
 6. Run `python scripts/ci_check.py` once in the foreground. Fix root causes,
    not symptoms.
-7. Create the PR with `python scripts/open_pr.py`, using the repository
-   template. Fill `## Agent record` exactly as
+7. Publish the committed issue branch with
+   `python scripts/push_issue_branch.py`, write the completed repository
+   template to `.codex/pr-body.md`, then create the PR with
+   `python scripts/publish_pr_report.py`. The wrapper uses the canonical
+   `open_pr.py` and `update_pr_body.py` paths. Fill `## Agent record` exactly as
    [agent records and adapters](../../../docs/architecture/agent-process.md#agent-records-and-adapters)
    defines it; that section is the canonical field list, and this skill does
    not restate it. The provider-neutral control plane in
    `.agents/orchestration/roles.yaml` may report the next bounded action; it
    does not replace the checks below or invoke a provider.
-8. Stay active through the review/fix loop, and let
+8. Stay active through the review/fix loop, publish each fixer commit with the
+   same `python scripts/push_issue_branch.py` wrapper, refresh the fixed report
+   with current evidence through `python scripts/publish_pr_report.py`, and let
    `python -m scripts.review_gate <PR>` end it — not your own reading of the
    findings. After every push:
    - `gh pr checks <PR> --watch` — wait for the checks to finish.
