@@ -1,0 +1,137 @@
+{
+  "schema_version": 1,
+  "capture": {
+    "destination": "Grafana Cloud",
+    "status": "verified",
+    "captured_at": "2026-08-12",
+    "claude_code_version": "2.1.220",
+    "content_logging": "disabled",
+    "missing_dimensions": [
+      "agent_id",
+      "skill_name",
+      "compaction"
+    ]
+  },
+  "signals": {
+    "metrics": [
+      {
+        "name": "claude_code.active_time.total",
+        "backend_name": "claude_code_active_time_seconds_total",
+        "attributes": [
+          "job",
+          "organization_id",
+          "service_name",
+          "service_version",
+          "session_id",
+          "terminal_type",
+          "type",
+          "user_email",
+          "user_id"
+        ]
+      },
+      {
+        "name": "claude_code.cost.usage",
+        "backend_name": "claude_code_cost_usage_USD_total",
+        "attributes": [
+          "effort",
+          "job",
+          "model",
+          "organization_id",
+          "query_source",
+          "service_name",
+          "service_version",
+          "session_id",
+          "terminal_type",
+          "user_email",
+          "user_id"
+        ]
+      },
+      {
+        "name": "claude_code.session.count",
+        "backend_name": "claude_code_session_count_total",
+        "attributes": [
+          "job",
+          "organization_id",
+          "service_name",
+          "service_version",
+          "session_id",
+          "start_type",
+          "terminal_type",
+          "user_email",
+          "user_id"
+        ]
+      },
+      {
+        "name": "claude_code.token.usage",
+        "backend_name": "claude_code_token_usage_tokens_total",
+        "attributes": [
+          "effort",
+          "job",
+          "model",
+          "organization_id",
+          "query_source",
+          "service_name",
+          "service_version",
+          "session_id",
+          "terminal_type",
+          "type",
+          "user_email",
+          "user_id"
+        ]
+      }
+    ],
+    "events": [
+      {
+        "name": "api_request",
+        "backend_name": "api_request",
+        "attributes": [
+          "cache_creation_tokens",
+          "cache_read_tokens",
+          "client_request_id",
+          "cost_usd",
+          "duration_ms",
+          "effort",
+          "input_tokens",
+          "model",
+          "output_tokens",
+          "query_source",
+          "request_id",
+          "session_id"
+        ]
+      },
+      {
+        "name": "tool_decision",
+        "backend_name": "tool_decision",
+        "attributes": [
+          "decision",
+          "session_id",
+          "source",
+          "tool_name",
+          "tool_source",
+          "tool_use_id"
+        ]
+      },
+      {
+        "name": "tool_result",
+        "backend_name": "tool_result",
+        "attributes": [
+          "duration_ms",
+          "session_id",
+          "success",
+          "tool_input_size_bytes",
+          "tool_name",
+          "tool_result_size_bytes",
+          "tool_use_id"
+        ]
+      },
+      {
+        "name": "user_prompt",
+        "backend_name": "user_prompt",
+        "attributes": [
+          "prompt_length",
+          "session_id"
+        ]
+      }
+    ]
+  }
+}
