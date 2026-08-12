@@ -24,10 +24,24 @@ def _commands(event: str) -> list[str]:
     ]
 
 
+def test_codex_permission_request_hook_is_registered() -> None:
+    entries = _entries("PermissionRequest")
+    assert len(entries) == 1
+    assert entries[0]["matcher"] == "^Bash$"
+    assert any(
+        re.search(r"scripts\.codex_hooks permission-request", command)
+        for command in _commands("PermissionRequest")
+    )
+
+
 class TestCodexHookWiring:
     def test_hooks_file_references_existing_adapter(self) -> None:
         assert _HOOKS.is_file()
-        commands = [*_commands("PreToolUse"), *_commands("PostToolUse")]
+        commands = [
+            *_commands("PreToolUse"),
+            *_commands("PermissionRequest"),
+            *_commands("PostToolUse"),
+        ]
         assert commands
         assert all("python -m scripts.codex_hooks" in command for command in commands)
         assert all('cd "$(git rev-parse --show-toplevel)"' in command for command in commands)

@@ -49,3 +49,15 @@ def test_claude_defense_in_depth_covers_shared_policy() -> None:
 )
 def test_shared_policy_allows_safe_commands(command: str) -> None:
     assert denied_reason(command) is None
+
+
+def test_shared_policy_rejects_protected_push_variants() -> None:
+    commands = (
+        "git push -u origin main",
+        "git push origin topic:main",
+        "git push origin HEAD:refs/heads/main",
+        "git push origin issue-499 --force",
+        "git push origin issue-499 -f",
+    )
+    for command in commands:
+        assert denied_reason(command) is not None, command
