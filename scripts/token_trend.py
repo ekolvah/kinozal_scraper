@@ -181,6 +181,7 @@ class RunawayState:
     effective: float
     seen_usage_keys: tuple[str, ...]
     warned: bool
+    reported_anomalies: tuple[str, ...] = ()
 
     @classmethod
     def empty(cls) -> RunawayState:
@@ -735,6 +736,8 @@ def _runaway_state_well_typed(state: RunawayState) -> bool:
         and isinstance(state.seen_usage_keys, tuple)
         and all(isinstance(key, str) for key in state.seen_usage_keys)
         and isinstance(state.warned, bool)
+        and isinstance(state.reported_anomalies, tuple)
+        and all(isinstance(kind, str) for kind in state.reported_anomalies)
     )
 
 
@@ -750,6 +753,10 @@ def load_runaway_state(path: Path) -> tuple[RunawayState, list[Anomaly]]:
         if not isinstance(keys, list):
             raise ValueError("seen_usage_keys must be a list")
         payload["seen_usage_keys"] = tuple(keys)
+        reported = payload.get("reported_anomalies", [])
+        if not isinstance(reported, list):
+            raise ValueError("reported_anomalies must be a list")
+        payload["reported_anomalies"] = tuple(reported)
         state = RunawayState(**payload)
         if not _runaway_state_well_typed(state):
             raise ValueError("invalid field types")
@@ -846,6 +853,7 @@ def _consume_runaway_lines(
             effective=effective,
             seen_usage_keys=tuple(sorted(seen)),
             warned=state.warned,
+            reported_anomalies=state.reported_anomalies,
         ),
         anomalies,
     )
@@ -914,13 +922,19 @@ def run_runaway_hook(payload: dict, ledger_path: Path) -> str:
     ledger, ledger_anomalies = parse_ledger(_read_ledger_lines(ledger_path))
     anomalies.extend(update_anomalies)
     anomalies.extend(ledger_anomalies)
-    if not issue_branches(ledger.values()):
-        anomalies.append(Anomaly("runaway_baseline_missing", f"no issue branches in {ledger_path}"))
     verdict = classify_runaway(state, ledger.values())
     if verdict.alert:
         state = replace(state, warned=True)
+    unseen_anomalies = [item for item in anomalies if item.kind not in state.reported_anomalies]
+    if unseen_anomalies:
+        state = replace(
+            state,
+            reported_anomalies=tuple(
+                sorted({*state.reported_anomalies, *(item.kind for item in unseen_anomalies)})
+            ),
+        )
     write_runaway_state(state_path, state)
-    reasons = [f"token-runaway anomaly [{item.kind}]: {item.detail}" for item in anomalies]
+    reasons = [f"token-runaway anomaly [{item.kind}]: {item.detail}" for item in unseen_anomalies]
     if verdict.alert:
         reasons.append(_format_runaway_verdict(verdict, state))
     if not reasons:
@@ -928,6 +942,16 @@ def run_runaway_hook(payload: dict, ledger_path: Path) -> str:
     if not verdict.alert:
         reasons.append("Current turn paused for the operator while the metric rebuilds.")
     return _format_runaway_response(" ".join(reasons))
+
+
+def resolve_runaway_ledger_root(payload: dict) -> Path:
+    """Use the live transcript directory only when the payload points to one."""
+    raw_transcript = payload.get("transcript_path")
+    if isinstance(raw_transcript, str) and raw_transcript:
+        candidate = Path(raw_transcript).parent
+        if candidate.is_dir():
+            return candidate
+    return transcript_dir()
 
 
 def resolve_transcripts(payload: dict) -> Path:
@@ -993,12 +1017,7 @@ def main() -> int:
     if args.runaway_hook:
         try:
             payload = read_payload(sys.stdin.read())
-            raw_transcript = payload.get("transcript_path")
-            ledger_root = (
-                Path(raw_transcript).parent
-                if isinstance(raw_transcript, str) and raw_transcript
-                else transcript_dir()
-            )
+            ledger_root = resolve_runaway_ledger_root(payload)
             text = run_runaway_hook(payload, ledger_root / LEDGER_NAME)
             if text:
                 emit(text)

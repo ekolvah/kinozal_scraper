@@ -403,8 +403,9 @@ decision goes to" route — and the rule itself — live in
   `SessionStart` hook takes the gate role: it runs itself every session and prints **only** an anomaly;
   `tests/test_token_trend.py::TestHookRegistration` guards against losing hook registration (without
   it, the script would repeat eval's fate from #361 — a metric that nobody runs). Tests cover pure
-  logic (parsing, aggregation, ledger, detector), **both output formats**, and `main()` in both modes
-  on a substitute directory; only `transcript_dir()` remains uncovered — an upstream slug rule
+  logic (parsing, aggregation, ledger, detector), **both output formats**, and `main()` in all three
+  modes (`--hook`, `--runaway-hook`, and report) on a substitute directory; only
+  `transcript_dir()` remains uncovered — an upstream slug rule
   testable only by actual run. Its failure is not silent: if `~/.claude/projects` exists but lacks
   our directory, the hook prints `transcripts_not_found` rather than remaining silent. Revisit if a
   shared development-telemetry carrier appears that CI can read.

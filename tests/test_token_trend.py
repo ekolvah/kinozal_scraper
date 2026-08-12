@@ -570,6 +570,96 @@ class TestRunawayHookMode:
             == ""
         )
 
+    def test_missing_baseline_is_a_silent_cold_start(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+        payload = {"session_id": "s-1", "transcript_path": str(transcript)}
+
+        results = [
+            token_trend.run_runaway_hook(payload, tmp_path / "missing-ledger.jsonl")
+            for _ in range(3)
+        ]
+
+        assert results == ["", "", ""]
+
+    def test_persistent_ledger_anomaly_blocks_only_once(self, tmp_path: Path) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+        ledger = tmp_path / token_trend.LEDGER_NAME
+        ledger.write_text("{broken\n", encoding="utf-8")
+        payload = {"session_id": "s-1", "transcript_path": str(transcript)}
+
+        results = [token_trend.run_runaway_hook(payload, ledger) for _ in range(3)]
+
+        assert "ledger" in json.loads(results[0])["reason"]
+        assert results[1:] == ["", ""]
+
+
+class TestRunawayMain:
+    def test_mode_exits_zero_emits_json_and_uses_transcript_parent_ledger(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+        captured: list[Path] = []
+
+        def fake_run(_payload: dict, ledger_path: Path) -> str:
+            captured.append(ledger_path)
+            return json.dumps({"decision": "block", "reason": "test anomaly"})
+
+        monkeypatch.setattr(token_trend, "run_runaway_hook", fake_run)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--runaway-hook"])
+        monkeypatch.setattr(
+            "sys.stdin", io.StringIO(json.dumps({"transcript_path": str(transcript)}))
+        )
+
+        assert token_trend.main() == 0
+        assert json.loads(capsys.readouterr().out)["decision"] == "block"
+        assert captured == [tmp_path / token_trend.LEDGER_NAME]
+
+    def test_missing_transcript_parent_uses_valid_fallback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fallback = tmp_path / "fallback"
+        fallback.mkdir()
+        missing = tmp_path / "missing" / "session.jsonl"
+        captured: list[Path] = []
+        monkeypatch.setattr(token_trend, "transcript_dir", lambda: fallback)
+
+        def fake_run(_payload: dict, ledger_path: Path) -> str:
+            captured.append(ledger_path)
+            return ""
+
+        monkeypatch.setattr(token_trend, "run_runaway_hook", fake_run)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--runaway-hook"])
+        monkeypatch.setattr("sys.stdin", io.StringIO(json.dumps({"transcript_path": str(missing)})))
+
+        assert token_trend.main() == 0
+        assert captured == [fallback / token_trend.LEDGER_NAME]
+
+    def test_unexpected_failure_is_block_json(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        transcript = tmp_path / "session.jsonl"
+        transcript.write_text(_operator_line() + "\n", encoding="utf-8")
+
+        def boom(_payload: dict, _ledger_path: Path) -> str:
+            raise RuntimeError("detector failed")
+
+        monkeypatch.setattr(token_trend, "run_runaway_hook", boom)
+        monkeypatch.setattr("sys.argv", ["token_trend.py", "--runaway-hook"])
+        monkeypatch.setattr(
+            "sys.stdin", io.StringIO(json.dumps({"transcript_path": str(transcript)}))
+        )
+
+        assert token_trend.main() == 0
+        output = json.loads(capsys.readouterr().out)
+        assert output["decision"] == "block"
+        assert "detector failed" in output["reason"]
+
 
 class TestRunawayHookRegistration:
     def test_post_tool_batch_hook_registered_once(self) -> None:
