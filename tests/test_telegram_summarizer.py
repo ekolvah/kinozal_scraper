@@ -151,7 +151,12 @@ def _api_error(code: int) -> errors.ClientError:
     """google.genai APIError double carrying only `.code` (the taxonomy field)."""
     e = errors.ClientError.__new__(errors.ClientError)
     e.code = code
-    e.status = "RESOURCE_EXHAUSTED" if code == 429 else "NOT_FOUND"
+    e.status = {
+        400: "INVALID_ARGUMENT",
+        404: "NOT_FOUND",
+        429: "RESOURCE_EXHAUSTED",
+        503: "UNAVAILABLE",
+    }.get(code, "UNKNOWN")
     e.message = str(code)
     return e
 
@@ -167,6 +172,8 @@ class _FakeModels:
     def generate_content(self, *, model: str, contents: Any, config: Any = None) -> Any:
         self.calls.append({"model": model, "contents": contents, "config": config})
         outcome = self._outcomes.get(model, self._outcomes.get("*"))
+        if isinstance(outcome, list):
+            outcome = outcome.pop(0)
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
@@ -214,19 +221,6 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
         # Both models were tried.
         self.assertEqual(len(client.models.calls), 2)
 
-    def test_non_quota_exception_raises_without_fallback(self) -> None:
-        """Any non-quota / non-unavailable exception aborts the loop — we don't
-        try the next model on a generic failure (only 429/404 are per-model)."""
-        client = _FakeClient({"*": RuntimeError("net down")})
-        summ = GeminiSummarizer(
-            models=["m1", "m2"], client=client, broadcast_prompt="b", chat_prompt="c"
-        )
-        with self.assertRaises(SummarizationFailed) as ctx:
-            summ.summarize("text", False)
-        self.assertEqual(ctx.exception.error_kind, "api_error")
-        # Only the first model was tried.
-        self.assertEqual(len(client.models.calls), 1)
-
     def test_no_candidates_raises_failure(self) -> None:
         client = _FakeClient({"m1": _FakeResponse("", has_candidates=False)})
         summ = GeminiSummarizer(models=["m1"], client=client, broadcast_prompt="b", chat_prompt="c")
@@ -253,6 +247,58 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
         called_request = client.models.calls[-1]["contents"]
         self.assertIn("CHAT", called_request)
         self.assertNotIn("BROADCAST", called_request)
+
+
+class TestGeminiSummarizerRecovery(unittest.TestCase):
+    def test_invalid_argument_raises_api_error_without_fallback(self) -> None:
+        client = _FakeClient({"m-a": _api_error(400), "m-b": _FakeResponse("unused")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        with self.assertRaises(SummarizationFailed) as ctx:
+            summ.summarize("text", False)
+
+        self.assertEqual(ctx.exception.error_kind, "api_error")
+        self.assertEqual([call["model"] for call in client.models.calls], ["m-a"])
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_service_unavailable_retries_same_model(self, _sleep: Any) -> None:
+        client = _FakeClient(
+            {"m-a": [_api_error(503), _FakeResponse("recovered")], "m-b": _FakeResponse("unused")}
+        )
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        self.assertEqual(summ.summarize("text", False), "recovered")
+        self.assertEqual([call["model"] for call in client.models.calls], ["m-a", "m-a"])
+
+    @unittest.mock.patch("tenacity.nap.time.sleep")
+    def test_service_unavailable_exhaustion_advances_to_next_model(self, _sleep: Any) -> None:
+        client = _FakeClient(
+            {
+                "m-a": [_api_error(503), _api_error(503), _api_error(503)],
+                "m-b": _FakeResponse("from-b"),
+            }
+        )
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        self.assertEqual(summ.summarize("text", False), "from-b")
+        self.assertEqual(
+            [call["model"] for call in client.models.calls], ["m-a", "m-a", "m-a", "m-b"]
+        )
+
+    def test_try_next_model_advances_to_next_model(self) -> None:
+        client = _FakeClient({"m-a": RuntimeError("net down"), "m-b": _FakeResponse("from-b")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        self.assertEqual(summ.summarize("text", False), "from-b")
+        self.assertEqual([call["model"] for call in client.models.calls], ["m-a", "m-b"])
 
 
 class TestGeminiSummarizerObservability(unittest.TestCase):
