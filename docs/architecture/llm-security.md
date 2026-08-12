@@ -1,8 +1,9 @@
 # LLM security — enricher threat model
 
 **Question this document answers:** which LLM-specific threats (OWASP LLM Top 10) apply to the
-Gemini enricher, which safeguards address them, and which risks are consciously accepted. This
-is a **threat-model ledger**, not an OWASP treatise. Implementation —
+Gemini enricher, which safeguards address them, which risks are consciously accepted, and what
+development metadata crosses the Claude Code telemetry boundary. This is a **threat-model
+ledger**, not an OWASP treatise. Implementation —
 `src/kinozal_scraper/gemini_enricher.py` (fence) +
 `src/kinozal_scraper/generic_pipeline.py` (output escaping); regression coverage —
 `tests/test_prompt_injection.py`; accepted coverage gaps — `testing.md` item **P**.
@@ -53,3 +54,30 @@ The real, albeit already closed, risk is on the **output** side (LLM02), not the
   (quota/flakiness/cost), justified by the cosmetic blast radius. Ledger — `testing.md` P.
 - **Semantic output guard for free-form Steam** — changes production behaviour; a separate unit.
 - **Phrase-based injection detection** — false-positive risk; structural delimiting was chosen.
+
+## Claude Code telemetry trust boundary
+
+Claude Code development telemetry is exported from the maintainer workstation
+to Grafana Cloud. This is an external metadata boundary even with content
+logging disabled: the observed schema includes user email/ID, organization ID,
+session ID, model, effort, query source, token counts, estimated cost, tool name,
+duration, and success. Access to Grafana therefore reveals who used which model
+and tools, when, and at what approximate cost.
+
+The user-scope setup must not define `OTEL_LOG_USER_PROMPTS`,
+`OTEL_LOG_ASSISTANT_RESPONSES`, `OTEL_LOG_TOOL_DETAILS`,
+`OTEL_LOG_TOOL_CONTENT`, or `OTEL_LOG_RAW_API_BODIES`. The live acceptance
+capture found redacted prompt/response fields and no tool input, tool content,
+or raw API body fields (#471). This is a current implementation observation,
+not permission to weaken the deny boundary: a future Claude version or backend
+mapping change requires the same name-only privacy check before updating the
+catalogue.
+
+The OTLP authorization header and Grafana service-account token are secrets.
+They stay in the Windows user environment or another user-scope secret store,
+never in the repository setup template, signal catalogue, dashboard, issue, PR,
+or transcript. A token exposed to a Claude tool result must be revoked because
+Claude transcripts are plaintext. Use a stack-scoped ingest policy with only
+`metrics:write` and `logs:write`; use a separate short-lived service account for
+dashboard API work. Rotation and rollback are in
+[`operations.md`](operations.md#rollback-and-rotation).

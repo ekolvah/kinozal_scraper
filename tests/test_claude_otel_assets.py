@@ -7,7 +7,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-
 ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / "observability" / "claude-code"
 OTEL_TEMPLATE = ASSET_DIR / "otel.env.example"
@@ -120,9 +119,7 @@ class TestGrafanaDashboard:
         assert dashboard.get("id") is None
         assert dashboard.get("uid") is None
 
-        variable_types = {
-            variable["type"] for variable in dashboard["templating"]["list"]
-        }
+        variable_types = {variable["type"] for variable in dashboard["templating"]["list"]}
         assert {"datasource", "query"} <= variable_types
 
     def test_queries_use_only_captured_native_signals(self) -> None:
@@ -157,6 +154,5 @@ class TestNoBespokeAutomation:
         dashboard = _load_json(GRAFANA_DASHBOARD)
         assert "alert" not in json.dumps(dashboard).lower()
         assert not any(
-            path.suffix in {".py", ".sh", ".ps1", ".yml", ".yaml"}
-            for path in ASSET_DIR.rglob("*")
+            path.suffix in {".py", ".sh", ".ps1", ".yml", ".yaml"} for path in ASSET_DIR.rglob("*")
         )

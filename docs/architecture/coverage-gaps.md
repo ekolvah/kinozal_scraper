@@ -453,6 +453,19 @@ decision goes to" route — and the rule itself — live in
   [the rule](testing.md#rule-when-a-test-is-not-worth-writing) routes to a forcing function
   rather than a guard test. Do not reopen the membership list as an anti-drift ratchet.
 
+- **AN. Offline tests cannot prove Claude Code telemetry delivery or Grafana dashboard import
+  (#471).** `tests/test_claude_otel_assets.py` guards the values-free setup template, captured
+  signal references, dashboard JSON structure, required decision groups, and absence of bespoke
+  automation. It cannot authenticate to the maintainer's Grafana stack, prove that Claude Code's
+  bundled exporter still maps headers and metric temporality correctly, observe backend name
+  translation, or execute Grafana's import/query path. Those are credentialed external contracts.
+  The accepted boundary is a manual live check from
+  [`operations.md`](operations.md#verify-and-import): first metrics and logs exports both succeed,
+  destination queries return both signal types, content fields remain redacted/absent, and the
+  dashboard imports. **Revisit trigger:** a provider changes the exporter or OTLP mapping, the
+  dashboard import fails, or a captured signal/attribute disappears. Update the values-free
+  catalogue only from a new live capture; never make a missing dimension pass as zero.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

@@ -255,3 +255,78 @@ gh secret set TELETHON_SESSION   # paste the string
 
 Revoking the old session (Telegram → Settings → Devices) is what actually
 invalidates a leaked one — re-encrypting or rotating a key cannot un-publish a blob.
+
+## Claude Code development telemetry
+
+This is maintainer-workstation observability, not scraper runtime telemetry.
+Claude Code exports its native metrics and events directly to Grafana Cloud;
+there is no repository collector, daemon, hook, scheduled analysis, or model
+consumer. The repository-owned assets live in `observability/claude-code/`, and
+the decision and external-service trade-offs are in
+[ADR-0006](../adr/0006-claude-code-telemetry-in-grafana-cloud.md).
+
+### User-scope setup
+
+Copy the names from `observability/claude-code/otel.env.example` into the
+Windows user environment or the user-level Claude settings. Substitute values
+only outside git. The project `.env` remains the application's local secret
+carrier; Claude Code does not automatically use it as its own process
+environment.
+
+The required Grafana Cloud access-policy scopes are only `metrics:write` and
+`logs:write`. Use the stack's base OTLP endpoint ending in `/otlp`. Two settings
+are load-bearing for the current direct exporter:
+
+* `OTEL_EXPORTER_OTLP_HEADERS` uses a literal space in
+  `Authorization=Basic <credential>`. The generic Grafana wizard can render the
+  space as `%20`; Claude Code 2.1.220 sends that form literally and Grafana
+  rejects it as missing credentials.
+* `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE=cumulative` is required by
+  the Grafana Claude Code integration. Without it, log export succeeds while
+  the metrics request is rejected as bad input.
+
+Restart the terminal or Claude Code after changing user environment variables;
+an already-running process retains its inherited environment. Keep the normal
+export intervals at 60 seconds for metrics and 5 seconds for events. Shorter
+intervals are for a bounded setup probe only.
+
+### Verify and import
+
+1. Run one real Claude session long enough for both export intervals.
+2. In Claude debug output, confirm that the first metrics and logs exports both
+   succeed. A successful Claude response alone does not prove telemetry delivery.
+3. In Grafana Explore, select the stack Metrics datasource and confirm a
+   `claude_code_*` metric. Select the stack Logs datasource and query
+   `{service_name="claude-code"}`.
+4. Import `observability/claude-code/dashboard.json` through **Dashboards → New
+   → Import**, then select the stack Metrics and Logs datasources. A Grafana
+   service-account token with Editor permission is needed only for API-driven
+   verification/import, not for ingestion.
+
+The dashboard uses only signal names and attributes captured from the real
+destination. A missing compaction, agent, or skill dimension is displayed as
+unavailable, never as zero. Claude's cost metric is estimated and must not be
+used as a billing source of truth.
+
+### Fourteen-day baseline
+
+Grafana Cloud Free remains usable after the trial, but metrics and logs have a
+rolling 14-day retention window. At the end of the first complete window,
+review session cost, cost per API request, cache-read tokens per request, the
+context-size proxy, compaction availability, tool failure rate, and active/wall
+duration. Also record active-series/cardinality and ingested log volume in the
+Grafana usage view.
+
+Create a separate threshold/notification issue only when a measured boundary
+has both a named operator action and a tolerable observed false-positive rate.
+Otherwise the threshold remains YAGNI. Keep `scripts/token_trend.py` and its
+SessionStart hook: the local ledger retains git-branch attribution and history
+that the 14-day Grafana window does not provide.
+
+### Rollback and rotation
+
+To stop export, remove `CLAUDE_CODE_ENABLE_TELEMETRY` and the `OTEL_*` exporter
+variables from the user environment, then restart Claude Code. Revoke the
+Grafana Cloud access-policy token to invalidate ingestion immediately. Revoke
+the Grafana service-account token separately if API import/query access is no
+longer needed. Deleting the dashboard alone does not stop data ingestion.
