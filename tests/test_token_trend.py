@@ -428,7 +428,7 @@ class TestDetect:
 
 class TestRunawayClassifier:
     @staticmethod
-    def _state(*, effective: float, ratio: int, errors: int) -> object:
+    def _state(*, effective: float, ratio: int, errors: int) -> token_trend.RunawayState:
         return token_trend.RunawayState(
             offset=0,
             assistant_messages=ratio,
@@ -509,9 +509,7 @@ class TestRunawayState:
     def test_warned_state_suppresses_repeat_warning(self, tmp_path: Path) -> None:
         transcript = tmp_path / "session.jsonl"
         lines = [_operator_line()]
-        lines.extend(
-            _line(request_id=f"r-{index}", output_tokens=4) for index in range(24)
-        )
+        lines.extend(_line(request_id=f"r-{index}", output_tokens=4) for index in range(24))
         transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
         ledger = tmp_path / token_trend.LEDGER_NAME
         self._ledger(ledger)
@@ -545,9 +543,7 @@ class TestRunawayHookMode:
     def test_alert_is_valid_post_tool_batch_block_json(self, tmp_path: Path) -> None:
         transcript = tmp_path / "session.jsonl"
         lines = [_operator_line()]
-        lines.extend(
-            _line(request_id=f"r-{index}", output_tokens=4) for index in range(24)
-        )
+        lines.extend(_line(request_id=f"r-{index}", output_tokens=4) for index in range(24))
         transcript.write_text("\n".join(lines) + "\n", encoding="utf-8")
         ledger = tmp_path / token_trend.LEDGER_NAME
         TestRunawayState._ledger(ledger)

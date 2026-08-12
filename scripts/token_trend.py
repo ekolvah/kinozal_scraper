@@ -10,7 +10,9 @@ by `cleanupPeriodDays` (default 30 days), so are not durable storage. Per-branch
 is appended to a nearby local ledger or comparison baseline silently vanishes after a month.
 
 **Modes.** `--hook` is quiet for `SessionStart`: prints only anomaly and **always** exits 0
-(`SessionStart` sends stdout to Claude context only at exit 0). `--report` prints branch table.
+(`SessionStart` sends stdout to Claude context only at exit 0). `--runaway-hook` incrementally
+checks the current transcript after each tool batch and pauses a costly runaway turn for the
+operator. `--report` prints the branch table.
 
 **What it does NOT answer (scope boundary).** Per-turn normalization removes the other
 possible driver, more turns per task; it is visible only in report `turns`. Turn cost also
@@ -30,7 +32,7 @@ import statistics
 import sys
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -80,7 +82,7 @@ LEDGER_SCHEMA = 1
 # Machine interface canon: alert prints into context and suggests an operator flag, so drift
 # from `argparse` would produce `unrecognized arguments` at the critical moment. Guarded by
 # `TestReportMode`.
-CLI_FLAGS = ("--hook", "--report")
+CLI_FLAGS = ("--hook", "--runaway-hook", "--report")
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
@@ -99,6 +101,17 @@ DEFAULT_MTIME_DAYS = 45
 # the hook: a killed hook never reaches `write_ledger`, leaving the metric stalled silently.
 HOOK_TIMEOUT_SECONDS = 20
 _SLOW_COLLECT_SHARE = 0.6
+
+# Calibrated on 2026-08-12 from 82 issue-branch ledger entries and 33 retained
+# transcripts (#484). The cost multiplier puts the floor near the measured branch p90
+# (3.852M versus 3.712M); the secondary thresholds are the transcript ratio median
+# rounded up and the nearest-rank consecutive-error p95. A secondary signal alone is
+# deliberately insufficient because autonomous successful sessions can also have high ratios.
+RUNAWAY_COST_MULTIPLIER = 3.0
+RUNAWAY_RATIO_THRESHOLD = 24.0
+RUNAWAY_ERROR_STREAK_THRESHOLD = 4
+RUNAWAY_STATE_SCHEMA = 1
+RUNAWAY_STATE_SUFFIX = ".token-runaway-state.json"
 
 
 @dataclass(frozen=True)
@@ -155,6 +168,34 @@ class Verdict:
     baseline_median: float
     recent_branches: tuple[str, ...]
     baseline_branches: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class RunawayState:
+    """Content-free incremental state for one Claude transcript."""
+
+    offset: int
+    assistant_messages: int
+    operator_messages: int
+    consecutive_errors: int
+    effective: float
+    seen_usage_keys: tuple[str, ...]
+    warned: bool
+
+    @classmethod
+    def empty(cls) -> RunawayState:
+        """Return the initial state without reading or retaining transcript content."""
+        return cls(0, 0, 0, 0, 0.0, (), False)
+
+
+@dataclass(frozen=True)
+class RunawayVerdict:
+    """Combined cost-and-behaviour verdict for the current session."""
+
+    alert: bool
+    effective_floor: float
+    ratio: float
+    consecutive_errors: int
 
 
 def _int(source: dict, key: str) -> int:
@@ -357,6 +398,25 @@ def issue_branches(stats: Iterable[BranchStats]) -> list[BranchStats]:
     """
     kept = [s for s in stats if s.branch not in (MAIN_BUCKET, NO_BRANCH_BUCKET) and s.turns > 0]
     return sorted(kept, key=lambda s: (s.first_seen, s.branch))
+
+
+def classify_runaway(state: RunawayState, ledger_stats: Iterable[BranchStats]) -> RunawayVerdict:
+    """Require a high-cost floor plus a ratio or consecutive-error signal."""
+    effective_values = [entry.effective for entry in issue_branches(ledger_stats)]
+    if not effective_values:
+        return RunawayVerdict(False, 0.0, 0.0, state.consecutive_errors)
+    effective_floor = statistics.median(effective_values) * RUNAWAY_COST_MULTIPLIER
+    ratio = state.assistant_messages / max(state.operator_messages, 1)
+    behavioural_signal = (
+        ratio >= RUNAWAY_RATIO_THRESHOLD
+        or state.consecutive_errors >= RUNAWAY_ERROR_STREAK_THRESHOLD
+    )
+    return RunawayVerdict(
+        not state.warned and state.effective >= effective_floor and behavioural_signal,
+        effective_floor,
+        ratio,
+        state.consecutive_errors,
+    )
 
 
 def merge_ledger(
@@ -655,6 +715,221 @@ def _read_ledger_lines(ledger_path: Path) -> list[str]:
     return ledger_path.read_text(encoding="utf-8", errors="replace").splitlines()
 
 
+def runaway_state_path(transcript_path: Path) -> Path:
+    """Keep local counters beside the transcript without matching its `*.jsonl` glob."""
+    return transcript_path.with_name(transcript_path.name + RUNAWAY_STATE_SUFFIX)
+
+
+def _runaway_state_well_typed(state: RunawayState) -> bool:
+    return (
+        isinstance(state.offset, int)
+        and state.offset >= 0
+        and isinstance(state.assistant_messages, int)
+        and state.assistant_messages >= 0
+        and isinstance(state.operator_messages, int)
+        and state.operator_messages >= 0
+        and isinstance(state.consecutive_errors, int)
+        and state.consecutive_errors >= 0
+        and isinstance(state.effective, int | float)
+        and state.effective >= 0
+        and isinstance(state.seen_usage_keys, tuple)
+        and all(isinstance(key, str) for key in state.seen_usage_keys)
+        and isinstance(state.warned, bool)
+    )
+
+
+def load_runaway_state(path: Path) -> tuple[RunawayState, list[Anomaly]]:
+    """Load content-free local state; invalid state rebuilds visibly from the transcript."""
+    if not path.exists():
+        return RunawayState.empty(), []
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+        if not isinstance(payload, dict) or payload.pop("schema", None) != RUNAWAY_STATE_SCHEMA:
+            raise ValueError(f"expected schema {RUNAWAY_STATE_SCHEMA}")
+        keys = payload.get("seen_usage_keys")
+        if not isinstance(keys, list):
+            raise ValueError("seen_usage_keys must be a list")
+        payload["seen_usage_keys"] = tuple(keys)
+        state = RunawayState(**payload)
+        if not _runaway_state_well_typed(state):
+            raise ValueError("invalid field types")
+    except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        return RunawayState.empty(), [Anomaly("runaway_state_rebuilt", str(exc))]
+    return state, []
+
+
+def write_runaway_state(path: Path, state: RunawayState) -> None:
+    """Atomically persist counters and deduplication keys, never transcript content."""
+    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
+    payload = {"schema": RUNAWAY_STATE_SCHEMA, **asdict(state)}
+    try:
+        tmp.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
+def _usage_state_key(entry: dict) -> str | None:
+    request_id = entry.get("requestId")
+    if isinstance(request_id, str) and request_id:
+        return f"request:{request_id}"
+    uuid = entry.get("uuid")
+    if isinstance(uuid, str) and uuid:
+        return f"uuid:{uuid}"
+    return None
+
+
+def _is_operator_message(entry: dict, content: object) -> bool:
+    if entry.get("isMeta"):
+        return False
+    if isinstance(content, str):
+        return True
+    return isinstance(content, list) and any(
+        isinstance(block, dict) and block.get("type") == "text" for block in content
+    )
+
+
+def _consume_runaway_lines(
+    state: RunawayState, lines: Iterable[str]
+) -> tuple[RunawayState, list[Anomaly]]:
+    assistant_messages = state.assistant_messages
+    operator_messages = state.operator_messages
+    consecutive_errors = state.consecutive_errors
+    effective = state.effective
+    seen = set(state.seen_usage_keys)
+    anomalies: list[Anomaly] = []
+    for index, raw in enumerate(lines):
+        try:
+            entry = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            anomalies.append(Anomaly("malformed_line", f"incremental line {index + 1}: {exc}"))
+            continue
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("type") == "assistant":
+            if not entry.get("isSidechain"):
+                assistant_messages += 1
+            key = _usage_state_key(entry)
+            if key is not None and key in seen:
+                continue
+            records, _ = parse_lines([raw])
+            if records:
+                effective += effective_tokens(records[0])
+                if key is not None:
+                    seen.add(key)
+            continue
+        if entry.get("type") != "user":
+            continue
+        message = entry.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        blocks = content if isinstance(content, list) else []
+        tool_results = [
+            block
+            for block in blocks
+            if isinstance(block, dict) and block.get("type") == "tool_result"
+        ]
+        if tool_results:
+            consecutive_errors = (
+                consecutive_errors + 1
+                if any(bool(block.get("is_error")) for block in tool_results)
+                else 0
+            )
+        elif _is_operator_message(entry, content):
+            operator_messages += 1
+    return (
+        RunawayState(
+            offset=state.offset,
+            assistant_messages=assistant_messages,
+            operator_messages=operator_messages,
+            consecutive_errors=consecutive_errors,
+            effective=effective,
+            seen_usage_keys=tuple(sorted(seen)),
+            warned=state.warned,
+        ),
+        anomalies,
+    )
+
+
+def update_runaway_state(
+    transcript_path: Path, state: RunawayState
+) -> tuple[RunawayState, list[Anomaly]]:
+    """Fold only complete JSONL records appended after `state.offset`."""
+    size = transcript_path.stat().st_size
+    anomalies: list[Anomaly] = []
+    if state.offset > size:
+        anomalies.append(
+            Anomaly(
+                "runaway_state_rebuilt",
+                f"transcript shrank from offset {state.offset} to {size} bytes",
+            )
+        )
+        state = RunawayState.empty()
+    with transcript_path.open("rb") as handle:
+        handle.seek(state.offset)
+        appended = handle.read()
+    last_newline = appended.rfind(b"\n")
+    if last_newline < 0:
+        return state, anomalies
+    complete = appended[: last_newline + 1]
+    decoded = complete.decode("utf-8", errors="replace")
+    updated, parse_anomalies = _consume_runaway_lines(state, decoded.splitlines())
+    return replace(updated, offset=state.offset + len(complete)), anomalies + parse_anomalies
+
+
+def _format_runaway_response(reason: str) -> str:
+    return json.dumps({"decision": "block", "reason": reason}, ensure_ascii=False)
+
+
+def _format_runaway_verdict(verdict: RunawayVerdict, state: RunawayState) -> str:
+    return (
+        f"token-runaway: session effective cost {_k(state.effective)} crossed "
+        f"the {_k(verdict.effective_floor)} floor; assistant/operator ratio "
+        f"{verdict.ratio:.1f}, consecutive tool errors {verdict.consecutive_errors}. "
+        "Current turn paused; the operator decides whether to continue, compact, or stop."
+    )
+
+
+def run_runaway_hook(payload: dict, ledger_path: Path) -> str:
+    """Return a `PostToolBatch` block only for a runaway or visible metric failure."""
+    if payload.get("agent_id"):
+        return ""
+    raw_transcript = payload.get("transcript_path")
+    if not isinstance(raw_transcript, str) or not raw_transcript:
+        return _format_runaway_response(
+            "token-runaway anomaly [transcript_path]: hook payload has no transcript path; "
+            "current turn paused for the operator."
+        )
+    transcript_path = Path(raw_transcript)
+    if not transcript_path.is_file():
+        return _format_runaway_response(
+            f"token-runaway anomaly [transcript_not_found]: {transcript_path}; "
+            "current turn paused for the operator."
+        )
+    state_path = runaway_state_path(transcript_path)
+    state, anomalies = load_runaway_state(state_path)
+    if state.warned:
+        return ""
+    state, update_anomalies = update_runaway_state(transcript_path, state)
+    ledger, ledger_anomalies = parse_ledger(_read_ledger_lines(ledger_path))
+    anomalies.extend(update_anomalies)
+    anomalies.extend(ledger_anomalies)
+    if not issue_branches(ledger.values()):
+        anomalies.append(Anomaly("runaway_baseline_missing", f"no issue branches in {ledger_path}"))
+    verdict = classify_runaway(state, ledger.values())
+    if verdict.alert:
+        state = replace(state, warned=True)
+    write_runaway_state(state_path, state)
+    reasons = [f"token-runaway anomaly [{item.kind}]: {item.detail}" for item in anomalies]
+    if verdict.alert:
+        reasons.append(_format_runaway_verdict(verdict, state))
+    if not reasons:
+        return ""
+    if not verdict.alert:
+        reasons.append("Current turn paused for the operator while the metric rebuilds.")
+    return _format_runaway_response(" ".join(reasons))
+
+
 def resolve_transcripts(payload: dict) -> Path:
     """Transcript directory: from SessionStart payload, otherwise slug rule.
 
@@ -706,11 +981,36 @@ def emit(text: str, stream: TextSink | None = None) -> None:
 
 
 def main() -> int:
-    """CLI: `--hook` (quiet, always exit 0) and `--report` (default table mode)."""
+    """CLI for startup trend checks, in-session runaway checks, and the report."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--hook", action="store_true", help="режим SessionStart: тихий, exit 0")
     parser.add_argument("--report", action="store_true", help="таблица по веткам (по умолчанию)")
+    parser.add_argument(
+        "--runaway-hook", action="store_true", help="PostToolBatch runaway detector"
+    )
     args = parser.parse_args()
+
+    if args.runaway_hook:
+        try:
+            payload = read_payload(sys.stdin.read())
+            raw_transcript = payload.get("transcript_path")
+            ledger_root = (
+                Path(raw_transcript).parent
+                if isinstance(raw_transcript, str) and raw_transcript
+                else transcript_dir()
+            )
+            text = run_runaway_hook(payload, ledger_root / LEDGER_NAME)
+            if text:
+                emit(text)
+        except Exception as exc:  # noqa: BLE001 - hook failure must remain visible JSON
+            with contextlib.suppress(Exception):
+                emit(
+                    _format_runaway_response(
+                        f"token-runaway anomaly [{type(exc).__name__}]: {exc}; "
+                        "current turn paused for the operator."
+                    )
+                )
+        return 0
 
     if args.hook:
         try:
