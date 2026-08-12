@@ -298,10 +298,10 @@ intervals are for a bounded setup probe only.
 3. In Grafana Explore, select the stack Metrics datasource and confirm a
    `claude_code_*` metric. Select the stack Logs datasource and query
    `{service_name="claude-code"}`.
-4. Import `observability/claude-code/dashboard.json` through **Dashboards → New
-   → Import**, then select the stack Metrics and Logs datasources. A Grafana
-   service-account token with Editor permission is needed only for API-driven
-   verification/import, not for ingestion.
+4. Import the shared `observability/agent-telemetry/dashboard.json` through
+   **Dashboards → New → Import**, then select the stack Metrics and Logs
+   datasources. A Grafana service-account token with Editor permission is
+   needed only for API-driven verification/import, not for ingestion.
 
 The dashboard uses only signal names and attributes captured from the real
 destination. A missing compaction, agent, or skill dimension is displayed as
