@@ -43,7 +43,11 @@ rotation gives ~280 requests/day without upgrading.
 6. Still exhausted → raise `QuotaExhausted` to caller
 
 `TelegramChannelSummarizer` uses the same model list via `_build_model_list()` →
-`get_generation_models()`, with simpler rotation (no cooldown, just skip on 429).
+`get_generation_models()`, with simpler rotation and no cooldown. A
+`503/UNAVAILABLE` response is retried on the same model up to three attempts
+with exponential backoff; after exhaustion it becomes `TryNextModel`. The
+summarizer advances immediately on 404, 429, or any other `TryNextModel`
+failure, without marking that model dead for later channels.
 
 ## Model discovery
 
@@ -60,6 +64,13 @@ rotation gives ~280 requests/day without upgrading.
 - Exponential backoff: 1s multiplier, max 10s
 - Retries only on `google.api_core.exceptions.ResourceExhausted`
 - After 3 failures: wrapped as `QuotaExhausted` for `RotatingGeminiEnricher` to catch
+
+`GeminiSummarizer._generate_content` also uses three attempts and the same
+1s–10s exponential backoff, but retries only `503/UNAVAILABLE`. This absorbs a
+short Gemini service interruption for the current channel before model
+rotation; exhausted retry is classified through the shared taxonomy and the
+next configured model is tried. The summarizer does not retry 404 or 429 on
+the same model.
 
 `GeminiEnricher.enrich` translates per-model failures into rotator signals so
 the rotator can give each item another chance on a different model before

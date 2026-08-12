@@ -13,11 +13,13 @@ from google.genai import types
 from telethon.sessions import StringSession
 from telethon.sync import TelegramClient
 from telethon.tl.functions.messages import GetHistoryRequest
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from kinozal_scraper.gemini_enricher import (
     GenaiClient,
     ModelUnavailable,
     QuotaExhausted,
+    TryNextModel,
     _extract_finish_reason,
     _thinking_config,
     classify_generate_error,
@@ -83,9 +85,10 @@ _DEFAULT_CHAT_PROMPT = (
 
 class GeminiSummarizer:
     """Sequential Gemini model fallback for recoverable per-model failures.
-    Quota and unavailable-model errors advance to the next model. Unknown
-    API failures raise `SummarizationFailed` so callers cannot confuse them
-    with "no channel messages."
+    Service-unavailable errors retry locally before advancing. Quota,
+    unavailable-model, and other `TryNextModel` errors advance immediately.
+    Non-recoverable API failures raise `SummarizationFailed` so callers cannot
+    confuse them with "no channel messages."
     """
 
     def __init__(
@@ -100,6 +103,26 @@ class GeminiSummarizer:
         self._broadcast_prompt = broadcast_prompt or _DEFAULT_BROADCAST_PROMPT
         self._chat_prompt = chat_prompt or _DEFAULT_CHAT_PROMPT
 
+    @retry(
+        retry=retry_if_exception(
+            lambda exc: (
+                getattr(exc, "code", None) == 503 or getattr(exc, "status", None) == "UNAVAILABLE"
+            )
+        ),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, max=10),
+    )
+    def _generate_content(self, model_name: str, request: str) -> tuple[Any, int]:
+        """Generate once, retrying only transient service unavailability."""
+        start = time.perf_counter()
+        response = self._client.models.generate_content(
+            model=model_name,
+            contents=request,
+            config=types.GenerateContentConfig(thinking_config=_thinking_config(model_name)),
+        )
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        return response, latency_ms
+
     def summarize(self, text: str, is_broadcast: bool) -> str:
         if not text:
             return ""
@@ -110,15 +133,7 @@ class GeminiSummarizer:
 
         for model_name in self._models:
             try:
-                start = time.perf_counter()
-                response = self._client.models.generate_content(
-                    model=model_name,
-                    contents=request,
-                    config=types.GenerateContentConfig(
-                        thinking_config=_thinking_config(model_name)
-                    ),
-                )
-                latency_ms = int((time.perf_counter() - start) * 1000)
+                response, latency_ms = self._generate_content(model_name, request)
                 log_llm_call(
                     logger,
                     model=model_name,
@@ -146,8 +161,8 @@ class GeminiSummarizer:
                 raise
             except Exception as exc:
                 # New google.genai raises one APIError family — route via the
-                # shared classifier (#107 BLOCKING-1): quota (429) / unavailable
-                # (404) advance to the next model, everything else aborts.
+                # shared classifier (#107 BLOCKING-1): quota (429), unavailable
+                # (404), and recoverable per-item failures advance to the next model.
                 mapped = classify_generate_error(exc)
                 if mapped is QuotaExhausted:
                     failures.append(f"{model_name}: quota exhausted")
@@ -156,6 +171,10 @@ class GeminiSummarizer:
                 if mapped is ModelUnavailable:
                     failures.append(f"{model_name}: unavailable: {exc}")
                     logger.warning("model %s unavailable, trying next: %s", model_name, exc)
+                    continue
+                if mapped is TryNextModel:
+                    failures.append(f"{model_name}: transient failure: {exc}")
+                    logger.warning("model %s failed transiently, trying next: %s", model_name, exc)
                     continue
                 logger.error("Error with model %s: %s", model_name, exc)  # noqa: TRY400 — re-raised as SummarizationFailed with `from exc`; traceback surfaces upstream
                 raise SummarizationFailed("api_error", f"{model_name}: {exc}") from exc
