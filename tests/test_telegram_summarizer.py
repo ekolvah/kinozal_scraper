@@ -152,6 +152,7 @@ def _api_error(code: int) -> errors.ClientError:
     e = errors.ClientError.__new__(errors.ClientError)
     e.code = code
     e.status = {
+        400: "INVALID_ARGUMENT",
         404: "NOT_FOUND",
         429: "RESOURCE_EXHAUSTED",
         503: "UNAVAILABLE",
@@ -249,6 +250,18 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
 
 
 class TestGeminiSummarizerRecovery(unittest.TestCase):
+    def test_invalid_argument_raises_api_error_without_fallback(self) -> None:
+        client = _FakeClient({"m-a": _api_error(400), "m-b": _FakeResponse("unused")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        with self.assertRaises(SummarizationFailed) as ctx:
+            summ.summarize("text", False)
+
+        self.assertEqual(ctx.exception.error_kind, "api_error")
+        self.assertEqual([call["model"] for call in client.models.calls], ["m-a"])
+
     @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_service_unavailable_retries_same_model(self, _sleep: Any) -> None:
         client = _FakeClient(
