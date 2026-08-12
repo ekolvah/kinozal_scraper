@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import importlib
+import subprocess
+import sys
 from pathlib import Path
 from types import ModuleType
 from typing import cast
@@ -33,3 +35,18 @@ def test_report_path_rejects_symlink() -> None:
 def test_command_line_rejects_caller_supplied_paths() -> None:
     with pytest.raises(SystemExit, match="2"):
         _module().main(["--body-file", "C:/secret.txt"])
+
+
+def test_documented_script_entry_point_loads_package_imports() -> None:
+    result = subprocess.run(
+        [sys.executable, "scripts/publish_pr_report.py", "unexpected"],
+        check=False,
+        text=True,
+        capture_output=True,
+        encoding="utf-8",
+    )
+
+    assert result.stdout is not None
+    assert result.stderr is not None
+    assert result.returncode == 2
+    assert result.stderr.strip() == "Usage: python scripts/publish_pr_report.py"

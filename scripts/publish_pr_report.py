@@ -11,23 +11,34 @@ caller-controlled arguments.
 
 from __future__ import annotations
 
+import importlib
 import json
 import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from scripts.open_pr import (
-    _create_pr,
-    _existing_pr,
-    _linkage_confirmed,
-    ensure_closes_line,
-    issue_number_from_branch,
-)
-from scripts.push_issue_branch import _capture, push_command
-from scripts.update_pr_body import _edit_body, normalized_body
-
+# The documented entry point is ``python scripts/publish_pr_report.py``. In
+# that form Python puts ``scripts/`` rather than the repository root on
+# ``sys.path``, so make the package imports below work exactly as documented.
 REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+_open_pr = importlib.import_module("scripts.open_pr")
+_push_issue_branch = importlib.import_module("scripts.push_issue_branch")
+_update_pr_body = importlib.import_module("scripts.update_pr_body")
+
+_create_pr = vars(_open_pr)["_create_pr"]
+_existing_pr = vars(_open_pr)["_existing_pr"]
+_linkage_confirmed = vars(_open_pr)["_linkage_confirmed"]
+ensure_closes_line = _open_pr.ensure_closes_line
+issue_number_from_branch = _open_pr.issue_number_from_branch
+_capture = vars(_push_issue_branch)["_capture"]
+push_command = _push_issue_branch.push_command
+_edit_body = vars(_update_pr_body)["_edit_body"]
+normalized_body = _update_pr_body.normalized_body
+
 REPORT_PATH = REPO_ROOT / ".codex" / "pr-body.md"
 
 
