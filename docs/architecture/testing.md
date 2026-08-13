@@ -30,6 +30,20 @@ Assert on doubles' state after the call.
 - Covers full business logic without flakiness (no network, no rate limits).
 - When: on every PR, in CI.
 
+**External-data fixture ratchet (#509):**
+
+- A new external-HTML parser test uses a captured fixture, never markup assembled
+  inline from what the author expects the external system to look like. Inline
+  parser tests already present when the ratchet landed are explicitly
+  grandfathered; this is a ratchet, not a repository-wide migration.
+- Capture a Kinozal page with
+  `python scripts/capture_fixture.py <url> <repo-relative-path>`. The command
+  reuses `Kinozal.fetch_details`, including the tested anonymous-origin to
+  authenticated-mirror fallback, and writes UTF-8.
+- `scripts/check_fixture_ratchet.py` is exercised by the validator test suite.
+  It reports a new inline-HTML parser test by pytest node ID. The fixture keeps
+  network access out of CI while preserving the observed external shape.
+
 **Unit (pure functions):**
 - Isolated test of a single pure function.
 - Fixes the function contract (not "catches bug X", but guarantees given

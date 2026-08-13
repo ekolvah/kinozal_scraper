@@ -25,7 +25,7 @@ delivery gate.
 
 ## Issue contract
 
-Substantive features and fixes start from a GitHub Issue. The required headings
+Substantive features and fixes start from a GitHub Issue. The nine base headings
 are defined only by `REQUIRED_SECTIONS` in
 `scripts/validate_issue_sections.py`:
 
@@ -38,6 +38,22 @@ are defined only by `REQUIRED_SECTIONS` in
 7. Architect review
 8. ADR
 9. Agent handoff
+
+A `bug` issue also requires `## Evidence` in this shape:
+
+```md
+capture: `python scripts/capture_fixture.py <url> <path>`
+path: `<repository-relative path>`
+```
+
+The validator checks that the file exists. If the capture command actually
+failed, the narrow exception is `status: failed` plus a non-empty fenced block
+after `output:` containing that command's output; an unsupported claim that the
+source is unavailable is still a gap. The command uses the production Kinozal
+origin-to-authenticated-mirror fetcher, so a planner does not need to rediscover
+that route. A committed fixture can be fabricated, which no syntax gate can
+rule out, but the command and path make the observation cheap to reproduce and
+leave a reviewable claim (#509).
 
 `Test plan` names executable test nodes. `Architect review` opens with a
 provenance line — `reviewer: <carrier>` or `skipped: <reason>` — followed by the
@@ -71,10 +87,12 @@ arrives, how a reviewer is invoked, how the body is written back.
 
 1. Run `python scripts/validate_issue_sections.py <N>`. A passing issue is
    already planned: report that and stop.
-2. Close the reported gaps from the repository first — read and search the code
-   and documents before asking anyone. Ask at most three clarifying questions
-   per session, and only about decisions the repository cannot answer, such as
-   priority or product intent.
+2. Use all three sources of answers. Read and search the repository first. Ask
+   at most three clarifying questions per session, and only about decisions such
+   as priority or product intent. When the plan describes how to read, parse, or
+   classify data from an external system, observe that live system before
+   writing the plan and record the capture in `## Evidence`; this is discovery,
+   not an E2E test or a substitute for a human product decision.
 3. Obtain the architect review defined below and record it in
    `## Architect review`. Weave every BLOCKING finding into the other sections
    before writing the body.

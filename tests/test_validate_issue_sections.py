@@ -258,8 +258,8 @@ class TestArchitectReviewProvenance:
         """
         monkeypatch.setattr(
             validator,
-            "_fetch_body",
-            lambda _n: self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"),
+            "_fetch_issue",
+            lambda _n: (self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"), ()),
         )
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
@@ -275,7 +275,7 @@ class TestArchitectReviewProvenance:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(validator, "_fetch_body", lambda _n: _full_body())
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ()))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
         validator.main()
@@ -387,11 +387,11 @@ def test_capture_fixture_script_writes_the_response_through_the_existing_fetcher
 
 def test_new_external_data_parsing_test_with_inline_markup_is_reported() -> None:
     ratchet = importlib.import_module("scripts.check_fixture_ratchet")
-    source = '''
+    source = """
 def test_parses_external_page():
     html = "<html><img class='cat_img_r' src='/pic/cat/6.gif'></html>"
     assert parse_page(html) == 6
-'''
+"""
     assert ratchet.inline_external_data_test_nodes(
         source, path=Path("tests/test_new_source.py")
     ) == ["tests/test_new_source.py::test_parses_external_page"]
@@ -406,23 +406,35 @@ def test_evidence_replay_has_positive_and_negative_arms() -> None:
     manifest = json.loads((fixture_root / "manifest.json").read_text(encoding="utf-8"))
     for artifact in manifest["artifacts"]:
         payload = (fixture_root / artifact["path"]).read_bytes()
-        assert hashlib.sha256(payload).hexdigest() == artifact["sha256"]
+        assert hashlib.sha256(payload).hexdigest() == "".join(artifact["sha256_chunks"])
 
-    revision_one = (fixture_root / "issue_506_revision_1.md").read_text(encoding="utf-8")
-    assert "Evidence" in find_gaps(
-        revision_one, issue_labels=("bug",), repo_root=repo_root
-    )
+    revision_one = (fixture_root / "issue_506_revision_1.txt").read_text(encoding="utf-8")
+    assert "Evidence" in find_gaps(revision_one, issue_labels=("bug",), repo_root=repo_root)
 
     # The marker did not exist when #506 was planned, so AC3's negative replay is
     # the healthy archived body plus only the new mechanical marker. The observed
     # details-page facts remain the archived content, not a synthetic replacement.
-    healthy = (fixture_root / "issue_506_final_item_level.md").read_text(encoding="utf-8")
+    healthy = (fixture_root / "issue_506_final_item_level.txt").read_text(encoding="utf-8")
+    # The unmodified current nine-section body remains valid when the conditional
+    # bug Evidence rule is not requested.
+    assert find_gaps(healthy) == []
     assert "### Live evidence" in healthy
-    relative_capture = "tests/fixtures/issue_509_rca/issue_506_final_item_level.md"
+    relative_capture = "tests/fixtures/issue_509_rca/issue_506_final_item_level.txt"
     healthy_with_marker = f"{healthy}\n## Evidence\n\n{_capture_evidence(relative_capture)}\n"
-    assert find_gaps(
-        healthy_with_marker, issue_labels=("bug",), repo_root=repo_root
-    ) == []
+    assert find_gaps(healthy_with_marker, issue_labels=("bug",), repo_root=repo_root) == []
+
+
+def test_main_passes_live_bug_label_to_evidence_gate(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("bug",)))
+    monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "509"])
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 1
+    assert "Evidence" in capsys.readouterr().err
 
 
 class TestOrphanScopeReminder:
@@ -435,7 +447,7 @@ class TestOrphanScopeReminder:
             "Real content для Out of scope which is long enough.",
             "- Follow-up for the historical audit.",
         )
-        monkeypatch.setattr(validator, "_fetch_body", lambda _n: body)
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ()))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "368"])
 
         validator.main()

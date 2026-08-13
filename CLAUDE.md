@@ -21,8 +21,10 @@ Windows + git-bash. Every pitfall below has recurred ≥2 times—do not reopen 
 - **`tasklist` in the agent sandbox (the Bash tool on the maintainer’s Windows machine) returns empty output** (0 lines even without filtering); it works in a normal terminal. Do not infer “the process died” from it—this previously caused a second `ci_check` instance to be launched by mistake.
 
 ## Debugging
-- Root cause first, then fix. No workarounds/shims until the cause is understood.
-- Instrument before patching: logs, inputs, and failure point. Only then propose a change.
+
+Root-cause-first and instrument-before-patching are adapter-neutral rules in
+[`principles.md` §V](docs/architecture/principles.md#v-root-cause-before-fix),
+including the required live observation when a design depends on external-system behaviour.
 
 ## Active work
 
