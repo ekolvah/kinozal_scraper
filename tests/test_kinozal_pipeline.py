@@ -485,16 +485,14 @@ class TestKinozalCategoryGuard(unittest.TestCase):
         self.assertEqual(len(fetched), 3)
         self.assertTrue(any("t=0" in error for error in results[0].errors))
 
-    def test_missing_malformed_and_unsupported_categories_are_visible_errors(self) -> None:
+    def test_explicitly_denied_categories_are_visible_errors(self) -> None:
         rejected = [
-            "https://kinozal.tv/top.php",
-            "https://kinozal.tv/top.php?t=",
-            "https://kinozal.tv/top.php?t=1&t=7",
-            "https://kinozal.tv/top.php?t=books",
+            "https://kinozal.tv/top.php?t=0",
             "https://kinozal.tv/top.php?t=4",
             "https://kinozal.tv/top.php?t=5",
             "https://kinozal.tv/top.php?t=6",
             "https://kinozal.tv/top.php?t=8",
+            "https://kinozal.tv/top.php?t=1&t=5",
         ]
         env_value = ";".join(f"bad-{i}|{url}" for i, url in enumerate(rejected))
         fetched: list[str] = []
@@ -515,6 +513,77 @@ class TestKinozalCategoryGuard(unittest.TestCase):
         self.assertEqual(len(results[0].errors), len(rejected))
         for url in rejected:
             self.assertTrue(any(url in error for error in results[0].errors))
+
+    def test_unknown_category_is_allowed_and_logged(self) -> None:
+        listing_url = "https://kinozal.tv/top.php?t=999&d=14"
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+            ) as fetch,
+            unittest.mock.patch.dict(
+                os.environ, {"KINOZAL_URLS": f"future|{listing_url}"}, clear=False
+            ),
+            self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs,
+        ):
+            notifier = InMemoryNotifier()
+            results = run_kinozal_pipeline(
+                InMemoryStorage(), notifier, _FakeYoutube(), _SOURCES_CONFIG
+            )
+
+        fetch.assert_called_once_with(listing_url)
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertTrue(results[0].ok)
+        self.assertEqual(results[0].items[0].raw["kinozal_listing_category"], 999)
+        joined = "\n".join(logs.output)
+        self.assertIn(listing_url, joined)
+        self.assertIn("t=999", joined)
+
+    def test_indeterminate_categories_fail_open_with_warning(self) -> None:
+        urls = [
+            "https://kinozal.tv/top.php",
+            "https://kinozal.tv/top.php?t=",
+            "https://kinozal.tv/top.php?t=1&t=7",
+            "https://kinozal.tv/top.php?t=books",
+        ]
+        env_value = ";".join(f"uncertain-{i}|{url}" for i, url in enumerate(urls))
+        fetched: list[str] = []
+
+        def _fetch(url: str) -> str:
+            fetched.append(url)
+            item_id = urls.index(url)
+            return (
+                '<html><body><a href="/details.php?id='
+                + str(item_id)
+                + '" title="Uncertain Film '
+                + str(item_id)
+                + ' / 2026 / WEB-DLRip"><img src="/poster.jpg"></a></body></html>'
+            )
+
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
+            unittest.mock.patch.dict(
+                os.environ, {"KINOZAL_URLS": env_value}, clear=False
+            ),
+            self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as logs,
+        ):
+            notifier = InMemoryNotifier()
+            results = run_kinozal_pipeline(
+                InMemoryStorage(), notifier, _FakeYoutube(), _SOURCES_CONFIG
+            )
+
+        self.assertEqual(fetched, urls)
+        self.assertEqual(len(notifier.sent), len(urls))
+        self.assertTrue(results[0].ok)
+        self.assertEqual(
+            {item.raw["kinozal_listing_url"] for item in results[0].items}, set(urls)
+        )
+        self.assertTrue(
+            all(item.raw["kinozal_listing_category"] is None for item in results[0].items)
+        )
+        joined = "\n".join(logs.output)
+        for url in urls:
+            self.assertIn(url, joined)
+        self.assertIn("could not determine", joined)
 
 
 class TestKinozalListingProvenance(unittest.TestCase):
