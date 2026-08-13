@@ -5,9 +5,8 @@ from __future__ import annotations
 import logging
 import os
 import re
-from dataclasses import dataclass
 from typing import Any
-from urllib.parse import parse_qs, urlsplit, urlunsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 from curl_cffi.requests import Session as _MirrorSession
@@ -32,15 +31,6 @@ from kinozal_scraper.youtube import YoutubeQuotaExhausted
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class _KinozalCategorySelector:
-    """Effective selected category plus all readable selector paths (#506)."""
-
-    category_id: int | None
-    name: str | None
-    available_names: frozenset[str]
-
-
 def _kinozal_urls() -> list[str]:
     """Read Kinozal URLs from the KINOZAL_URLS env variable (format: 'label|url;...').
 
@@ -53,97 +43,6 @@ def _kinozal_urls() -> list[str]:
         return [pair.split("|")[1] for pair in urls_env.split(";") if "|" in pair]
     fallback = os.environ.get("KINOZAL_TOP_URL", "")
     return [fallback] if fallback else []
-
-
-def _kinozal_requested_category(url: str) -> int | None:
-    """Return the plain-integer category requested with `top.php?t=`.
-
-    PHP uses the last repeated query value. Accept only ASCII digits here:
-    Python's ``int`` also accepts signs, whitespace and underscores that Kinozal
-    resolves differently. This is provenance plus an explicit-deny predicate,
-    never an allowlist: an unknown integer remains eligible for fetching (#506).
-    """
-    values = parse_qs(urlsplit(url).query, keep_blank_values=True).get("t")
-    if not values:
-        return None
-    value = values[-1]
-    if re.fullmatch(r"[0-9]+", value) is None:
-        return None
-    return int(value)
-
-
-def _normalize_category_name(value: str) -> str:
-    """Normalize an operator/selector category name for matching (#506)."""
-    return " ".join(value.split()).casefold()
-
-
-def _excluded_categories() -> set[str]:
-    """Readable category denylist from `KINOZAL_EXCLUDED_CATEGORIES`.
-
-    The operator format mirrors `KINOZAL_EXCLUDED_GENRES`: semicolon-separated,
-    case-insensitive names. Internal whitespace is collapsed because Kinozal's
-    indented `<option>` labels contain presentation whitespace.
-    """
-    raw = os.environ.get("KINOZAL_EXCLUDED_CATEGORIES", "")
-    return {
-        normalized for value in raw.split(";") if (normalized := _normalize_category_name(value))
-    }
-
-
-def _kinozal_response_category(html: str) -> _KinozalCategorySelector:
-    """Read the selected category as a canonical readable selector path.
-
-    Top-level options retain their visible names. Indented `|- Child` options
-    become `Parent > Child`, making repeated leaf labels unique and letting one
-    configured parent exclusion cover current and future descendants. Numeric
-    IDs are returned only as provenance; policy matches the readable names.
-    """
-    soup = BeautifulSoup(html, "html.parser")
-    select = soup.find("select", attrs={"name": "t"})
-    if not isinstance(select, Tag):
-        return _KinozalCategorySelector(None, None, frozenset())
-
-    parent: str | None = None
-    selected_id: int | None = None
-    selected_name: str | None = None
-    selected_count = 0
-    available_names: set[str] = set()
-    for option in select.find_all("option"):
-        raw_name = " ".join(option.get_text(" ", strip=True).split())
-        if raw_name.startswith("|-"):
-            child = raw_name[2:].strip()
-            canonical_name = f"{parent} > {child}" if parent and child else child
-        else:
-            canonical_name = raw_name
-            if canonical_name:
-                parent = canonical_name
-        if canonical_name:
-            available_names.add(_normalize_category_name(canonical_name))
-        if not option.has_attr("selected"):
-            continue
-        selected_count += 1
-        selected_name = canonical_name or None
-        value = option.get("value")
-        selected_id = (
-            int(value)
-            if isinstance(value, str) and re.fullmatch(r"[0-9]+", value) is not None
-            else None
-        )
-
-    if selected_count != 1:
-        selected_id = None
-        selected_name = None
-    return _KinozalCategorySelector(
-        selected_id,
-        selected_name,
-        frozenset(available_names),
-    )
-
-
-def _category_excluded(name: str, excluded: set[str]) -> bool:
-    """True when a readable category name or one of its parents is excluded."""
-    normalized = _normalize_category_name(name)
-    return any(normalized == value or normalized.startswith(value + " > ") for value in excluded)
 
 
 def _excluded_genres() -> set[str]:
@@ -505,12 +404,7 @@ def _dedupe_key(raw: str) -> str:
 
 
 def _extract_kinozal_items(
-    html: str,
-    source: dict[str, Any],
-    base_url: str | None = None,
-    listing_url: str | None = None,
-    listing_category: int | None = None,
-    listing_category_name: str | None = None,
+    html: str, source: dict[str, Any], base_url: str | None = None
 ) -> PipelineResult:
     """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
 
@@ -544,9 +438,6 @@ def _extract_kinozal_items(
                 item.title,
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
-        item.raw["kinozal_listing_url"] = listing_url
-        item.raw["kinozal_listing_category"] = listing_category
-        item.raw["kinozal_listing_category_name"] = listing_category_name
         item.title = _kinozal_title(item.title)
     return result
 
@@ -743,86 +634,18 @@ def _fetch_and_extract(
     """
     all_items: list[NormalizedItem] = []
     results: list[PipelineResult] = []
-    excluded_categories = _excluded_categories()
     for source in kinozal_sources:
         result = PipelineResult(source_id=source["id"])
-        exclusions_validated = False
-        if not excluded_categories:
-            message = (
-                "category exclusion configuration is empty "
-                "(set KINOZAL_EXCLUDED_CATEGORIES); processing fail-open"
-            )
-            logger.error("[%s] %s", source["id"], message)
-            result.errors.append(message)
         for url in urls:
-            requested_category = _kinozal_requested_category(url)
             try:
                 html_text, effective_base_url = fetcher.fetch_listing(url)
             except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
                 logger.exception("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
                 continue
-            response_category = _kinozal_response_category(html_text)
-            if (
-                excluded_categories
-                and response_category.available_names
-                and not exclusions_validated
-            ):
-                stale = sorted(excluded_categories - response_category.available_names)
-                if stale:
-                    message = (
-                        "category exclusion configuration contains names absent from "
-                        f"the Kinozal selector: {', '.join(stale)}; processing fail-open"
-                    )
-                    logger.error("[%s] %s", source["id"], message)
-                    result.errors.append(message)
-                exclusions_validated = True
-            if response_category.name is not None and _category_excluded(
-                response_category.name, excluded_categories
-            ):
-                message = (
-                    f"excluded kinozal listing category {response_category.name!r} "
-                    f"(t={response_category.category_id}) selected by the response: {url}"
-                )
-                logger.error("[%s] %s", source["id"], message)
-                result.errors.append(message)
-                continue
-            if response_category.name is None:
-                logger.warning(
-                    "[%s] could not confirm the kinozal listing category from the "
-                    "response for %s; processing fail-open with requested category %s",
-                    source["id"],
-                    url,
-                    requested_category,
-                )
-                category = requested_category
-                category_name = None
-            else:
-                category = response_category.category_id
-                category_name = response_category.name
-                if (
-                    requested_category is not None
-                    and category is not None
-                    and requested_category != category
-                ):
-                    logger.warning(
-                        "[%s] kinozal requested t=%d but response selected t=%d for %s; "
-                        "using the response category",
-                        source["id"],
-                        requested_category,
-                        category,
-                        url,
-                    )
             # Resolve this listing's links/posters against the origin that served
             # it (.tv on primary, .guru on mirror fallback) — not a fixed host (#247).
-            extracted = _extract_kinozal_items(
-                html_text,
-                source,
-                base_url=effective_base_url,
-                listing_url=url,
-                listing_category=category,
-                listing_category_name=category_name,
-            )
+            extracted = _extract_kinozal_items(html_text, source, base_url=effective_base_url)
             if not extracted.ok:
                 result.errors.extend(extracted.errors)
                 continue
@@ -852,17 +675,6 @@ def _dedup_and_log_coverage(
 
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
-    for item in new_items:
-        category = item.raw.get("kinozal_listing_category")
-        category_name = item.raw.get("kinozal_listing_category_name")
-        category_label = f"t={category}" if isinstance(category, int) else "t=unknown"
-        logger.info(
-            "kinozal new item %r from %s (category=%r, %s)",
-            item.title,
-            item.raw.get("kinozal_listing_url"),
-            category_name,
-            category_label,
-        )
     # Visibility (§IV): log coverage on every run — including the common "0 new"
     # path — so a vanished film reads in the Actions log instead of looking like
     # "no new films". raw_count is pre-normalize, exposing dedup-collapse.

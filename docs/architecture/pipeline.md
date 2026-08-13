@@ -120,31 +120,8 @@ The epic separates **retrieval** (`film → list[Candidate]`) from **selection**
   degradation to title+year + WARNING; successful fetch with zero fields → WARNING tripwire (§IV).
   For harness eval (#140) and potential cast escalation; production does not call it (below).
 
-**Kinozal listing-category guard.** `KINOZAL_EXCLUDED_CATEGORIES` is an operator-managed,
-semicolon-separated denylist of readable names from Kinozal's category selector. Matching is
-case-insensitive and collapses whitespace. The production value excludes `Избранные раздачи`,
-`Топ Музыки`, `Библиотека`, `Избранные аудиокниги`, and `Избранные программы`. A parent name
-also excludes descendants: for example, `Топ Музыки` covers `Топ Музыки > Русская` without
-listing numeric IDs or every child separately.
-
-The listing is fetched first because the response selector is authoritative. A readable-name
-match stops processing before extraction, trailer lookup, or notification. Everything else is
-eligible: numeric `t=` values never form an allowlist or denylist, so an unrecognised or newly
-introduced film category is not silently withheld. If the configuration is empty, contains a
-name absent from the current selector, or the selector cannot be parsed, processing fails open.
-The first two cases add `PipelineResult.errors`; selector drift logs a WARNING. Rejections also
-add an error, so sibling URLs continue while the workflow remains visibly non-ok. Fetched items
-retain `kinozal_listing_url`, numeric `kinozal_listing_category` provenance, and readable
-`kinozal_listing_category_name` in `raw`; an INFO breadcrumb names all three before notification
-(#506).
-
-This listing policy is separate from `KINOZAL_EXCLUDED_GENRES`: that variable filters the
-`Жанр` value read from each new item's details page. The incident audiobook reports
-`Фантастика, постапокалипсис`, a genre also valid for films, so genre values cannot safely
-stand in for listing categories.
-
 **Game releases (#385, #412).** `KINOZAL_URLS` contains the games top (`t=7`) alongside films
-(`t=1`) and series (`t=32`) — all flow into one `kinozal_movies` source. Their title grammar is
+(`t=0`) and series (`t=32`) — all flow into one `kinozal_movies` source. Their title grammar is
 **different**: `Название / x64 / RU / Жанр / Год / Формат / PC (Windows)` versus the film
 `RU / Original / Year / Format`. Therefore `original_title` (the second ` / ` segment) yielded
 architecture for games, and YouTube received `x64 2024 trailer` — 27 such queries in run
