@@ -52,6 +52,17 @@ _BOOK_LISTING_HTML = """
 </body></html>
 """
 
+
+def _listing_with_selected_category(category: int, body: str = _KINOZAL_HTML) -> str:
+    """Add the category selected by Kinozal to a listing fixture (#506)."""
+    selector = (
+        '<select name="t">'
+        f'<option value="{category}" selected>category {category}</option>'
+        "</select>"
+    )
+    return body.replace("<html><body>", "<html><body>" + selector, 1)
+
+
 _KINOZAL_SOURCE: dict[str, Any] = {
     "id": "kinozal_movies",
     "enabled": True,
@@ -489,6 +500,10 @@ class TestKinozalCategoryGuard(unittest.TestCase):
         rejected = [
             "https://kinozal.tv/top.php?t=0",
             "https://kinozal.tv/top.php?t=4",
+            "https://kinozal.tv/top.php?t=41",
+            "https://kinozal.tv/top.php?t=42",
+            "https://kinozal.tv/top.php?t=43",
+            "https://kinozal.tv/top.php?t=44",
             "https://kinozal.tv/top.php?t=5",
             "https://kinozal.tv/top.php?t=6",
             "https://kinozal.tv/top.php?t=8",
@@ -518,7 +533,8 @@ class TestKinozalCategoryGuard(unittest.TestCase):
         listing_url = "https://kinozal.tv/top.php?t=999&d=14"
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                return_value=_listing_with_selected_category(999),
             ) as fetch,
             unittest.mock.patch.dict(
                 os.environ, {"KINOZAL_URLS": f"future|{listing_url}"}, clear=False
@@ -538,31 +554,25 @@ class TestKinozalCategoryGuard(unittest.TestCase):
         self.assertIn(listing_url, joined)
         self.assertIn("t=999", joined)
 
-    def test_indeterminate_categories_fail_open_with_warning(self) -> None:
+    def test_indeterminate_urls_resolving_to_denied_category_are_rejected(self) -> None:
         urls = [
             "https://kinozal.tv/top.php",
             "https://kinozal.tv/top.php?t=",
             "https://kinozal.tv/top.php?t=1&t=7",
             "https://kinozal.tv/top.php?t=books",
+            "https://kinozal.tv/top.php?t=0_1",
+            "https://kinozal.tv/top.php?t=999",
         ]
         env_value = ";".join(f"uncertain-{i}|{url}" for i, url in enumerate(urls))
         fetched: list[str] = []
 
         def _fetch(url: str) -> str:
             fetched.append(url)
-            item_id = urls.index(url)
-            return (
-                '<html><body><a href="/details.php?id='
-                + str(item_id)
-                + '" title="Uncertain Film '
-                + str(item_id)
-                + ' / 2026 / WEB-DLRip"><img src="/poster.jpg"></a></body></html>'
-            )
+            return _listing_with_selected_category(0, _BOOK_LISTING_HTML)
 
         with (
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
             unittest.mock.patch.dict(os.environ, {"KINOZAL_URLS": env_value}, clear=False),
-            self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as logs,
         ):
             notifier = InMemoryNotifier()
             results = run_kinozal_pipeline(
@@ -570,16 +580,32 @@ class TestKinozalCategoryGuard(unittest.TestCase):
             )
 
         self.assertEqual(fetched, urls)
-        self.assertEqual(len(notifier.sent), len(urls))
-        self.assertTrue(results[0].ok)
-        self.assertEqual({item.raw["kinozal_listing_url"] for item in results[0].items}, set(urls))
-        self.assertTrue(
-            all(item.raw["kinozal_listing_category"] is None for item in results[0].items)
-        )
-        joined = "\n".join(logs.output)
+        self.assertEqual(notifier.sent, [])
+        self.assertFalse(results[0].ok)
         for url in urls:
-            self.assertIn(url, joined)
-        self.assertIn("could not determine", joined)
+            self.assertTrue(any(url in error and "t=0" in error for error in results[0].errors))
+
+    def test_indeterminate_category_without_response_signal_fails_open_with_warning(self) -> None:
+        listing_url = "https://test.example/top.php"
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+            ) as fetch,
+            unittest.mock.patch.dict(
+                os.environ, {"KINOZAL_URLS": f"uncertain|{listing_url}"}, clear=False
+            ),
+            self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as logs,
+        ):
+            notifier = InMemoryNotifier()
+            results = run_kinozal_pipeline(
+                InMemoryStorage(), notifier, _FakeYoutube(), _SOURCES_CONFIG
+            )
+
+        fetch.assert_called_once_with(listing_url)
+        self.assertEqual(len(notifier.sent), 2)
+        self.assertTrue(results[0].ok)
+        self.assertIsNone(results[0].items[0].raw["kinozal_listing_category"])
+        self.assertIn("could not confirm", "\n".join(logs.output))
 
 
 class TestKinozalListingProvenance(unittest.TestCase):

@@ -121,16 +121,19 @@ The epic separates **retrieval** (`film → list[Candidate]`) from **selection**
   For harness eval (#140) and potential cast escalation; production does not call it (below).
 
 **Kinozal listing-category guard.** `KINOZAL_URLS` uses an explicit denylist, not an
-allowlist: `t=0` (Kinozal's mixed "Selected releases" feed), music (`t=4`), library
-(`t=5`), audiobooks (`t=6`), and programs (`t=8`) are rejected before the listing
-fetch. A repeated query containing any denied integer is rejected too. The rejection is
+allowlist: `t=0` (Kinozal's mixed "Selected releases" feed), music (`t=4` and
+`41–44`), library (`t=5`), audiobooks (`t=6`), and programs (`t=8`) are denied.
+Plain denied IDs stop before fetch. For repeated values Kinozal uses the last `t`;
+missing, blank, malformed, and unknown integer values may be mapped by the server to
+`t=0`, so the response's selected category is authoritative. If it is denied, processing
+stops after the listing fetch but before extraction, trailer lookup, or notification. A
+new integer category that Kinozal actually recognises remains eligible and is processed.
+If the response selector is absent or unparseable, the URL processes fail-open with a
+WARNING, preventing selector drift from silently withholding a film. Rejections are
 recorded in the source's `PipelineResult.errors`, so other URLs still deliver while the
-step remains visibly red. Every other integer category, including a new category unknown
-to this application, is processed. Missing, blank, repeated-allowed, or non-integer `t`
-also processes fail-open with one WARNING per configured URL, preventing category drift
-from silently withholding a film. Fetched items retain `kinozal_listing_url` and
-`kinozal_listing_category` in `raw` (`None` when indeterminate), and a bounded INFO
-breadcrumb names both before notification (#506).
+step remains visibly red. Fetched items retain `kinozal_listing_url` and the effective
+`kinozal_listing_category` in `raw` (`None` when neither response nor request establishes
+it), and an INFO breadcrumb names both before notification (#506).
 
 This listing policy is separate from `KINOZAL_EXCLUDED_GENRES`: that variable filters the
 `Жанр` value read from each new item's details page. The incident audiobook reports

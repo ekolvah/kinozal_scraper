@@ -31,11 +31,11 @@ from kinozal_scraper.youtube import YoutubeQuotaExhausted
 logger = logging.getLogger(__name__)
 
 # Live `top.php` category selector verified for #506. `t=0` is the mixed
-# "Selected releases" feed (it includes books); 4/5/6/8 are music, library,
-# audiobooks and programs. The policy is deliberately fail-open: a new category
-# must not silently withhold a film, so only these explicit non-product inputs
-# are rejected.
-_EXCLUDED_LISTING_CATEGORIES = frozenset({0, 4, 5, 6, 8})
+# "Selected releases" feed (it includes books); 4/41-44, 5, 6 and 8 are
+# music, library, audiobooks and programs in that selector. The policy is
+# deliberately fail-open: a new category must not silently withhold a film, so
+# only these explicit non-product inputs are rejected.
+_EXCLUDED_LISTING_CATEGORIES = frozenset({0, 4, 5, 6, 8, 41, 42, 43, 44})
 
 
 def _kinozal_urls() -> list[str]:
@@ -52,38 +52,43 @@ def _kinozal_urls() -> list[str]:
     return [fallback] if fallback else []
 
 
-def _kinozal_listing_category(url: str) -> int | None:
-    """Return one unambiguous integer `top.php?t=` category, else ``None``.
+def _kinozal_requested_category(url: str) -> int | None:
+    """Return the plain-integer category requested with `top.php?t=`.
 
-    This is provenance, not an allowlist predicate. Missing, blank, repeated and
-    non-integer values are indeterminate and therefore return ``None``; the
-    caller processes them fail-open with a visible warning (#506).
+    PHP uses the last repeated query value. Accept only ASCII digits here:
+    Python's ``int`` also accepts signs, whitespace and underscores that Kinozal
+    resolves differently. This is provenance plus an explicit-deny predicate,
+    never an allowlist: an unknown integer remains eligible for fetching (#506).
     """
     values = parse_qs(urlsplit(url).query, keep_blank_values=True).get("t")
-    if values is None or len(values) != 1:
+    if not values:
         return None
-    try:
-        return int(values[0])
-    except ValueError:
+    value = values[-1]
+    if re.fullmatch(r"[0-9]+", value) is None:
         return None
+    return int(value)
 
 
-def _kinozal_listing_categories(url: str) -> tuple[int, ...]:
-    """Return every parseable `t` value for explicit-deny checks (#506).
+def _kinozal_response_category(html: str) -> int | None:
+    """Return the category Kinozal marks selected in the listing response.
 
-    Repeated parameters stay visible here so `t=1&t=5` cannot bypass the
-    explicit category denylist merely because its provenance is ambiguous.
-    Malformed values are ignored by this predicate and handled fail-open by the
-    caller's indeterminate-category warning.
+    Kinozal maps absent, malformed, or currently unknown category IDs to `t=0`.
+    Reading the selected option distinguishes that known-denied effective page
+    from a future integer category the site really recognises. Missing or drifted
+    selector markup returns ``None`` and the caller processes fail-open with a
+    warning, preserving availability for films (#506).
     """
-    values = parse_qs(urlsplit(url).query, keep_blank_values=True).get("t", [])
-    parsed: list[int] = []
-    for value in values:
-        try:
-            parsed.append(int(value))
-        except ValueError:
-            continue
-    return tuple(parsed)
+    soup = BeautifulSoup(html, "html.parser")
+    select = soup.find("select", attrs={"name": "t"})
+    if not isinstance(select, Tag):
+        return None
+    selected = select.find_all("option", selected=True)
+    if len(selected) != 1:
+        return None
+    value = selected[0].get("value")
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]+", value) is None:
+        return None
+    return int(value)
 
 
 def _excluded_genres() -> set[str]:
@@ -685,27 +690,47 @@ def _fetch_and_extract(
     for source in kinozal_sources:
         result = PipelineResult(source_id=source["id"])
         for url in urls:
-            denied = sorted(set(_kinozal_listing_categories(url)) & _EXCLUDED_LISTING_CATEGORIES)
-            if denied:
-                denied_values = ", ".join(f"t={value}" for value in denied)
-                message = f"excluded kinozal listing category {denied_values}: {url}"
+            requested_category = _kinozal_requested_category(url)
+            if requested_category in _EXCLUDED_LISTING_CATEGORIES:
+                message = f"excluded kinozal listing category t={requested_category}: {url}"
                 logger.error("[%s] %s", source["id"], message)
                 result.errors.append(message)
                 continue
-            category = _kinozal_listing_category(url)
-            if category is None:
-                logger.warning(
-                    "[%s] could not determine exactly one integer kinozal listing "
-                    "category for %s; processing fail-open",
-                    source["id"],
-                    url,
-                )
             try:
                 html_text, effective_base_url = fetcher.fetch_listing(url)
             except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
                 logger.exception("[%s] fetch failed for %s: %s", source["id"], url, exc)
                 result.errors.append(f"fetch failed for {url}: {exc}")
                 continue
+            response_category = _kinozal_response_category(html_text)
+            if response_category in _EXCLUDED_LISTING_CATEGORIES:
+                message = (
+                    f"excluded kinozal listing category t={response_category} "
+                    f"selected by the response: {url}"
+                )
+                logger.error("[%s] %s", source["id"], message)
+                result.errors.append(message)
+                continue
+            if response_category is None:
+                logger.warning(
+                    "[%s] could not confirm the kinozal listing category from the "
+                    "response for %s; processing fail-open with requested category %s",
+                    source["id"],
+                    url,
+                    requested_category,
+                )
+                category = requested_category
+            else:
+                category = response_category
+                if requested_category is not None and requested_category != response_category:
+                    logger.warning(
+                        "[%s] kinozal requested t=%d but response selected t=%d for %s; "
+                        "using the response category",
+                        source["id"],
+                        requested_category,
+                        response_category,
+                        url,
+                    )
             # Resolve this listing's links/posters against the origin that served
             # it (.tv on primary, .guru on mirror fallback) — not a fixed host (#247).
             extracted = _extract_kinozal_items(
