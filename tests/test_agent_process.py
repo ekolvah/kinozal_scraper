@@ -114,9 +114,8 @@ class TestAgentProcess:
     def test_external_evidence_preserves_the_exact_valid_item_from_the_failing_input(
         self,
     ) -> None:
-        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
-            encoding="utf-8"
-        )
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        normalized = " ".join(process.split())
 
         for marker in (
             "same captured response",
@@ -125,7 +124,7 @@ class TestAgentProcess:
             "loses the preserved record is BLOCKING",
             "trace the current production path",
         ):
-            assert marker in process
+            assert marker in normalized
 
     def test_pr_template_records_agent_provenance(self) -> None:
         template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")

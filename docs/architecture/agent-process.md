@@ -46,12 +46,12 @@ parse, or classify external data, use this shape:
 capture: `<source-specific reproducible command that writes the path below>`
 path: `<repository-relative path>`
 observed: <the source fact that explains the reported failure>
-preserve: <a valid case from the same observed boundary that must keep working>
-change: <the invalid case whose behaviour must change>
+preserve: <the exact valid record from the same captured response that must keep working>
+change: <the exact invalid record from that captured response whose behaviour must change>
 boundaries: <candidate fix boundaries compared, from broad to narrow>
-collateral: <valid behaviour each candidate would lose, or none>
-reuse: <existing production input/fetch that can support the narrow boundary>
-paired-test: <one executable scenario that preserves the valid case and changes the invalid case>
+collateral: <whether each candidate preserves or loses that exact valid record>
+reuse: <current production path traced to the existing input/fetch usable by the narrow boundary>
+paired-test: <the same captured input through one pipeline run keeps the valid record and rejects the invalid record>
 ```
 
 The command is specific to the external source and must include the exact path
@@ -59,11 +59,15 @@ named on the next line. The validator checks that the command is present and the
 repository-relative file exists; it does not try to recognize every possible
 source tool or prove that the recorded conclusions are true. The remaining
 fields turn the capture into a reviewable design decision: compare at least the
-reported invalid case with a valid case at the same source boundary, choose the
-narrowest boundary supported by the observation, and expose collateral loss
-instead of silently accepting it. Use the narrowest read-only route below;
-never run a full pipeline that writes Sheets rows or sends Telegram
-notifications merely to collect evidence:
+reported invalid record with an exact valid record from the same captured
+response. A sibling feed, query, category, or alternative source does not count
+as preservation of that record. A candidate that loses the preserved record is
+BLOCKING unless the issue records an explicit product decision authorizing that
+loss. Choose the narrowest boundary supported by the observation, trace the
+current production path before claiming that it needs another fetch, and expose
+collateral loss instead of silently accepting it. Use the narrowest read-only
+route below; never run a full pipeline that writes Sheets rows or sends
+Telegram notifications merely to collect evidence:
 
 | Source | Capture route |
 | --- | --- |
@@ -135,11 +139,14 @@ arrives, how a reviewer is invoked, how the body is written back.
    at most three clarifying questions per session, and only about decisions such
    as priority or product intent. When the plan describes how to read, parse, or
    classify data from an external system, observe that live system before
-   writing the plan. From that observation, record one invalid case and one
-   valid case to preserve, compare candidate fix boundaries, state their
-   collateral loss, and prefer an existing production input over a new fetch.
-   Record both the capture and that decision in `## Evidence`, and name one
-   paired test that proves preservation and change in the same scenario.
+   writing the plan. From that observation, record one invalid record and one
+   exact valid record from the same response, compare candidate fix boundaries,
+   and state whether each boundary loses that preserved record. Replacing it
+   with a sibling feed or category is data loss, not preservation. Inspect the
+   current call path before deciding whether a narrower classification needs a
+   new fetch. Record both the capture and that decision in `## Evidence`, and
+   name one paired test that sends the same captured input through one pipeline
+   run and proves that the valid record remains while the invalid one changes.
    Otherwise record `n/a: <reason>` there; this is discovery, not an E2E test or
    a substitute for a human product decision.
 3. Obtain the architect review defined below and record it in
@@ -214,8 +221,11 @@ against §I–§VII and for:
   review, or an existing test already does.
 - **A workaround with no named root cause** (§V).
 - **An over-broad external-data boundary** — the plan does not compare a valid
-  and invalid observation at the same boundary, ignores collateral loss, or
-  adds a fetch although an existing production input supports a narrower fix.
+  and invalid record from the same captured response, substitutes a sibling
+  source for preservation, accepts loss of the preserved record without an
+  explicit product decision, or claims a new fetch without tracing the current
+  production path. Its paired test must exercise both records from the same
+  input and run, not separate allowed/rejected sources.
 - **Avoidable tokens** — an expensive pass where a deterministic script would
   do, or a model call a cheap pre-filter would answer.
 - **A test-first loophole** — a behavioural change declared an exception while a
