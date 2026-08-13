@@ -120,25 +120,28 @@ The epic separates **retrieval** (`film → list[Candidate]`) from **selection**
   degradation to title+year + WARNING; successful fetch with zero fields → WARNING tripwire (§IV).
   For harness eval (#140) and potential cast escalation; production does not call it (below).
 
-**Kinozal listing-category guard.** `KINOZAL_URLS` uses an explicit denylist, not an
-allowlist: `t=0` (Kinozal's mixed "Selected releases" feed), music (`t=4` and
-`41–44`), library (`t=5`), audiobooks (`t=6`), and programs (`t=8`) are denied.
-Plain denied IDs stop before fetch. For repeated values Kinozal uses the last `t`;
-missing, blank, malformed, and unknown integer values may be mapped by the server to
-`t=0`, so the response's selected category is authoritative. If it is denied, processing
-stops after the listing fetch but before extraction, trailer lookup, or notification. A
-new integer category that Kinozal actually recognises remains eligible and is processed.
-If the response selector is absent or unparseable, the URL processes fail-open with a
-WARNING, preventing selector drift from silently withholding a film. Rejections are
-recorded in the source's `PipelineResult.errors`, so other URLs still deliver while the
-step remains visibly red. Fetched items retain `kinozal_listing_url` and the effective
-`kinozal_listing_category` in `raw` (`None` when neither response nor request establishes
-it), and an INFO breadcrumb names both before notification (#506).
+**Kinozal listing-category guard.** `KINOZAL_EXCLUDED_CATEGORIES` is an operator-managed,
+semicolon-separated denylist of readable names from Kinozal's category selector. Matching is
+case-insensitive and collapses whitespace. The production value excludes `Избранные раздачи`,
+`Топ Музыки`, `Библиотека`, `Избранные аудиокниги`, and `Избранные программы`. A parent name
+also excludes descendants: for example, `Топ Музыки` covers `Топ Музыки > Русская` without
+listing numeric IDs or every child separately.
+
+The listing is fetched first because the response selector is authoritative. A readable-name
+match stops processing before extraction, trailer lookup, or notification. Everything else is
+eligible: numeric `t=` values never form an allowlist or denylist, so an unrecognised or newly
+introduced film category is not silently withheld. If the configuration is empty, contains a
+name absent from the current selector, or the selector cannot be parsed, processing fails open.
+The first two cases add `PipelineResult.errors`; selector drift logs a WARNING. Rejections also
+add an error, so sibling URLs continue while the workflow remains visibly non-ok. Fetched items
+retain `kinozal_listing_url`, numeric `kinozal_listing_category` provenance, and readable
+`kinozal_listing_category_name` in `raw`; an INFO breadcrumb names all three before notification
+(#506).
 
 This listing policy is separate from `KINOZAL_EXCLUDED_GENRES`: that variable filters the
 `Жанр` value read from each new item's details page. The incident audiobook reports
 `Фантастика, постапокалипсис`, a genre also valid for films, so genre values cannot safely
-stand in for listing-category IDs.
+stand in for listing categories.
 
 **Game releases (#385, #412).** `KINOZAL_URLS` contains the games top (`t=7`) alongside films
 (`t=1`) and series (`t=32`) — all flow into one `kinozal_movies` source. Their title grammar is
