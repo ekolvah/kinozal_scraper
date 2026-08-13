@@ -214,7 +214,7 @@ def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
     capture_command = _evidence_field(content, "capture")
     path_value = _evidence_field(content, "path")
     missing: list[str] = []
-    if not capture_command or "python scripts/capture_fixture.py" not in capture_command:
+    if not capture_command:
         missing.append("capture command")
     if not path_value:
         missing.append("capture path")

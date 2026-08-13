@@ -43,18 +43,22 @@ A `bug` issue also requires `## Evidence`. When the plan describes how to read,
 parse, or classify external data, use this shape:
 
 ```md
-capture: `python scripts/capture_fixture.py <url> <path>`
+capture: `<source-specific reproducible command that writes the path below>`
 path: `<repository-relative path>`
 ```
 
-The validator checks that the file exists. If the capture command actually
-failed, the narrow exception is `status: failed` plus a non-empty fenced block
-after `output:` containing that command's output; an unsupported claim that the
-source is unavailable is still a gap. The command uses the production Kinozal
-origin-to-authenticated-mirror fetcher, so a planner does not need to rediscover
-that route. A committed fixture can be fabricated, which no syntax gate can
-rule out, but the command and path make the observation cheap to reproduce and
-leave a reviewable claim (#509).
+The command is specific to the external source and must include the exact path
+named on the next line. The validator checks that the command is present and the
+repository-relative file exists; it does not try to recognize every possible
+source tool. If the capture command actually failed, the narrow exception is
+`status: failed` plus a non-empty fenced block after `output:` containing that
+command's output; an unsupported claim that the source is unavailable is still
+a gap. For Kinozal, use
+`python scripts/capture_fixture.py <url> <path>`; it calls the production
+origin-to-authenticated-mirror fetcher. GitHub, Telegram, Gemini, Sheets, and
+other sources use their own reproducible capture route. A committed fixture can
+be fabricated, which no syntax gate can rule out, but the command and path make
+the observation cheap to reproduce and leave a reviewable claim (#509).
 
 For a bug with no external-system behaviour to observe, the section instead
 starts with `n/a: <reason>`, naming why live capture does not apply. The section

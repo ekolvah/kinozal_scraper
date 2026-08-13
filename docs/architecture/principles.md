@@ -153,11 +153,13 @@ mode MUST be reproduced and located. Instrument before patching: inspect logs,
 inputs, and the failure point before proposing a change. When the behaviour to
 be designed is how an external system is read or classified, observation of
 that live system is part of locating the failure; repository reasoning alone is
-not evidence. Preserve the response as a fixture with
-`python scripts/capture_fixture.py <url> <path>` so the claim is reviewable and
-the parser test uses what the system returned. No workarounds, shims, retries,
-broader try/except, or `--no-verify` flags are accepted as fixes when the
-underlying mechanism is not understood.
+not evidence. Preserve the response as a fixture with a reproducible command
+appropriate to that source so the claim is reviewable and the parser test uses
+what the system returned. Kinozal capture uses
+`python scripts/capture_fixture.py <url> <path>`; other external systems use
+their own capture route. No workarounds, shims, retries, broader try/except, or
+`--no-verify` flags are accepted as fixes when the underlying mechanism is not
+understood.
 
 If the immediate fix proves too large for the current PR, the PR may ship a
 **documented mitigation** (e.g. raise-and-skip with a linked issue) but the

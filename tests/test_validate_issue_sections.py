@@ -346,6 +346,20 @@ def test_evidence_naming_an_existing_capture_passes(tmp_path: Path) -> None:
     assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
 
 
+def test_evidence_accepts_a_source_specific_capture_command(tmp_path: Path) -> None:
+    capture = tmp_path / "tests" / "fixtures" / "github" / "issue-509.json"
+    capture.parent.mkdir(parents=True)
+    capture.write_text('{"number": 509}', encoding="utf-8")
+    relative_path = "tests/fixtures/github/issue-509.json"
+    body = _body_with_evidence(
+        "capture: `gh api repos/ekolvah/kinozal_scraper/issues/509 "
+        f"> {relative_path}`\n"
+        f"path: `{relative_path}`"
+    )
+
+    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+
+
 def test_non_bug_issue_does_not_require_evidence(tmp_path: Path) -> None:
     assert find_gaps(_full_body(), issue_labels=("enhancement",), repo_root=tmp_path) == []
 
