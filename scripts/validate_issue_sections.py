@@ -52,6 +52,15 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 EVIDENCE_SECTION = "Evidence"
 BUG_LABEL = "bug"
 EVIDENCE_NA_PREFIX = "n/a:"
+EVIDENCE_DECISION_FIELDS = (
+    ("observed", "observed"),
+    ("preserve", "preserve"),
+    ("change", "change"),
+    ("boundaries", "boundaries"),
+    ("collateral", "collateral"),
+    ("reuse", "reuse"),
+    ("paired-test", "paired test"),
+)
 MIN_CONTENT_CHARS = 5
 
 _MD = MarkdownIt("commonmark")
@@ -204,7 +213,7 @@ def _failed_capture_has_output(content: str) -> bool:
 
 
 def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
-    """Return mechanical gaps in a bug issue's external-observation artifact."""
+    """Return mechanical gaps in a bug issue's observation and decision record."""
     first = next((line.strip() for line in content.splitlines() if line.strip()), "")
     if first.casefold().startswith(EVIDENCE_NA_PREFIX):
         if first[len(EVIDENCE_NA_PREFIX) :].strip():
@@ -233,9 +242,14 @@ def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
         resolved_candidate.relative_to(resolved_root)
     except ValueError:
         return ["repository-relative capture path"]
-    if resolved_candidate.is_file() or _failed_capture_has_output(content):
-        return []
-    return ["existing capture path or failed capture output"]
+    if not resolved_candidate.is_file():
+        if _failed_capture_has_output(content):
+            return ["successful capture"]
+        return ["existing capture path or failed capture output"]
+
+    return [
+        label for field, label in EVIDENCE_DECISION_FIELDS if not _evidence_field(content, field)
+    ]
 
 
 def find_gaps(

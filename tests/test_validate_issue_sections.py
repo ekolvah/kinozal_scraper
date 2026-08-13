@@ -323,7 +323,14 @@ def _capture_evidence(path: str) -> str:
     return (
         "capture: `python scripts/capture_kinozal_fixture.py "
         f"https://kinozal.tv/details.php?id=1 {path}`\n"
-        f"path: `{path}`"
+        f"path: `{path}`\n"
+        "observed: the captured response contains the reported external shape\n"
+        "preserve: the valid case from the same observed boundary remains delivered\n"
+        "change: the reported invalid case from that boundary is rejected\n"
+        "boundaries: source-wide rejection versus item-level classification\n"
+        "collateral: item-level classification preserves the valid case\n"
+        "reuse: the existing production fetch supplies the classification input\n"
+        "paired-test: one run keeps the valid case and rejects the invalid case"
     )
 
 
@@ -346,7 +353,7 @@ def test_evidence_naming_an_existing_capture_passes(tmp_path: Path) -> None:
     assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
 
 
-def test_evidence_accepts_a_source_specific_capture_command(tmp_path: Path) -> None:
+def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path) -> None:
     capture = tmp_path / "tests" / "fixtures" / "github" / "issue-509.json"
     capture.parent.mkdir(parents=True)
     capture.write_text('{"number": 509}', encoding="utf-8")
@@ -359,8 +366,7 @@ def test_evidence_accepts_a_source_specific_capture_command(tmp_path: Path) -> N
 
     gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
     assert gaps == [
-        "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, "
-        "paired test)"
+        "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ]
 
 
@@ -460,6 +466,19 @@ def test_evidence_replay_has_positive_and_negative_arms() -> None:
 
     revision_one = (fixture_root / "issue_506_revision_1.txt").read_text(encoding="utf-8")
     assert "Evidence" in find_gaps(revision_one, issue_labels=("bug",), repo_root=repo_root)
+    relative_wrong_plan = "tests/fixtures/issue_509_rca/issue_506_revision_1.txt"
+    revision_with_capture_only = (
+        f"{revision_one}\n## Evidence\n\n"
+        "capture: `python scripts/capture_kinozal_fixture.py "
+        f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
+        f"path: `{relative_wrong_plan}`\n"
+    )
+    capture_only_gaps = find_gaps(
+        revision_with_capture_only, issue_labels=("bug",), repo_root=repo_root
+    )
+    assert (
+        "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
+    ) in capture_only_gaps
 
     # The marker did not exist when #506 was planned, so AC3's negative replay is
     # the healthy archived body plus only the new mechanical marker. The observed

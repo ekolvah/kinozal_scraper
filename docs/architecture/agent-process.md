@@ -45,14 +45,25 @@ parse, or classify external data, use this shape:
 ```md
 capture: `<source-specific reproducible command that writes the path below>`
 path: `<repository-relative path>`
+observed: <the source fact that explains the reported failure>
+preserve: <a valid case from the same observed boundary that must keep working>
+change: <the invalid case whose behaviour must change>
+boundaries: <candidate fix boundaries compared, from broad to narrow>
+collateral: <valid behaviour each candidate would lose, or none>
+reuse: <existing production input/fetch that can support the narrow boundary>
+paired-test: <one executable scenario that preserves the valid case and changes the invalid case>
 ```
 
 The command is specific to the external source and must include the exact path
 named on the next line. The validator checks that the command is present and the
 repository-relative file exists; it does not try to recognize every possible
-source tool. Use the narrowest read-only route below; never run a full pipeline
-that writes Sheets rows or sends Telegram notifications merely to collect
-evidence:
+source tool or prove that the recorded conclusions are true. The remaining
+fields turn the capture into a reviewable design decision: compare at least the
+reported invalid case with a valid case at the same source boundary, choose the
+narrowest boundary supported by the observation, and expose collateral loss
+instead of silently accepting it. Use the narrowest read-only route below;
+never run a full pipeline that writes Sheets rows or sends Telegram
+notifications merely to collect evidence:
 
 | Source | Capture route |
 | --- | --- |
@@ -77,10 +88,11 @@ production entry point. A failed capture records `status: failed` plus a
 non-empty fenced block after `output:` containing the attempted command's
 output; an unsupported claim that the source is unavailable is still a gap.
 This makes the access failure reviewable but does not prove source behaviour: a
-plan whose design depends on the missing fact remains blocked. A committed
-fixture can be fabricated, which no syntax gate can rule out, but the command
-and path make the observation cheap to reproduce and leave a reviewable claim
-(#509).
+plan whose design depends on the missing fact remains blocked, the validator
+stays red with `missing: successful capture`, and no implementer handoff may be
+recorded. A committed fixture can be fabricated, which no syntax gate can rule
+out, but the command and path make the observation cheap to reproduce and leave
+a reviewable claim (#509).
 
 For a bug with no external-system behaviour to observe, the section instead
 starts with `n/a: <reason>`, naming why live capture does not apply. The section
@@ -123,9 +135,13 @@ arrives, how a reviewer is invoked, how the body is written back.
    at most three clarifying questions per session, and only about decisions such
    as priority or product intent. When the plan describes how to read, parse, or
    classify data from an external system, observe that live system before
-   writing the plan and record the capture in `## Evidence`. Otherwise record
-   `n/a: <reason>` there; this is discovery, not an E2E test or a substitute for
-   a human product decision.
+   writing the plan. From that observation, record one invalid case and one
+   valid case to preserve, compare candidate fix boundaries, state their
+   collateral loss, and prefer an existing production input over a new fetch.
+   Record both the capture and that decision in `## Evidence`, and name one
+   paired test that proves preservation and change in the same scenario.
+   Otherwise record `n/a: <reason>` there; this is discovery, not an E2E test or
+   a substitute for a human product decision.
 3. Obtain the architect review defined below and record it in
    `## Architect review`. Weave every BLOCKING finding into the other sections
    before writing the body.
@@ -197,6 +213,9 @@ against §I–§VII and for:
   for a need that does not exist yet, or duplicating what `ci_check`, the PR
   review, or an existing test already does.
 - **A workaround with no named root cause** (§V).
+- **An over-broad external-data boundary** — the plan does not compare a valid
+  and invalid observation at the same boundary, ignores collateral loss, or
+  adds a fetch although an existing production input supports a narrower fix.
 - **Avoidable tokens** — an expensive pass where a deterministic script would
   do, or a model call a cheap pre-filter would answer.
 - **A test-first loophole** — a behavioural change declared an exception while a

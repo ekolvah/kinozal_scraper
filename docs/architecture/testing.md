@@ -47,6 +47,10 @@ Assert on doubles' state after the call.
 - `scripts/check_fixture_ratchet.py` is exercised by the validator test suite.
   It reports a new inline-HTML parser test by pytest node ID. The fixture keeps
   network access out of CI while preserving the observed external shape.
+- An incident regression pairs the invalid observation with a valid case from
+  the same source boundary. One test must prove both that the invalid case
+  changes and that the valid case is preserved; a rejection-only test cannot
+  reveal collateral loss from an over-broad fix.
 
 **Unit (pure functions):**
 - Isolated test of a single pure function.
