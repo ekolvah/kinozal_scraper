@@ -104,6 +104,45 @@ Telegram HTML message. Available template variables:
 ```
 Renders as: clickable film title → kinozal page, then "Trailer" → YouTube.
 
+## Kinozal item-category filtering
+
+`KINOZAL_URLS` selects the listing pages to inspect; it is not a content-type
+allowlist. A listing such as `top.php?t=0` can contain films, books, music and
+software together, and the listing markup has no reliable per-row type marker.
+The pipeline therefore classifies each **new item** from its own `details.php`
+page: exactly one `img.cat_img_r` supplies Kinozal's category id through
+`onclick="cat(N)"`, with `/pic/cat/N.gif` as the fallback. Zero or multiple
+markers leave the category unknown.
+
+The committed id-to-name table mirrors the authenticated `browse.php?c=`
+taxonomy read on 2026-08-13. The numeric details-page id is authoritative; the
+table only makes it readable for operators and contains no delivery policy. It
+is not fetched at runtime because that would add an authenticated request whose
+failure could disable the whole denylist. A future id absent from the table is
+therefore unknown and delivered fail-open until the table is updated.
+
+`KINOZAL_EXCLUDED_ITEM_CATEGORIES` owns the delivery policy as a
+semicolon-separated, case-insensitive list of readable names with normalized
+whitespace. A full name matches exactly; a group prefix such as `Музыка`
+matches every `Музыка - ...` descendant. Categories not named by the operator
+remain allowed regardless of their numeric id. A denied item is stored for
+dedup but is not notified and never reaches YouTube trailer lookup.
+
+Category and `KINOZAL_EXCLUDED_GENRES` filtering share one details fetch per
+new item, with category evaluated first. The pass runs when either denylist is
+configured and makes no details request only when both are empty. A failed
+fetch, missing or ambiguous marker, unparseable id, or unknown id keeps the
+individual item and logs a WARNING. If category resolution succeeds for zero
+of one or more new items, or configuration names are absent from the committed
+taxonomy, the items still flow through but the source gains a visible pipeline
+error. An empty category denylist is a normal disabled state and logs INFO.
+
+Each new item's raw provenance records `kinozal_listing_url`,
+`kinozal_item_category`, and `kinozal_item_category_name`. Its post-filter INFO
+breadcrumb reports `delivered`, `denied by category <name>`, or
+`denied by genre <name>`, so a mixed listing remains diagnosable without
+rejecting the whole feed (#506).
+
 ## Trailer retrieval and selection
 
 The epic separates **retrieval** (`film → list[Candidate]`) from **selection**

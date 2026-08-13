@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
@@ -30,6 +31,49 @@ from kinozal_scraper.youtube import YoutubeQuotaExhausted
 
 logger = logging.getLogger(__name__)
 
+# Kinozal's browse.php?c= taxonomy, read from the authenticated mirror on
+# 2026-08-13. The numeric marker on details.php is authoritative; this table
+# only supplies operator-readable names. It is taxonomy, never delivery policy.
+_KINOZAL_ITEM_CATEGORIES = {
+    1: "Другое - Видеоклипы",
+    2: "Другое - АудиоКниги",
+    3: "Музыка - Буржуйская",
+    4: "Музыка - Русская",
+    5: "Музыка - Сборники",
+    6: "Кино - Боевик / Военный",
+    7: "Кино - Классика",
+    8: "Кино - Комедия",
+    9: "Кино - Исторический",
+    10: "Кино - Наше Кино",
+    11: "Кино - Приключения",
+    12: "Кино - Детский / Семейный",
+    13: "Кино - Фантастика",
+    14: "Кино - Фэнтези",
+    15: "Кино - Триллер / Детектив",
+    16: "Кино - Эротика",
+    17: "Кино - Драма",
+    18: "Кино - Документальный",
+    20: "Мульт - Аниме",
+    21: "Мульт - Буржуйский",
+    22: "Мульт - Русский",
+    23: "Другое - Игры",
+    24: "Кино - Ужас / Мистика",
+    32: "Другое - Программы",
+    35: "Кино - Мелодрама",
+    37: "Кино - Спорт",
+    38: "Кино - Театр, Опера, Балет",
+    39: "Кино - Индийское",
+    40: "Другое - Дизайн / Графика",
+    41: "Другое - Библиотека",
+    42: "Музыка - Классическая",
+    45: "Сериал - Русский",
+    46: "Сериал - Буржуйский",
+    47: "Кино - Азиатский",
+    48: "Кино - Концерт",
+    49: "Кино - Передачи / ТВ-шоу",
+    50: "Кино - ТВ-шоу Мир",
+}
+
 
 def _kinozal_urls() -> list[str]:
     """Read Kinozal URLs from the KINOZAL_URLS env variable (format: 'label|url;...').
@@ -53,6 +97,95 @@ def _excluded_genres() -> set[str]:
     """
     raw = os.environ.get("KINOZAL_EXCLUDED_GENRES", "")
     return {g.strip().lower() for g in raw.split(";") if g.strip()}
+
+
+def _normalize_item_category_name(value: str) -> str:
+    """Normalize readable item-category configuration for matching (#506)."""
+    return " ".join(value.split()).casefold()
+
+
+def _excluded_item_categories() -> set[str]:
+    """Read the operator-owned item-category denylist from the environment."""
+    raw = os.environ.get("KINOZAL_EXCLUDED_ITEM_CATEGORIES", "")
+    return {
+        normalized
+        for value in raw.split(";")
+        if (normalized := _normalize_item_category_name(value))
+    }
+
+
+def _item_category_name(category_id: int) -> str | None:
+    """Map an authoritative details.php category id to the 2026-08-13 taxonomy.
+
+    The table is committed instead of fetched at runtime: browse.php requires an
+    authenticated request whose failure could otherwise disable filtering. A new
+    id remains unknown and therefore fail-open until the taxonomy is refreshed.
+    """
+    return _KINOZAL_ITEM_CATEGORIES.get(category_id)
+
+
+def _known_item_category_config_names() -> set[str]:
+    """Readable taxonomy names plus group prefixes accepted in configuration."""
+    known: set[str] = set()
+    for name in _KINOZAL_ITEM_CATEGORIES.values():
+        normalized = _normalize_item_category_name(name)
+        known.add(normalized)
+        if " - " in normalized:
+            known.add(normalized.split(" - ", 1)[0])
+    return known
+
+
+def _validate_item_category_config(
+    excluded_categories: set[str], results: list[PipelineResult]
+) -> None:
+    """Surface disabled or stale operator configuration once per pipeline run."""
+    if not excluded_categories:
+        logger.info("kinozal item category filter disabled: denylist is empty")
+        return
+
+    unknown_config = sorted(excluded_categories - _known_item_category_config_names())
+    if not unknown_config:
+        return
+    message = (
+        "item category configuration contains names absent from the committed "
+        f"Kinozal taxonomy: {', '.join(unknown_config)}; delivery unchanged"
+    )
+    logger.error("kinozal pipeline: %s", message)
+    for result in results:
+        result.errors.append(message)
+
+
+def _parse_item_category(details_html: str) -> int | None:
+    """Return one details-page category id, or ``None`` for ambiguous evidence.
+
+    Kinozal exposes the id on ``img.cat_img_r``. The onclick ``cat(N)`` value is
+    primary; the image path ``/pic/cat/N.gif`` is the markup fallback (#506).
+    """
+    soup = BeautifulSoup(details_html, "html.parser")
+    markers = soup.select("img.cat_img_r")
+    if len(markers) != 1:
+        return None
+    marker = markers[0]
+    onclick = marker.get("onclick")
+    if isinstance(onclick, str):
+        match = re.fullmatch(r"\s*cat\(([0-9]+)\);?\s*", onclick)
+        if match:
+            return int(match.group(1))
+    src = marker.get("src")
+    if isinstance(src, str):
+        match = re.search(r"(?:^|/)pic/cat/([0-9]+)\.gif(?:[?#].*)?$", src)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _item_category_excluded(name: str, excluded: set[str]) -> bool:
+    """Match a readable category exactly or through a configured group prefix."""
+    normalized = _normalize_item_category_name(name)
+    return any(
+        normalized == configured or normalized.startswith(configured + " - ")
+        for configured in excluded
+    )
 
 
 def _parse_labeled_field(details_html: str, label: str) -> str:
@@ -404,7 +537,10 @@ def _dedupe_key(raw: str) -> str:
 
 
 def _extract_kinozal_items(
-    html: str, source: dict[str, Any], base_url: str | None = None
+    html: str,
+    source: dict[str, Any],
+    base_url: str | None = None,
+    listing_url: str | None = None,
 ) -> PipelineResult:
     """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
 
@@ -438,6 +574,7 @@ def _extract_kinozal_items(
                 item.title,
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
+        item.raw["kinozal_listing_url"] = listing_url
         item.title = _kinozal_title(item.title)
     return result
 
@@ -570,47 +707,198 @@ def enrich_with_trailer(item: NormalizedItem, youtube: Any) -> str:
     return select_trailer(FilmProfile(ru_title=clean, original_title=orig, year=year), youtube)
 
 
-def _split_by_excluded_genre(
-    items: list[NormalizedItem], fetcher: Kinozal, excluded: set[str]
-) -> tuple[list[NormalizedItem], list[NormalizedItem]]:
-    """Partition new items into (kept, filtered) by their details-page genre (#263).
+def _matched_excluded_genre(genre_raw: str, excluded: set[str]) -> str | None:
+    """Return the normalized excluded genre that matched, if any."""
+    for genre in genre_raw.split(","):
+        normalized = genre.strip().lower()
+        if normalized and normalized in excluded:
+            return normalized
+    return None
 
-    Fetches each item's details page (+1 HTTP/item — only reached when the
-    denylist is non-empty) and drops those whose genre ∈ excluded. A details
-    fetch failure fails OPEN: the item is KEPT with a WARNING — an unknown genre
-    must reach the user as a visible item, never be silently suppressed (§IV).
+
+def _log_item_filter_outcome(
+    item: NormalizedItem,
+    outcome: str,
+) -> None:
+    """Log one post-filter breadcrumb with item-level provenance (#506)."""
+    logger.info(
+        "kinozal new item %r from %s: %s (category=%r, id=%r)",
+        item.title,
+        item.raw.get("kinozal_listing_url"),
+        outcome,
+        item.raw.get("kinozal_item_category_name"),
+        item.raw.get("kinozal_item_category"),
+    )
+
+
+@dataclass(frozen=True)
+class _ItemFilterOutcome:
+    denied_by: str | None = None
+    category_resolved: bool = False
+    genre_unparsed: bool = False
+
+
+def _filter_item(
+    item: NormalizedItem,
+    fetcher: Kinozal,
+    excluded_categories: set[str],
+    excluded_genres: set[str],
+) -> _ItemFilterOutcome:
+    """Classify one new item from at most one details-page response."""
+    item.raw["kinozal_item_category"] = None
+    item.raw["kinozal_item_category_name"] = None
+    if not (excluded_categories or excluded_genres):
+        _log_item_filter_outcome(item, "delivered")
+        return _ItemFilterOutcome()
+
+    try:
+        details_html = fetcher.fetch_details(item.url)
+    except Exception as exc:  # noqa: BLE001 — unknown type/genre stays visible and fail-open (§IV)
+        logger.warning(
+            "[%s] item category/genre details lookup failed for %r (%s) — keeping item (fail-open)",
+            item.source_id,
+            item.title,
+            exc,
+        )
+        _log_item_filter_outcome(item, "delivered")
+        return _ItemFilterOutcome()
+
+    category_id = _parse_item_category(details_html)
+    item.raw["kinozal_item_category"] = category_id
+    category_name = _item_category_name(category_id) if category_id is not None else None
+    item.raw["kinozal_item_category_name"] = category_name
+    category_resolved = False
+    if excluded_categories:
+        if category_id is None:
+            logger.warning(
+                "[%s] item category marker missing, ambiguous, or unparseable for %r — "
+                "keeping item (fail-open)",
+                item.source_id,
+                item.title,
+            )
+        elif category_name is None:
+            logger.warning(
+                "[%s] item category id %d is absent from the committed taxonomy for %r — "
+                "keeping item (fail-open)",
+                item.source_id,
+                category_id,
+                item.title,
+            )
+        else:
+            category_resolved = True
+            if _item_category_excluded(category_name, excluded_categories):
+                _log_item_filter_outcome(item, f"denied by category {category_name!r}")
+                return _ItemFilterOutcome(denied_by="category", category_resolved=category_resolved)
+
+    genre_unparsed = False
+    if excluded_genres:
+        genre = _parse_genre(details_html)
+        if not genre:
+            genre_unparsed = True
+        elif matched_genre := _matched_excluded_genre(genre, excluded_genres):
+            _log_item_filter_outcome(item, f"denied by genre {matched_genre!r}")
+            return _ItemFilterOutcome(denied_by="genre", category_resolved=category_resolved)
+
+    _log_item_filter_outcome(item, "delivered")
+    return _ItemFilterOutcome(
+        category_resolved=category_resolved,
+        genre_unparsed=genre_unparsed,
+    )
+
+
+def _log_item_filter_summaries(
+    category_filtered: list[NormalizedItem],
+    genre_filtered: list[NormalizedItem],
+    unparsed_genre: list[NormalizedItem],
+) -> None:
+    """Log aggregate breadcrumbs without conflating category and genre policy."""
+    if unparsed_genre:
+        logger.info(
+            "kinozal pipeline: %d item(s) fetched with no parseable genre (kept) — %s",
+            len(unparsed_genre),
+            ", ".join(sorted(item.title for item in unparsed_genre)),
+        )
+    if category_filtered:
+        logger.info(
+            "kinozal pipeline: filtered %d item(s) by excluded item category: %s",
+            len(category_filtered),
+            ", ".join(sorted(item.title for item in category_filtered)),
+        )
+    if genre_filtered:
+        logger.info(
+            "kinozal pipeline: filtered %d item(s) by excluded genre: %s",
+            len(genre_filtered),
+            ", ".join(sorted(item.title for item in genre_filtered)),
+        )
+
+
+def _append_category_drift_errors(
+    category_total_by_source: dict[str, int],
+    category_resolved_by_source: dict[str, int],
+    results: list[PipelineResult],
+) -> None:
+    """Turn all-items-unresolved selector/auth drift into source errors."""
+    result_by_source = {result.source_id: result for result in results}
+    for source_id, total in category_total_by_source.items():
+        if category_resolved_by_source.get(source_id, 0) > 0:
+            continue
+        message = f"item category resolved for zero of {total} new item(s); processing fail-open"
+        logger.error("[%s] %s", source_id, message)
+        result = result_by_source.get(source_id)
+        if result is not None:
+            result.errors.append(message)
+
+
+def _apply_item_filters(
+    items: list[NormalizedItem],
+    fetcher: Kinozal,
+    excluded_categories: set[str],
+    excluded_genres: set[str],
+    results: list[PipelineResult],
+) -> tuple[list[NormalizedItem], list[NormalizedItem]]:
+    """Apply item category then genre with one details fetch per new item.
+
+    Category policy uses the authoritative per-release marker. Both filters are
+    fail-open per item, while a category filter that resolves zero items becomes
+    a visible source error. Filtered items are returned for terminal dedup storage
+    and never reach trailer lookup or notification (#263, #506).
     """
     kept: list[NormalizedItem] = []
     filtered: list[NormalizedItem] = []
-    unparsed: list[NormalizedItem] = []
+    category_filtered: list[NormalizedItem] = []
+    genre_filtered: list[NormalizedItem] = []
+    unparsed_genre: list[NormalizedItem] = []
+    category_total_by_source: dict[str, int] = {}
+    category_resolved_by_source: dict[str, int] = {}
+
     for item in items:
-        try:
-            genre = _parse_genre(fetcher.fetch_details(item.url))
-        except Exception as exc:  # noqa: BLE001 — details-fetch degrade: unknown genre → keep + WARN, never silent-drop (§IV)
-            logger.warning(
-                "[%s] genre lookup failed for %r (%s) — keeping item (fail-open)",
-                item.source_id,
-                item.title,
-                exc,
+        if excluded_categories:
+            category_total_by_source[item.source_id] = (
+                category_total_by_source.get(item.source_id, 0) + 1
             )
+        outcome = _filter_item(item, fetcher, excluded_categories, excluded_genres)
+        if outcome.category_resolved:
+            category_resolved_by_source[item.source_id] = (
+                category_resolved_by_source.get(item.source_id, 0) + 1
+            )
+        if outcome.genre_unparsed:
+            unparsed_genre.append(item)
+        if outcome.denied_by is None:
             kept.append(item)
             continue
-        if not genre:
-            # Fetched OK but no genre parsed — kept (fail-open). Tracked so a drifted
-            # The `Genre:` selector surfaces as a visible anomaly (§IV) instead of the
-            # filter silently becoming a no-op for every item.
-            unparsed.append(item)
-            kept.append(item)
-        elif _genre_excluded(genre, excluded):
-            filtered.append(item)
+        filtered.append(item)
+        if outcome.denied_by == "category":
+            category_filtered.append(item)
         else:
-            kept.append(item)
-    if unparsed:
-        logger.info(
-            "kinozal pipeline: %d item(s) fetched with no parseable genre (kept) — %s",
-            len(unparsed),
-            ", ".join(sorted(i.title for i in unparsed)),
-        )
+            genre_filtered.append(item)
+
+    _log_item_filter_summaries(category_filtered, genre_filtered, unparsed_genre)
+    _append_category_drift_errors(
+        category_total_by_source,
+        category_resolved_by_source,
+        results,
+    )
+
     return kept, filtered
 
 
@@ -645,7 +933,12 @@ def _fetch_and_extract(
                 continue
             # Resolve this listing's links/posters against the origin that served
             # it (.tv on primary, .guru on mirror fallback) — not a fixed host (#247).
-            extracted = _extract_kinozal_items(html_text, source, base_url=effective_base_url)
+            extracted = _extract_kinozal_items(
+                html_text,
+                source,
+                base_url=effective_base_url,
+                listing_url=url,
+            )
             if not extracted.ok:
                 result.errors.extend(extracted.errors)
                 continue
@@ -688,31 +981,6 @@ def _dedup_and_log_coverage(
     return new_items
 
 
-def _apply_genre_denylist(
-    new_items: list[NormalizedItem], fetcher: Kinozal
-) -> tuple[list[NormalizedItem], list[NormalizedItem]]:
-    """Partition new items into (kept, filtered) by the genre denylist (#263).
-
-    The details fetch (+1 HTTP/item) only runs when the denylist is non-empty, so
-    a healthy default (unset var) pays zero overhead. `filtered` items are NOT
-    notified but ARE stored by the caller (dedup) so they aren't re-fetched every
-    run — a conscious terminal non-delivery, ≠ a failed delivery (Principle III
-    retries only failures).
-    """
-    excluded = _excluded_genres()
-    if excluded:
-        kept, filtered = _split_by_excluded_genre(new_items, fetcher, excluded)
-        if filtered:
-            logger.info(
-                "kinozal pipeline: filtered %d item(s) by excluded genre: %s",
-                len(filtered),
-                ", ".join(sorted(i.title for i in filtered)),
-            )
-    else:
-        kept, filtered = new_items, []
-    return kept, filtered
-
-
 def _notify_and_persist(
     kept: list[NormalizedItem],
     filtered: list[NormalizedItem],
@@ -725,8 +993,8 @@ def _notify_and_persist(
     """Enrich, notify, persist delivered+filtered, and surface failed deliveries.
 
     Mutates `results` in-place: failed deliveries are appended to the matching
-    per-source result's `.errors`. Persist confirmed-delivered items PLUS
-    genre-filtered ones (Principle III); failed deliveries stay unstored so the
+    per-source result's `.errors`. Persist confirmed-delivered items PLUS items
+    filtered by category or genre (Principle III); failed deliveries stay unstored so the
     next run retries them, and surface as a visible anomaly via result.errors +
     non-zero exit (Principle IV). The store-guard keys on `items_to_store` (not
     `sent`) so filtered items are persisted even when every new item was filtered
@@ -841,6 +1109,9 @@ def run_kinozal_pipeline(
     fetcher = kinozal or Kinozal.from_env()
 
     all_items, results = _fetch_and_extract(kinozal_sources, urls, fetcher)
+    excluded_categories = _excluded_item_categories()
+    excluded_genres = _excluded_genres()
+    _validate_item_category_config(excluded_categories, results)
     if not all_items:
         logger.info("kinozal pipeline: no items extracted")
         return results
@@ -850,7 +1121,13 @@ def run_kinozal_pipeline(
         logger.info("kinozal pipeline: no new items")
         return results
 
-    kept, filtered = _apply_genre_denylist(new_items, fetcher)
+    kept, filtered = _apply_item_filters(
+        new_items,
+        fetcher,
+        excluded_categories,
+        excluded_genres,
+        results,
+    )
     _notify_and_persist(kept, filtered, source_map, youtube, notifier, storage, results)
     return results
 

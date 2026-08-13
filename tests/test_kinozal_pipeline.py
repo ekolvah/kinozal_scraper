@@ -1637,9 +1637,7 @@ _MIXED_ITEM_LISTING = (
     "</body></html>"
 )
 _MIXED_FILM_KEY = "Грязные деньги / In the Grey / 2026"
-_MIXED_BOOK_KEY = (
-    "Сергей Лукьяненко - Небесное воинство: Седьмой (1 книга) / Фантастика / 2025"
-)
+_MIXED_BOOK_KEY = "Сергей Лукьяненко - Небесное воинство: Седьмой (1 книга) / Фантастика / 2025"
 
 
 def _item_details(
@@ -1776,7 +1774,9 @@ class TestItemCategoryDenylist(unittest.TestCase):
             categories="Другое - АудиоКниги"
         )
         self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY})
-        self.assertEqual({row[0] for row in storage.stored_rows("movies")}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY})
+        self.assertEqual(
+            {row[0] for row in storage.stored_rows("movies")}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY}
+        )
         self.assertEqual([profile.ru_title for profile in youtube.profiles], ["Грязные деньги"])
         self.assertEqual(len(details_calls), 2)
 
@@ -1841,16 +1841,16 @@ class TestKinozalItemCategoryE2E(unittest.TestCase):
             categories="Другое - АудиоКниги"
         )
         self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY})
-        self.assertEqual({row[0] for row in storage.stored_rows("movies")}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY})
+        self.assertEqual(
+            {row[0] for row in storage.stored_rows("movies")}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY}
+        )
         self.assertEqual([profile.ru_title for profile in youtube.profiles], ["Грязные деньги"])
 
 
 class TestKinozalItemProvenance(unittest.TestCase):
     def test_log_states_delivery_outcome_and_raw_carries_category_id_and_name(self) -> None:
         with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs:
-            _, _, _, results, _ = _run_item_category_filter(
-                categories="Другое - АудиоКниги"
-            )
+            _, _, _, results, _ = _run_item_category_filter(categories="Другое - АудиоКниги")
         by_title = {item.title: item for item in results[0].items}
         film = by_title["Грязные деньги"]
         book = by_title["Сергей Лукьяненко - Небесное воинство: Седьмой (1 книга)"]
