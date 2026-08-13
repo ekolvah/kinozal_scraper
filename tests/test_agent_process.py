@@ -111,6 +111,22 @@ class TestAgentProcess:
         assert len(REQUIRED_SECTIONS) == 9
         assert REQUIRED_SECTIONS[-1] == "Agent handoff"
 
+    def test_external_evidence_preserves_the_exact_valid_item_from_the_failing_input(
+        self,
+    ) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
+            encoding="utf-8"
+        )
+
+        for marker in (
+            "same captured response",
+            "does not count as preservation",
+            "same captured input through one pipeline run",
+            "loses the preserved record is BLOCKING",
+            "trace the current production path",
+        ):
+            assert marker in process
+
     def test_pr_template_records_agent_provenance(self) -> None:
         template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
         assert "## Agent record" in template
