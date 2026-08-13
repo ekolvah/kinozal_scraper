@@ -1,14 +1,20 @@
 {
   "id": null,
   "uid": null,
-  "title": "Claude Code token efficiency",
-  "description": "Reporting-only dashboard built from the verified signal catalogue in issue #471.",
+  "title": "Agent token efficiency",
+  "description": "Reporting-only Claude Code and Codex dashboard built from verified signal catalogues in issues #471 and #472.",
   "schemaVersion": 42,
   "version": 1,
   "refresh": "1m",
   "time": {
     "from": "now-14d",
     "to": "now"
+  },
+  "agentTelemetry": {
+    "missingDimensions": [
+      "github_issue",
+      "git_branch"
+    ]
   },
   "templating": {
     "list": [
@@ -251,6 +257,82 @@
           "options": {
             "mode": "markdown",
             "content": "Main/subagent attribution uses the observed `query_source` attribute. `agent_id` and `skill_name` were not observed and remain unavailable rather than being displayed as zero."
+          }
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "type": "row",
+      "title": "Codex implementer",
+      "decision": "codex-usage",
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 46},
+      "panels": [
+        {
+          "id": 16,
+          "type": "timeseries",
+          "title": "Codex tokens by model and type",
+          "description": "Unavailable Codex samples remain unavailable and are never rendered as zero.",
+          "source": "codex",
+          "datasource": {"type": "prometheus", "uid": "${metrics}"},
+          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 47},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (model, token_type, originator, session_source) (increase(codex_turn_token_usage_sum[$__rate_interval]))",
+              "legendFormat": "{{model}} {{token_type}} {{originator}} {{session_source}}",
+              "catalogueRef": "metrics:codex.turn.token_usage",
+              "source": "codex"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "type": "timeseries",
+          "title": "Codex tool calls by model and source",
+          "description": "Native metrics expose aggregate tool-call volume, not tool names or success; unavailable samples remain unavailable.",
+          "source": "codex",
+          "datasource": {"type": "prometheus", "uid": "${metrics}"},
+          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 47},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (model, originator, session_source) (increase(codex_turn_tool_call_sum[$__rate_interval]))",
+              "legendFormat": "{{model}} {{originator}} {{session_source}}",
+              "catalogueRef": "metrics:codex.turn.tool_call",
+              "source": "codex"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "type": "timeseries",
+          "title": "Average Codex turn duration",
+          "description": "Average completed-turn duration from the captured histogram; unavailable samples remain unavailable.",
+          "source": "codex",
+          "datasource": {"type": "prometheus", "uid": "${metrics}"},
+          "gridPos": {"h": 8, "w": 16, "x": 0, "y": 55},
+          "targets": [
+            {
+              "refId": "A",
+              "expr": "sum by (model, originator, session_source) (rate(codex_turn_e2e_duration_ms_milliseconds_sum[$__rate_interval])) / sum by (model, originator, session_source) (rate(codex_turn_e2e_duration_ms_milliseconds_count[$__rate_interval]))",
+              "legendFormat": "{{model}} {{originator}} {{session_source}}",
+              "catalogueRef": "metrics:codex.turn.e2e_duration_ms",
+              "source": "codex"
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "type": "text",
+          "title": "Codex attribution boundary",
+          "description": "Unavailable issue and branch dimensions remain visible instead of being inferred.",
+          "source": "codex",
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 55},
+          "options": {
+            "mode": "markdown",
+            "content": "Issue/branch attribution is unavailable in native Codex metrics. Compare source totals here; do not claim a planner + implementer total for one GitHub issue."
           }
         }
       ]

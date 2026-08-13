@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ASSET_DIR = ROOT / "observability" / "claude-code"
 OTEL_TEMPLATE = ASSET_DIR / "otel.env.example"
 SIGNAL_CATALOGUE = ASSET_DIR / "signal-catalogue.json"
-GRAFANA_DASHBOARD = ASSET_DIR / "dashboard.json"
+GRAFANA_DASHBOARD = ROOT / "observability" / "agent-telemetry" / "dashboard.json"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -126,7 +126,9 @@ class TestGrafanaDashboard:
         catalogue = _load_json(SIGNAL_CATALOGUE)
         dashboard = _load_json(GRAFANA_DASHBOARD)
         known_refs = _catalogue_refs(catalogue)
-        targets = _dashboard_targets(dashboard)
+        targets = [
+            target for target in _dashboard_targets(dashboard) if target.get("source") != "codex"
+        ]
 
         assert targets
         assert all(target["catalogueRef"] in known_refs for target in targets)
@@ -136,18 +138,18 @@ class TestGrafanaDashboard:
         dashboard = _load_json(GRAFANA_DASHBOARD)
         decisions = {row.get("decision") for row in dashboard["panels"]}
 
-        assert decisions == {
+        assert {
             "session-cost",
             "api-token-mix",
             "context-compaction",
             "tool-health",
             "attribution",
-        }
+        } <= decisions
 
 
 class TestNoBespokeAutomation:
     def test_assets_define_no_hook_scheduler_or_github_writer(self) -> None:
-        expected_assets = {OTEL_TEMPLATE, SIGNAL_CATALOGUE, GRAFANA_DASHBOARD}
+        expected_assets = {OTEL_TEMPLATE, SIGNAL_CATALOGUE}
         actual_assets = {path for path in ASSET_DIR.iterdir() if path.is_file()}
         assert actual_assets == expected_assets
 

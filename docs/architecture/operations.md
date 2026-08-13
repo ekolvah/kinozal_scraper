@@ -298,10 +298,10 @@ intervals are for a bounded setup probe only.
 3. In Grafana Explore, select the stack Metrics datasource and confirm a
    `claude_code_*` metric. Select the stack Logs datasource and query
    `{service_name="claude-code"}`.
-4. Import `observability/claude-code/dashboard.json` through **Dashboards → New
-   → Import**, then select the stack Metrics and Logs datasources. A Grafana
-   service-account token with Editor permission is needed only for API-driven
-   verification/import, not for ingestion.
+4. Import the shared `observability/agent-telemetry/dashboard.json` through
+   **Dashboards → New → Import**, then select the stack Metrics and Logs
+   datasources. A Grafana service-account token with Editor permission is
+   needed only for API-driven verification/import, not for ingestion.
 
 The dashboard uses only signal names and attributes captured from the real
 destination. A missing compaction, agent, or skill dimension is displayed as
@@ -330,3 +330,80 @@ variables from the user environment, then restart Claude Code. Revoke the
 Grafana Cloud access-policy token to invalidate ingestion immediately. Revoke
 the Grafana service-account token separately if API import/query access is no
 longer needed. Deleting the dashboard alone does not stop data ingestion.
+
+## Codex development telemetry through Alloy
+
+Codex uses the same Grafana Cloud metrics stack, but it does not export there
+directly. The current app-server exporter fixes metric temporality to Delta,
+which Grafana Cloud rejects for some Codex sums and histograms. A local Grafana
+Alloy 1.18.1 bridge receives metrics on loopback, converts them to Cumulative,
+batches them, and exports them to the cloud. The compatibility decision and its
+removal condition are in
+[ADR-0007](../adr/0007-export-codex-metrics-to-grafana-cloud.md).
+
+### Install and configure
+
+Install the official Windows amd64 Alloy 1.18.1 binary under the user profile
+and verify the release SHA-256. Copy
+`observability/codex/config.alloy.example` to
+`%USERPROFILE%\.config\alloy\config.alloy` and copy the tables from
+`observability/codex/otel.toml.example` to `~/.codex/config.toml`. Do not place
+substituted values in the repository.
+
+The Alloy process needs three user environment variables:
+
+* `GRAFANA_CLOUD_OTLP_ENDPOINT` — the stack base OTLP URL ending in `/otlp`;
+* `GRAFANA_CLOUD_INSTANCE_ID` — the OTLP access-policy username;
+* `GRAFANA_CLOUD_OTLP_TOKEN` — a stack-scoped token with only `metrics:write`.
+
+The Grafana dashboard API service-account token is separate and is not given to
+Alloy. Validate the safety contract and Alloy syntax before start:
+
+```powershell
+python scripts/check_codex_otel_config.py
+& "$env:LOCALAPPDATA\GrafanaAlloy\1.18.1\alloy.exe" validate `
+  --stability.level=experimental `
+  "$env:USERPROFILE\.config\alloy\config.alloy"
+```
+
+Run Alloy hidden in the user-logon task `Kinozal Codex Alloy` with the same
+pinned executable, config, and
+`--stability.level=experimental`; set `--storage.path` under
+`%LOCALAPPDATA%\GrafanaAlloy\data`. The experimental stability flag is required
+by `otelcol.processor.deltatocumulative`. The explicit `stderr` log destination
+keeps a non-admin user-logon task out of the Windows Event Log; the launcher
+redirects that stream to the local data directory. The receiver must remain
+`127.0.0.1:4318`, not `0.0.0.0` or `[::]`.
+
+### Verify Codex delivery
+
+1. Confirm `http://127.0.0.1:12345/-/ready` returns HTTP 200 and port 4318 is
+   listening only on loopback.
+2. Restart VS Code after changing `~/.codex/config.toml`; an existing
+   `app-server` retains its process-global telemetry configuration.
+3. Complete one real Codex turn and wait at least one 60-second metrics export
+   interval. A completed turn alone does not prove delivery.
+4. Confirm Alloy reports accepted points, sent points, and zero failed points.
+   Then query Grafana for `codex_*` metrics.
+5. Import `observability/agent-telemetry/dashboard.json`, selecting the existing
+   Metrics and Logs datasources. Codex panels use Metrics only; the retained
+   Claude panels still use both.
+
+The values-free catalogue contains only metric and attribute names observed
+after successful cloud ingestion. Native Codex metrics currently have no git
+branch or GitHub issue dimension and expose aggregate tool-call volume without
+tool name or success. The dashboard displays those gaps rather than inferring
+them or rendering them as zero.
+
+### Restart, failure, and rollback
+
+If Alloy is down, Codex export fails at the loopback boundary and telemetry is
+unavailable; it is not zero usage. Check Alloy's local log and component UI
+before restarting the process. Re-run both validators after any Alloy or Codex
+upgrade and repeat the live capture before changing the catalogue.
+
+To stop Codex telemetry, remove the `[analytics]` and `[otel]` tables from
+`~/.codex/config.toml`, restart VS Code, stop Alloy, and disable/remove its
+user-logon task. Remove `GRAFANA_CLOUD_INSTANCE_ID` and
+`GRAFANA_CLOUD_OTLP_TOKEN` from the user environment. Revoke the OTLP token to
+invalidate ingestion immediately. Deleting the dashboard does not stop export.

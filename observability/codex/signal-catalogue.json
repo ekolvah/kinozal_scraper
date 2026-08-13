@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "capture": {
+    "destination": "Grafana Cloud",
+    "status": "verified",
+    "captured_at": "2026-08-12",
+    "codex_version": "0.147.0-alpha.6.5",
+    "alloy_version": "1.18.1",
+    "entry_point": "VS Code codex app-server",
+    "bridge": "Grafana Alloy deltatocumulative",
+    "exporters": {
+      "metrics": "otlp-http",
+      "logs": "none",
+      "traces": "none"
+    },
+    "missing_dimensions": [
+      "github_issue",
+      "git_branch",
+      "tool_name",
+      "tool_success"
+    ]
+  },
+  "signals": {
+    "metrics": [
+      {
+        "name": "codex.turn.token_usage",
+        "backend_name": "codex_turn_token_usage_sum",
+        "attributes": [
+          "app_version",
+          "auth_mode",
+          "job",
+          "model",
+          "originator",
+          "service_name",
+          "service_version",
+          "session_source",
+          "tmp_mem_enabled",
+          "token_type"
+        ]
+      },
+      {
+        "name": "codex.turn.tool_call",
+        "backend_name": "codex_turn_tool_call_sum",
+        "attributes": [
+          "app_version",
+          "auth_mode",
+          "job",
+          "model",
+          "originator",
+          "service_name",
+          "service_version",
+          "session_source",
+          "tmp_mem_enabled"
+        ]
+      },
+      {
+        "name": "codex.turn.e2e_duration_ms",
+        "backend_name": "codex_turn_e2e_duration_ms_milliseconds_sum",
+        "attributes": [
+          "app_version",
+          "auth_mode",
+          "job",
+          "model",
+          "originator",
+          "service_name",
+          "service_version",
+          "session_source"
+        ]
+      }
+    ]
+  }
+}
