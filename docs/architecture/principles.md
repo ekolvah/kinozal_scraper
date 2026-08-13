@@ -156,10 +156,11 @@ that live system is part of locating the failure; repository reasoning alone is
 not evidence. Preserve the response as a fixture with a reproducible command
 appropriate to that source so the claim is reviewable and the parser test uses
 what the system returned. Kinozal capture uses
-`python scripts/capture_fixture.py <url> <path>`; other external systems use
-their own capture route. No workarounds, shims, retries, broader try/except, or
-`--no-verify` flags are accepted as fixes when the underlying mechanism is not
-understood.
+`python scripts/capture_kinozal_fixture.py <url> <path>`; the source routing
+table in [`agent-process.md`](agent-process.md#issue-contract) gives read-only
+commands for GitHub, Telegram, Gemini, Sheets, and an existing CLI for another
+source. No workarounds, shims, retries, broader try/except, or `--no-verify`
+flags are accepted as fixes when the underlying mechanism is not understood.
 
 If the immediate fix proves too large for the current PR, the PR may ship a
 **documented mitigation** (e.g. raise-and-skip with a linked issue) but the

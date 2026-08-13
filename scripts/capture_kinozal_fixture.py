@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Capture one Kinozal page through the production origin-to-mirror fetcher.
 
-Usage: python scripts/capture_fixture.py <url> <path>
+Usage: python scripts/capture_kinozal_fixture.py <url> <path>
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ def capture(url: str, path: Path, *, fetcher: DetailsFetcher | None = None) -> N
     active_fetcher = fetcher if fetcher is not None else Kinozal.from_env()
     response = active_fetcher.fetch_details(url)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(response, encoding="utf-8")
+    path.write_bytes(response.encode("utf-8"))
 
 
 def main() -> None:

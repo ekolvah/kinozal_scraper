@@ -50,15 +50,37 @@ path: `<repository-relative path>`
 The command is specific to the external source and must include the exact path
 named on the next line. The validator checks that the command is present and the
 repository-relative file exists; it does not try to recognize every possible
-source tool. If the capture command actually failed, the narrow exception is
-`status: failed` plus a non-empty fenced block after `output:` containing that
-command's output; an unsupported claim that the source is unavailable is still
-a gap. For Kinozal, use
-`python scripts/capture_fixture.py <url> <path>`; it calls the production
-origin-to-authenticated-mirror fetcher. GitHub, Telegram, Gemini, Sheets, and
-other sources use their own reproducible capture route. A committed fixture can
-be fabricated, which no syntax gate can rule out, but the command and path make
-the observation cheap to reproduce and leave a reviewable claim (#509).
+source tool. Use the narrowest read-only route below; never run a full pipeline
+that writes Sheets rows or sends Telegram notifications merely to collect
+evidence:
+
+| Source | Capture route |
+| --- | --- |
+| Kinozal | `python scripts/capture_kinozal_fixture.py <url> <path>` |
+| GitHub REST | `python scripts/capture_external_fixture.py github <endpoint> <path> --confirm-repository-safe` |
+| Telegram channel input | `python scripts/capture_external_fixture.py telegram <channel-url> <path> --confirm-repository-safe` |
+| Gemini summarization | `python scripts/capture_external_fixture.py gemini <saved-input> <path> <--broadcast|--chat> --confirm-repository-safe` |
+| Existing Sheets worksheet | `python scripts/capture_external_fixture.py sheets <spreadsheet-url> <worksheet> <path> --confirm-repository-safe` |
+| Another source with a read-only CLI | `<read-only command> | python scripts/capture_external_fixture.py stdin <path> --confirm-repository-safe` |
+
+The safety flag is an explicit claim, not a sanitizer: inspect the payload and
+never commit credentials, private messages, or other sensitive data. The
+Telegram route calls `TelethonReader` without Gemini or a notifier; the Gemini
+route replays an already saved input without Telegram delivery; the Sheets
+route only reads an existing worksheet; and the GitHub route permits one
+`gh api` GET rather than arbitrary subprocess arguments. The `stdin` route
+persists output but does not execute the upstream tool, so it adds no generic
+process-execution capability.
+
+If no safe read-only route exists, do not improvise with a side-effecting
+production entry point. A failed capture records `status: failed` plus a
+non-empty fenced block after `output:` containing the attempted command's
+output; an unsupported claim that the source is unavailable is still a gap.
+This makes the access failure reviewable but does not prove source behaviour: a
+plan whose design depends on the missing fact remains blocked. A committed
+fixture can be fabricated, which no syntax gate can rule out, but the command
+and path make the observation cheap to reproduce and leave a reviewable claim
+(#509).
 
 For a bug with no external-system behaviour to observe, the section instead
 starts with `n/a: <reason>`, naming why live capture does not apply. The section

@@ -321,7 +321,7 @@ def _body_with_evidence(content: str) -> str:
 
 def _capture_evidence(path: str) -> str:
     return (
-        "capture: `python scripts/capture_fixture.py "
+        "capture: `python scripts/capture_kinozal_fixture.py "
         f"https://kinozal.tv/details.php?id=1 {path}`\n"
         f"path: `{path}`"
     )
@@ -390,25 +390,23 @@ def test_capture_failure_marker_requires_the_command_output(tmp_path: Path) -> N
     assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == []
 
 
-def test_capture_fixture_script_writes_the_response_through_the_existing_fetcher(
+def test_capture_kinozal_fixture_writes_the_response_through_the_existing_fetcher(
     tmp_path: Path,
 ) -> None:
-    capture_fixture = importlib.import_module("scripts.capture_fixture")
+    capture_fixture = importlib.import_module("scripts.capture_kinozal_fixture")
     seen: list[str] = []
 
     class StubFetcher:
         def fetch_details(self, url: str) -> str:
             seen.append(url)
-            return "<html>captured through Kinozal.fetch_details</html>"
+            return "<html>captured through\nKinozal.fetch_details</html>"
 
     target = tmp_path / "kinozal" / "details.html"
     source = "https://kinozal.tv/details.php?id=2112853"
     capture_fixture.capture(source, target, fetcher=StubFetcher())
 
     assert seen == [source]
-    assert target.read_text(encoding="utf-8") == (
-        "<html>captured through Kinozal.fetch_details</html>"
-    )
+    assert target.read_bytes() == b"<html>captured through\nKinozal.fetch_details</html>"
 
 
 def test_new_external_data_parsing_test_with_inline_markup_is_reported() -> None:

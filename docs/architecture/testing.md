@@ -37,11 +37,13 @@ Assert on doubles' state after the call.
   parser tests already present when the ratchet landed are explicitly
   grandfathered; this is a ratchet, not a repository-wide migration.
 - Capture a Kinozal page with
-  `python scripts/capture_fixture.py <url> <repo-relative-path>`. The command
-  reuses `Kinozal.fetch_details`, including the tested anonymous-origin to
-  authenticated-mirror fallback, and writes UTF-8. For another external source,
-  use its own reproducible command and record that command plus its fixture path
-  in the issue's `## Evidence` section.
+  `python scripts/capture_kinozal_fixture.py <url> <repo-relative-path>`. The
+  command reuses `Kinozal.fetch_details`, including the tested anonymous-origin
+  to authenticated-mirror fallback, and writes UTF-8 without platform newline
+  conversion. For another external source, use the read-only route in the
+  [`agent-process.md` Evidence table](agent-process.md#issue-contract) and
+  record that command plus its fixture path in the issue's `## Evidence`
+  section.
 - `scripts/check_fixture_ratchet.py` is exercised by the validator test suite.
   It reports a new inline-HTML parser test by pytest node ID. The fixture keeps
   network access out of CI while preserving the observed external shape.
