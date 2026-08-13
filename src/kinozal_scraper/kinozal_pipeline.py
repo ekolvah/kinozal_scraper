@@ -6,7 +6,7 @@ import logging
 import os
 import re
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import parse_qs, urlsplit, urlunsplit
 
 from bs4 import BeautifulSoup, Tag
 from curl_cffi.requests import Session as _MirrorSession
@@ -30,6 +30,38 @@ from kinozal_scraper.youtube import YoutubeQuotaExhausted
 
 logger = logging.getLogger(__name__)
 
+# Live `top.php` category selector verified for #506. `t=0` is the mixed
+# "Selected releases" feed (it includes books); only the video families and
+# games are product inputs. Keeping the set closed makes a newly-added site
+# category fail visibly instead of silently becoming a film.
+_ALLOWED_LISTING_CATEGORIES = frozenset(
+    {
+        1,  # films
+        2,  # cartoons
+        3,  # series
+        7,  # games
+        21,
+        22,
+        23,
+        31,
+        32,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        110,
+        111,
+        112,
+        113,
+        115,
+        116,
+    }
+)
+
 
 def _kinozal_urls() -> list[str]:
     """Read Kinozal URLs from the KINOZAL_URLS env variable (format: 'label|url;...').
@@ -43,6 +75,24 @@ def _kinozal_urls() -> list[str]:
         return [pair.split("|")[1] for pair in urls_env.split(";") if "|" in pair]
     fallback = os.environ.get("KINOZAL_TOP_URL", "")
     return [fallback] if fallback else []
+
+
+def _kinozal_listing_category(url: str) -> int | None:
+    """Return one explicitly allowed `top.php?t=` category, else ``None``.
+
+    Missing, blank, repeated and non-integer values are configuration drift.
+    `parse_qs(..., keep_blank_values=True)` keeps blank distinct from absent;
+    requiring exactly one value prevents an ambiguous `t=1&t=7` request from
+    being accepted according to whichever value the site happens to prefer.
+    """
+    values = parse_qs(urlsplit(url).query, keep_blank_values=True).get("t")
+    if values is None or len(values) != 1:
+        return None
+    try:
+        category = int(values[0])
+    except ValueError:
+        return None
+    return category if category in _ALLOWED_LISTING_CATEGORIES else None
 
 
 def _excluded_genres() -> set[str]:
@@ -404,7 +454,11 @@ def _dedupe_key(raw: str) -> str:
 
 
 def _extract_kinozal_items(
-    html: str, source: dict[str, Any], base_url: str | None = None
+    html: str,
+    source: dict[str, Any],
+    base_url: str | None = None,
+    listing_url: str | None = None,
+    listing_category: int | None = None,
 ) -> PipelineResult:
     """Parse kinozal HTML and return PipelineResult with clean titles and raw dedupe_keys.
 
@@ -438,6 +492,9 @@ def _extract_kinozal_items(
                 item.title,
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
+        if listing_url is not None and listing_category is not None:
+            item.raw["kinozal_listing_url"] = listing_url
+            item.raw["kinozal_listing_category"] = listing_category
         item.title = _kinozal_title(item.title)
     return result
 
@@ -637,6 +694,15 @@ def _fetch_and_extract(
     for source in kinozal_sources:
         result = PipelineResult(source_id=source["id"])
         for url in urls:
+            category = _kinozal_listing_category(url)
+            if category is None:
+                message = (
+                    "unsafe kinozal listing category "
+                    f"(expected exactly one allowlisted t= value): {url}"
+                )
+                logger.error("[%s] %s", source["id"], message)
+                result.errors.append(message)
+                continue
             try:
                 html_text, effective_base_url = fetcher.fetch_listing(url)
             except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
@@ -645,7 +711,13 @@ def _fetch_and_extract(
                 continue
             # Resolve this listing's links/posters against the origin that served
             # it (.tv on primary, .guru on mirror fallback) — not a fixed host (#247).
-            extracted = _extract_kinozal_items(html_text, source, base_url=effective_base_url)
+            extracted = _extract_kinozal_items(
+                html_text,
+                source,
+                base_url=effective_base_url,
+                listing_url=url,
+                listing_category=category,
+            )
             if not extracted.ok:
                 result.errors.extend(extracted.errors)
                 continue
@@ -675,6 +747,13 @@ def _dedup_and_log_coverage(
 
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
+    for item in new_items:
+        logger.info(
+            "kinozal new item %r from %s (t=%d)",
+            item.title,
+            item.raw["kinozal_listing_url"],
+            item.raw["kinozal_listing_category"],
+        )
     # Visibility (§IV): log coverage on every run — including the common "0 new"
     # path — so a vanished film reads in the Actions log instead of looking like
     # "no new films". raw_count is pre-normalize, exposing dedup-collapse.

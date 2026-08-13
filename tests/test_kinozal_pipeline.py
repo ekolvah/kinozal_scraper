@@ -471,9 +471,7 @@ class TestKinozalCategoryGuard(unittest.TestCase):
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
             unittest.mock.patch.dict(os.environ, {"KINOZAL_URLS": urls}, clear=False),
         ):
-            results = run_kinozal_pipeline(
-                storage, notifier, _FakeYoutube(), _SOURCES_CONFIG
-            )
+            results = run_kinozal_pipeline(storage, notifier, _FakeYoutube(), _SOURCES_CONFIG)
 
         sent_ids = {notification.id for notification in notifier.sent}
         self.assertEqual(
@@ -555,7 +553,7 @@ def _run(
     sources_config: dict[str, Any] | None = None,
     notifier: InMemoryNotifier | None = None,
     storage: InMemoryStorage | None = None,
-    urls: str = "top|https://test.example/top.php",
+    urls: str = "top|https://test.example/top.php?t=1",
 ) -> tuple[InMemoryStorage, InMemoryNotifier]:
     """Run the real run_kinozal_pipeline with HTTP patched and KINOZAL_URLS env set.
 
@@ -785,7 +783,7 @@ class TestPipelineFailureIsolation(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"KINOZAL_URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php?t=1"},
                 clear=False,
             ),
         ):
@@ -810,7 +808,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"KINOZAL_URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php?t=1"},
                 clear=False,
             ),
         ):
@@ -835,7 +833,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"KINOZAL_URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php?t=1"},
                 clear=False,
             ),
         ):
@@ -855,7 +853,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
             ),
             unittest.mock.patch.dict(
                 os.environ,
-                {"KINOZAL_URLS": "top|https://test.example/top.php"},
+                {"KINOZAL_URLS": "top|https://test.example/top.php?t=1"},
                 clear=False,
             ),
         ):
@@ -911,7 +909,7 @@ def _run_results(
         unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
         unittest.mock.patch.dict(
             os.environ,
-            {"KINOZAL_URLS": "top|https://test.example/top.php"},
+            {"KINOZAL_URLS": "top|https://test.example/top.php?t=1"},
             clear=False,
         ),
     ):
@@ -1057,7 +1055,7 @@ class TestGameTitleGrammar(unittest.TestCase):
                 _run(
                     html=html,
                     youtube=youtube,
-                    urls="фильмы|https://kinozal.tv/top.php?j=&t=0&d=14",
+                    urls="фильмы|https://kinozal.tv/top.php?j=&t=1&d=14",
                 )
                 assert youtube.last_profile is not None
                 self.assertEqual(youtube.last_profile.ru_title, expected_ru)
@@ -1167,7 +1165,7 @@ class TestPipelineAuth(unittest.TestCase):
     Failover and both-failed are visible (§IV); credentials are an optional
     backup, not a hard requirement."""
 
-    _URLS = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php?d=14"}
+    _URLS = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php?t=1&d=14"}
 
     def _run_with_env(
         self, env: dict[str, str], urls: str | None = None
@@ -1219,7 +1217,7 @@ class TestPipelineAuth(unittest.TestCase):
 
     def test_login_is_lazy_and_once_across_urls(self) -> None:
         sentinel = unittest.mock.Mock()
-        two_urls = "a|https://kinozal.tv/top.php?d=14;b|https://kinozal.tv/top.php?d=0"
+        two_urls = "a|https://kinozal.tv/top.php?t=1&d=14;b|https://kinozal.tv/top.php?t=1&d=0"
         with (
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")
@@ -1510,7 +1508,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ),
         ):
-            notifier = self._run("top|https://kinozal.tv/top.php?d=14")
+            notifier = self._run("top|https://kinozal.tv/top.php?t=1&d=14")
         texts = "\n".join(n.text for n in notifier.sent)
         self.assertIn("kinozal.guru/details.php", texts)
         self.assertNotIn("kinozal.tv/details.php", texts)
@@ -1527,7 +1525,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=_KINOZAL_HTML
             ),
         ):
-            notifier = self._run("top|https://kinozal.tv/top.php?d=14")
+            notifier = self._run("top|https://kinozal.tv/top.php?t=1&d=14")
         posters = [n.image_url for n in notifier.sent]
         # item 1 has a relative poster (/img/p1.jpg); the mirror origin must win.
         self.assertIn("https://kinozal.guru/img/p1.jpg", posters)
@@ -1549,7 +1547,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
             ),
         ):
             notifier = self._run(
-                "a|https://kinozal.tv/top.php?d=14;b|https://kinozal.tv/top.php?d=0"
+                "a|https://kinozal.tv/top.php?t=1&d=14;b|https://kinozal.tv/top.php?t=1&d=0"
             )
         alpha = next(n for n in notifier.sent if "Alpha Film" in n.text)
         beta = next(n for n in notifier.sent if "Beta Film" in n.text)
@@ -1797,7 +1795,7 @@ def _run_genre_filter(
 
     storage = InMemoryStorage()
     notifier = InMemoryNotifier()
-    env = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php"}
+    env = {"KINOZAL_URLS": "top|https://kinozal.tv/top.php?t=1"}
     if excluded is not None:
         env["KINOZAL_EXCLUDED_GENRES"] = excluded
     with (

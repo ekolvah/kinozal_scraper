@@ -120,8 +120,19 @@ The epic separates **retrieval** (`film → list[Candidate]`) from **selection**
   degradation to title+year + WARNING; successful fetch with zero fields → WARNING tripwire (§IV).
   For harness eval (#140) and potential cast escalation; production does not call it (below).
 
+**Kinozal listing-category guard.** Every `KINOZAL_URLS` entry must carry exactly one
+allowlisted `top.php?t=` category. The supported families are films (`t=1`, the live film
+subcategories `101–108`, `110–113`, `115–116`), cartoons (`t=2`, `21–23`), series (`t=3`, `31–32`), and games
+(`t=7`). `t=0` is Kinozal's mixed "Selected releases" feed, not a film category; it can
+contain books and is rejected before the listing fetch, as are music, library, audiobooks,
+programs, missing/blank/repeated/non-integer categories. A rejection is recorded in the
+source's `PipelineResult.errors`, so allowed sibling URLs still deliver while the step remains
+visibly red. New allowed items retain `kinozal_listing_url` and
+`kinozal_listing_category` in `raw`, and a bounded INFO breadcrumb names both before
+notification (#506).
+
 **Game releases (#385, #412).** `KINOZAL_URLS` contains the games top (`t=7`) alongside films
-(`t=0`) and series (`t=32`) — all flow into one `kinozal_movies` source. Their title grammar is
+(`t=1`) and series (`t=32`) — all flow into one `kinozal_movies` source. Their title grammar is
 **different**: `Название / x64 / RU / Жанр / Год / Формат / PC (Windows)` versus the film
 `RU / Original / Year / Format`. Therefore `original_title` (the second ` / ` segment) yielded
 architecture for games, and YouTube received `x64 2024 trailer` — 27 such queries in run
