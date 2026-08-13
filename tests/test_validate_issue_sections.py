@@ -357,6 +357,30 @@ def test_evidence_accepts_a_source_specific_capture_command(tmp_path: Path) -> N
         f"path: `{relative_path}`"
     )
 
+    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+    assert gaps == [
+        "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, "
+        "paired test)"
+    ]
+
+
+def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Path) -> None:
+    capture = tmp_path / "tests" / "fixtures" / "captured.html"
+    capture.parent.mkdir(parents=True)
+    capture.write_text("<html>mixed external response</html>", encoding="utf-8")
+    path = "tests/fixtures/captured.html"
+    body = _body_with_evidence(
+        f"capture: `python scripts/capture_kinozal_fixture.py https://kinozal.tv {path}`\n"
+        f"path: `{path}`\n"
+        "observed: one external collection contains both wanted and unwanted records\n"
+        "preserve: the wanted record from that same collection remains delivered\n"
+        "change: the unwanted record from that collection is rejected\n"
+        "boundaries: reject the collection versus classify each record\n"
+        "collateral: collection rejection loses the wanted record; item classification does not\n"
+        "reuse: the production path already fetches record details\n"
+        "paired-test: one run keeps the wanted record and rejects the unwanted record"
+    )
+
     assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
 
 
@@ -376,7 +400,7 @@ def test_non_external_bug_can_record_evidence_not_applicable(tmp_path: Path) -> 
     ]
 
 
-def test_capture_failure_marker_requires_the_command_output(tmp_path: Path) -> None:
+def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path) -> None:
     evidence = _capture_evidence("tests/fixtures/source-unavailable.html")
     without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
     assert find_gaps(without_output, issue_labels=("bug",), repo_root=tmp_path) == [
@@ -387,7 +411,9 @@ def test_capture_failure_marker_requires_the_command_output(tmp_path: Path) -> N
         f"{evidence}\nstatus: failed\noutput:\n\n```text\n"
         "primary fetch failed; authenticated mirror login failed\n```"
     )
-    assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == [
+        "Evidence (missing: successful capture)"
+    ]
 
 
 def test_capture_kinozal_fixture_writes_the_response_through_the_existing_fetcher(
