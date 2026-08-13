@@ -561,9 +561,7 @@ class TestKinozalCategoryGuard(unittest.TestCase):
 
         with (
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
-            unittest.mock.patch.dict(
-                os.environ, {"KINOZAL_URLS": env_value}, clear=False
-            ),
+            unittest.mock.patch.dict(os.environ, {"KINOZAL_URLS": env_value}, clear=False),
             self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as logs,
         ):
             notifier = InMemoryNotifier()
@@ -574,9 +572,7 @@ class TestKinozalCategoryGuard(unittest.TestCase):
         self.assertEqual(fetched, urls)
         self.assertEqual(len(notifier.sent), len(urls))
         self.assertTrue(results[0].ok)
-        self.assertEqual(
-            {item.raw["kinozal_listing_url"] for item in results[0].items}, set(urls)
-        )
+        self.assertEqual({item.raw["kinozal_listing_url"] for item in results[0].items}, set(urls))
         self.assertTrue(
             all(item.raw["kinozal_listing_category"] is None for item in results[0].items)
         )

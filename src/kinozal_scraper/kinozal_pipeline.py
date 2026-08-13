@@ -31,36 +31,11 @@ from kinozal_scraper.youtube import YoutubeQuotaExhausted
 logger = logging.getLogger(__name__)
 
 # Live `top.php` category selector verified for #506. `t=0` is the mixed
-# "Selected releases" feed (it includes books); only the video families and
-# games are product inputs. Keeping the set closed makes a newly-added site
-# category fail visibly instead of silently becoming a film.
-_ALLOWED_LISTING_CATEGORIES = frozenset(
-    {
-        1,  # films
-        2,  # cartoons
-        3,  # series
-        7,  # games
-        21,
-        22,
-        23,
-        31,
-        32,
-        101,
-        102,
-        103,
-        104,
-        105,
-        106,
-        107,
-        108,
-        110,
-        111,
-        112,
-        113,
-        115,
-        116,
-    }
-)
+# "Selected releases" feed (it includes books); 4/5/6/8 are music, library,
+# audiobooks and programs. The policy is deliberately fail-open: a new category
+# must not silently withhold a film, so only these explicit non-product inputs
+# are rejected.
+_EXCLUDED_LISTING_CATEGORIES = frozenset({0, 4, 5, 6, 8})
 
 
 def _kinozal_urls() -> list[str]:
@@ -78,21 +53,37 @@ def _kinozal_urls() -> list[str]:
 
 
 def _kinozal_listing_category(url: str) -> int | None:
-    """Return one explicitly allowed `top.php?t=` category, else ``None``.
+    """Return one unambiguous integer `top.php?t=` category, else ``None``.
 
-    Missing, blank, repeated and non-integer values are configuration drift.
-    `parse_qs(..., keep_blank_values=True)` keeps blank distinct from absent;
-    requiring exactly one value prevents an ambiguous `t=1&t=7` request from
-    being accepted according to whichever value the site happens to prefer.
+    This is provenance, not an allowlist predicate. Missing, blank, repeated and
+    non-integer values are indeterminate and therefore return ``None``; the
+    caller processes them fail-open with a visible warning (#506).
     """
     values = parse_qs(urlsplit(url).query, keep_blank_values=True).get("t")
     if values is None or len(values) != 1:
         return None
     try:
-        category = int(values[0])
+        return int(values[0])
     except ValueError:
         return None
-    return category if category in _ALLOWED_LISTING_CATEGORIES else None
+
+
+def _kinozal_listing_categories(url: str) -> tuple[int, ...]:
+    """Return every parseable `t` value for explicit-deny checks (#506).
+
+    Repeated parameters stay visible here so `t=1&t=5` cannot bypass the
+    explicit category denylist merely because its provenance is ambiguous.
+    Malformed values are ignored by this predicate and handled fail-open by the
+    caller's indeterminate-category warning.
+    """
+    values = parse_qs(urlsplit(url).query, keep_blank_values=True).get("t", [])
+    parsed: list[int] = []
+    for value in values:
+        try:
+            parsed.append(int(value))
+        except ValueError:
+            continue
+    return tuple(parsed)
 
 
 def _excluded_genres() -> set[str]:
@@ -492,7 +483,7 @@ def _extract_kinozal_items(
                 item.title,
             )
         item.raw["kinozal_raw_title"] = item.dedupe_key
-        if listing_url is not None and listing_category is not None:
+        if listing_url is not None:
             item.raw["kinozal_listing_url"] = listing_url
             item.raw["kinozal_listing_category"] = listing_category
         item.title = _kinozal_title(item.title)
@@ -694,15 +685,21 @@ def _fetch_and_extract(
     for source in kinozal_sources:
         result = PipelineResult(source_id=source["id"])
         for url in urls:
-            category = _kinozal_listing_category(url)
-            if category is None:
-                message = (
-                    "unsafe kinozal listing category "
-                    f"(expected exactly one allowlisted t= value): {url}"
-                )
+            denied = sorted(set(_kinozal_listing_categories(url)) & _EXCLUDED_LISTING_CATEGORIES)
+            if denied:
+                denied_values = ", ".join(f"t={value}" for value in denied)
+                message = f"excluded kinozal listing category {denied_values}: {url}"
                 logger.error("[%s] %s", source["id"], message)
                 result.errors.append(message)
                 continue
+            category = _kinozal_listing_category(url)
+            if category is None:
+                logger.warning(
+                    "[%s] could not determine exactly one integer kinozal listing "
+                    "category for %s; processing fail-open",
+                    source["id"],
+                    url,
+                )
             try:
                 html_text, effective_base_url = fetcher.fetch_listing(url)
             except Exception as exc:  # noqa: BLE001 — per-URL isolation: logged + surfaced via result.errors
@@ -748,11 +745,13 @@ def _dedup_and_log_coverage(
     existing = storage.get_existing_keys("movies")
     new_items = [i for i in all_items if i.dedupe_key not in existing]
     for item in new_items:
+        category = item.raw.get("kinozal_listing_category")
+        category_label = f"t={category}" if isinstance(category, int) else "t=unknown"
         logger.info(
-            "kinozal new item %r from %s (t=%d)",
+            "kinozal new item %r from %s (%s)",
             item.title,
             item.raw["kinozal_listing_url"],
-            item.raw["kinozal_listing_category"],
+            category_label,
         )
     # Visibility (§IV): log coverage on every run — including the common "0 new"
     # path — so a vanished film reads in the Actions log instead of looking like

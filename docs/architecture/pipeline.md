@@ -120,16 +120,22 @@ The epic separates **retrieval** (`film → list[Candidate]`) from **selection**
   degradation to title+year + WARNING; successful fetch with zero fields → WARNING tripwire (§IV).
   For harness eval (#140) and potential cast escalation; production does not call it (below).
 
-**Kinozal listing-category guard.** Every `KINOZAL_URLS` entry must carry exactly one
-allowlisted `top.php?t=` category. The supported families are films (`t=1`, the live film
-subcategories `101–108`, `110–113`, `115–116`), cartoons (`t=2`, `21–23`), series (`t=3`, `31–32`), and games
-(`t=7`). `t=0` is Kinozal's mixed "Selected releases" feed, not a film category; it can
-contain books and is rejected before the listing fetch, as are music, library, audiobooks,
-programs, missing/blank/repeated/non-integer categories. A rejection is recorded in the
-source's `PipelineResult.errors`, so allowed sibling URLs still deliver while the step remains
-visibly red. New allowed items retain `kinozal_listing_url` and
-`kinozal_listing_category` in `raw`, and a bounded INFO breadcrumb names both before
-notification (#506).
+**Kinozal listing-category guard.** `KINOZAL_URLS` uses an explicit denylist, not an
+allowlist: `t=0` (Kinozal's mixed "Selected releases" feed), music (`t=4`), library
+(`t=5`), audiobooks (`t=6`), and programs (`t=8`) are rejected before the listing
+fetch. A repeated query containing any denied integer is rejected too. The rejection is
+recorded in the source's `PipelineResult.errors`, so other URLs still deliver while the
+step remains visibly red. Every other integer category, including a new category unknown
+to this application, is processed. Missing, blank, repeated-allowed, or non-integer `t`
+also processes fail-open with one WARNING per configured URL, preventing category drift
+from silently withholding a film. Fetched items retain `kinozal_listing_url` and
+`kinozal_listing_category` in `raw` (`None` when indeterminate), and a bounded INFO
+breadcrumb names both before notification (#506).
+
+This listing policy is separate from `KINOZAL_EXCLUDED_GENRES`: that variable filters the
+`Жанр` value read from each new item's details page. The incident audiobook reports
+`Фантастика, постапокалипсис`, a genre also valid for films, so genre values cannot safely
+stand in for listing-category IDs.
 
 **Game releases (#385, #412).** `KINOZAL_URLS` contains the games top (`t=7`) alongside films
 (`t=1`) and series (`t=32`) — all flow into one `kinozal_movies` source. Their title grammar is
