@@ -456,7 +456,7 @@ def test_parses_external_page():
     assert ratchet.scan_repository(repo_root) == []
 
 
-def test_evidence_replay_has_positive_and_negative_arms() -> None:
+def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
     repo_root = Path(__file__).resolve().parent.parent
     fixture_root = repo_root / "tests" / "fixtures" / "issue_509_rca"
     manifest = json.loads((fixture_root / "manifest.json").read_text(encoding="utf-8"))
@@ -480,9 +480,23 @@ def test_evidence_replay_has_positive_and_negative_arms() -> None:
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ) in capture_only_gaps
 
-    # The marker did not exist when #506 was planned, so AC3's negative replay is
-    # the healthy archived body plus only the new mechanical marker. The observed
-    # details-page facts remain the archived content, not a synthetic replacement.
+    # This deterministic gate validates the observation/decision record's shape,
+    # not whether its prose agrees with the plan. The archived over-broad plan can
+    # therefore clear Evidence once all fields are present; planner evaluation and
+    # architect review own the semantic same-input preservation decision.
+    wrong_plan_with_complete_record = (
+        f"{revision_one}\n## Evidence\n\n{_capture_evidence(relative_wrong_plan)}\n"
+    )
+    wrong_plan_gaps = find_gaps(
+        wrong_plan_with_complete_record,
+        issue_labels=("bug",),
+        repo_root=repo_root,
+    )
+    assert not any(gap.startswith("Evidence") for gap in wrong_plan_gaps)
+
+    # The marker did not exist when #506 was planned. The healthy archived body
+    # plus a complete mechanical record proves the new shape does not invalidate
+    # the item-level plan; its observed details-page facts remain archived content.
     healthy = (fixture_root / "issue_506_final_item_level.txt").read_text(encoding="utf-8")
     # The unmodified current nine-section body remains valid when the conditional
     # bug Evidence rule is not requested.
