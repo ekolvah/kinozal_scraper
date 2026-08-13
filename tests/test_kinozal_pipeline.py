@@ -53,12 +53,22 @@ _BOOK_LISTING_HTML = """
 """
 
 
-def _listing_with_selected_category(category: int, body: str = _KINOZAL_HTML) -> str:
+def _listing_with_selected_category(
+    category: int,
+    body: str = _KINOZAL_HTML,
+    *,
+    name: str | None = None,
+    parent: str | None = None,
+) -> str:
     """Add the category selected by Kinozal to a listing fixture (#506)."""
+    category_name = name or f"category {category}"
+    parent_option = f'<option value="4">{parent}</option>' if parent else ""
+    prefix = "|- " if parent else ""
     selector = (
         '<select name="t">'
-        f'<option value="{category}" selected>category {category}</option>'
-        "</select>"
+        + parent_option
+        + f'<option value="{category}" selected>{prefix}{category_name}</option>'
+        + "</select>"
     )
     return body.replace("<html><body>", "<html><body>" + selector, 1)
 
@@ -420,7 +430,112 @@ class TestKinozalUrls(unittest.TestCase):
         self.assertEqual(urls, [])
 
 
+class TestExcludedCategoriesEnv(unittest.TestCase):
+    def test_parses_readable_semicolon_names_case_insensitively(self) -> None:
+        with unittest.mock.patch.dict(
+            os.environ,
+            {
+                "KINOZAL_EXCLUDED_CATEGORIES": (
+                    "  Избранные   раздачи ; ТОП Музыки ; Библиотека  "
+                )
+            },
+            clear=False,
+        ):
+            self.assertEqual(
+                kp._excluded_categories(),
+                {"избранные раздачи", "топ музыки", "библиотека"},
+            )
+
+
 class TestKinozalCategoryGuard(unittest.TestCase):
+    def test_readable_parent_name_excludes_category_and_descendants(self) -> None:
+        urls = (
+            "music|https://kinozal.tv/top.php?t=4;"
+            "russian-music|https://kinozal.tv/top.php?t=41"
+        )
+        fetched: list[str] = []
+
+        def _fetch(url: str) -> str:
+            fetched.append(url)
+            if "t=41" in url:
+                return _listing_with_selected_category(
+                    41, name="Русская", parent="Топ Музыки"
+                )
+            return _listing_with_selected_category(4, name="Топ Музыки")
+
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
+            unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "KINOZAL_URLS": urls,
+                    "KINOZAL_EXCLUDED_CATEGORIES": "Топ Музыки",
+                },
+                clear=False,
+            ),
+        ):
+            notifier = InMemoryNotifier()
+            results = run_kinozal_pipeline(
+                InMemoryStorage(), notifier, _FakeYoutube(), _SOURCES_CONFIG
+            )
+
+        self.assertEqual(len(fetched), 2)
+        self.assertEqual(notifier.sent, [])
+        self.assertTrue(any("Топ Музыки" in error for error in results[0].errors))
+        self.assertTrue(any("Топ Музыки > Русская" in error for error in results[0].errors))
+
+    def test_category_not_named_in_denylist_is_allowed_regardless_of_numeric_id(self) -> None:
+        listing_url = "https://kinozal.tv/top.php?t=0"
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                return_value=_listing_with_selected_category(
+                    0, _BOOK_LISTING_HTML, name="Избранные раздачи"
+                ),
+            ) as fetch,
+            unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "KINOZAL_URLS": f"mixed|{listing_url}",
+                    "KINOZAL_EXCLUDED_CATEGORIES": "Топ Музыки",
+                },
+                clear=False,
+            ),
+        ):
+            notifier = InMemoryNotifier()
+            results = run_kinozal_pipeline(
+                InMemoryStorage(), notifier, _FakeYoutube(), _SOURCES_CONFIG
+            )
+
+        fetch.assert_called_once_with(listing_url)
+        self.assertEqual(len(notifier.sent), 1)
+        self.assertTrue(results[0].ok)
+
+    def test_missing_or_stale_category_config_is_visible_and_fails_open(self) -> None:
+        listing_url = "https://kinozal.tv/top.php?t=1"
+        listing = _listing_with_selected_category(1, name="Избранные фильмы")
+        for configured in (None, "Несуществующая категория"):
+            with self.subTest(configured=configured):
+                env = {"KINOZAL_URLS": f"films|{listing_url}"}
+                if configured is not None:
+                    env["KINOZAL_EXCLUDED_CATEGORIES"] = configured
+                with (
+                    unittest.mock.patch(
+                        "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=listing
+                    ),
+                    unittest.mock.patch.dict(os.environ, env, clear=False),
+                ):
+                    if configured is None:
+                        os.environ.pop("KINOZAL_EXCLUDED_CATEGORIES", None)
+                    notifier = InMemoryNotifier()
+                    results = run_kinozal_pipeline(
+                        InMemoryStorage(), notifier, _FakeYoutube(), _SOURCES_CONFIG
+                    )
+
+                self.assertEqual(len(notifier.sent), 2)
+                self.assertFalse(results[0].ok)
+                self.assertTrue(any("configuration" in error for error in results[0].errors))
+
     def test_t0_book_listing_rejected_before_fetch_youtube_and_notification(self) -> None:
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
@@ -609,6 +724,35 @@ class TestKinozalCategoryGuard(unittest.TestCase):
 
 
 class TestKinozalListingProvenance(unittest.TestCase):
+    def test_new_item_log_and_raw_name_listing_url_id_and_category_name(self) -> None:
+        listing_url = "https://kinozal.tv/top.php?t=1&d=14"
+        listing = _listing_with_selected_category(1, name="Избранные фильмы")
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=listing
+            ),
+            unittest.mock.patch.dict(
+                os.environ,
+                {
+                    "KINOZAL_URLS": f"films|{listing_url}",
+                    "KINOZAL_EXCLUDED_CATEGORIES": "Топ Музыки",
+                },
+                clear=False,
+            ),
+            self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs,
+        ):
+            results = run_kinozal_pipeline(
+                InMemoryStorage(), InMemoryNotifier(), _FakeYoutube(), _SOURCES_CONFIG
+            )
+
+        item = results[0].items[0]
+        self.assertEqual(item.raw["kinozal_listing_url"], listing_url)
+        self.assertEqual(item.raw["kinozal_listing_category"], 1)
+        self.assertEqual(item.raw["kinozal_listing_category_name"], "Избранные фильмы")
+        joined = "\n".join(logs.output)
+        self.assertIn("Избранные фильмы", joined)
+        self.assertIn("t=1", joined)
+
     def test_new_item_log_and_raw_name_listing_url_and_category(self) -> None:
         listing_url = "https://kinozal.tv/top.php?t=1&d=14"
         with (
