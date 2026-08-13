@@ -51,6 +51,7 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 )
 EVIDENCE_SECTION = "Evidence"
 BUG_LABEL = "bug"
+EVIDENCE_NA_PREFIX = "n/a:"
 MIN_CONTENT_CHARS = 5
 
 _MD = MarkdownIt("commonmark")
@@ -204,6 +205,12 @@ def _failed_capture_has_output(content: str) -> bool:
 
 def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
     """Return mechanical gaps in a bug issue's external-observation artifact."""
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if first.casefold().startswith(EVIDENCE_NA_PREFIX):
+        if first[len(EVIDENCE_NA_PREFIX) :].strip():
+            return []
+        return ["n/a reason"]
+
     capture_command = _evidence_field(content, "capture")
     path_value = _evidence_field(content, "path")
     missing: list[str] = []
@@ -260,7 +267,7 @@ def find_gaps(
                 gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
     if BUG_LABEL in {label.casefold() for label in issue_labels}:
         evidence = sections.get(EVIDENCE_SECTION.lower())
-        if evidence is None or len(evidence) < MIN_CONTENT_CHARS:
+        if evidence is None or not evidence.strip():
             gaps.append(EVIDENCE_SECTION)
         else:
             missing_fields = evidence_gaps(evidence, repo_root=repo_root)

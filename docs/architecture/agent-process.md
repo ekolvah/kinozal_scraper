@@ -39,7 +39,8 @@ are defined only by `REQUIRED_SECTIONS` in
 8. ADR
 9. Agent handoff
 
-A `bug` issue also requires `## Evidence` in this shape:
+A `bug` issue also requires `## Evidence`. When the plan describes how to read,
+parse, or classify external data, use this shape:
 
 ```md
 capture: `python scripts/capture_fixture.py <url> <path>`
@@ -54,6 +55,11 @@ origin-to-authenticated-mirror fetcher, so a planner does not need to rediscover
 that route. A committed fixture can be fabricated, which no syntax gate can
 rule out, but the command and path make the observation cheap to reproduce and
 leave a reviewable claim (#509).
+
+For a bug with no external-system behaviour to observe, the section instead
+starts with `n/a: <reason>`, naming why live capture does not apply. The section
+is still required, so choosing that branch is a visible claim rather than a
+silently omitted discovery step.
 
 `Test plan` names executable test nodes. `Architect review` opens with a
 provenance line — `reviewer: <carrier>` or `skipped: <reason>` — followed by the
@@ -91,8 +97,9 @@ arrives, how a reviewer is invoked, how the body is written back.
    at most three clarifying questions per session, and only about decisions such
    as priority or product intent. When the plan describes how to read, parse, or
    classify data from an external system, observe that live system before
-   writing the plan and record the capture in `## Evidence`; this is discovery,
-   not an E2E test or a substitute for a human product decision.
+   writing the plan and record the capture in `## Evidence`. Otherwise record
+   `n/a: <reason>` there; this is discovery, not an E2E test or a substitute for
+   a human product decision.
 3. Obtain the architect review defined below and record it in
    `## Architect review`. Weave every BLOCKING finding into the other sections
    before writing the body.

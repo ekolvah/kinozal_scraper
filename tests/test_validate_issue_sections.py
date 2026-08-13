@@ -350,6 +350,18 @@ def test_non_bug_issue_does_not_require_evidence(tmp_path: Path) -> None:
     assert find_gaps(_full_body(), issue_labels=("enhancement",), repo_root=tmp_path) == []
 
 
+def test_non_external_bug_can_record_evidence_not_applicable(tmp_path: Path) -> None:
+    body = _body_with_evidence(
+        "n/a: the defect is pure review-gate exit-code logic with no external data source"
+    )
+    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+
+    missing_reason = _body_with_evidence("n/a:")
+    assert find_gaps(missing_reason, issue_labels=("bug",), repo_root=tmp_path) == [
+        "Evidence (missing: n/a reason)"
+    ]
+
+
 def test_capture_failure_marker_requires_the_command_output(tmp_path: Path) -> None:
     evidence = _capture_evidence("tests/fixtures/source-unavailable.html")
     without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
