@@ -1626,6 +1626,244 @@ class TestExcludedGenresEnv(unittest.TestCase):
             self.assertEqual(kp._excluded_genres(), set())
 
 
+_MIXED_ITEM_LISTING = (
+    "<html><body>"
+    '<a href="/details.php?id=2142272" '
+    'title="Грязные деньги / In the Grey / 2026 / ДБ / WEB-DLRip">'
+    '<img src="/film.jpg"></a>'
+    '<a href="/details.php?id=2112853" '
+    'title="Сергей Лукьяненко - Небесное воинство: Седьмой (1 книга) / '
+    'Фантастика / 2025 / Кирилл Радциг / MP3"><img src="/book.jpg"></a>'
+    "</body></html>"
+)
+_MIXED_FILM_KEY = "Грязные деньги / In the Grey / 2026"
+_MIXED_BOOK_KEY = "Сергей Лукьяненко - Небесное воинство: Седьмой (1 книга) / Фантастика / 2025"
+
+
+def _item_details(
+    category_id: int | None,
+    genre: str = "драма",
+    *,
+    marker_count: int = 1,
+    onclick: bool = True,
+) -> str:
+    markers = ""
+    if category_id is not None:
+        marker = (
+            '<img class="cat_img_r" '
+            + (f'onclick="cat({category_id});" ' if onclick else "")
+            + f'src="/pic/cat/{category_id}.gif">'
+        )
+        markers = marker * marker_count
+    return (
+        "<html><body>"
+        f"{markers}<h2><b>Жанр:</b> "
+        f'<span class="lnks_tobrs">{genre}</span><br></h2>'
+        "</body></html>"
+    )
+
+
+class _RecordingYoutube(_FakeYoutube):
+    def __init__(self) -> None:
+        super().__init__()
+        self.profiles: list[FilmProfile] = []
+
+    def search_candidates(self, profile: FilmProfile) -> list[Candidate]:
+        self.profiles.append(profile)
+        return super().search_candidates(profile)
+
+
+def _run_item_category_filter(
+    *,
+    categories: str | None,
+    genres: str | None = None,
+    listing: str = _MIXED_ITEM_LISTING,
+    details_by_id: dict[str, str] | None = None,
+    details_error: bool = False,
+) -> tuple[
+    InMemoryStorage,
+    InMemoryNotifier,
+    _RecordingYoutube,
+    list[PipelineResult],
+    list[str],
+]:
+    details = details_by_id or {
+        "2142272": _item_details(6, "боевик"),
+        "2112853": _item_details(2, "Фантастика"),
+    }
+    details_calls: list[str] = []
+
+    def _fetch(url: str) -> str:
+        if "details.php" not in url:
+            return listing
+        details_calls.append(url)
+        if details_error:
+            raise RuntimeError("details fetch boom")
+        match = re.search(r"id=(\d+)", url)
+        item_id = match.group(1) if match else ""
+        return details[item_id]
+
+    env = {"KINOZAL_URLS": "mixed|https://kinozal.tv/top.php?t=0&d=14"}
+    if categories is not None:
+        env["KINOZAL_EXCLUDED_ITEM_CATEGORIES"] = categories
+    if genres is not None:
+        env["KINOZAL_EXCLUDED_GENRES"] = genres
+    storage = InMemoryStorage()
+    notifier = InMemoryNotifier()
+    youtube = _RecordingYoutube()
+    with (
+        unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
+        unittest.mock.patch.dict(os.environ, env, clear=False),
+    ):
+        os.environ.pop("KINOZAL_TOP_URL", None)
+        os.environ.pop("KINOZAL_EXCLUDED_CATEGORIES", None)
+        if categories is None:
+            os.environ.pop("KINOZAL_EXCLUDED_ITEM_CATEGORIES", None)
+        if genres is None:
+            os.environ.pop("KINOZAL_EXCLUDED_GENRES", None)
+        results = run_kinozal_pipeline(storage, notifier, youtube, _SOURCES_CONFIG)
+    return storage, notifier, youtube, results, details_calls
+
+
+class TestItemCategory(unittest.TestCase):
+    def test_category_id_parsed_from_marker_onclick_and_from_src_fallback(self) -> None:
+        for onclick in (True, False):
+            with self.subTest(onclick=onclick):
+                self.assertEqual(kp._parse_item_category(_item_details(2, onclick=onclick)), 2)
+
+    def test_zero_or_multiple_markers_are_unknown_with_warning(self) -> None:
+        for details in (
+            _item_details(None),
+            _item_details(2, marker_count=2),
+        ):
+            with self.subTest(details=details):
+                with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING"):
+                    _, notifier, _, _, _ = _run_item_category_filter(
+                        categories="Другое - АудиоКниги",
+                        listing=(
+                            '<a href="/details.php?id=2112853" '
+                            'title="Book / 2025 / MP3"><img src="/book.jpg"></a>'
+                        ),
+                        details_by_id={"2112853": details},
+                    )
+                self.assertEqual(len(notifier.sent), 1)
+
+
+class TestItemCategoryDenylist(unittest.TestCase):
+    def test_group_prefix_denies_every_descendant_name(self) -> None:
+        normalized = {kp._normalize_item_category_name(" Музыка ")}
+        for name in ("Музыка - Русская", "Музыка - Буржуйская", "Музыка - Классическая"):
+            with self.subTest(name=name):
+                self.assertTrue(kp._item_category_excluded(name, normalized))
+
+    def test_category_absent_from_denylist_is_delivered_regardless_of_id(self) -> None:
+        details = {"2142272": _item_details(999, "боевик")}
+        listing = (
+            '<a href="/details.php?id=2142272" '
+            'title="Future Film / 2027 / WEB-DLRip"><img src="/film.jpg"></a>'
+        )
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING"):
+            _, notifier, _, results, _ = _run_item_category_filter(
+                categories="Музыка", listing=listing, details_by_id=details
+            )
+        self.assertEqual(len(notifier.sent), 1)
+        self.assertEqual(results[0].items[0].raw["kinozal_item_category"], 999)
+
+    def test_categories_set_and_genres_unset_still_filters(self) -> None:
+        storage, notifier, youtube, _, details_calls = _run_item_category_filter(
+            categories="Другое - АудиоКниги"
+        )
+        self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY})
+        self.assertEqual(
+            {row[0] for row in storage.stored_rows("movies")}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY}
+        )
+        self.assertEqual([profile.ru_title for profile in youtube.profiles], ["Грязные деньги"])
+        self.assertEqual(len(details_calls), 2)
+
+    def test_details_page_fetched_once_for_category_and_genre(self) -> None:
+        _, notifier, _, _, details_calls = _run_item_category_filter(
+            categories="Другое - АудиоКниги", genres="боевик"
+        )
+        self.assertEqual(notifier.sent, [])
+        self.assertEqual(len(details_calls), 2)
+        self.assertEqual(len(set(details_calls)), 2)
+
+    def test_no_extra_http_request_is_issued_for_the_taxonomy(self) -> None:
+        _, _, _, _, details_calls = _run_item_category_filter(categories="Музыка")
+        self.assertEqual(len(details_calls), 2)
+        self.assertFalse(any("browse.php" in url for url in details_calls))
+
+    def test_failed_details_fetch_keeps_item_with_warning(self) -> None:
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING") as logs:
+            _, notifier, _, _, _ = _run_item_category_filter(
+                categories="Другое - АудиоКниги", details_error=True
+            )
+        self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY})
+        self.assertIn("details fetch boom", "\n".join(logs.output))
+
+
+class TestItemCategoryDrift(unittest.TestCase):
+    def test_all_items_unresolved_appends_pipeline_error_and_still_delivers(self) -> None:
+        details = {
+            "2142272": _item_details(None, "боевик"),
+            "2112853": _item_details(None, "Фантастика"),
+        }
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="WARNING"):
+            _, notifier, _, results, _ = _run_item_category_filter(
+                categories="Другое - АудиоКниги", details_by_id=details
+            )
+        self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY})
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("zero" in error.lower() for error in results[0].errors))
+
+
+class TestItemCategoryConfig(unittest.TestCase):
+    def test_configured_name_absent_from_taxonomy_is_a_visible_error(self) -> None:
+        _, notifier, _, results, _ = _run_item_category_filter(
+            categories="Другое - Несуществующая категория"
+        )
+        self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY})
+        self.assertFalse(results[0].ok)
+        self.assertTrue(any("configuration" in error.lower() for error in results[0].errors))
+
+    def test_unset_denylist_disables_filter_without_error(self) -> None:
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs:
+            _, notifier, _, results, details_calls = _run_item_category_filter(categories=None)
+        self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY})
+        self.assertTrue(all(result.ok for result in results))
+        self.assertEqual(details_calls, [])
+        self.assertIn("item category filter disabled", "\n".join(logs.output).lower())
+
+
+class TestKinozalItemCategoryE2E(unittest.TestCase):
+    def test_mixed_listing_delivers_film_and_suppresses_audiobook(self) -> None:
+        storage, notifier, youtube, _, _ = _run_item_category_filter(
+            categories="Другое - АудиоКниги"
+        )
+        self.assertEqual({n.id for n in notifier.sent}, {_MIXED_FILM_KEY})
+        self.assertEqual(
+            {row[0] for row in storage.stored_rows("movies")}, {_MIXED_FILM_KEY, _MIXED_BOOK_KEY}
+        )
+        self.assertEqual([profile.ru_title for profile in youtube.profiles], ["Грязные деньги"])
+
+
+class TestKinozalItemProvenance(unittest.TestCase):
+    def test_log_states_delivery_outcome_and_raw_carries_category_id_and_name(self) -> None:
+        with self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs:
+            _, _, _, results, _ = _run_item_category_filter(categories="Другое - АудиоКниги")
+        by_title = {item.title: item for item in results[0].items}
+        film = by_title["Грязные деньги"]
+        book = by_title["Сергей Лукьяненко - Небесное воинство: Седьмой (1 книга)"]
+        self.assertEqual(film.raw["kinozal_item_category"], 6)
+        self.assertEqual(film.raw["kinozal_item_category_name"], "Кино - Боевик / Военный")
+        self.assertEqual(book.raw["kinozal_item_category"], 2)
+        self.assertEqual(book.raw["kinozal_item_category_name"], "Другое - АудиоКниги")
+        self.assertIn("top.php?t=0", film.raw["kinozal_listing_url"])
+        joined = "\n".join(logs.output)
+        self.assertIn("delivered", joined)
+        self.assertIn("denied by category", joined)
+
+
 def _run_genre_filter(
     excluded: str | None,
     listing: str = _GENRE_LISTING,
