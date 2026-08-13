@@ -8,8 +8,12 @@ the Cyrillic body decode.
 
 from __future__ import annotations
 
+import hashlib
+import importlib
+import json
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -254,8 +258,8 @@ class TestArchitectReviewProvenance:
         """
         monkeypatch.setattr(
             validator,
-            "_fetch_body",
-            lambda _n: self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"),
+            "_fetch_issue",
+            lambda _n: (self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"), ()),
         )
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
@@ -271,7 +275,7 @@ class TestArchitectReviewProvenance:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(validator, "_fetch_body", lambda _n: _full_body())
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ()))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
         validator.main()
@@ -311,6 +315,211 @@ class TestAgentHandoffSection:
         assert find_gaps(body) == ["Agent handoff (missing: next role)"]
 
 
+def _body_with_evidence(content: str) -> str:
+    return f"{_full_body()}\n## Evidence\n\n{content}\n"
+
+
+def _capture_evidence(path: str) -> str:
+    return (
+        "capture: `python scripts/capture_kinozal_fixture.py "
+        f"https://kinozal.tv/details.php?id=1 {path}`\n"
+        f"path: `{path}`\n"
+        "observed: the captured response contains the reported external shape\n"
+        "preserve: the valid case from the same observed boundary remains delivered\n"
+        "change: the reported invalid case from that boundary is rejected\n"
+        "boundaries: source-wide rejection versus item-level classification\n"
+        "collateral: item-level classification preserves the valid case\n"
+        "reuse: the existing production fetch supplies the classification input\n"
+        "paired-test: one run keeps the valid case and rejects the invalid case"
+    )
+
+
+def test_bug_issue_without_evidence_section_is_a_gap(tmp_path: Path) -> None:
+    gaps = find_gaps(_full_body(), issue_labels=("bug",), repo_root=tmp_path)
+    assert "Evidence" in gaps
+
+
+def test_evidence_naming_a_missing_path_is_a_gap(tmp_path: Path) -> None:
+    body = _body_with_evidence(_capture_evidence("tests/fixtures/missing.html"))
+    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+    assert gaps == ["Evidence (missing: existing capture path or failed capture output)"]
+
+
+def test_evidence_naming_an_existing_capture_passes(tmp_path: Path) -> None:
+    capture = tmp_path / "tests" / "fixtures" / "captured.html"
+    capture.parent.mkdir(parents=True)
+    capture.write_text("<html>observed response</html>", encoding="utf-8")
+    body = _body_with_evidence(_capture_evidence("tests/fixtures/captured.html"))
+    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+
+
+def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path) -> None:
+    capture = tmp_path / "tests" / "fixtures" / "github" / "issue-509.json"
+    capture.parent.mkdir(parents=True)
+    capture.write_text('{"number": 509}', encoding="utf-8")
+    relative_path = "tests/fixtures/github/issue-509.json"
+    body = _body_with_evidence(
+        "capture: `gh api repos/ekolvah/kinozal_scraper/issues/509 "
+        f"> {relative_path}`\n"
+        f"path: `{relative_path}`"
+    )
+
+    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+    assert gaps == [
+        "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
+    ]
+
+
+def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Path) -> None:
+    capture = tmp_path / "tests" / "fixtures" / "captured.html"
+    capture.parent.mkdir(parents=True)
+    capture.write_text("<html>mixed external response</html>", encoding="utf-8")
+    path = "tests/fixtures/captured.html"
+    body = _body_with_evidence(
+        f"capture: `python scripts/capture_kinozal_fixture.py https://kinozal.tv {path}`\n"
+        f"path: `{path}`\n"
+        "observed: one external collection contains both wanted and unwanted records\n"
+        "preserve: the wanted record from that same collection remains delivered\n"
+        "change: the unwanted record from that collection is rejected\n"
+        "boundaries: reject the collection versus classify each record\n"
+        "collateral: collection rejection loses the wanted record; item classification does not\n"
+        "reuse: the production path already fetches record details\n"
+        "paired-test: one run keeps the wanted record and rejects the unwanted record"
+    )
+
+    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+
+
+def test_non_bug_issue_does_not_require_evidence(tmp_path: Path) -> None:
+    assert find_gaps(_full_body(), issue_labels=("enhancement",), repo_root=tmp_path) == []
+
+
+def test_non_external_bug_can_record_evidence_not_applicable(tmp_path: Path) -> None:
+    body = _body_with_evidence(
+        "n/a: the defect is pure review-gate exit-code logic with no external data source"
+    )
+    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+
+    missing_reason = _body_with_evidence("n/a:")
+    assert find_gaps(missing_reason, issue_labels=("bug",), repo_root=tmp_path) == [
+        "Evidence (missing: n/a reason)"
+    ]
+
+
+def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path) -> None:
+    evidence = _capture_evidence("tests/fixtures/source-unavailable.html")
+    without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
+    assert find_gaps(without_output, issue_labels=("bug",), repo_root=tmp_path) == [
+        "Evidence (missing: existing capture path or failed capture output)"
+    ]
+
+    with_output = _body_with_evidence(
+        f"{evidence}\nstatus: failed\noutput:\n\n```text\n"
+        "primary fetch failed; authenticated mirror login failed\n```"
+    )
+    assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == [
+        "Evidence (missing: successful capture)"
+    ]
+
+
+def test_capture_kinozal_fixture_writes_the_response_through_the_existing_fetcher(
+    tmp_path: Path,
+) -> None:
+    capture_fixture = importlib.import_module("scripts.capture_kinozal_fixture")
+    seen: list[str] = []
+
+    class StubFetcher:
+        def fetch_details(self, url: str) -> str:
+            seen.append(url)
+            return "<html>captured through\nKinozal.fetch_details</html>"
+
+    target = tmp_path / "kinozal" / "details.html"
+    source = "https://kinozal.tv/details.php?id=2112853"
+    capture_fixture.capture(source, target, fetcher=StubFetcher())
+
+    assert seen == [source]
+    assert target.read_bytes() == b"<html>captured through\nKinozal.fetch_details</html>"
+
+
+def test_new_external_data_parsing_test_with_inline_markup_is_reported() -> None:
+    ratchet = importlib.import_module("scripts.check_fixture_ratchet")
+    source = """
+def test_parses_external_page():
+    html = "<html><img class='cat_img_r' src='/pic/cat/6.gif'></html>"
+    assert parse_page(html) == 6
+"""
+    assert ratchet.inline_external_data_test_nodes(
+        source, path=Path("tests/test_new_source.py")
+    ) == ["tests/test_new_source.py::test_parses_external_page"]
+
+    repo_root = Path(__file__).resolve().parent.parent
+    assert ratchet.scan_repository(repo_root) == []
+
+
+def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    fixture_root = repo_root / "tests" / "fixtures" / "issue_509_rca"
+    manifest = json.loads((fixture_root / "manifest.json").read_text(encoding="utf-8"))
+    for artifact in manifest["artifacts"]:
+        payload = (fixture_root / artifact["path"]).read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == "".join(artifact["sha256_chunks"])
+
+    revision_one = (fixture_root / "issue_506_revision_1.txt").read_text(encoding="utf-8")
+    assert "Evidence" in find_gaps(revision_one, issue_labels=("bug",), repo_root=repo_root)
+    relative_wrong_plan = "tests/fixtures/issue_509_rca/issue_506_revision_1.txt"
+    revision_with_capture_only = (
+        f"{revision_one}\n## Evidence\n\n"
+        "capture: `python scripts/capture_kinozal_fixture.py "
+        f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
+        f"path: `{relative_wrong_plan}`\n"
+    )
+    capture_only_gaps = find_gaps(
+        revision_with_capture_only, issue_labels=("bug",), repo_root=repo_root
+    )
+    assert (
+        "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
+    ) in capture_only_gaps
+
+    # This deterministic gate validates the observation/decision record's shape,
+    # not whether its prose agrees with the plan. The archived over-broad plan can
+    # therefore clear Evidence once all fields are present; planner evaluation and
+    # architect review own the semantic same-input preservation decision.
+    wrong_plan_with_complete_record = (
+        f"{revision_one}\n## Evidence\n\n{_capture_evidence(relative_wrong_plan)}\n"
+    )
+    wrong_plan_gaps = find_gaps(
+        wrong_plan_with_complete_record,
+        issue_labels=("bug",),
+        repo_root=repo_root,
+    )
+    assert not any(gap.startswith("Evidence") for gap in wrong_plan_gaps)
+
+    # The marker did not exist when #506 was planned. The healthy archived body
+    # plus a complete mechanical record proves the new shape does not invalidate
+    # the item-level plan; its observed details-page facts remain archived content.
+    healthy = (fixture_root / "issue_506_final_item_level.txt").read_text(encoding="utf-8")
+    # The unmodified current nine-section body remains valid when the conditional
+    # bug Evidence rule is not requested.
+    assert find_gaps(healthy) == []
+    assert "### Live evidence" in healthy
+    relative_capture = "tests/fixtures/issue_509_rca/issue_506_final_item_level.txt"
+    healthy_with_marker = f"{healthy}\n## Evidence\n\n{_capture_evidence(relative_capture)}\n"
+    assert find_gaps(healthy_with_marker, issue_labels=("bug",), repo_root=repo_root) == []
+
+
+def test_main_passes_live_bug_label_to_evidence_gate(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("bug",)))
+    monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "509"])
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 1
+    assert "Evidence" in capsys.readouterr().err
+
+
 class TestOrphanScopeReminder:
     def test_valid_issue_surfaces_reminder_without_failing_validation(
         self,
@@ -321,7 +530,7 @@ class TestOrphanScopeReminder:
             "Real content для Out of scope which is long enough.",
             "- Follow-up for the historical audit.",
         )
-        monkeypatch.setattr(validator, "_fetch_body", lambda _n: body)
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ()))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "368"])
 
         validator.main()

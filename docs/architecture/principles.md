@@ -149,10 +149,24 @@ or a red CI badge is a forcing function for someone to look.
 ### V. Root Cause Before Fix
 
 Before changing code in response to a bug or unexpected behaviour, the failure
-mode MUST be reproduced and located. Instrumenting (extra logging, printing
-inputs, narrowing the failing call) precedes the patch. No workarounds, shims,
-retries, broader try/except, or `--no-verify` flags are accepted as fixes
-when the underlying mechanism is not understood.
+mode MUST be reproduced and located. Instrument before patching: inspect logs,
+inputs, and the failure point before proposing a change. When the behaviour to
+be designed is how an external system is read or classified, observation of
+that live system is part of locating the failure; repository reasoning alone is
+not evidence. Preserve the response as a fixture with a reproducible command
+appropriate to that source so the claim is reviewable and the parser test uses
+what the system returned. Kinozal capture uses
+`python scripts/capture_kinozal_fixture.py <url> <path>`; the source routing
+table in [`agent-process.md`](agent-process.md#issue-contract) gives read-only
+commands for GitHub, Telegram, Gemini, Sheets, and an existing CLI for another
+source. Observation must include both the failing record and an exact valid
+record from the same captured response; replacing that record with a sibling
+feed or category is data loss, not preservation. Compare broad and narrow
+fixes, reject a boundary that loses the valid record without an explicit product
+decision, and preserve both sides in one same-input regression test. Trace the
+current call path before claiming that a narrow fix adds another fetch. No
+workarounds, shims, retries, broader try/except, or `--no-verify` flags are
+accepted as fixes when the underlying mechanism is not understood.
 
 If the immediate fix proves too large for the current PR, the PR may ship a
 **documented mitigation** (e.g. raise-and-skip with a linked issue) but the

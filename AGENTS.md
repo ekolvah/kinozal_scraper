@@ -36,6 +36,9 @@ Claude or Codex adapter is the only permitted executor.
   `None` stdout or stderr into an empty string.
 - Keep a PR to one logical unit. Update planned docs and ADRs, or explicitly
   record why they do not apply.
+- Follow [Principle V](docs/architecture/principles.md#v-root-cause-before-fix):
+  instrument before patching, and observe the live external system when a plan
+  depends on how that system is read or classified.
 - Never bypass hooks, push directly to `main`, force-push, hard-reset,
   force-delete a branch, or self-merge. The repository hook is supplementary;
   GitHub branch protection remains the final barrier.

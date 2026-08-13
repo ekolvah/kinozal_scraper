@@ -49,11 +49,24 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     # passes it to an implementer; it does not contain prompts or transcripts.
     "Agent handoff",
 )
+EVIDENCE_SECTION = "Evidence"
+BUG_LABEL = "bug"
+EVIDENCE_NA_PREFIX = "n/a:"
+EVIDENCE_DECISION_FIELDS = (
+    ("observed", "observed"),
+    ("preserve", "preserve"),
+    ("change", "change"),
+    ("boundaries", "boundaries"),
+    ("collateral", "collateral"),
+    ("reuse", "reuse"),
+    ("paired-test", "paired test"),
+)
 MIN_CONTENT_CHARS = 5
 
 _MD = MarkdownIt("commonmark")
 
 _ROLE_CATALOGUE = Path(__file__).resolve().parents[1] / ".agents" / "orchestration" / "roles.yaml"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
 _REVIEWER_ROLE = "architect_reviewer"
 # The trivial-change escape (#150). It carries no carrier name on purpose: a skipped
 # review has no reviewer to name.
@@ -167,7 +180,85 @@ def handoff_gaps(content: str) -> list[str]:
     return [name for name, marker in required.items() if marker not in normalized]
 
 
-def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
+def _evidence_field(content: str, name: str) -> str | None:
+    prefix = f"{name}:"
+    for line in content.splitlines():
+        stripped = line.strip()
+        if stripped.lower().startswith(prefix):
+            value = stripped[len(prefix) :].strip()
+            if len(value) >= 2 and value.startswith("`") and value.endswith("`"):
+                value = value[1:-1].strip()
+            return value or None
+    return None
+
+
+def _failed_capture_has_output(content: str) -> bool:
+    if (_evidence_field(content, "status") or "").lower() != "failed":
+        return False
+    lines = content.splitlines()
+    output_index = next(
+        (index for index, line in enumerate(lines) if line.strip().lower() == "output:"),
+        None,
+    )
+    if output_index is None:
+        return False
+    output = "\n".join(lines[output_index + 1 :]).strip()
+    if not output.startswith("```"):
+        return False
+    first_newline = output.find("\n")
+    if first_newline < 0 or not output.endswith("```"):
+        return False
+    output = output[first_newline + 1 : -3].strip()
+    return bool(output)
+
+
+def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
+    """Return mechanical gaps in a bug issue's observation and decision record."""
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if first.casefold().startswith(EVIDENCE_NA_PREFIX):
+        if first[len(EVIDENCE_NA_PREFIX) :].strip():
+            return []
+        return ["n/a reason"]
+
+    capture_command = _evidence_field(content, "capture")
+    path_value = _evidence_field(content, "path")
+    missing: list[str] = []
+    if not capture_command:
+        missing.append("capture command")
+    if not path_value:
+        missing.append("capture path")
+    elif capture_command and path_value not in capture_command:
+        missing.append("capture path in command")
+    if missing:
+        return missing
+
+    assert path_value is not None
+    candidate = Path(path_value)
+    if candidate.is_absolute():
+        return ["repository-relative capture path"]
+    resolved_root = repo_root.resolve()
+    resolved_candidate = (resolved_root / candidate).resolve()
+    try:
+        resolved_candidate.relative_to(resolved_root)
+    except ValueError:
+        return ["repository-relative capture path"]
+    if not resolved_candidate.is_file():
+        if _failed_capture_has_output(content):
+            return ["successful capture"]
+        return ["existing capture path or failed capture output"]
+
+    return [
+        label for field, label in EVIDENCE_DECISION_FIELDS if not _evidence_field(content, field)
+    ]
+
+
+def find_gaps(
+    body: str,
+    required: Sequence[str] = REQUIRED_SECTIONS,
+    *,
+    issue_labels: Sequence[str] = (),
+    repo_root: Path = _REPO_ROOT,
+) -> list[str]:
     """Empty or missing sections from `required`.
 
     The set is a parameter rather than a module constant: the parser's other consumer is
@@ -188,12 +279,20 @@ def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[st
             missing_fields = architect_review_gaps(content)
             if missing_fields:
                 gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
+    if BUG_LABEL in {label.casefold() for label in issue_labels}:
+        evidence = sections.get(EVIDENCE_SECTION.lower())
+        if evidence is None or not evidence.strip():
+            gaps.append(EVIDENCE_SECTION)
+        else:
+            missing_fields = evidence_gaps(evidence, repo_root=repo_root)
+            if missing_fields:
+                gaps.append(f"{EVIDENCE_SECTION} (missing: {', '.join(missing_fields)})")
     return gaps
 
 
-def _fetch_body(issue_number: int) -> str:
+def _fetch_issue(issue_number: int) -> tuple[str, tuple[str, ...]]:
     result = subprocess.run(
-        ["gh", "issue", "view", str(issue_number), "--json", "body,state"],
+        ["gh", "issue", "view", str(issue_number), "--json", "body,state,labels"],
         check=False,
         text=True,
         capture_output=True,
@@ -225,7 +324,17 @@ def _fetch_body(issue_number: int) -> str:
             f"error: issue #{issue_number} is not OPEN (state={data.get('state')})", file=sys.stderr
         )
         sys.exit(2)
-    return data.get("body") or ""
+    labels = tuple(
+        label["name"]
+        for label in data.get("labels", [])
+        if isinstance(label, dict) and isinstance(label.get("name"), str)
+    )
+    return data.get("body") or "", labels
+
+
+def _fetch_body(issue_number: int) -> str:
+    """Compatibility helper for consumers that need only the issue body."""
+    return _fetch_issue(issue_number)[0]
 
 
 def main() -> None:
@@ -237,16 +346,19 @@ def main() -> None:
     except ValueError:
         print(f"error: issue number must be int (got {sys.argv[1]!r})", file=sys.stderr)
         sys.exit(2)
-    body = _fetch_body(n)
+    body, labels = _fetch_issue(n)
     try:
-        gaps = find_gaps(body)
+        gaps = find_gaps(body, issue_labels=labels)
     except CatalogueError as exc:
         # Same class as a failed `gh` capture: the verdict cannot be trusted, so it is
         # not reported as either pass or fail (§IV).
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
     if not gaps:
-        print(f"ok: issue #{n} has all {len(REQUIRED_SECTIONS)} required sections")
+        section_count = len(REQUIRED_SECTIONS) + (
+            BUG_LABEL in {label.casefold() for label in labels}
+        )
+        print(f"ok: issue #{n} has all {section_count} required sections")
         if architect_review_provenance(_split_by_h2(body)["architect review"]) == SELF_REVIEW:
             # Non-blocking, like the orphan-scope reminder (#368): self-review is a valid
             # route, and the point is that it reaches the reader rather than passing as

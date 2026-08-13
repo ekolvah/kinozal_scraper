@@ -25,7 +25,7 @@ delivery gate.
 
 ## Issue contract
 
-Substantive features and fixes start from a GitHub Issue. The required headings
+Substantive features and fixes start from a GitHub Issue. The nine base headings
 are defined only by `REQUIRED_SECTIONS` in
 `scripts/validate_issue_sections.py`:
 
@@ -38,6 +38,70 @@ are defined only by `REQUIRED_SECTIONS` in
 7. Architect review
 8. ADR
 9. Agent handoff
+
+A `bug` issue also requires `## Evidence`. When the plan describes how to read,
+parse, or classify external data, use this shape:
+
+```md
+capture: `<source-specific reproducible command that writes the path below>`
+path: `<repository-relative path>`
+observed: <the source fact that explains the reported failure>
+preserve: <the exact valid record from the same captured response that must keep working>
+change: <the exact invalid record from that captured response whose behaviour must change>
+boundaries: <candidate fix boundaries compared, from broad to narrow>
+collateral: <whether each candidate preserves or loses that exact valid record>
+reuse: <current production path traced to the existing input/fetch usable by the narrow boundary>
+paired-test: <the same captured input through one pipeline run keeps the valid record and rejects the invalid record>
+```
+
+The command is specific to the external source and must include the exact path
+named on the next line. The validator checks that the command is present and the
+repository-relative file exists; it does not try to recognize every possible
+source tool or prove that the recorded conclusions are true. The remaining
+fields turn the capture into a reviewable design decision: compare at least the
+reported invalid record with an exact valid record from the same captured
+response. A sibling feed, query, category, or alternative source does not count
+as preservation of that record. A candidate that loses the preserved record is
+BLOCKING unless the issue records an explicit product decision authorizing that
+loss. Choose the narrowest boundary supported by the observation, trace the
+current production path before claiming that it needs another fetch, and expose
+collateral loss instead of silently accepting it. Use the narrowest read-only
+route below; never run a full pipeline that writes Sheets rows or sends
+Telegram notifications merely to collect evidence:
+
+| Source | Capture route |
+| --- | --- |
+| Kinozal | `python scripts/capture_kinozal_fixture.py <url> <path>` |
+| GitHub REST | `python scripts/capture_external_fixture.py github <endpoint> <path> --confirm-repository-safe` |
+| Telegram channel input | `python scripts/capture_external_fixture.py telegram <channel-url> <path> --confirm-repository-safe` |
+| Gemini summarization | `python scripts/capture_external_fixture.py gemini <saved-input> <path> <--broadcast|--chat> --confirm-repository-safe` |
+| Existing Sheets worksheet | `python scripts/capture_external_fixture.py sheets <spreadsheet-url> <worksheet> <path> --confirm-repository-safe` |
+| Another source with a read-only CLI | `<read-only command> | python scripts/capture_external_fixture.py stdin <path> --confirm-repository-safe` |
+
+The safety flag is an explicit claim, not a sanitizer: inspect the payload and
+never commit credentials, private messages, or other sensitive data. The
+Telegram route calls `TelethonReader` without Gemini or a notifier; the Gemini
+route replays an already saved input without Telegram delivery; the Sheets
+route only reads an existing worksheet; and the GitHub route permits one
+`gh api` GET rather than arbitrary subprocess arguments. The `stdin` route
+persists output but does not execute the upstream tool, so it adds no generic
+process-execution capability.
+
+If no safe read-only route exists, do not improvise with a side-effecting
+production entry point. A failed capture records `status: failed` plus a
+non-empty fenced block after `output:` containing the attempted command's
+output; an unsupported claim that the source is unavailable is still a gap.
+This makes the access failure reviewable but does not prove source behaviour: a
+plan whose design depends on the missing fact remains blocked, the validator
+stays red with `missing: successful capture`, and no implementer handoff may be
+recorded. A committed fixture can be fabricated, which no syntax gate can rule
+out, but the command and path make the observation cheap to reproduce and leave
+a reviewable claim (#509).
+
+For a bug with no external-system behaviour to observe, the section instead
+starts with `n/a: <reason>`, naming why live capture does not apply. The section
+is still required, so choosing that branch is a visible claim rather than a
+silently omitted discovery step.
 
 `Test plan` names executable test nodes. `Architect review` opens with a
 provenance line — `reviewer: <carrier>` or `skipped: <reason>` — followed by the
@@ -71,10 +135,20 @@ arrives, how a reviewer is invoked, how the body is written back.
 
 1. Run `python scripts/validate_issue_sections.py <N>`. A passing issue is
    already planned: report that and stop.
-2. Close the reported gaps from the repository first — read and search the code
-   and documents before asking anyone. Ask at most three clarifying questions
-   per session, and only about decisions the repository cannot answer, such as
-   priority or product intent.
+2. Use all three sources of answers. Read and search the repository first. Ask
+   at most three clarifying questions per session, and only about decisions such
+   as priority or product intent. When the plan describes how to read, parse, or
+   classify data from an external system, observe that live system before
+   writing the plan. From that observation, record one invalid record and one
+   exact valid record from the same response, compare candidate fix boundaries,
+   and state whether each boundary loses that preserved record. Replacing it
+   with a sibling feed or category is data loss, not preservation. Inspect the
+   current call path before deciding whether a narrower classification needs a
+   new fetch. Record both the capture and that decision in `## Evidence`, and
+   name one paired test that sends the same captured input through one pipeline
+   run and proves that the valid record remains while the invalid one changes.
+   Otherwise record `n/a: <reason>` there; this is discovery, not an E2E test or
+   a substitute for a human product decision.
 3. Obtain the architect review defined below and record it in
    `## Architect review`. Weave every BLOCKING finding into the other sections
    before writing the body.
@@ -146,6 +220,12 @@ against §I–§VII and for:
   for a need that does not exist yet, or duplicating what `ci_check`, the PR
   review, or an existing test already does.
 - **A workaround with no named root cause** (§V).
+- **An over-broad external-data boundary** — the plan does not compare a valid
+  and invalid record from the same captured response, substitutes a sibling
+  source for preservation, accepts loss of the preserved record without an
+  explicit product decision, or claims a new fetch without tracing the current
+  production path. Its paired test must exercise both records from the same
+  input and run, not separate allowed/rejected sources.
 - **Avoidable tokens** — an expensive pass where a deterministic script would
   do, or a model call a cheap pre-filter would answer.
 - **A test-first loophole** — a behavioural change declared an exception while a

@@ -1,5 +1,5 @@
 ---
-description: Structure a GitHub issue body into 9 required sections before hand-off to the implementer
+description: Structure a GitHub issue body into its required sections before hand-off to the implementer
 argument-hint: <issue-number>
 ---
 
@@ -13,10 +13,11 @@ and are not copied here. This file contains only harness-specific material.
 
 0. If the session continues from a previous task (an issue/PR already reached hand-off), ask
    the user to run `/compact` before starting. You cannot invoke it; it is a built-in CLI command.
-1. Follow the canonical planner runbook. Obtain context for gaps from the repository (`Read`/`Grep`).
+1. Follow the canonical planner runbook, including its external-observation branch and `## Evidence`
+   contract for `bug` issues; `Read`/`Grep` supply repository context only.
 2. The **`architect-reviewer` subagent** performs the architect review in runbook step 3
    (persona: `.claude/agents/architect-reviewer.md`), not the main session. Its provenance
    line, the first line of `## Architect review`: `reviewer: Claude architect-reviewer subagent`.
-3. Write the body with `gh issue edit $ARGUMENTS --body "<complete text with all 9 sections>"`.
+3. Write the body with `gh issue edit $ARGUMENTS --body "<complete issue contract>"`.
 4. On completion, provide the issue link and hand off to the `implementer`. The user selects the entry point: Codex
    `$implement-issue #$ARGUMENTS` (the repository default) or `/implement $ARGUMENTS` in this session.

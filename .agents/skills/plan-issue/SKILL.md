@@ -14,8 +14,9 @@ as written; it is the canonical step list and this skill does not restate it.
 Only the interface below is specific to this adapter:
 
 - The issue number arrives as `#N` in the user's request.
-- Read repository context with the local file and search tools before asking
-  the user anything.
+- Use the planner runbook's three discovery sources: repository context first,
+  user decisions when needed, and a captured live observation for plans about
+  reading or classifying external data.
 - There is no local reviewer subagent here, so perform the architect review
   yourself against
   [the architect review contract](../../../docs/architecture/agent-process.md#architect-review-contract),

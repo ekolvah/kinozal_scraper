@@ -1,0 +1,18 @@
+{
+  "captured_at": "2026-08-13",
+  "issue": 509,
+  "artifacts": [
+    {
+      "path": "issue_506_revision_1.txt",
+      "source": "GitHub issue #506 userContentEdits at 2026-08-13T06:23:32Z",
+      "classification": "archived feed-level revision 1; no external observation",
+      "sha256_chunks": ["a80bb17a", "8bd5c04d", "35c5cb63", "920311b3", "6c1523f9", "2b10bb48", "9ff0371d", "e1bd02a7"]
+    },
+    {
+      "path": "issue_506_final_item_level.txt",
+      "source": "GitHub issue #506 current body after PR #507 item-level rewrite",
+      "classification": "healthy archived plan with live external observation",
+      "sha256_chunks": ["f2d351a9", "afee12f5", "668042ab", "cc895770", "ce409e9b", "8e8ac16f", "91c97ca6", "2e2a1e73"]
+    }
+  ]
+}
