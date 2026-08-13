@@ -8,8 +8,12 @@ the Cyrillic body decode.
 
 from __future__ import annotations
 
+import hashlib
+import importlib
+import json
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -309,6 +313,116 @@ class TestAgentHandoffSection:
     def test_agent_handoff_requires_all_handoff_fields(self) -> None:
         body = _full_body().replace("next role: implementer\n", "")
         assert find_gaps(body) == ["Agent handoff (missing: next role)"]
+
+
+def _body_with_evidence(content: str) -> str:
+    return f"{_full_body()}\n## Evidence\n\n{content}\n"
+
+
+def _capture_evidence(path: str) -> str:
+    return (
+        "capture: `python scripts/capture_fixture.py "
+        f"https://kinozal.tv/details.php?id=1 {path}`\n"
+        f"path: `{path}`"
+    )
+
+
+def test_bug_issue_without_evidence_section_is_a_gap(tmp_path: Path) -> None:
+    gaps = find_gaps(_full_body(), issue_labels=("bug",), repo_root=tmp_path)
+    assert "Evidence" in gaps
+
+
+def test_evidence_naming_a_missing_path_is_a_gap(tmp_path: Path) -> None:
+    body = _body_with_evidence(_capture_evidence("tests/fixtures/missing.html"))
+    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+    assert gaps == ["Evidence (missing: existing capture path or failed capture output)"]
+
+
+def test_evidence_naming_an_existing_capture_passes(tmp_path: Path) -> None:
+    capture = tmp_path / "tests" / "fixtures" / "captured.html"
+    capture.parent.mkdir(parents=True)
+    capture.write_text("<html>observed response</html>", encoding="utf-8")
+    body = _body_with_evidence(_capture_evidence("tests/fixtures/captured.html"))
+    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+
+
+def test_non_bug_issue_does_not_require_evidence(tmp_path: Path) -> None:
+    assert find_gaps(_full_body(), issue_labels=("enhancement",), repo_root=tmp_path) == []
+
+
+def test_capture_failure_marker_requires_the_command_output(tmp_path: Path) -> None:
+    evidence = _capture_evidence("tests/fixtures/source-unavailable.html")
+    without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
+    assert find_gaps(without_output, issue_labels=("bug",), repo_root=tmp_path) == [
+        "Evidence (missing: existing capture path or failed capture output)"
+    ]
+
+    with_output = _body_with_evidence(
+        f"{evidence}\nstatus: failed\noutput:\n\n```text\n"
+        "primary fetch failed; authenticated mirror login failed\n```"
+    )
+    assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == []
+
+
+def test_capture_fixture_script_writes_the_response_through_the_existing_fetcher(
+    tmp_path: Path,
+) -> None:
+    capture_fixture = importlib.import_module("scripts.capture_fixture")
+    seen: list[str] = []
+
+    class StubFetcher:
+        def fetch_details(self, url: str) -> str:
+            seen.append(url)
+            return "<html>captured through Kinozal.fetch_details</html>"
+
+    target = tmp_path / "kinozal" / "details.html"
+    source = "https://kinozal.tv/details.php?id=2112853"
+    capture_fixture.capture(source, target, fetcher=StubFetcher())
+
+    assert seen == [source]
+    assert target.read_text(encoding="utf-8") == (
+        "<html>captured through Kinozal.fetch_details</html>"
+    )
+
+
+def test_new_external_data_parsing_test_with_inline_markup_is_reported() -> None:
+    ratchet = importlib.import_module("scripts.check_fixture_ratchet")
+    source = '''
+def test_parses_external_page():
+    html = "<html><img class='cat_img_r' src='/pic/cat/6.gif'></html>"
+    assert parse_page(html) == 6
+'''
+    assert ratchet.inline_external_data_test_nodes(
+        source, path=Path("tests/test_new_source.py")
+    ) == ["tests/test_new_source.py::test_parses_external_page"]
+
+    repo_root = Path(__file__).resolve().parent.parent
+    assert ratchet.scan_repository(repo_root) == []
+
+
+def test_evidence_replay_has_positive_and_negative_arms() -> None:
+    repo_root = Path(__file__).resolve().parent.parent
+    fixture_root = repo_root / "tests" / "fixtures" / "issue_509_rca"
+    manifest = json.loads((fixture_root / "manifest.json").read_text(encoding="utf-8"))
+    for artifact in manifest["artifacts"]:
+        payload = (fixture_root / artifact["path"]).read_bytes()
+        assert hashlib.sha256(payload).hexdigest() == artifact["sha256"]
+
+    revision_one = (fixture_root / "issue_506_revision_1.md").read_text(encoding="utf-8")
+    assert "Evidence" in find_gaps(
+        revision_one, issue_labels=("bug",), repo_root=repo_root
+    )
+
+    # The marker did not exist when #506 was planned, so AC3's negative replay is
+    # the healthy archived body plus only the new mechanical marker. The observed
+    # details-page facts remain the archived content, not a synthetic replacement.
+    healthy = (fixture_root / "issue_506_final_item_level.md").read_text(encoding="utf-8")
+    assert "### Live evidence" in healthy
+    relative_capture = "tests/fixtures/issue_509_rca/issue_506_final_item_level.md"
+    healthy_with_marker = f"{healthy}\n## Evidence\n\n{_capture_evidence(relative_capture)}\n"
+    assert find_gaps(
+        healthy_with_marker, issue_labels=("bug",), repo_root=repo_root
+    ) == []
 
 
 class TestOrphanScopeReminder:
