@@ -342,11 +342,11 @@ class TestErrorClassification(unittest.TestCase):
 
 class TestThinkingConfigGate(unittest.TestCase):
     """Thinking must be suppressed with the version-correct knob so a short
-    2-line answer isn't eaten by the reasoning phase. Two-tier boundary (#338):
+    2-line answer isn't eaten by the reasoning phase. At the request-dialect boundary,
     Gemini 3.x replaced `thinking_budget` with `thinking_level` — newer 3.x
     models 400 on `thinking_budget=0`, so they get `thinking_level="minimal"`
     (Google's documented near-zero setting). 2.5 still uses `thinking_budget=0`
-    (#107). Pre-2.5 models (2.0) get NO `thinking_config` — they 400 on it (§IV)."""
+    while pre-2.5 models get no `thinking_config` because they reject it."""
 
     def test_thinking_budget_zero_for_gemini_2_5(self) -> None:
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
@@ -356,13 +356,12 @@ class TestThinkingConfigGate(unittest.TestCase):
         self.assertEqual(cfg.thinking_config.thinking_budget, 0)
 
     def test_thinking_level_minimal_for_gemini_3_x(self) -> None:
-        # #338: 3.x models reject thinking_budget=0 (400) — the knob is
-        # thinking_level="minimal", and thinking_budget must stay unset.
+        # 3.x models use the named `minimal` level; thinking_budget stays unset.
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
-        GeminiEnricher("models/gemini-3.1-flash-lite-preview", client).enrich(
-            _item(), _TWO_LINE_CFG
-        )
+        enricher = GeminiEnricher("models/gemini-3.1-flash-lite-preview", client)
+        enricher.enrich(_item(), _TWO_LINE_CFG)
         cfg = client.models.calls[-1]["config"]
+        self.assertIs(cfg.thinking_config, enricher._thinking_config)
         self.assertIsNotNone(cfg.thinking_config)
         self.assertEqual(cfg.thinking_config.thinking_level, types.ThinkingLevel.MINIMAL)
         self.assertIsNone(cfg.thinking_config.thinking_budget)
@@ -384,7 +383,7 @@ class TestThinkingConfigGate(unittest.TestCase):
 
 
 class _ThinkingFallbackModels:
-    """Fake the captured #515 capability matrix for Gemini 3.x models."""
+    """Fake the observed capability matrix for Gemini 3.x models."""
 
     def __init__(self, *, reject_minimal: set[str], reject_low: set[str] | None = None) -> None:
         self._reject_minimal = reject_minimal
@@ -473,7 +472,10 @@ class TestThinkingLevelFallback(unittest.TestCase):
 
     def test_fallback_call_raises_output_budget_to_observed_minimum(self) -> None:
         models = _ThinkingFallbackModels(reject_minimal={self._REJECTS_MINIMAL})
-        original = types.GenerateContentConfig(max_output_tokens=220)
+        original = types.GenerateContentConfig(
+            max_output_tokens=220,
+            thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
+        )
 
         response, effective_level = generate_with_thinking_fallback(
             self._client(models), self._REJECTS_MINIMAL, "prompt", original, "minimal"
@@ -481,6 +483,7 @@ class TestThinkingLevelFallback(unittest.TestCase):
 
         self.assertEqual(response.text, "Для кого: Developers\nЗачем: Ship changes")
         self.assertEqual(effective_level, "low")
+        self.assertIs(models.calls[0]["config"], original)
         self.assertEqual(original.max_output_tokens, 220)
         self.assertEqual([call["config"].max_output_tokens for call in models.calls], [220, 1024])
 

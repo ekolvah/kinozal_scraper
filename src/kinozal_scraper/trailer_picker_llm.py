@@ -26,8 +26,7 @@ from kinozal_scraper.gemini_enricher import (
     ModelConfigRejected,
     TryNextModel,
     _extract_finish_reason,
-    _initial_thinking_level,
-    _thinking_config,
+    _thinking_policy,
     classify_generate_error,
     generate_with_thinking_fallback,
 )
@@ -145,7 +144,7 @@ class GeminiJsonGenerator:
     def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
         self._client = client
-        self._thinking_level = _initial_thinking_level(model_name)
+        self._thinking_config, self._thinking_level = _thinking_policy(model_name)
 
     @property
     def model_name(self) -> str:
@@ -156,7 +155,7 @@ class GeminiJsonGenerator:
             temperature=0.2,
             response_mime_type="application/json",
             response_schema=PICK_SCHEMA,
-            thinking_config=_thinking_config(self._model_name),
+            thinking_config=self._thinking_config,
         )
         try:
             response, effective_level = generate_with_thinking_fallback(

@@ -30,7 +30,7 @@ _DESCRIPTION_MAX_LEN = 400
 
 # Data-fence sentinels wrapping every untrusted free-text field (`$description`,
 # `$title`) in the prompt — structural spotlighting so the model treats them as
-# data, not instructions (OWASP LLM01, #308). ASCII and highly distinctive on
+# data, not instructions (OWASP LLM01). ASCII and highly distinctive on
 # purpose: `<|...|>` never occurs in real film/repo descriptions (guillemets «»
 # would — they appear in Russian prose — so are avoided). The prompt config
 # instructs the model that text between these markers is data, not commands.
@@ -46,25 +46,24 @@ class ModelUnavailable(Exception):
     """Model returned `NotFound` (404) at GenerateContent — typically a model
     Google still lists via `ListModels` but has already disabled. The rotator
     should mark this model dead for the rest of the run instead of retrying
-    it for every item (issue #128)."""
+    it for every item."""
 
 
 class TryNextModel(Exception):
     """Per-item failure (truncation, network timeout, any unexpected
     exception that is not 404/429). The model is otherwise healthy — same
     model may succeed on a different item — so the rotator advances to
-    the next live model for *this* item but does NOT mark the model dead.
-    See #130."""
+    the next live model for *this* item but does NOT mark the model dead."""
 
 
 class ModelConfigRejected(Exception):
     """Model returned `400 INVALID_ARGUMENT` — our *request* is malformed for
-    this model (e.g. a `thinking_budget` a newer 3.x model doesn't accept, #338),
+    this model (for example, a thinking control it does not accept),
     not a transient hiccup. It is deterministic: every item 400s identically on
     this model. The rotator still advances (other models may accept the request,
     so data ships) but treats it as a VISIBLE anomaly — ERROR log + recorded in
     `config_rejected_models` so the pipeline alerts the operator + reds the job,
-    instead of a config bug hiding behind green rotation (#340)."""
+    instead of a config bug hiding behind green rotation."""
 
 
 class TruncatedResponse(Exception):
@@ -79,7 +78,7 @@ def classify_generate_error(exc: BaseException) -> type[Exception]:
     The new `google.genai` SDK raises a single `APIError` family discriminated by
     HTTP `.code` / `.status`: 404 → `ModelUnavailable` (model listed but disabled),
     429 → `QuotaExhausted`, `INVALID_ARGUMENT` (a malformed *request*, e.g. a
-    `thinking_budget` a 3.x model rejects, #338/#340) → `ModelConfigRejected`,
+    thinking control a model rejects) → `ModelConfigRejected`,
     anything else (network, non-API errors) → `TryNextModel`. Both `.code` and
     `.status` are read off the exception AND its `__cause__` (tenacity's
     `RetryError` wraps the last SDK error as `__cause__`; `GeminiEnricher` only
@@ -124,7 +123,7 @@ def _sanitize_for_prompt(text: str, max_len: int = _DESCRIPTION_MAX_LEN) -> str:
 
 
 def _fence_untrusted(text: str, dedupe_key: str = "") -> str:
-    """Sanitize untrusted external text and wrap it in a data-fence (#308).
+    """Sanitize untrusted external text and wrap it in a data-fence.
 
     Structural anti-injection (spotlighting): the returned block is bracketed by
     `_FENCE_START`/`_FENCE_END` so the model treats it as data. Any fence-sentinel
@@ -202,18 +201,12 @@ class NullEnricher:
         return result
 
 
-# Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends
-# the whole `max_output_tokens` on thoughts and returns `finish_reason=MAX_TOKENS`
-# on valid prompts (#107). The knob to suppress it is version-specific: Gemini 3
-# replaced `thinking_budget` with `thinking_level`, but support for individual
-# 3.x levels is not uniform. `minimal` is the initial probe; a rejecting model
-# is retried once at `low`, and that capability is remembered for the run (#515).
-# Gemini 2.5 still uses `thinking_budget=0` (#338).
-# Older models (2.0) reject any `thinking_config` with 400, so gate it by version.
-_THINKING_MIN_VERSION = 2.5
-_THINKING_LEVEL_MIN_VERSION = 3.0
-# Live capture `evidence/issue-515/production_budget.json`, entry 3, completed
-# at 1024; lower tested budgets truncated after spending tokens on thinking.
+# Gemini 2.5 and 3.x use different request fields for suppressing internal
+# reasoning. Model metadata does not expose that request dialect, so the version
+# boundary is isolated in `_thinking_policy`. Support for a specific 3.x level is
+# learned from the generate response instead of inferred from the version.
+# A production-shaped request completed with 1024 output tokens; lower tested
+# budgets truncated after spending their allowance on thinking.
 _FALLBACK_MIN_OUTPUT_TOKENS = 1024
 ThinkingLevelName = Literal["minimal", "low"]
 _THINKING_LEVELS: dict[ThinkingLevelName, types.ThinkingLevel] = {
@@ -222,25 +215,19 @@ _THINKING_LEVELS: dict[ThinkingLevelName, types.ThinkingLevel] = {
 }
 
 
-def _thinking_config(model_name: str) -> types.ThinkingConfig | None:
-    """Return the version-correct initial suppression config.
-
-    Gemini 3.x starts at `minimal` and may fall back after a live rejection;
-    2.5 uses `thinking_budget=0`; older models receive no thinking config.
-    """
+def _thinking_policy(
+    model_name: str,
+) -> tuple[types.ThinkingConfig | None, ThinkingLevelName | None]:
+    """Return the initial config and fallback state for one request dialect."""
     version = _model_version_key(model_name)[0]
-    if version >= _THINKING_LEVEL_MIN_VERSION:
-        return types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
-    if version >= _THINKING_MIN_VERSION:
-        return types.ThinkingConfig(thinking_budget=0)
-    return None
-
-
-def _initial_thinking_level(model_name: str) -> ThinkingLevelName | None:
-    """Return the per-run capability state used only by Gemini 3.x models."""
-    if _model_version_key(model_name)[0] >= _THINKING_LEVEL_MIN_VERSION:
-        return "minimal"
-    return None
+    if version >= 3.0:
+        return (
+            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
+            "minimal",
+        )
+    if version >= 2.5:
+        return types.ThinkingConfig(thinking_budget=0), None
+    return None, None
 
 
 def _config_with_thinking_level(
@@ -263,7 +250,7 @@ def generate_with_thinking_fallback(
     level: ThinkingLevelName | None,
 ) -> tuple[Any, ThinkingLevelName | None]:
     """Generate once, probing `low` only when a 3.x model rejects `minimal`."""
-    initial_config = _config_with_thinking_level(config, level) if level else config
+    initial_config = _config_with_thinking_level(config, "low") if level == "low" else config
     try:
         response = client.models.generate_content(
             model=model_name, contents=contents, config=initial_config
@@ -295,7 +282,7 @@ class GeminiEnricher:
     def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
         self._client = client
-        self._thinking_level = _initial_thinking_level(model_name)
+        self._thinking_config, self._thinking_level = _thinking_policy(model_name)
 
     @property
     def model_name(self) -> str:
@@ -314,7 +301,7 @@ class GeminiEnricher:
 
         # `title` and `description` are untrusted external free-text (kinozal /
         # README HTML) — fence them in code so every source is spotlighted
-        # regardless of its prompt config (#308). Rendering to Telegram uses
+        # regardless of its prompt config. Rendering to Telegram uses
         # `item.title` directly (build_notification), so the fence never leaks
         # into the message — it exists only inside the prompt.
         context: dict[str, Any] = {
@@ -330,7 +317,7 @@ class GeminiEnricher:
         config = types.GenerateContentConfig(
             temperature=params.get("temperature", 0.2),
             max_output_tokens=params.get("max_tokens", 150),
-            thinking_config=_thinking_config(self._model_name),
+            thinking_config=self._thinking_config,
         )
 
         try:
@@ -362,7 +349,7 @@ class GeminiEnricher:
     @retry(
         # Retry ONLY quota (429): the window can roll over. A 404 (dead model)
         # or any other error must NOT be retried — that just burns 3× backoff
-        # before the rotator can advance (#107 BLOCKING-2).
+        # before the rotator can advance.
         retry=retry_if_exception(lambda e: getattr(e, "code", None) == 429),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, max=10),
@@ -417,8 +404,7 @@ def _model_version_key(name: str) -> tuple[float, str]:
     The minor version is optional: Google ships some IDs as bare majors
     (e.g. 'models/gemini-3-flash-preview'), which map to `<major>.0`. Without
     this, such a name fell back to (0.0, …) — mis-sorting it to the back of the
-    rotation AND making `_thinking_config` skip `thinking_budget=0`, silently
-    reproducing the #107 MAX_TOKENS bug (caught in PR #333 review)."""
+    rotation and selecting the wrong thinking request dialect."""
     import re
 
     match = re.search(r"gemini-(\d+)(?:\.(\d+))?", name)
@@ -442,8 +428,7 @@ def _is_text_gemini(name: str) -> bool:
 def get_generation_models(client: GenaiClient) -> list[str]:
     """Return text-generation Gemini model names, newer versions first.
 
-    The new SDK exposes capabilities via `Model.supported_actions` (was
-    `supported_generation_methods` on the deprecated SDK, #107).
+    The SDK exposes capabilities via `Model.supported_actions`.
     """
     try:
         names: list[str] = []
@@ -474,9 +459,9 @@ class RotatingGeminiEnricher:
         self._enrichers = [GeminiEnricher(n, client) for n in model_names]
         self._current = 0
         # Indices of models that returned `NotFound` this run. Skipped on
-        # subsequent items until the cooldown window resets them (#128).
+        # subsequent items until the cooldown window resets them.
         self._dead: set[int] = set()
-        # Names of models that returned `400 INVALID_ARGUMENT` this run (#340).
+        # Names of models that returned `400 INVALID_ARGUMENT` this run.
         # Recorded — not dead-marked (see `_handle_rotation_failure`) — so the
         # pipeline can raise a visible operator alert after the run.
         self._config_rejected: set[str] = set()
@@ -484,7 +469,7 @@ class RotatingGeminiEnricher:
     @property
     def config_rejected_models(self) -> frozenset[str]:
         """Models that rejected our request with `400 INVALID_ARGUMENT` this run
-        (#340). Non-empty ⇒ a systematic config bug the operator must see —
+        Non-empty ⇒ a systematic config bug the operator must see —
         the pipeline turns this into a Telegram alert + red job."""
         return frozenset(self._config_rejected)
 
@@ -507,7 +492,7 @@ class RotatingGeminiEnricher:
         prev_idx = self._current
         prev = self._enrichers[prev_idx].model_name
         if isinstance(exc, ModelConfigRejected):
-            # Systematic malformed request for this model (#340). Record + log
+            # Systematic malformed request for this model. Record + log
             # LOUDLY (ERROR, not WARNING) so it reaches the operator, and rotate
             # (other models may accept the request). Deliberately NOT dead-marked:
             # the alert forces a quick fix so the per-item re-hit is transient,
@@ -596,7 +581,7 @@ class RotatingGeminiEnricher:
 def build_default_enricher(api_key: str, log: logging.Logger) -> Enricher:
     """Construct the production Enricher from `GOOGLE_API_KEY`, logging a
     WARNING whenever we degrade to `NullEnricher` so the operator sees in
-    cron logs that enrichment is off (see issue #93)."""
+    cron logs that enrichment is off."""
     if not api_key:
         log.warning(
             "GOOGLE_API_KEY is empty, enrichment disabled — notifications "
