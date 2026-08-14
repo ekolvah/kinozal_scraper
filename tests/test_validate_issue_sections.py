@@ -29,10 +29,20 @@ from scripts.validate_issue_sections import (
 
 
 def _full_body() -> str:
-    parts = []
-    for s in REQUIRED_SECTIONS:
-        parts.append(f"## {s}\n\n{_section_content(s)}\n")
+    """The nine base sections plus the discovery section every non-`bug` class adds.
+
+    `Prior art` is included even though it is not in `REQUIRED_SECTIONS`, because most
+    assertions here run `main()` against a non-`bug` label and would otherwise gap on a
+    section the test is not about (#518). A body for the base set alone is `_body_with`.
+    """
+    parts = [f"## {s}\n\n{_section_content(s)}\n" for s in (*REQUIRED_SECTIONS, _PRIOR_ART)]
     return "\n".join(parts)
+
+
+# The discovery section every non-`bug` class adds, spelled out here rather than imported:
+# these tests must be able to fail on the *name* the catalogue rows carry, not agree with
+# the script by construction.
+_PRIOR_ART = "Prior art"
 
 
 # The six sections that predate the `Architect review` gate (#150). Hardcoded on
@@ -68,6 +78,14 @@ def _section_content(section: str) -> str:
         # Since #474 the section opens with a provenance marker; a body without one
         # is a gap, so the shared fixture has to carry it.
         return f"reviewer: {_INDEPENDENT_ADAPTER}\n\nBLOCKING: real finding, long enough."
+    if section == _PRIOR_ART:
+        # Lives here rather than in `_full_body` so `_body_with(...)` renders it too;
+        # otherwise every rebuilt body would gap on the section under test (#518).
+        return (
+            "searched: web — existing section-validation actions; repository — the validator\n"
+            "candidates: GitHub issue forms, issue-ops/validator, the in-repo gate\n"
+            "verdict: reuse the in-repo gate, because the external routes fire on issue events"
+        )
     return f"Real content для {section} which is long enough."
 
 
@@ -387,7 +405,9 @@ def test_external_evidence_requires_a_preservation_decision_record() -> None:
 
 
 def test_non_bug_issue_does_not_require_evidence() -> None:
-    assert validator.required_sections("enhancement") == REQUIRED_SECTIONS
+    # The set membership itself moved to `test_prior_art_reaches_the_required_set_through_
+    # the_class_rows` (#518); what this node still owns is that a filled non-`bug` body gaps
+    # on nothing.
     assert find_gaps(_full_body(), required=validator.required_sections("enhancement")) == []
 
 
@@ -493,10 +513,99 @@ def test_main_passes_live_bug_label_to_evidence_gate(
     assert "Evidence" in capsys.readouterr().err
 
 
+_NON_BUG_SECTIONS = (*REQUIRED_SECTIONS, _PRIOR_ART)
+
+
+def _body_with_prior_art(content: str) -> str:
+    """A non-`bug` body whose only questionable section is `## Prior art`."""
+    return f"{_body_with(REQUIRED_SECTIONS)}\n## {_PRIOR_ART}\n\n{content}\n"
+
+
+def test_non_bug_issue_without_prior_art_section_is_a_gap(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The label → catalogue → required-set route, end to end (#518).
+
+    The gap is the **bare** section name: an absent section never reaches the field
+    check, exactly as a missing `## Evidence` does not.
+    """
+    monkeypatch.setattr(
+        validator, "_fetch_issue", lambda _n: (_body_with(REQUIRED_SECTIONS), ("enhancement",))
+    )
+    monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "518"])
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 1
+    assert f"  - {_PRIOR_ART}\n" in capsys.readouterr().err
+
+
+def test_prior_art_reaches_the_required_set_through_the_class_rows() -> None:
+    """The discovery conditional is data, and each class carries exactly one section."""
+    assert validator.required_sections(validator.BUG_LABEL) == (*REQUIRED_SECTIONS, "Evidence")
+    for label in validator.TYPE_LABELS:
+        if label == validator.BUG_LABEL:
+            continue
+        assert validator.required_sections(label) == _NON_BUG_SECTIONS, label
+
+
+def test_prior_art_requires_searched_candidates_and_verdict() -> None:
+    body = _body_with_prior_art("I looked around and there is nothing quite like it.")
+    assert find_gaps(body, required=_NON_BUG_SECTIONS) == [
+        f"{_PRIOR_ART} (missing: searched, candidates, verdict)"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("verdict", "gaps"),
+    [
+        pytest.param("TBD", [f"{_PRIOR_ART} (missing: reuse/build verdict)"], id="not-a-decision"),
+        pytest.param(
+            "searched npm and PyPI and found several",
+            [f"{_PRIOR_ART} (missing: reuse/build verdict)"],
+            id="restates-the-search",
+        ),
+        pytest.param("Reuse the in-repo gate", [], id="reuse-cased"),
+        pytest.param("`reuse`", [], id="reuse-backticked"),
+        pytest.param('"build", because nothing in the ecosystem fits', [], id="build-quoted"),
+    ],
+)
+def test_prior_art_verdict_must_name_reuse_or_build(verdict: str, gaps: list[str]) -> None:
+    """The section records one of two decisions; a filled line that decides nothing is red."""
+    body = _body_with_prior_art(
+        "searched: web for section-validation actions; repository for the existing gate\n"
+        "candidates: GitHub issue forms, issue-ops/validator, the in-repo validator\n"
+        f"verdict: {verdict}"
+    )
+    assert find_gaps(body, required=_NON_BUG_SECTIONS) == gaps
+
+
+def test_prior_art_can_record_not_applicable() -> None:
+    body = _body_with_prior_art("n/a: a broken-link fix has no ecosystem to search")
+    assert find_gaps(body, required=_NON_BUG_SECTIONS) == []
+
+    missing_reason = _body_with_prior_art("n/a:")
+    assert find_gaps(missing_reason, required=_NON_BUG_SECTIONS) == [
+        f"{_PRIOR_ART} (missing: n/a reason)"
+    ]
+
+
+def test_passing_non_bug_issue_counts_the_resolved_set(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("enhancement",)))
+    monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "518"])
+
+    validator.main()
+
+    assert "ok: issue #518 has all 10 required sections" in capsys.readouterr().out
+
+
 def _catalogue_rows() -> dict[str, dict[str, list[str]]]:
     """The shipped matrix, rebuilt in the test so a mutation below is explicit."""
     rows: dict[str, dict[str, list[str]]] = {
-        label: {"adds": [], "omits": []} for label in validator.TYPE_LABELS
+        label: {"adds": [_PRIOR_ART], "omits": []} for label in validator.TYPE_LABELS
     }
     rows["bug"]["adds"] = ["Evidence"]
     return rows
@@ -518,11 +627,9 @@ class TestChangeClassMatrix:
     def test_bug_row_pulls_evidence_into_the_required_set(self) -> None:
         assert validator.required_sections("bug") == (*REQUIRED_SECTIONS, "Evidence")
 
-    def test_every_non_bug_class_requires_the_nine_base_sections(self) -> None:
-        for label in validator.TYPE_LABELS:
-            if label == validator.BUG_LABEL:
-                continue
-            assert validator.required_sections(label) == REQUIRED_SECTIONS, label
+    # The non-`bug` half of this pair is `test_prior_art_reaches_the_required_set_through_
+    # the_class_rows` above: since #518 every class adds a discovery section, so a second
+    # loop asserting the same rows would only duplicate it (§VII).
 
     def test_issue_without_a_type_label_is_a_gap(self) -> None:
         assert validator.type_label_gaps(("refactor",), 516) == []
@@ -566,14 +673,16 @@ class TestChangeClassMatrix:
             "_CHANGE_CLASS_CATALOGUE",
             _write_catalogue(tmp_path / "change-classes.yaml", rows),
         )
-        body = _body_with(tuple(s for s in REQUIRED_SECTIONS if s != "Architect review"))
+        # Built from the *resolved* set, not from the base one: otherwise the body would
+        # gap on the section every class adds and this node would stop testing `omits`.
+        body = _body_with(validator.required_sections("documentation"))
         monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("documentation",)))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
 
         validator.main()
 
         output = capsys.readouterr().out
-        assert "ok: issue #516 has all 8 required sections" in output
+        assert "ok: issue #516 has all 9 required sections" in output
 
     def test_passing_issue_reports_the_class_and_its_derived_red_obligation(
         self,
@@ -596,7 +705,7 @@ class TestChangeClassMatrix:
             "_CHANGE_CLASS_CATALOGUE",
             _write_catalogue(tmp_path / "change-classes.yaml", rows),
         )
-        body = _body_with(tuple(s for s in REQUIRED_SECTIONS if s != "Test plan"))
+        body = _body_with(validator.required_sections("chore"))
         monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("chore",)))
 
         validator.main()
