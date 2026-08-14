@@ -285,5 +285,3 @@ Every PR description states which principles the change interacts with. The
 reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
-
-**Version**: 2.4.2
