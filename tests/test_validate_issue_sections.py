@@ -792,6 +792,107 @@ class TestOrphanScopeReminder:
         assert "Follow-up for the historical audit" in output
 
 
+class TestMarkPlanned:
+    """`--mark-planned` binds the `Planned` transition to a passing validation (#519).
+
+    The planner already runs this script, so the board write rides its success path instead
+    of becoming a seventh prose step — the shape that was skipped twice before (#458, #465).
+    It is bookkeeping: a failed write is visible but never turns a validated plan into a
+    failed one, and the unflagged call the implementer makes must stay read-only, otherwise
+    re-validating an issue would flip its card back from `In Progress`.
+    """
+
+    @staticmethod
+    def _spy(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, str]]:
+        calls: list[tuple[int, str]] = []
+        monkeypatch.setattr(
+            validator.set_issue_status,
+            "set_status",
+            lambda n, s: calls.append((n, s)),
+        )
+        return calls
+
+    def test_passing_issue_with_flag_sets_planned(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        calls = self._spy(monkeypatch)
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "519", "--mark-planned"])
+
+        validator.main()
+
+        assert calls == [(519, "planned")]
+        assert "ok: issue #519" in capsys.readouterr().out
+
+    def test_failing_issue_with_flag_does_not_touch_the_board(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        calls = self._spy(monkeypatch)
+        body = _body_with(REQUIRED_SECTIONS[:-1])  # no `Agent handoff`
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "519", "--mark-planned"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 1
+        assert calls == [], "неготовый план не должен помечаться как Planned"
+        assert "Agent handoff" in capsys.readouterr().err
+
+    def test_unflagged_run_makes_no_project_call(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        calls = self._spy(monkeypatch)
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "519"])
+
+        validator.main()
+
+        assert calls == [], "вызов имплементера обязан остаться read-only"
+        assert "ok: issue #519" in capsys.readouterr().out
+
+    def test_board_write_failure_warns_without_changing_exit_code(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def boom(_n: int, _status: str) -> None:
+            raise RuntimeError("gh project item-edit failed (rc=1): revoked project access")
+
+        monkeypatch.setattr(validator.set_issue_status, "set_status", boom)
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "519", "--mark-planned"])
+
+        validator.main()
+
+        captured = capsys.readouterr()
+        assert "ok: issue #519" in captured.out
+        assert "warning: board status not updated" in captured.err
+        assert "revoked project access" in captured.err
+
+
+class TestCli:
+    def test_documented_cli_runs_from_a_clean_sys_path(self) -> None:
+        """`python scripts/validate_issue_sections.py` puts `scripts/` on `sys.path`.
+
+        The repo root never is, so the sibling module this script now loads must be reachable
+        by the same importlib route as `check_orphan_scope` — a `scripts.` import would pass
+        under pytest and fail on the documented CLI (B1).
+        """
+        repo_root = Path(__file__).resolve().parent.parent
+        completed = subprocess.run(
+            [sys.executable, "scripts/validate_issue_sections.py"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            encoding="utf-8",
+        )
+
+        assert completed.stdout is not None and completed.stderr is not None
+        output = completed.stdout + completed.stderr
+        assert "ModuleNotFoundError" not in output, output
+        assert completed.returncode == 2, output
+        assert "Usage:" in output, output
+
+
 class TestFetchBodyEncoding:
     def test_cyrillic_body_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cyrillic_body = "## Context / Why\n\nЭто кириллический контент с символом 0x81 в проблемной кодировке.\n"

@@ -216,8 +216,9 @@ These steps belong to the `planner` role, not to an adapter. Every planner entry
 point runs them; an adapter adds only its own interface — how the issue number
 arrives, how a reviewer is invoked, how the body is written back.
 
-1. Run `python scripts/validate_issue_sections.py <N>`. A passing issue is
-   already planned: report that and stop.
+1. Run `python scripts/validate_issue_sections.py <N> --mark-planned`. A passing
+   issue is already planned: the flag back-fills its board Status before the
+   early exit, so report that and stop.
 2. Use all four sources of answers. Read and search the repository first. Ask
    at most three clarifying questions per session, and only about decisions such
    as priority or product intent. When the plan describes how to read, parse, or
@@ -241,9 +242,12 @@ arrives, how a reviewer is invoked, how the body is written back.
    before writing the body.
 4. Fill `## Agent handoff`, then write the complete body back to the issue.
    Never discard existing text: restructure and extend it.
-5. Re-run the validator and iterate on what it reports. Stop after
+5. Re-run `python scripts/validate_issue_sections.py <N> --mark-planned` and
+   iterate on what it reports. Stop after
    three planning iterations; an issue still failing then goes back to the user
-   with the reason, rather than to an implementer.
+   with the reason, rather than to an implementer. The flag marks the board only
+   on a passing validation; a failed board write prints a warning, consumes no
+   iteration, and blocks neither the hand-off nor the exit code (#519).
 
 `## Test plan` names executable test nodes, because they are the contract of the
 RED step. `## Docs to update` lists documents or states explicitly that
@@ -358,7 +362,9 @@ instruction to shorten its own output.
    the architect review, fills `Agent handoff`, and validates the result.
 3. The implementer validates the issue again, verifies its Project Priority
    with `python scripts/set_issue_priority.py <N> --check`, then creates the
-   branch only with `python scripts/issue_branch.py <N>`. It writes and proves
+   branch only with `python scripts/issue_branch.py <N>`, which also moves the
+   board card to `In Progress`; that validation stays unflagged and read-only, so
+   re-running it never moves the card back (#519). It writes and proves
    failing tests, then commits RED before production logic. Implement the
    agreed outline, update required documentation and ADRs, and run the local CI
    gate once in the foreground.
@@ -468,9 +474,14 @@ or malformed output is red until re-run.
    `python scripts/set_issue_priority.py <N> <High|Medium|Low>`. Propose High
    for user-facing bugs and development-process work, Medium for agentic
    capability work outside the process, and Low otherwise; name the rule used.
-5. If a `requirements*.in` file changes, run `pip-compile` for its matching
+5. The process owns exactly two board Status transitions and writes them from
+   scripts a role already runs: `Planned` from
+   `validate_issue_sections.py --mark-planned`, `In Progress` from
+   `issue_branch.py`. `Todo` and `Done` belong to the built-in Project
+   automations, and `scripts/set_issue_status.py` rejects them (#519).
+6. If a `requirements*.in` file changes, run `pip-compile` for its matching
    lockfile in the same commit.
-6. Trivial non-behavioural one-line changes may skip the issue workflow only
+7. Trivial non-behavioural one-line changes may skip the issue workflow only
    with the explicit rationale recorded in the issue or PR.
 
 ## Agent records and adapters
