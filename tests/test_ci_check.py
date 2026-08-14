@@ -44,6 +44,17 @@ class TestStepParity:
 
 
 class TestFindModules:
+    @staticmethod
+    def _repository_with_mypy_candidates(tmp_path: Path) -> None:
+        subprocess.run(["git", "init", "--quiet"], cwd=tmp_path, check=True)
+        (tmp_path / ".gitignore").write_text("evidence/\n", encoding="utf-8")
+        (tmp_path / "tracked.py").write_text("tracked = True\n", encoding="utf-8")
+        (tmp_path / "new_module.py").write_text("new = True\n", encoding="utf-8")
+        evidence = tmp_path / "evidence"
+        evidence.mkdir()
+        (evidence / "planning_probe.py").write_text("probe = True\n", encoding="utf-8")
+        subprocess.run(["git", "add", ".gitignore", "tracked.py"], cwd=tmp_path, check=True)
+
     def test_excludes_audit_tmp_and_pytest_cache(self) -> None:
         modules = set(_find_modules())
         assert (
@@ -51,6 +62,61 @@ class TestFindModules:
         )
         assert not any(".audit-tmp" in m for m in modules)
         assert not any("pytest-cache-files-" in m for m in modules)
+
+    def test_untracked_unignored_python_file_is_in_scope_before_git_add(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._repository_with_mypy_candidates(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        assert "new_module.py" in _find_modules()
+
+    def test_ignored_python_probe_is_out_of_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._repository_with_mypy_candidates(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        modules = {name.replace("\\", "/") for name in _find_modules()}
+        assert "evidence/planning_probe.py" not in modules
+
+    def test_tracked_python_files_remain_in_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._repository_with_mypy_candidates(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        assert "tracked.py" in _find_modules()
+
+    def test_tracked_python_file_deleted_before_staging_is_out_of_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._repository_with_mypy_candidates(tmp_path)
+        (tmp_path / "tracked.py").unlink()
+        monkeypatch.chdir(tmp_path)
+
+        assert "tracked.py" not in _find_modules()
+
+
+class TestMypyManifest:
+    def test_requests_cached_and_untracked_excluding_standard_ignores(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[list[str]] = []
+        (tmp_path / "tracked.py").write_text("tracked = True\n", encoding="utf-8")
+        (tmp_path / "new_module.py").write_text("new = True\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(
+                args=cmd, returncode=0, stdout=b"tracked.py\0new_module.py\0", stderr=b""
+            )
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        assert _find_modules() == ["tracked.py", "new_module.py"]
+        assert calls == [["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]]
 
 
 class TestRunner:
@@ -104,6 +170,32 @@ class TestTrackedFilesCaptureFailure:
         monkeypatch.setattr(subprocess, "run", fake_run)
         with pytest.raises(SystemExit) as exc:
             _tracked_files()
+
+        assert exc.value.code == 2
+        assert "git ls-files failed" in capsys.readouterr().out
+
+    def test_mypy_manifest_none_stdout_exits_two(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout=None, stderr=None)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        with pytest.raises(SystemExit) as exc:
+            _find_modules()
+
+        assert exc.value.code == 2
+        assert "file set is unknown" in capsys.readouterr().out
+
+    def test_mypy_manifest_git_failure_exits_two(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
+            return subprocess.CompletedProcess(args=cmd, returncode=128, stdout=b"", stderr=b"")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        with pytest.raises(SystemExit) as exc:
+            _find_modules()
 
         assert exc.value.code == 2
         assert "git ls-files failed" in capsys.readouterr().out

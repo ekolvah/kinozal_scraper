@@ -53,6 +53,16 @@ one-off merge) is declared with `--allow-drift "<reason>"`, never worked around 
 `--no-verify`. Details and the reasoning are in
 [§Required status checks](#required-status-checks-branch-protection).
 
+Before probing an interpreter or starting either gate, the hook asks
+`git rev-parse --local-env-vars` for Git's repository-local environment names
+and unsets exactly those names. Git exports values such as `GIT_DIR` while
+running a hook; without this boundary, a child launched after changing into an
+unrelated temporary directory can still address the source repository,
+especially from a linked worktree. Failure or empty output from the discovery
+command is an infrastructure failure (exit `2`), not permission to continue
+with inherited repository state. `BRANCH_PROTECTION_ALLOW_DRIFT` is not a
+Git-local name and continues to reach the protection probe unchanged.
+
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
 `python scripts/ci_check.py --only <name>`, so local and CI cannot drift. If
@@ -180,9 +190,20 @@ lint, secrets, pytest, pip-audit, pip-audit-dev, requirements, mypy, imports).
 The per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 
-mypy type-checks every `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
-`__pycache__`, `.audit-tmp`, `.claude`) and any `pytest-cache-files-*` dir, via
-`ci_check._find_modules()` — the same discovery used locally.
+mypy gets a NUL-safe manifest from
+`git ls-files -z --cached --others --exclude-standard`: existing tracked Python
+files plus new, untracked Python files that standard Git ignore rules do not
+exclude. Index entries deleted from the working tree before staging are
+discarded instead of being passed to mypy as nonexistent paths.
+That keeps a new source module in local scope before `git add`, while ignored
+planning probes under `evidence/` stay out; the tracked `.gitignore` rule for
+`evidence/` is therefore part of this boundary. A clean GitHub checkout has no
+untracked candidates, so the same command naturally reduces to its tracked
+Python files there. `_find_modules()` then applies the explicit
+`_EXCLUDE_DIRS` (`.venv`, `.git`, `__pycache__`, `.audit-tmp`, `.claude`) and
+`pytest-cache-files-*` filters over Git's platform-stable POSIX paths. The
+secret gate deliberately remains narrower and calls `_tracked_files()`, so it
+continues to scan tracked files only.
 
 Imports between modules (`from kinozal_scraper.generic_pipeline import …`) are
 absolute package imports: the sources live in the installable package
