@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 import scripts.validate_issue_sections as validator
 from scripts.validate_issue_sections import (
@@ -257,7 +258,7 @@ class TestArchitectReviewProvenance:
         monkeypatch.setattr(
             validator,
             "_fetch_issue",
-            lambda _n: (self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"), ()),
+            lambda _n: (self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"), ("refactor",)),
         )
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
@@ -273,7 +274,7 @@ class TestArchitectReviewProvenance:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ()))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
         validator.main()
@@ -332,24 +333,29 @@ def _capture_evidence(path: str) -> str:
     )
 
 
-def test_bug_issue_without_evidence_section_is_a_gap(tmp_path: Path) -> None:
-    gaps = find_gaps(_full_body(), issue_labels=("bug",), repo_root=tmp_path)
+# Since #516 the `bug` requirement is a catalogue row, not a label argument: the tests
+# below ask for the resolved set of that class rather than passing labels into the parser.
+_BUG_SECTIONS = validator.required_sections("bug")
+
+
+def test_bug_issue_without_evidence_section_is_a_gap() -> None:
+    gaps = find_gaps(_full_body(), required=_BUG_SECTIONS)
     assert "Evidence" in gaps
 
 
-def test_evidence_path_outside_evidence_dir_is_a_gap(tmp_path: Path) -> None:
+def test_evidence_path_outside_evidence_dir_is_a_gap() -> None:
     for path in ("tests/fixtures/captured.html", "evidence/../captured.html"):
         body = _body_with_evidence(_capture_evidence(path))
-        gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+        gaps = find_gaps(body, required=_BUG_SECTIONS)
         assert gaps == ["Evidence (missing: capture path under evidence/)"]
 
 
-def test_evidence_path_under_evidence_dir_needs_no_file(tmp_path: Path) -> None:
+def test_evidence_path_under_evidence_dir_needs_no_file() -> None:
     body = _body_with_evidence(_capture_evidence("evidence/issue-520/captured.html"))
-    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(body, required=_BUG_SECTIONS) == []
 
 
-def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path) -> None:
+def test_source_specific_capture_still_requires_a_decision_record() -> None:
     relative_path = "evidence/issue-509/github.json"
     body = _body_with_evidence(
         "capture: `gh api repos/ekolvah/kinozal_scraper/issues/509 "
@@ -357,13 +363,13 @@ def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path
         f"path: `{relative_path}`"
     )
 
-    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+    gaps = find_gaps(body, required=_BUG_SECTIONS)
     assert gaps == [
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ]
 
 
-def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Path) -> None:
+def test_external_evidence_requires_a_preservation_decision_record() -> None:
     path = "evidence/issue-509/captured.html"
     body = _body_with_evidence(
         f"capture: `python scripts/capture_kinozal_fixture.py https://kinozal.tv {path}`\n"
@@ -377,29 +383,28 @@ def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Pat
         "paired-test: one run keeps the wanted record and rejects the unwanted record"
     )
 
-    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(body, required=_BUG_SECTIONS) == []
 
 
-def test_non_bug_issue_does_not_require_evidence(tmp_path: Path) -> None:
-    assert find_gaps(_full_body(), issue_labels=("enhancement",), repo_root=tmp_path) == []
+def test_non_bug_issue_does_not_require_evidence() -> None:
+    assert validator.required_sections("enhancement") == REQUIRED_SECTIONS
+    assert find_gaps(_full_body(), required=validator.required_sections("enhancement")) == []
 
 
-def test_non_external_bug_can_record_evidence_not_applicable(tmp_path: Path) -> None:
+def test_non_external_bug_can_record_evidence_not_applicable() -> None:
     body = _body_with_evidence(
         "n/a: the defect is pure review-gate exit-code logic with no external data source"
     )
-    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(body, required=_BUG_SECTIONS) == []
 
     missing_reason = _body_with_evidence("n/a:")
-    assert find_gaps(missing_reason, issue_labels=("bug",), repo_root=tmp_path) == [
-        "Evidence (missing: n/a reason)"
-    ]
+    assert find_gaps(missing_reason, required=_BUG_SECTIONS) == ["Evidence (missing: n/a reason)"]
 
 
-def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path) -> None:
+def test_capture_failure_marker_records_output_but_blocks_handoff() -> None:
     evidence = _capture_evidence("evidence/issue-509/source-unavailable.html")
     without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
-    assert find_gaps(without_output, issue_labels=("bug",), repo_root=tmp_path) == [
+    assert find_gaps(without_output, required=_BUG_SECTIONS) == [
         "Evidence (missing: failed capture output)"
     ]
 
@@ -407,7 +412,7 @@ def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path
         f"{evidence}\nstatus: failed\noutput:\n\n```text\n"
         "primary fetch failed; authenticated mirror login failed\n```"
     )
-    assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == [
+    assert find_gaps(with_output, required=_BUG_SECTIONS) == [
         "Evidence (missing: successful capture)"
     ]
 
@@ -451,7 +456,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
         _section_content("Implementation outline"),
         "Reject the entire mixed source instead of classifying each item.",
     )
-    assert "Evidence" in find_gaps(wrong_plan, issue_labels=("bug",))
+    assert "Evidence" in find_gaps(wrong_plan, required=_BUG_SECTIONS)
     relative_wrong_plan = "evidence/issue-506/top.html"
     revision_with_capture_only = (
         f"{wrong_plan}\n## Evidence\n\n"
@@ -459,7 +464,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
         f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
         f"path: `{relative_wrong_plan}`\n"
     )
-    capture_only_gaps = find_gaps(revision_with_capture_only, issue_labels=("bug",))
+    capture_only_gaps = find_gaps(revision_with_capture_only, required=_BUG_SECTIONS)
     assert (
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ) in capture_only_gaps
@@ -471,10 +476,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
     wrong_plan_with_complete_record = (
         f"{wrong_plan}\n## Evidence\n\n{_capture_evidence(relative_wrong_plan)}\n"
     )
-    wrong_plan_gaps = find_gaps(
-        wrong_plan_with_complete_record,
-        issue_labels=("bug",),
-    )
+    wrong_plan_gaps = find_gaps(wrong_plan_with_complete_record, required=_BUG_SECTIONS)
     assert not any(gap.startswith("Evidence") for gap in wrong_plan_gaps)
 
 
@@ -491,6 +493,175 @@ def test_main_passes_live_bug_label_to_evidence_gate(
     assert "Evidence" in capsys.readouterr().err
 
 
+def _catalogue_rows() -> dict[str, dict[str, list[str]]]:
+    """The shipped matrix, rebuilt in the test so a mutation below is explicit."""
+    rows: dict[str, dict[str, list[str]]] = {
+        label: {"adds": [], "omits": []} for label in validator.TYPE_LABELS
+    }
+    rows["bug"]["adds"] = ["Evidence"]
+    return rows
+
+
+def _write_catalogue(path: Path, rows: object) -> Path:
+    path.write_text(yaml.safe_dump({"classes": rows}, sort_keys=True), encoding="utf-8")
+    return path
+
+
+class TestChangeClassMatrix:
+    """The change-class axis is data, not a chain of `if label == ...` (#516).
+
+    The base set keeps exactly one carrier (`REQUIRED_SECTIONS`); a row may only add
+    to it or omit from it. That is why every test here compares against the constant
+    rather than against a second literal list of nine headings.
+    """
+
+    def test_bug_row_pulls_evidence_into_the_required_set(self) -> None:
+        assert validator.required_sections("bug") == (*REQUIRED_SECTIONS, "Evidence")
+
+    def test_every_non_bug_class_requires_the_nine_base_sections(self) -> None:
+        for label in validator.TYPE_LABELS:
+            if label == validator.BUG_LABEL:
+                continue
+            assert validator.required_sections(label) == REQUIRED_SECTIONS, label
+
+    def test_issue_without_a_type_label_is_a_gap(self) -> None:
+        assert validator.type_label_gaps(("refactor",), 516) == []
+        for labels in ((), ("agentic-skill",)):
+            gaps = validator.type_label_gaps(labels, 516)
+            assert len(gaps) == 1
+            assert gaps[0].startswith(validator.TYPE_LABEL_GAP)
+
+    def test_two_type_labels_are_a_gap(self) -> None:
+        gaps = validator.type_label_gaps(("bug", "refactor"), 516)
+        assert len(gaps) == 1
+        assert gaps[0].startswith(validator.TYPE_LABEL_GAP)
+        assert "bug" in gaps[0] and "refactor" in gaps[0]
+
+    def test_type_label_gap_message_names_the_label_command_not_the_planner(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A planner may not edit labels (§Planner runbook), so `/plan` is the wrong fix."""
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ()))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 1
+        error = capsys.readouterr().err
+        assert "gh issue edit 516 --add-label" in error
+        assert "/plan #516" not in error
+
+    def test_row_omitting_a_section_passes_through_main_without_a_key_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The passing path must be derived from the resolved set, not from the base one."""
+        rows = _catalogue_rows()
+        rows["documentation"]["omits"] = ["Architect review"]
+        monkeypatch.setattr(
+            validator,
+            "_CHANGE_CLASS_CATALOGUE",
+            _write_catalogue(tmp_path / "change-classes.yaml", rows),
+        )
+        body = _body_with(tuple(s for s in REQUIRED_SECTIONS if s != "Architect review"))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("documentation",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        validator.main()
+
+        output = capsys.readouterr().out
+        assert "ok: issue #516 has all 8 required sections" in output
+
+    def test_passing_issue_reports_the_class_and_its_derived_red_obligation(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        validator.main()
+
+        assert "class: refactor — RED required" in capsys.readouterr().out
+
+        # Derived, not stored: drop `Test plan` from the row and the obligation follows.
+        rows = _catalogue_rows()
+        rows["chore"]["omits"] = ["Test plan"]
+        monkeypatch.setattr(
+            validator,
+            "_CHANGE_CLASS_CATALOGUE",
+            _write_catalogue(tmp_path / "change-classes.yaml", rows),
+        )
+        body = _body_with(tuple(s for s in REQUIRED_SECTIONS if s != "Test plan"))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("chore",)))
+
+        validator.main()
+
+        assert "class: chore — RED not required" in capsys.readouterr().out
+
+    def test_unreadable_catalogue_exits_two(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Neither a pass nor a fail: the verdict cannot be trusted (§IV)."""
+        monkeypatch.setattr(validator, "_CHANGE_CLASS_CATALOGUE", tmp_path / "change-classes.yaml")
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 2
+        assert "change-classes.yaml" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            pytest.param(lambda rows: rows.pop("chore"), id="row-set-is-not-the-nine-labels"),
+            pytest.param(
+                lambda rows: rows["chore"].update(omits=["Not A Base Section"]),
+                id="omits-outside-the-base-set",
+            ),
+            pytest.param(
+                lambda rows: rows["chore"].update(adds=["ADR"]),
+                id="adds-overlaps-the-base-set",
+            ),
+            pytest.param(
+                lambda rows: rows.update(chore="Evidence"),
+                id="row-is-not-a-mapping-of-two-lists",
+            ),
+        ],
+    )
+    def test_structurally_invalid_row_exits_two(
+        self,
+        mutate: Any,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        rows = _catalogue_rows()
+        mutate(rows)
+        monkeypatch.setattr(
+            validator,
+            "_CHANGE_CLASS_CATALOGUE",
+            _write_catalogue(tmp_path / "change-classes.yaml", rows),
+        )
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 2
+        assert "change-classes.yaml" in capsys.readouterr().err
+
+
 class TestOrphanScopeReminder:
     def test_valid_issue_surfaces_reminder_without_failing_validation(
         self,
@@ -501,7 +672,7 @@ class TestOrphanScopeReminder:
             "Real content для Out of scope which is long enough.",
             "- Follow-up for the historical audit.",
         )
-        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ()))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("refactor",)))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "368"])
 
         validator.main()

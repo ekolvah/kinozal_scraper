@@ -39,8 +39,42 @@ are defined only by `REQUIRED_SECTIONS` in
 8. ADR
 9. Agent handoff
 
-A `bug` issue also requires `## Evidence`. When the plan describes how to read,
-parse, or classify external data, use this shape:
+Which sections a given issue must carry is **per-change-class data, not a rule an
+agent remembers**: `.agents/orchestration/change-classes.yaml` holds one row per
+type label, declaring what that class `adds` to the nine base sections and what
+it `omits` from them. `scripts/validate_issue_sections.py` resolves the row from
+the issue's single type label and validates against the result, so a new class is
+a data edit rather than another branch inside the validator.
+
+| Type label | Adds | Omits |
+| --- | --- | --- |
+| `bug` | `Evidence` | — |
+| `chore` | — | — |
+| `ci` | — | — |
+| `documentation` | — | — |
+| `enhancement` | — | — |
+| `perf` | — | — |
+| `refactor` | — | — |
+| `security` | — | — |
+| `testing` | — | — |
+
+`documentation` omits nothing on purpose: here the documentation *is* the
+product, guarded by its own tests, so such an issue routinely carries a real test
+node and can hold a real architecture decision; a trivial one still uses the
+`skipped:` escape inside `Architect review`. Two obligations are **derived** from
+the resolved set rather than stored beside it, so no two fields can contradict
+each other: an architect review is required when `Architect review` is part of
+it, and RED is required when `Test plan` is. On a passing issue the validator
+prints both, e.g. `class: documentation — RED required`.
+
+Exactly one type label (governance convention 3) is therefore a gate, not a
+convention: zero or several is a `type label` gap. The **maintainer** fixes it
+with `gh issue edit <N> --add-label <type>`, because a planner may not change
+labels (§Planner runbook).
+
+The `## Evidence` section that `bug` adds records a completed observation of the
+external system. When the plan describes how to read, parse, or classify external
+data, use this shape:
 
 ```md
 capture: `<source-specific reproducible command that writes the path below>`
@@ -377,7 +411,9 @@ or malformed output is red until re-run.
 3. Assign exactly one type label when creating an issue: `bug` for broken
    behaviour; then `perf` / `security` / `enhancement` for user-visible work;
    otherwise `refactor`, `testing`, `ci`, `documentation`, or `chore` by the
-   changed area. Non-type labels are outside this taxonomy.
+   changed area. Non-type labels are outside this taxonomy. The label is the
+   machine-read route key into the change-class matrix above and the maintainer
+   owns it: `validate_issue_sections.py` fails on zero or several type labels.
 4. Ask the user for issue priority, then set the GitHub Project field with
    `python scripts/set_issue_priority.py <N> <High|Medium|Low>`. Propose High
    for user-facing bugs and development-process work, Medium for agentic

@@ -3,11 +3,17 @@
 
 Usage: python scripts/validate_issue_sections.py <issue-number>
 
-Exits 0 if all required sections are present and non-empty. A passing issue may
-also print a non-blocking reminder for an explicit Out of scope follow-up that
-has neither an issue reference nor a wontfix/YAGNI decision (#368). Otherwise
-prints the list of gaps to stderr and exits 1. Consumed by role adapters so an
-agent does not have to "remember" the hand-off contract.
+Which sections are required is resolved from the issue's one type label through
+`.agents/orchestration/change-classes.yaml` (#516), so a change class is data
+rather than a branch in this file.
+
+Exits 0 if all required sections are present and non-empty, printing the resolved
+class and its derived RED obligation. A passing issue may also print a
+non-blocking reminder for an explicit Out of scope follow-up that has neither an
+issue reference nor a wontfix/YAGNI decision (#368). Otherwise prints the list of
+gaps to stderr and exits 1; an unreadable or structurally invalid catalogue exits
+2, because then the verdict is neither a pass nor a fail. Consumed by role
+adapters so an agent does not have to "remember" the hand-off contract.
 """
 
 from __future__ import annotations
@@ -51,6 +57,21 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 )
 EVIDENCE_SECTION = "Evidence"
 BUG_LABEL = "bug"
+# The taxonomy of governance convention 3, machine-readable so the change-class
+# catalogue can be checked against it instead of against itself. Exactly one of these
+# labels routes an issue to its row; anything else on the issue is a non-type label.
+TYPE_LABELS: tuple[str, ...] = (
+    "bug",
+    "chore",
+    "ci",
+    "documentation",
+    "enhancement",
+    "perf",
+    "refactor",
+    "security",
+    "testing",
+)
+TYPE_LABEL_GAP = "type label"
 EVIDENCE_NA_PREFIX = "n/a:"
 EVIDENCE_DECISION_FIELDS = (
     ("observed", "observed"),
@@ -65,8 +86,9 @@ MIN_CONTENT_CHARS = 5
 
 _MD = MarkdownIt("commonmark")
 
-_ROLE_CATALOGUE = Path(__file__).resolve().parents[1] / ".agents" / "orchestration" / "roles.yaml"
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_ORCHESTRATION = Path(__file__).resolve().parents[1] / ".agents" / "orchestration"
+_ROLE_CATALOGUE = _ORCHESTRATION / "roles.yaml"
+_CHANGE_CLASS_CATALOGUE = _ORCHESTRATION / "change-classes.yaml"
 _REVIEWER_ROLE = "architect_reviewer"
 # The trivial-change escape (#150). It carries no carrier name on purpose: a skipped
 # review has no reviewer to name.
@@ -101,6 +123,86 @@ def reviewer_independence() -> dict[str, str]:
     if not isinstance(declared, dict) or not declared:
         raise CatalogueError(f"{_REVIEWER_ROLE}.adapter_independence is not a non-empty mapping")
     return declared
+
+
+def change_class_requirements() -> dict[str, dict[str, tuple[str, ...]]]:
+    """Per-type-label section deltas, relative to `REQUIRED_SECTIONS`.
+
+    The change-class axis is data, exactly as the role axis already is (#516): a new
+    class is a row in `.agents/orchestration/change-classes.yaml`, not another
+    `if label == ...` branch here. The structural checks below make a row that cannot
+    mean anything an exit-2 (`CatalogueError`) rather than a silently weaker gate: a
+    typo in `omits` would otherwise drop a required section from the resolved set.
+    """
+    try:
+        catalogue = yaml.safe_load(_CHANGE_CLASS_CATALOGUE.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise CatalogueError(f"cannot read {_CHANGE_CLASS_CATALOGUE}: {exc}") from exc
+    classes = catalogue.get("classes") if isinstance(catalogue, dict) else None
+    if not isinstance(classes, dict):
+        raise CatalogueError(f"{_CHANGE_CLASS_CATALOGUE} declares no classes mapping")
+    if set(classes) != set(TYPE_LABELS):
+        raise CatalogueError(
+            f"{_CHANGE_CLASS_CATALOGUE} rows {sorted(classes)} are not the type labels "
+            f"{list(TYPE_LABELS)}"
+        )
+    base = set(REQUIRED_SECTIONS)
+    resolved: dict[str, dict[str, tuple[str, ...]]] = {}
+    for label, row in classes.items():
+        if not isinstance(row, dict) or set(row) != {"adds", "omits"}:
+            raise CatalogueError(
+                f"{_CHANGE_CLASS_CATALOGUE} row {label!r} is not a mapping of adds/omits"
+            )
+        if not all(
+            isinstance(row[key], list) and all(isinstance(item, str) for item in row[key])
+            for key in ("adds", "omits")
+        ):
+            raise CatalogueError(
+                f"{_CHANGE_CLASS_CATALOGUE} row {label!r} has a non-list adds/omits"
+            )
+        if not base.issuperset(row["omits"]):
+            raise CatalogueError(
+                f"{_CHANGE_CLASS_CATALOGUE} row {label!r} omits a section outside the base set: "
+                f"{sorted(set(row['omits']) - base)}"
+            )
+        if base.intersection(row["adds"]):
+            raise CatalogueError(
+                f"{_CHANGE_CLASS_CATALOGUE} row {label!r} adds a section the base set already "
+                f"requires: {sorted(base.intersection(row['adds']))}"
+            )
+        resolved[label] = {"adds": tuple(row["adds"]), "omits": tuple(row["omits"])}
+    return resolved
+
+
+def required_sections(label: str) -> tuple[str, ...]:
+    """The resolved, ordered section set a `label` issue must carry."""
+    row = change_class_requirements()[label]
+    omitted = set(row["omits"])
+    return (*(name for name in REQUIRED_SECTIONS if name not in omitted), *row["adds"])
+
+
+def _resolve_class(labels: Sequence[str]) -> str | None:
+    """The one type label routing this issue, or `None` when it is not exactly one."""
+    present = sorted({label.casefold() for label in labels} & set(change_class_requirements()))
+    return present[0] if len(present) == 1 else None
+
+
+def type_label_gaps(labels: Sequence[str], issue_number: int) -> list[str]:
+    """Return the routing gap when an issue carries zero or several type labels.
+
+    The type label is the route key into the class matrix, so governance convention 3
+    stops being prose an agent must remember and becomes an exit code. The message names
+    the *maintainer's* fix: a planner may not edit labels (§Planner runbook), so pointing
+    at `/plan` would send the issue to a role that cannot resolve the gap.
+    """
+    present = sorted({label.casefold() for label in labels} & set(change_class_requirements()))
+    if len(present) == 1:
+        return []
+    detail = "none" if not present else f"several: {', '.join(present)}"
+    return [
+        f"{TYPE_LABEL_GAP} ({detail}; the maintainer fixes it with "
+        f"`gh issue edit {issue_number} --add-label <type>`)"
+    ]
 
 
 def architect_review_provenance(content: str) -> str | None:
@@ -249,44 +351,44 @@ def evidence_gaps(content: str) -> list[str]:
     ]
 
 
-def find_gaps(
-    body: str,
-    required: Sequence[str] = REQUIRED_SECTIONS,
-    *,
-    issue_labels: Sequence[str] = (),
-    repo_root: Path = _REPO_ROOT,
-) -> list[str]:
+_SECTION_CHECKS = {
+    "Agent handoff": handoff_gaps,
+    "Architect review": architect_review_gaps,
+    EVIDENCE_SECTION: evidence_gaps,
+}
+
+
+def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
     """Empty or missing sections from `required`.
 
-    The set is a parameter rather than a module constant: the parser's other consumer is
-    the MADR-record guard (`tests/test_adr_records.py`) with its own h2 list. Forking it
-    would create a second definition of an empty section (#426).
+    The set is a parameter rather than a module constant: the parser's other consumers are
+    the MADR-record guard (`tests/test_adr_records.py`) with its own h2 list, and `main()`
+    with the set resolved from the issue's change class. Forking it would create a second
+    definition of an empty section (#426).
+
+    This function never resolves labels (#516). `Evidence` is checked because it is *in*
+    the given set, not because a `bug` label was passed down here — that keeps one carrier
+    for "which sections apply" and leaves this pure over its argument.
     """
-    # Retained for callers written against the pre-#520 API. Evidence is now a
-    # working-tree-only artifact, so validation deliberately performs no I/O here.
-    del repo_root
     sections = _split_by_h2(body)
     gaps: list[str] = []
     for name in required:
         content = sections.get(name.lower())
-        if content is None or len(content) < MIN_CONTENT_CHARS:
+        if content is None or not content.strip():
             gaps.append(name)
-        elif name == "Agent handoff":
-            missing_fields = handoff_gaps(content)
-            if missing_fields:
-                gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
-        elif name == "Architect review":
-            missing_fields = architect_review_gaps(content)
-            if missing_fields:
-                gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
-    if BUG_LABEL in {label.casefold() for label in issue_labels}:
-        evidence = sections.get(EVIDENCE_SECTION.lower())
-        if evidence is None or not evidence.strip():
-            gaps.append(EVIDENCE_SECTION)
-        else:
-            missing_fields = evidence_gaps(evidence)
-            if missing_fields:
-                gaps.append(f"{EVIDENCE_SECTION} (missing: {', '.join(missing_fields)})")
+            continue
+        check = _SECTION_CHECKS.get(name)
+        if check is None:
+            # A section with no field contract is judged only by having substance.
+            if len(content) < MIN_CONTENT_CHARS:
+                gaps.append(name)
+            continue
+        # A section that owns a field contract is judged by it at any length: `n/a:` is
+        # shorter than the generic bar yet must be reported as a missing reason, not as
+        # an empty section.
+        missing_fields = check(content)
+        if missing_fields:
+            gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
     return gaps
 
 
@@ -348,18 +450,29 @@ def main() -> None:
         sys.exit(2)
     body, labels = _fetch_issue(n)
     try:
-        gaps = find_gaps(body, issue_labels=labels)
+        # Label resolution lives here, not in `find_gaps`: which sections apply is a
+        # property of the issue's change class, while the parser stays pure over the set
+        # it is handed (#516).
+        label_gaps = type_label_gaps(labels, n)
+        change_class = None if label_gaps else _resolve_class(labels)
+        required = REQUIRED_SECTIONS if change_class is None else required_sections(change_class)
+        gaps = label_gaps + find_gaps(body, required=required)
     except CatalogueError as exc:
         # Same class as a failed `gh` capture: the verdict cannot be trusted, so it is
         # not reported as either pass or fail (§IV).
         print(f"error: {exc}", file=sys.stderr)
         sys.exit(2)
     if not gaps:
-        section_count = len(REQUIRED_SECTIONS) + (
-            BUG_LABEL in {label.casefold() for label in labels}
-        )
-        print(f"ok: issue #{n} has all {section_count} required sections")
-        if architect_review_provenance(_split_by_h2(body)["architect review"]) == SELF_REVIEW:
+        assert change_class is not None
+        print(f"ok: issue #{n} has all {len(required)} required sections")
+        # Both obligations are derived from the resolved set rather than stored, so a row
+        # cannot claim one thing and require another.
+        red = "RED required" if "Test plan" in required else "RED not required"
+        print(f"class: {change_class} — {red}")
+        if (
+            "Architect review" in required
+            and architect_review_provenance(_split_by_h2(body)["architect review"]) == SELF_REVIEW
+        ):
             # Non-blocking, like the orphan-scope reminder (#368): self-review is a valid
             # route, and the point is that it reaches the reader rather than passing as
             # an independent check.
@@ -370,18 +483,19 @@ def main() -> None:
         for reminder in check_orphan_scope.format_reminders(n, body):
             print(reminder)
         return
-    print(f"error: issue #{n} missing/empty sections:", file=sys.stderr)
+    print(f"error: issue #{n} is not ready:", file=sys.stderr)
     for g in gaps:
         print(f"  - {g}", file=sys.stderr)
-    # The most common way to “lose” many sections is an unclosed ```; under CommonMark it
-    # consumes the rest of the document and GitHub renders it as gray code. Give a hint,
-    # not a detector heuristic: implementing one would again guess author intent.
-    print(
-        "hint: если секции в body видны глазами — проверь незакрытый ``` выше них: "
-        "остаток документа становится кодовым блоком и на GitHub тоже",
-        file=sys.stderr,
-    )
-    print("run `/plan #" + str(n) + "` to fill them", file=sys.stderr)
+    if len(gaps) > len(label_gaps):
+        # The most common way to “lose” many sections is an unclosed ```; under CommonMark it
+        # consumes the rest of the document and GitHub renders it as gray code. Give a hint,
+        # not a detector heuristic: implementing one would again guess author intent.
+        print(
+            "hint: если секции в body видны глазами — проверь незакрытый ``` выше них: "
+            "остаток документа становится кодовым блоком и на GitHub тоже",
+            file=sys.stderr,
+        )
+        print("run `/plan #" + str(n) + "` to fill them", file=sys.stderr)
     sys.exit(1)
 
 
