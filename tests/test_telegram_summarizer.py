@@ -265,8 +265,26 @@ class TestGeminiSummarizerRecovery(unittest.TestCase):
             ["LOW"],
         )
 
-    def test_invalid_argument_raises_api_error_without_fallback(self) -> None:
-        client = _FakeClient({"m-a": _api_error(400), "m-b": _FakeResponse("unused")})
+    def test_config_rejected_advances_to_next_model(self) -> None:
+        client = _FakeClient({"m-a": _api_error(400), "m-b": _FakeResponse("from-b")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        self.assertEqual(summ.summarize("text", False), "from-b")
+        self.assertEqual([call["model"] for call in client.models.calls], ["m-a", "m-b"])
+
+    def test_config_rejected_model_recorded_for_alert(self) -> None:
+        client = _FakeClient({"m-a": _api_error(400), "m-b": _FakeResponse("from-b")})
+        summ = GeminiSummarizer(
+            models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
+        )
+
+        self.assertEqual(summ.summarize("text", False), "from-b")
+        self.assertEqual(summ.config_rejected_models, frozenset({"m-a"}))
+
+    def test_all_models_config_rejected_still_raises_all_models_failed(self) -> None:
+        client = _FakeClient({"*": _api_error(400)})
         summ = GeminiSummarizer(
             models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
         )
@@ -274,8 +292,9 @@ class TestGeminiSummarizerRecovery(unittest.TestCase):
         with self.assertRaises(SummarizationFailed) as ctx:
             summ.summarize("text", False)
 
-        self.assertEqual(ctx.exception.error_kind, "api_error")
-        self.assertEqual([call["model"] for call in client.models.calls], ["m-a"])
+        self.assertEqual(ctx.exception.error_kind, "all_models_failed")
+        self.assertEqual([call["model"] for call in client.models.calls], ["m-a", "m-b"])
+        self.assertEqual(summ.config_rejected_models, frozenset({"m-a", "m-b"}))
 
     @unittest.mock.patch("tenacity.nap.time.sleep")
     def test_service_unavailable_retries_same_model(self, _sleep: Any) -> None:
@@ -720,6 +739,19 @@ class TestDeliverResults(unittest.TestCase):
         code = deliver_results(notifier, [_summarized("a"), _summarized("b")])
         self.assertEqual(code, 0)
         self.assertFalse(any(t.startswith("⚠️") for t in notifier.sent))
+        self.assertEqual(len(notifier.sent), 3)
+
+    def test_config_rejection_alerts_even_when_all_channels_summarized(self) -> None:
+        notifier = _RecordingNotifier()
+        summarizer = SimpleNamespace(config_rejected_models=frozenset({"m-a"}))
+
+        with unittest.mock.patch("kinozal_scraper.alerting.mark_technical_alert_sent"):
+            code = deliver_results(notifier, [_summarized("a")], summarizer=summarizer)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(len(notifier.sent), 3)
+        self.assertIn("sum-a", notifier.sent[1])
+        self.assertIn("m-a", notifier.sent[2])
 
     def test_all_failed_sends_alert_no_no_news(self) -> None:
         notifier = _RecordingNotifier()
