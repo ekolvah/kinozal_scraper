@@ -9,6 +9,18 @@
 # глотала `2>/dev/null` (#436). Поэтому `2>/dev/null` остался только на пробе.
 set -u
 
+if ! GIT_LOCAL_ENV_VARS=$(git rev-parse --local-env-vars); then
+    echo "pre-push: git rev-parse --local-env-vars failed — repository-local environment is unknown" >&2
+    exit 2
+fi
+if [ -z "$GIT_LOCAL_ENV_VARS" ]; then
+    echo "pre-push: git rev-parse --local-env-vars returned no names — repository-local environment is unknown" >&2
+    exit 2
+fi
+for name in $GIT_LOCAL_ENV_VARS; do
+    unset "$name"
+done
+
 PY=""
 for candidate in ".venv/Scripts/python" ".venv/bin/python" "py -3.12"; do
     # Без кавычек намеренно: "py -3.12" — это команда вместе с аргументом.

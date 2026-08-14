@@ -407,9 +407,7 @@ class TestPrePushHook:
 
     def test_clears_repository_local_git_environment(self, tmp_path: Path) -> None:
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
-        result = self._run(
-            tmp_path, env={**os.environ, "GIT_DIR": str(_REPO_ROOT / ".git")}
-        )
+        result = self._run(tmp_path, env={**os.environ, "GIT_DIR": str(_REPO_ROOT / ".git")})
         calls = self._gate_calls(tmp_path)
 
         assert result.returncode == 0, result.stderr

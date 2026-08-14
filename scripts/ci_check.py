@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 _EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
 
@@ -26,12 +26,17 @@ def _run(cmd: list[str]) -> None:
 
 
 def _find_modules() -> list[str]:
-    return [
-        str(p)
-        for p in Path(".").rglob("*.py")
-        if not (_EXCLUDE_DIRS & set(p.parts))
-        and not any(part.startswith("pytest-cache-files-") for part in p.parts)
-    ]
+    modules: list[str] = []
+    for name in _git_files("--cached", "--others", "--exclude-standard"):
+        if not name.endswith(".py"):
+            continue
+        parts = PurePosixPath(name).parts
+        if _EXCLUDE_DIRS & set(parts):
+            continue
+        if any(part.startswith("pytest-cache-files-") for part in parts):
+            continue
+        modules.append(name)
+    return modules
 
 
 def check_format() -> None:
@@ -77,13 +82,13 @@ def check_secrets() -> None:
     _run(_secrets_cmd(targets))
 
 
-def _tracked_files() -> list[str]:
+def _git_files(*options: str) -> list[str]:
     # Binary mode on purpose (#364): `-z` exists to make the stream newline-safe,
     # and text mode would undo that by translating universal newlines inside a path.
     # Decoding here also keeps a non-UTF-8 path from killing the reader thread —
     # that would empty the list and make the secret gate exit with "no files to
     # scan", pointing the operator at the wrong cause.
-    proc = subprocess.run(["git", "ls-files", "-z"], capture_output=True)
+    proc = subprocess.run(["git", "ls-files", "-z", *options], capture_output=True)
     if proc.returncode != 0:
         print("git ls-files failed — the file set to scan is unknown")
         sys.exit(2)
@@ -98,6 +103,10 @@ def _tracked_files() -> list[str]:
     # (round-trips back to the same bytes) instead of vanishing from the scan.
     listing = proc.stdout.decode("utf-8", "surrogateescape")
     return [name for name in listing.split("\0") if name]
+
+
+def _tracked_files() -> list[str]:
+    return _git_files()
 
 
 def _secrets_targets(files: Iterable[str]) -> list[str]:

@@ -53,9 +53,7 @@ class TestFindModules:
         evidence = tmp_path / "evidence"
         evidence.mkdir()
         (evidence / "planning_probe.py").write_text("probe = True\n", encoding="utf-8")
-        subprocess.run(
-            ["git", "add", ".gitignore", "tracked.py"], cwd=tmp_path, check=True
-        )
+        subprocess.run(["git", "add", ".gitignore", "tracked.py"], cwd=tmp_path, check=True)
 
     def test_excludes_audit_tmp_and_pytest_cache(self) -> None:
         modules = set(_find_modules())
@@ -106,9 +104,7 @@ class TestMypyManifest:
         monkeypatch.setattr(subprocess, "run", fake_run)
 
         assert _find_modules() == ["tracked.py", "new_module.py"]
-        assert calls == [
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]
-        ]
+        assert calls == [["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]]
 
 
 class TestRunner:
