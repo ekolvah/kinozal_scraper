@@ -3,3 +3,6 @@
 # «bad interpreter», и pre-push гейт молча перестал бы запускаться (#436).
 # Скоуп намеренно узкий — репозиторий целиком не перенормализуем.
 .githooks/** text eol=lf
+
+# These replay artifacts have SHA256 contracts; checkout must preserve their bytes.
+tests/fixtures/issue_509_rca/*.txt -text
