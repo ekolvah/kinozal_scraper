@@ -418,9 +418,19 @@ class TestPrePushHook:
 
     def test_git_local_environment_discovery_failure_exits_two(self, tmp_path: Path) -> None:
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
-        result = self._run(
-            tmp_path, env={**os.environ, "GIT_DIR": str(tmp_path / "missing.git")}
+        git_stub = tmp_path / "bin" / "git"
+        git_stub.parent.mkdir()
+        git_stub.write_text(
+            "#!/usr/bin/env bash\necho 'git discovery unavailable' >&2\nexit 1\n",
+            encoding="utf-8",
+            newline="\n",
         )
+        git_stub.chmod(0o755)
+        env = {
+            **os.environ,
+            "PATH": f"{git_stub.parent}{os.pathsep}{os.environ['PATH']}",
+        }
+        result = self._run(tmp_path, env=env)
 
         assert result.returncode == 2
         assert "git rev-parse --local-env-vars failed" in result.stderr
