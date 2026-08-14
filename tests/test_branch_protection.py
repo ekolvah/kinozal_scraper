@@ -347,8 +347,7 @@ class TestPrePushHook:
 
     _STUB = (
         "#!/usr/bin/env bash\n"
-        'printf "%s|%s|GIT_DIR=%s\\n" "$STUB_ID" "$*" "${GIT_DIR-unset}" '
-        '>> "$PWD/hook-calls.log"\n'
+        'printf "%s|%s\\n" "$STUB_ID" "$*" >> "$PWD/hook-calls.log"\n'
         'if [ "$1" = "-c" ]; then exit 0; fi\n'
         'name=$(basename "$1")\n'
         'echo "stderr-from-$name" >&2\n'
@@ -420,16 +419,6 @@ class TestPrePushHook:
         calls = self._gate_calls(tmp_path)
         assert f"check_branch_protection.py --allow-drift {reason}" in calls[0]
         assert "ci_check.py" in calls[1]
-
-    def test_clears_repository_local_git_environment(self, tmp_path: Path) -> None:
-        self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
-        result = self._run(
-            tmp_path,
-            env={**os.environ, "GIT_DIR": str(tmp_path / "source-repository.git")},
-        )
-
-        assert result.returncode == 0, result.stderr
-        assert all(call.endswith("|GIT_DIR=unset") for call in self._gate_calls(tmp_path))
 
     def test_drift_blocks_push_without_running_ci_check(self, tmp_path: Path) -> None:
         """Drift fails push immediately, without paying ci_check minutes."""

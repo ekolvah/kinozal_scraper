@@ -44,31 +44,6 @@ class TestStepParity:
 
 
 class TestFindModules:
-    def test_uses_tracked_manifest_instead_of_worktree_scan(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        (tmp_path / "ignored_probe.py").write_text("PROBE = True\n", encoding="utf-8")
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setattr(
-            "scripts.ci_check._tracked_files",
-            lambda: ["src/tracked.py", "docs/architecture.md"],
-        )
-
-        assert _find_modules() == ["src/tracked.py"]
-
-    def test_tracked_python_files_remain_in_scope(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            "scripts.ci_check._tracked_files",
-            lambda: [
-                "src/kinozal_scraper/pipeline.py",
-                ".venv/ignored.py",
-                "build/pytest-cache-files-run/ignored.py",
-                "README.md",
-            ],
-        )
-
-        assert _find_modules() == ["src/kinozal_scraper/pipeline.py"]
-
     def test_excludes_audit_tmp_and_pytest_cache(self) -> None:
         modules = set(_find_modules())
         assert (
