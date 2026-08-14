@@ -127,12 +127,8 @@ class TestAgentProcess:
             assert marker in normalized
 
     def test_evidence_is_working_tree_only_and_recorded_in_the_issue(self) -> None:
-        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
-            encoding="utf-8"
-        )
-        principles = (_REPO / "docs" / "architecture" / "principles.md").read_text(
-            encoding="utf-8"
-        )
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        principles = (_REPO / "docs" / "architecture" / "principles.md").read_text(encoding="utf-8")
         for document in (process, principles):
             normalized = " ".join(document.split())
             assert "working-tree-only planning evidence" in normalized
@@ -147,11 +143,12 @@ class TestAgentProcess:
         fixture_root = _REPO / "tests" / "fixtures" / "issue_509_rca"
         assert not fixture_root.exists()
 
-        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
-            encoding="utf-8"
-        )
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
         normalized = " ".join(process.split())
-        assert "full issue bodies, transcripts, and planning history are not test fixtures" in normalized
+        assert (
+            "full issue bodies, transcripts, and planning history are not test fixtures"
+            in normalized
+        )
         assert "production-behaviour regression test reads the captured bytes" in normalized
 
     def test_pr_template_records_agent_provenance(self) -> None:

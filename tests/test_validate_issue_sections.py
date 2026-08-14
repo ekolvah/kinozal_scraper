@@ -459,9 +459,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
         f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
         f"path: `{relative_wrong_plan}`\n"
     )
-    capture_only_gaps = find_gaps(
-        revision_with_capture_only, issue_labels=("bug",)
-    )
+    capture_only_gaps = find_gaps(revision_with_capture_only, issue_labels=("bug",))
     assert (
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ) in capture_only_gaps
