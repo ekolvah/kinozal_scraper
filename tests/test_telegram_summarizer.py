@@ -250,15 +250,8 @@ class TestGeminiSummarizerQuota(unittest.TestCase):
 
 
 class TestGeminiSummarizerRecovery(unittest.TestCase):
-    def test_summarizer_falls_back_to_low_on_minimal_rejection(self) -> None:
-        client = _FakeClient(
-            {
-                "models/gemini-3.7-flash": [
-                    _api_error(400),
-                    _FakeResponse("recovered at low"),
-                ]
-            }
-        )
+    def test_summarizer_uses_low_on_first_gemini_3_request(self) -> None:
+        client = _FakeClient({"models/gemini-3.7-flash": _FakeResponse("summarized")})
         summ = GeminiSummarizer(
             models=["models/gemini-3.7-flash"],
             client=client,
@@ -266,10 +259,10 @@ class TestGeminiSummarizerRecovery(unittest.TestCase):
             chat_prompt="c",
         )
 
-        self.assertEqual(summ.summarize("text", False), "recovered at low")
+        self.assertEqual(summ.summarize("text", False), "summarized")
         self.assertEqual(
             [call["config"].thinking_config.thinking_level for call in client.models.calls],
-            ["MINIMAL", "LOW"],
+            ["LOW"],
         )
 
     def test_invalid_argument_raises_api_error_without_fallback(self) -> None:
