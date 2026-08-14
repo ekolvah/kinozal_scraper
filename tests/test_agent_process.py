@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+import scripts.validate_issue_sections as validator
 from scripts.agent_orchestrator import RouteDecision, WorkflowState
 from scripts.review_gate import VERDICT_EXIT_CODES
 from scripts.validate_issue_sections import REQUIRED_SECTIONS, TYPE_LABELS
@@ -56,6 +57,19 @@ _ARCHITECT_CONTRACT_ANCHOR = "agent-process.md#architect-review-contract"
 _PLANNER_RUNBOOK_MARKERS = (
     "at most three clarifying questions",
     "three planning iterations",
+    # The discovery-source count is runbook substance too: an adapter that re-states it
+    # goes stale the moment a source is added, which is exactly what happened to the
+    # Codex skill when the fourth one landed (#518).
+    "all four sources of answers",
+)
+# Enumerations a planner adapter must not carry at all — absence-only, because their
+# canonical presence is already guarded above and by `_SHARED_GATE_DEFINITIONS`. Pinning
+# only the *new* wording would leave an adapter free to keep saying "three discovery
+# sources" with every test green, which is the drift this tuple exists to catch (#518).
+_PLANNER_RUNBOOK_ENUMERATIONS = (
+    "discovery source",
+    "## Evidence",
+    "## Prior art",
 )
 # A shared gate is *defined* by an enumeration or a bound, never by naming a script:
 # `test_canonical_contract_and_codex_skill_keep_all_implementer_gates` deliberately
@@ -79,6 +93,20 @@ _SHARED_GATE_DEFINITIONS = (
     ("at most three clarifying questions", "docs/architecture/agent-process.md"),
     ("three planning iterations", "docs/architecture/agent-process.md"),
     ("for a need that does not exist yet", "docs/architecture/agent-process.md"),
+    # The prior-art half of the same checklist, and the field token of the section that
+    # feeds it: both are contract, so no adapter may carry either (#518).
+    (
+        "reimplementing what a maintained tool already provides",
+        "docs/architecture/agent-process.md",
+    ),
+    ("reuse/build verdict", "docs/architecture/agent-process.md"),
+    # The migration rule for issues planned before the discovery section existed. It is an
+    # *implementer* obligation, so it belongs in the tuple that globs every provider file
+    # rather than in the planner-adapter markers.
+    (
+        "returns the issue to a planner rather than inventing the search",
+        "docs/architecture/agent-process.md",
+    ),
     ("Minimize future bug-fixing and support", "docs/architecture/principles.md"),
     ("Optimize token spend", "docs/architecture/principles.md"),
     ("Preserve predictability and user control", "docs/architecture/principles.md"),
@@ -352,6 +380,18 @@ class TestAgentProcess:
             for marker in _PLANNER_RUNBOOK_MARKERS:
                 assert marker in process, f"canonical runbook lost {marker!r}"
                 assert marker not in text, f"{name} restates the runbook bound {marker!r}"
+            for enumeration in _PLANNER_RUNBOOK_ENUMERATIONS:
+                assert enumeration not in text, f"{name} enumerates {enumeration!r}"
+
+    def test_documented_verdict_words_come_from_the_validator(self) -> None:
+        """The accepted verdicts have one home, the way the change-class matrix does (#516).
+
+        Asserting the bare words `reuse` and `build` would be vacuous — both already occur
+        in that document — so the pin is the rendered shape the section documents.
+        """
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        assert f"verdict: {'|'.join(validator.VERDICT_DECISIONS)}" in process
 
     def test_every_declared_role_adapter_resolves_to_its_contract(self) -> None:
         """Adapter coverage stays symmetric per role, or the gap is named (#473).
