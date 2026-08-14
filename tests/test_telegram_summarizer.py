@@ -280,8 +280,11 @@ class TestGeminiSummarizerRecovery(unittest.TestCase):
             models=["m-a", "m-b"], client=client, broadcast_prompt="b", chat_prompt="c"
         )
 
-        self.assertEqual(summ.summarize("text", False), "from-b")
+        with self.assertLogs("kinozal_scraper.TelegramChannelSummarizer", level="ERROR") as logs:
+            self.assertEqual(summ.summarize("text", False), "from-b")
+
         self.assertEqual(summ.config_rejected_models, frozenset({"m-a"}))
+        self.assertTrue(any("model m-a rejected the request" in line for line in logs.output))
 
     def test_all_models_config_rejected_still_raises_all_models_failed(self) -> None:
         client = _FakeClient({"*": _api_error(400)})

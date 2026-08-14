@@ -17,6 +17,7 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from kinozal_scraper.gemini_enricher import (
     GenaiClient,
+    ModelConfigRejected,
     ModelUnavailable,
     QuotaExhausted,
     TryNextModel,
@@ -102,6 +103,12 @@ class GeminiSummarizer:
         self._client = client
         self._broadcast_prompt = broadcast_prompt or _DEFAULT_BROADCAST_PROMPT
         self._chat_prompt = chat_prompt or _DEFAULT_CHAT_PROMPT
+        self._config_rejected: set[str] = set()
+
+    @property
+    def config_rejected_models(self) -> frozenset[str]:
+        """Models that rejected the summarizer request during this run."""
+        return frozenset(self._config_rejected)
 
     @retry(
         retry=retry_if_exception(
@@ -176,6 +183,16 @@ class GeminiSummarizer:
                     failures.append(f"{model_name}: transient failure: {exc}")
                     logger.warning("model %s failed transiently, trying next: %s", model_name, exc)
                     continue
+                if mapped is ModelConfigRejected:
+                    failures.append(f"{model_name}: config rejected: {exc}")
+                    self._config_rejected.add(model_name)
+                    logger.exception(
+                        "model %s rejected the request (400 INVALID_ARGUMENT) — "
+                        "config bug, trying next",
+                        model_name,
+                    )
+                    continue
+                # Keep unknown future classifier results fail-closed and visible.
                 logger.error("Error with model %s: %s", model_name, exc)  # noqa: TRY400 — re-raised as SummarizationFailed with `from exc`; traceback surfaces upstream
                 raise SummarizationFailed("api_error", f"{model_name}: {exc}") from exc
 

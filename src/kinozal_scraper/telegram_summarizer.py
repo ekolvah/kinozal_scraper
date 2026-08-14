@@ -8,7 +8,11 @@ import os
 from collections.abc import Mapping
 from typing import Any
 
-from kinozal_scraper.alerting import mark_technical_alert_sent, send_required_text
+from kinozal_scraper.alerting import (
+    alert_config_rejections,
+    mark_technical_alert_sent,
+    send_required_text,
+)
 from kinozal_scraper.TelegramChannelSummarizer import ChannelProcessResult, ChannelSummary
 
 logger = logging.getLogger(__name__)
@@ -65,7 +69,11 @@ def format_technical_alert(results: list[ChannelProcessResult]) -> str:
     return "\n".join(lines)
 
 
-def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:
+def deliver_results(
+    notifier: Any,
+    results: list[ChannelProcessResult],
+    summarizer: Any = None,
+) -> int:
     """Send whatever succeeded, then surface degradation. Returns the exit code.
 
     Working summaries are delivered first so a single failing channel never
@@ -92,6 +100,8 @@ def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:
         ):
             return 1
 
+    config_rejected = alert_config_rejections(notifier, summarizer)
+
     if failures:
         if send_required_text(notifier, format_technical_alert(results)):
             try:
@@ -100,7 +110,7 @@ def deliver_results(notifier: Any, results: list[ChannelProcessResult]) -> int:
                 logger.exception("Could not write technical alert marker: %s", exc)
         return 1
 
-    return 0
+    return 1 if config_rejected else 0
 
 
 if __name__ == "__main__":
@@ -148,4 +158,4 @@ if __name__ == "__main__":
     )
 
     results = summarize_channel_results(reader, summarizer, channel_urls)
-    sys.exit(deliver_results(notifier, results))
+    sys.exit(deliver_results(notifier, results, summarizer))
