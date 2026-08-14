@@ -191,8 +191,10 @@ The per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 
 mypy gets a NUL-safe manifest from
-`git ls-files -z --cached --others --exclude-standard`: tracked Python files
-plus new, untracked Python files that standard Git ignore rules do not exclude.
+`git ls-files -z --cached --others --exclude-standard`: existing tracked Python
+files plus new, untracked Python files that standard Git ignore rules do not
+exclude. Index entries deleted from the working tree before staging are
+discarded instead of being passed to mypy as nonexistent paths.
 That keeps a new source module in local scope before `git add`, while ignored
 planning probes under `evidence/` stay out; the tracked `.gitignore` rule for
 `evidence/` is therefore part of this boundary. A clean GitHub checkout has no

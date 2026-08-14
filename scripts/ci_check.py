@@ -30,6 +30,8 @@ def _find_modules() -> list[str]:
     for name in _git_files("--cached", "--others", "--exclude-standard"):
         if not name.endswith(".py"):
             continue
+        if not Path(name).is_file():
+            continue
         parts = PurePosixPath(name).parts
         if _EXCLUDE_DIRS & set(parts):
             continue

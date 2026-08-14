@@ -88,12 +88,24 @@ class TestFindModules:
 
         assert "tracked.py" in _find_modules()
 
+    def test_tracked_python_file_deleted_before_staging_is_out_of_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._repository_with_mypy_candidates(tmp_path)
+        (tmp_path / "tracked.py").unlink()
+        monkeypatch.chdir(tmp_path)
+
+        assert "tracked.py" not in _find_modules()
+
 
 class TestMypyManifest:
     def test_requests_cached_and_untracked_excluding_standard_ignores(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         calls: list[list[str]] = []
+        (tmp_path / "tracked.py").write_text("tracked = True\n", encoding="utf-8")
+        (tmp_path / "new_module.py").write_text("new = True\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
 
         def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[bytes]:
             calls.append(cmd)
