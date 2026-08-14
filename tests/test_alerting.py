@@ -144,6 +144,7 @@ class TestConfigRejectionAlert:
         assert alerting.alert_config_rejections(notifier, enricher) is True
         assert len(notifier.texts) == 1
         assert "gemini-3.6-flash" in notifier.texts[0]
+        assert "Уведомления доставлены через ротацию" not in notifier.texts[0]
         assert marker.exists()
 
     def test_no_alert_when_none_rejected(

@@ -69,7 +69,10 @@ crash *before* `report_failures` — import error, etc.). If a **second** step's
 fails after an earlier one already set the marker, the backstop is the **red run + logs**
 (§III), not curl — a consciously accepted gap (no per-step marker infra; see #310 Out of
 scope). `telegram_summarizer` keeps its own richer `deliver_results` alert path; `report_failures`
-and the marker helpers share one canonical home in `alerting.py`.
+and the marker helpers share one canonical home in `alerting.py`. Its delivery
+path also sends the shared config-rejection alert and returns a non-zero exit
+when a Gemini model rejects the summarizer request, even if rotation delivered
+all channel summaries.
 
 ### Run summary: reading the per-source metrics line
 

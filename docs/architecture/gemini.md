@@ -46,8 +46,11 @@ rotation gives ~280 requests/day without upgrading.
 `get_generation_models()`, with simpler rotation and no cooldown. A
 `503/UNAVAILABLE` response is retried on the same model up to three attempts
 with exponential backoff; after exhaustion it becomes `TryNextModel`. The
-summarizer advances immediately on 404, 429, or any other `TryNextModel`
-failure, without marking that model dead for later channels.
+summarizer advances immediately on 404, 429, `ModelConfigRejected`, or any
+other `TryNextModel` failure, without marking that model dead for later
+channels. A config rejection is ERROR-logged and accumulated for the
+summarizer's `deliver_results` path, which sends the shared operator alert and
+returns a non-zero exit code even when rotation delivered every summary.
 
 ## Model discovery
 
@@ -90,15 +93,18 @@ is *our request* being malformed — deterministic (every item 400s identically 
 that model), a code bug, unlike a transient per-item `TryNextModel`. Absorbed as
 a routine `TryNextModel` such a bug is invisible: the rotator drops to a working
 model, notifications ship, the cron stays green, and no §IV alert fires.
-`ModelConfigRejected` restores visibility: rotation still delivers data, but the
-config bug reaches the operator (Telegram alert + red job). It is deliberately
-**not** dead-marked (unlike 404): the alert forces a quick fix so the per-item
-re-hit is transient, and dead-marking would risk false-killing a healthy model on
-a rare *item-specific* 400 that `.status` alone can't distinguish from a
-config-wide one. Behavioral note: an item-specific `INVALID_ARGUMENT` that every
-model rejects now goes red + alert (previously silent green → fallback marker) —
-that is a genuinely-rejected item reaching the operator, correct per §IV, not a
-false-alarm regression.
+`ModelConfigRejected` restores visibility in both the enricher and Telegram
+summarizer: rotation still attempts to deliver data, but the config bug reaches
+the operator (Telegram alert + red job). The summarizer raises
+`all_models_failed` only after every configured model rejects or otherwise fails.
+The rejected model is deliberately **not** dead-marked (unlike 404): the alert
+forces a quick fix so the per-item re-hit is transient, and dead-marking would
+risk false-killing a healthy model on a rare *item-specific* 400 that `.status`
+alone can't distinguish from a config-wide one. Behavioral note: an item-specific
+`INVALID_ARGUMENT` that every model rejects now goes red + alert (previously
+silent green → fallback marker in the enricher, or immediate `api_error` in the
+summarizer) — that is a genuinely-rejected item reaching the operator, correct
+per §IV, not a false-alarm regression.
 
 ## Prompt configuration
 

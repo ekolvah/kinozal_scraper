@@ -149,7 +149,7 @@ def format_config_rejection_alert(models: frozenset[str]) -> str:
     lines = [
         "⚠️ Gemini config-reject",
         "Модель(и) отвергли запрос (400 INVALID_ARGUMENT) — баг запроса, не quota. "
-        "Уведомления доставлены через ротацию, но это нужно чинить:",
+        "Проверьте совместимость конфигурации с этими моделями:",
         "",
     ]
     lines.extend(f"- {_html.escape(m)}" for m in sorted(models))
