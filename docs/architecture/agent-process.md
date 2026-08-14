@@ -49,14 +49,22 @@ a data edit rather than another branch inside the validator.
 | Type label | Adds | Omits |
 | --- | --- | --- |
 | `bug` | `Evidence` | — |
-| `chore` | — | — |
-| `ci` | — | — |
-| `documentation` | — | — |
-| `enhancement` | — | — |
-| `perf` | — | — |
-| `refactor` | — | — |
-| `security` | — | — |
-| `testing` | — | — |
+| `chore` | `Prior art` | — |
+| `ci` | `Prior art` | — |
+| `documentation` | `Prior art` | — |
+| `enhancement` | `Prior art` | — |
+| `perf` | `Prior art` | — |
+| `refactor` | `Prior art` | — |
+| `security` | `Prior art` | — |
+| `testing` | `Prior art` | — |
+
+Every class adds exactly one **discovery** section, and which one is the only
+thing the split decides: `bug` records a completed observation of the external
+system, everything else records the search outside this repository before the
+code is designed. The line runs at `bug` rather than at `enhancement` because
+the case that motivated the rule is `refactor` work: a flat `src/` layout was
+chosen and then had to be reversed once it turned out to cut the project off
+from `import-linter`/`grimp` (#204, #237).
 
 `documentation` omits nothing on purpose: here the documentation *is* the
 product, guarded by its own tests, so such an issue routinely carries a real test
@@ -148,6 +156,31 @@ starts with `n/a: <reason>`, naming why live capture does not apply. The section
 is still required, so choosing that branch is a visible claim rather than a
 silently omitted discovery step.
 
+The `## Prior art` section that every other class adds records the search
+**outside** this repository — the maintained library, standard tool, or upstream
+feature that may already solve the problem — in three lines:
+
+```md
+searched: <where you looked: the queries, and the repository paths you compared them against>
+candidates: <what exists, each one named and linked>
+verdict: reuse|build — <why, in one sentence>
+```
+
+`verdict:` is red unless it starts with `reuse` or `build`: the section exists to
+record one of two decisions, so `TBD` or a restatement of the search decides
+nothing. Prose after that word is free and matching is case-insensitive. The gate
+never judges whether the verdict is *right*, exactly as `Architect review` and
+`ADR` do not.
+
+This section, too, accepts `n/a: <reason>` as its whole content, for a class of
+change with no ecosystem to search — a broken-link fix, a guard test over
+existing code. The branch exists rather than forcing `searched:` everywhere
+because `searched:` names no verifiable artifact the way a capture path does: a
+mandatory field would be satisfiable by fabrication, and a fabricated record is
+indistinguishable from an honest one (§IV) while charging a web round trip
+against goal 2. Abusing the branch is a nameable architect-review finding, not a
+silent pass.
+
 `Test plan` names executable test nodes. `Architect review` opens with a
 provenance line — `reviewer: <carrier>` or `skipped: <reason>` — followed by the
 findings; `ADR` contains a record link or `none: <reason>`.
@@ -170,7 +203,12 @@ decides what the prose means; the reminder never changes the passing exit code
 and does not create an issue automatically (#368).
 Issues planned before this contract had eight sections. A planner adds
 `Agent handoff` before implementation; an implementer that sees the missing
-section stops and returns the issue to a planner rather than guessing it.
+section stops and returns the issue to a planner rather than guessing it. An
+issue planned before its class carried a discovery section reds the same way at
+the implementer's pre-branch re-run, and the same rule applies with less room to
+improvise: a discovery section records work someone actually carried out, so an
+implementer that finds `## Prior art` missing stops and
+returns the issue to a planner rather than inventing the search.
 
 ## Planner runbook
 
@@ -180,7 +218,7 @@ arrives, how a reviewer is invoked, how the body is written back.
 
 1. Run `python scripts/validate_issue_sections.py <N>`. A passing issue is
    already planned: report that and stop.
-2. Use all three sources of answers. Read and search the repository first. Ask
+2. Use all four sources of answers. Read and search the repository first. Ask
    at most three clarifying questions per session, and only about decisions such
    as priority or product intent. When the plan describes how to read, parse, or
    classify data from an external system, observe that live system before
@@ -193,7 +231,11 @@ arrives, how a reviewer is invoked, how the body is written back.
    name one paired test that sends the same captured input through one pipeline
    run and proves that the valid record remains while the invalid one changes.
    Otherwise record `n/a: <reason>` there; this is discovery, not an E2E test or
-   a substitute for a human product decision.
+   a substitute for a human product decision. For every other class, the fourth
+   source is the world outside this repository: search for the maintained
+   library, standard tool, or upstream feature that already solves the problem
+   **before** designing the code, and record the search, the candidates, and the
+   reuse/build verdict in `## Prior art`.
 3. Obtain the architect review defined below and record it in
    `## Architect review`. Weave every BLOCKING finding into the other sections
    before writing the body.
@@ -264,6 +306,14 @@ against §I–§VII and for:
 - **Work for work** — a script, agent, or abstraction created
   for a need that does not exist yet, or duplicating what `ci_check`, the PR
   review, or an existing test already does.
+- **Reinvented prior art** — the plan builds what the ecosystem already ships.
+  The `## Prior art` verdict is the plan's own claim about this, so trace it
+  rather than accept it. The line is not "no bespoke scripts": workflow glue
+  that encodes *this* repository's contract — `check_red`,
+  `validate_issue_sections` — has no upstream equivalent and is legitimate.
+  What this finding names is
+  reimplementing what a maintained tool already provides, such as a
+  hand-rolled header checker where `ruff` has the rule.
 - **A workaround with no named root cause** (§V).
 - **An over-broad external-data boundary** — the plan does not compare a valid
   and invalid record from the same captured response, substitutes a sibling

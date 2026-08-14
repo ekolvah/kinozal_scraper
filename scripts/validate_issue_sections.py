@@ -56,6 +56,7 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     "Agent handoff",
 )
 EVIDENCE_SECTION = "Evidence"
+PRIOR_ART_SECTION = "Prior art"
 BUG_LABEL = "bug"
 # The taxonomy of governance convention 3, machine-readable so the change-class
 # catalogue can be checked against it instead of against itself. Exactly one of these
@@ -72,7 +73,21 @@ TYPE_LABELS: tuple[str, ...] = (
     "testing",
 )
 TYPE_LABEL_GAP = "type label"
-EVIDENCE_NA_PREFIX = "n/a:"
+# Shared by both discovery sections: each one may be answered with a visible claim that it
+# does not apply, rather than with a manufactured record (§IV).
+NA_PREFIX = "n/a:"
+PRIOR_ART_FIELDS = (
+    ("searched", "searched"),
+    ("candidates", "candidates"),
+    ("verdict", "verdict"),
+)
+# The section exists to record one of two decisions, so a filled `verdict:` line that names
+# neither is red: `TBD` or a restatement of the search answers nothing.
+VERDICT_DECISIONS = ("reuse", "build")
+# Wrapping punctuation an author may put around the decision word. `_section_field` already
+# unwraps a fully backticked value; this covers `` `reuse`, because … `` and its quoted
+# siblings, and stays local to the verdict so the `Evidence` fields keep their behaviour.
+_VERDICT_WRAPPERS = "`\"'“«"
 EVIDENCE_DECISION_FIELDS = (
     ("observed", "observed"),
     ("preserve", "preserve"),
@@ -282,7 +297,12 @@ def handoff_gaps(content: str) -> list[str]:
     return [name for name, marker in required.items() if marker not in normalized]
 
 
-def _evidence_field(content: str, name: str) -> str | None:
+def _section_field(content: str, name: str) -> str | None:
+    """The value of a `<name>:` line, or `None` when it is absent or empty.
+
+    Shared by both discovery sections: `Evidence` and `Prior art` record their fields the
+    same way, and a second line reader is what would drift apart (#518).
+    """
     prefix = f"{name}:"
     for line in content.splitlines():
         stripped = line.strip()
@@ -295,7 +315,7 @@ def _evidence_field(content: str, name: str) -> str | None:
 
 
 def _failed_capture_has_output(content: str) -> bool:
-    if (_evidence_field(content, "status") or "").lower() != "failed":
+    if (_section_field(content, "status") or "").lower() != "failed":
         return False
     lines = content.splitlines()
     output_index = next(
@@ -317,13 +337,13 @@ def _failed_capture_has_output(content: str) -> bool:
 def evidence_gaps(content: str) -> list[str]:
     """Return mechanical gaps in a bug issue's observation and decision record."""
     first = next((line.strip() for line in content.splitlines() if line.strip()), "")
-    if first.casefold().startswith(EVIDENCE_NA_PREFIX):
-        if first[len(EVIDENCE_NA_PREFIX) :].strip():
+    if first.casefold().startswith(NA_PREFIX):
+        if first[len(NA_PREFIX) :].strip():
             return []
         return ["n/a reason"]
 
-    capture_command = _evidence_field(content, "capture")
-    path_value = _evidence_field(content, "path")
+    capture_command = _section_field(content, "capture")
+    path_value = _section_field(content, "path")
     missing: list[str] = []
     if not capture_command:
         missing.append("capture command")
@@ -341,20 +361,52 @@ def evidence_gaps(content: str) -> list[str]:
     if not candidate.parts or candidate.parts[0] != "evidence" or ".." in candidate.parts:
         return ["capture path under evidence/"]
 
-    if (_evidence_field(content, "status") or "").casefold() == "failed":
+    if (_section_field(content, "status") or "").casefold() == "failed":
         if not _failed_capture_has_output(content):
             return ["failed capture output"]
         return ["successful capture"]
 
     return [
-        label for field, label in EVIDENCE_DECISION_FIELDS if not _evidence_field(content, field)
+        label for field, label in EVIDENCE_DECISION_FIELDS if not _section_field(content, field)
     ]
+
+
+def prior_art_gaps(content: str) -> list[str]:
+    """Return mechanical gaps in a non-bug issue's search outside the repository.
+
+    The mirror of `evidence_gaps` on the other side of the change-class axis (#518): before
+    a change is designed, the plan records whether the ecosystem already solves it. The gate
+    checks that the question was **answered**, never whether the answer is right — the same
+    bar as `Architect review` and `ADR`.
+
+    `n/a: <reason>` is a legitimate whole section. `searched:` names no verifiable artifact
+    the way a capture path does, so a mandatory field on a link fix would be satisfiable by
+    fabrication, and a fabricated record reads exactly like an honest one (§IV). Abuse of the
+    branch is a nameable architect-review finding, not something this function can see.
+    """
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if first.casefold().startswith(NA_PREFIX):
+        if first[len(NA_PREFIX) :].strip():
+            return []
+        return ["n/a reason"]
+
+    missing = [label for field, label in PRIOR_ART_FIELDS if not _section_field(content, field)]
+    if missing:
+        return missing
+
+    verdict = (_section_field(content, "verdict") or "").casefold().lstrip(_VERDICT_WRAPPERS)
+    if not verdict.startswith(VERDICT_DECISIONS):
+        # Not `missing: verdict`: the author can see that line and would read that gap as a
+        # parser failure. The gap names what the line has to decide instead.
+        return ["reuse/build verdict"]
+    return []
 
 
 _SECTION_CHECKS = {
     "Agent handoff": handoff_gaps,
     "Architect review": architect_review_gaps,
     EVIDENCE_SECTION: evidence_gaps,
+    PRIOR_ART_SECTION: prior_art_gaps,
 }
 
 
