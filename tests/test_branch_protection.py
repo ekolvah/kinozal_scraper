@@ -416,11 +416,20 @@ class TestPrePushHook:
         assert calls, "no gate invocations logged"
         assert all("GIT_DIR=unset" in call for call in calls)
 
-    def test_git_local_environment_discovery_failure_exits_two(self, tmp_path: Path) -> None:
+    @pytest.mark.parametrize(
+        ("git_function", "diagnostic"),
+        [
+            ("git() { echo 'git discovery unavailable' >&2; return 1; }\n", "failed"),
+            ("git() { return 0; }\n", "returned no names"),
+        ],
+    )
+    def test_git_local_environment_discovery_failure_exits_two(
+        self, tmp_path: Path, git_function: str, diagnostic: str
+    ) -> None:
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
         bash_env = tmp_path / "fail-git.sh"
         bash_env.write_text(
-            "git() { echo 'git discovery unavailable' >&2; return 1; }\n",
+            git_function,
             encoding="utf-8",
             newline="\n",
         )
@@ -428,7 +437,7 @@ class TestPrePushHook:
         result = self._run(tmp_path, env=env)
 
         assert result.returncode == 2
-        assert "git rev-parse --local-env-vars failed" in result.stderr
+        assert f"git rev-parse --local-env-vars {diagnostic}" in result.stderr
         assert not self._gate_calls(tmp_path)
 
     def test_protection_probe_runs_before_ci_check(self, tmp_path: Path) -> None:
