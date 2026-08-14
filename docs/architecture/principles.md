@@ -153,9 +153,11 @@ mode MUST be reproduced and located. Instrument before patching: inspect logs,
 inputs, and the failure point before proposing a change. When the behaviour to
 be designed is how an external system is read or classified, observation of
 that live system is part of locating the failure; repository reasoning alone is
-not evidence. Preserve the response as a fixture with a reproducible command
-appropriate to that source so the claim is reviewable and the parser test uses
-what the system returned. Kinozal capture uses
+not evidence. Preserve the response under `evidence/issue-<N>/` with a
+reproducible command appropriate to that source. This is working-tree-only
+planning evidence, ignored by Git and kept locally only until merge. A verified,
+safe, compressed observation record in the public issue is the durable review
+artifact; the full payload is not copied there. Kinozal capture uses
 `python scripts/capture_kinozal_fixture.py <url> <path>`; the source routing
 table in [`agent-process.md`](agent-process.md#issue-contract) gives read-only
 commands for GitHub, Telegram, Gemini, Sheets, and an existing CLI for another
@@ -164,7 +166,10 @@ record from the same captured response; replacing that record with a sibling
 feed or category is data loss, not preservation. Compare broad and narrow
 fixes, reject a boundary that loses the valid record without an explicit product
 decision, and preserve both sides in one same-input regression test. Trace the
-current call path before claiming that a narrow fix adds another fetch. No
+current call path before claiming that a narrow fix adds another fetch. Captured
+bytes become a committed regression fixture only when a production-behaviour
+test reads them in the same commit; full issue bodies, transcripts, and planning
+history do not qualify. No
 workarounds, shims, retries, broader try/except, or `--no-verify` flags are
 accepted as fixes when the underlying mechanism is not understood.
 
@@ -280,5 +285,3 @@ Every PR description states which principles the change interacts with. The
 reviewer (human + Claude review action) checks that the change does not
 violate them; if it does, the violation MUST be recorded in the PR body
 with a justification.
-
-**Version**: 2.4.1

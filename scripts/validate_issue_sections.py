@@ -212,7 +212,7 @@ def _failed_capture_has_output(content: str) -> bool:
     return bool(output)
 
 
-def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
+def evidence_gaps(content: str) -> list[str]:
     """Return mechanical gaps in a bug issue's observation and decision record."""
     first = next((line.strip() for line in content.splitlines() if line.strip()), "")
     if first.casefold().startswith(EVIDENCE_NA_PREFIX):
@@ -236,16 +236,13 @@ def evidence_gaps(content: str, *, repo_root: Path = _REPO_ROOT) -> list[str]:
     candidate = Path(path_value)
     if candidate.is_absolute():
         return ["repository-relative capture path"]
-    resolved_root = repo_root.resolve()
-    resolved_candidate = (resolved_root / candidate).resolve()
-    try:
-        resolved_candidate.relative_to(resolved_root)
-    except ValueError:
-        return ["repository-relative capture path"]
-    if not resolved_candidate.is_file():
-        if _failed_capture_has_output(content):
-            return ["successful capture"]
-        return ["existing capture path or failed capture output"]
+    if not candidate.parts or candidate.parts[0] != "evidence" or ".." in candidate.parts:
+        return ["capture path under evidence/"]
+
+    if (_evidence_field(content, "status") or "").casefold() == "failed":
+        if not _failed_capture_has_output(content):
+            return ["failed capture output"]
+        return ["successful capture"]
 
     return [
         label for field, label in EVIDENCE_DECISION_FIELDS if not _evidence_field(content, field)
@@ -265,6 +262,9 @@ def find_gaps(
     the MADR-record guard (`tests/test_adr_records.py`) with its own h2 list. Forking it
     would create a second definition of an empty section (#426).
     """
+    # Retained for callers written against the pre-#520 API. Evidence is now a
+    # working-tree-only artifact, so validation deliberately performs no I/O here.
+    del repo_root
     sections = _split_by_h2(body)
     gaps: list[str] = []
     for name in required:
@@ -284,7 +284,7 @@ def find_gaps(
         if evidence is None or not evidence.strip():
             gaps.append(EVIDENCE_SECTION)
         else:
-            missing_fields = evidence_gaps(evidence, repo_root=repo_root)
+            missing_fields = evidence_gaps(evidence)
             if missing_fields:
                 gaps.append(f"{EVIDENCE_SECTION} (missing: {', '.join(missing_fields)})")
     return gaps

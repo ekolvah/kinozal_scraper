@@ -327,6 +327,7 @@ out of scope.
 
 | File | Question answered |
 |---|---|
+| `evidence/` (Git-ignored) | Working-tree-only planning captures retained until merge; the durable compressed record and fixture boundary are canonical in [`agent-process.md` §Issue contract](agent-process.md#issue-contract) |
 | `scripts/validate_issue_sections.py` + `scripts/check_orphan_scope.py` | Verifies the nine base issue sections, conditional bug `Evidence`, and `Agent handoff`; on a passing issue, also surfaces the non-blocking reminder for an explicit `Out of scope` follow-up without `#N` or `wontfix`/`YAGNI` (#368). Gate for planner and implementer adapters; the reminder itself never changes the exit code |
 | `scripts/capture_kinozal_fixture.py` + `scripts/capture_external_fixture.py` + `scripts/check_fixture_ratchet.py` | Reproducible Evidence capture through the Kinozal production fetcher or narrow read-only GitHub, Telegram, Gemini, Sheets, and stdin routes; the ratchet rejects new external-HTML parser tests that construct their input inline (#509). Canonical routing and repository-safety contract: [`agent-process.md` §Issue contract](agent-process.md#issue-contract) |
 | `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: a single role catalogue, evidence-based next action, and bounded escalation; does not invoke providers or replace required gates |
