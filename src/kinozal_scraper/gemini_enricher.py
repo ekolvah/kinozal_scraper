@@ -226,6 +226,17 @@ def _thinking_config(model_name: str) -> types.ThinkingConfig | None:
     return None
 
 
+def generate_with_thinking_fallback(
+    client: GenaiClient,
+    model_name: str,
+    contents: Any,
+    config: types.GenerateContentConfig,
+    level: str | None,
+) -> tuple[Any, str | None]:
+    """Generate with the effective thinking level for one model."""
+    raise NotImplementedError
+
+
 class GeminiEnricher:
     def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name

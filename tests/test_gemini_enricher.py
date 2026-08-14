@@ -27,6 +27,7 @@ from kinozal_scraper.gemini_enricher import (
     TryNextModel,
     build_default_enricher,
     classify_generate_error,
+    generate_with_thinking_fallback,
 )
 from kinozal_scraper.generic_pipeline import NormalizedItem
 
@@ -380,6 +381,155 @@ class TestThinkingConfigGate(unittest.TestCase):
         GeminiEnricher("models/gemini-2.0-flash", client).enrich(_item(), _TWO_LINE_CFG)
         cfg = client.models.calls[-1]["config"]
         self.assertIsNone(cfg.thinking_config)
+
+
+class _ThinkingFallbackModels:
+    """Fake the captured #515 capability matrix for Gemini 3.x models."""
+
+    def __init__(self, *, reject_minimal: set[str], reject_low: set[str] | None = None) -> None:
+        self._reject_minimal = reject_minimal
+        self._reject_low = reject_low or set()
+        self.calls: list[dict[str, Any]] = []
+
+    def generate_content(self, *, model: str, contents: Any, config: Any = None) -> _FakeResponse:
+        self.calls.append({"model": model, "contents": contents, "config": config})
+        level = config.thinking_config.thinking_level
+        if level is types.ThinkingLevel.MINIMAL and model in self._reject_minimal:
+            raise _api_error(400, "INVALID_ARGUMENT")
+        if level is types.ThinkingLevel.LOW and model in self._reject_low:
+            raise _api_error(400, "INVALID_ARGUMENT")
+        return _FakeResponse("Для кого: Developers\nЗачем: Ship changes")
+
+
+class TestThinkingLevelFallback(unittest.TestCase):
+    _ACCEPTS_MINIMAL = "models/gemini-3.6-flash"
+    _REJECTS_MINIMAL = "models/gemini-3.7-flash"
+
+    @staticmethod
+    def _client(models: _ThinkingFallbackModels) -> Any:
+        return SimpleNamespace(models=models)
+
+    @staticmethod
+    def _levels(models: _ThinkingFallbackModels) -> list[Any]:
+        return [call["config"].thinking_config.thinking_level for call in models.calls]
+
+    def test_minimal_rejection_retries_same_model_at_low(self) -> None:
+        models = _ThinkingFallbackModels(reject_minimal={self._REJECTS_MINIMAL})
+        enricher = GeminiEnricher(self._REJECTS_MINIMAL, self._client(models))
+
+        result = enricher.enrich(_item(), _TWO_LINE_CFG)
+
+        self.assertEqual(result, "Для кого: Developers\nЗачем: Ship changes")
+        self.assertEqual([call["model"] for call in models.calls], [self._REJECTS_MINIMAL] * 2)
+        self.assertEqual(
+            self._levels(models), [types.ThinkingLevel.MINIMAL, types.ThinkingLevel.LOW]
+        )
+
+    def test_fallback_level_is_remembered_for_the_run(self) -> None:
+        models = _ThinkingFallbackModels(reject_minimal={self._REJECTS_MINIMAL})
+        enricher = GeminiEnricher(self._REJECTS_MINIMAL, self._client(models))
+
+        enricher.enrich(_item("first"), _TWO_LINE_CFG)
+        calls_after_first = len(models.calls)
+        enricher.enrich(_item("second"), _TWO_LINE_CFG)
+
+        self.assertEqual(calls_after_first, 2)
+        self.assertEqual(
+            self._levels(models),
+            [types.ThinkingLevel.MINIMAL, types.ThinkingLevel.LOW, types.ThinkingLevel.LOW],
+        )
+
+    def test_rejected_fallback_is_remembered_too(self) -> None:
+        models = _ThinkingFallbackModels(
+            reject_minimal={self._REJECTS_MINIMAL}, reject_low={self._REJECTS_MINIMAL}
+        )
+        enricher = GeminiEnricher(self._REJECTS_MINIMAL, self._client(models))
+
+        with self.assertRaises(gemini_enricher.ModelConfigRejected):
+            enricher.enrich(_item("first"), _TWO_LINE_CFG)
+        calls_after_first = len(models.calls)
+        with self.assertRaises(gemini_enricher.ModelConfigRejected):
+            enricher.enrich(_item("second"), _TWO_LINE_CFG)
+
+        self.assertEqual(calls_after_first, 2)
+        self.assertEqual(
+            self._levels(models),
+            [types.ThinkingLevel.MINIMAL, types.ThinkingLevel.LOW, types.ThinkingLevel.LOW],
+        )
+
+    def test_double_rejection_preserves_config_rejected_alert(self) -> None:
+        models = _ThinkingFallbackModels(
+            reject_minimal={self._REJECTS_MINIMAL}, reject_low={self._REJECTS_MINIMAL}
+        )
+        enricher = RotatingGeminiEnricher([self._REJECTS_MINIMAL], self._client(models))
+
+        with self.assertRaises(QuotaExhausted):
+            enricher.enrich(_item(), _TWO_LINE_CFG)
+
+        self.assertEqual(
+            self._levels(models), [types.ThinkingLevel.MINIMAL, types.ThinkingLevel.LOW]
+        )
+        self.assertEqual(enricher.config_rejected_models, frozenset({self._REJECTS_MINIMAL}))
+
+    def test_fallback_call_raises_output_budget_to_observed_minimum(self) -> None:
+        models = _ThinkingFallbackModels(reject_minimal={self._REJECTS_MINIMAL})
+        original = types.GenerateContentConfig(max_output_tokens=220)
+
+        response, effective_level = generate_with_thinking_fallback(
+            self._client(models), self._REJECTS_MINIMAL, "prompt", original, "minimal"
+        )
+
+        self.assertEqual(response.text, "Для кого: Developers\nЗачем: Ship changes")
+        self.assertEqual(effective_level, "low")
+        self.assertEqual(original.max_output_tokens, 220)
+        self.assertEqual([call["config"].max_output_tokens for call in models.calls], [220, 1024])
+
+    def test_model_accepting_minimal_keeps_config_and_budget(self) -> None:
+        models = _ThinkingFallbackModels(reject_minimal=set())
+        enricher = GeminiEnricher(self._ACCEPTS_MINIMAL, self._client(models))
+
+        enricher.enrich(_item(), _TWO_LINE_CFG)
+
+        self.assertEqual(len(models.calls), 1)
+        self.assertEqual(enricher._thinking_level, "minimal")
+        config = models.calls[0]["config"]
+        self.assertEqual(config.thinking_config.thinking_level, types.ThinkingLevel.MINIMAL)
+        self.assertEqual(config.max_output_tokens, 220)
+
+    def test_fallback_logs_one_warning_per_model(self) -> None:
+        models = _ThinkingFallbackModels(reject_minimal={self._REJECTS_MINIMAL})
+        enricher = GeminiEnricher(self._REJECTS_MINIMAL, self._client(models))
+
+        with self.assertLogs("kinozal_scraper.gemini_enricher", level="WARNING") as captured:
+            enricher.enrich(_item("first"), _TWO_LINE_CFG)
+            enricher.enrich(_item("second"), _TWO_LINE_CFG)
+
+        fallback_lines = [line for line in captured.output if "thinking" in line.lower()]
+        self.assertEqual(len(fallback_lines), 1)
+        self.assertIn(self._REJECTS_MINIMAL, fallback_lines[0])
+        self.assertIn("1024", fallback_lines[0])
+
+    def test_rotation_preserves_minimal_model_and_recovers_rejecting_model(self) -> None:
+        models = _ThinkingFallbackModels(reject_minimal={self._REJECTS_MINIMAL})
+        rotator = RotatingGeminiEnricher(
+            [self._ACCEPTS_MINIMAL, self._REJECTS_MINIMAL], self._client(models)
+        )
+
+        preserved = rotator.enrich(_item("preserved"), _TWO_LINE_CFG)
+        rotator._current = 1
+        recovered = rotator.enrich(_item("recovered"), _TWO_LINE_CFG)
+
+        self.assertRegex(preserved, _TWO_LINE_PATTERN)
+        self.assertRegex(recovered, _TWO_LINE_PATTERN)
+        self.assertEqual(
+            [call["model"] for call in models.calls],
+            [self._ACCEPTS_MINIMAL, self._REJECTS_MINIMAL, self._REJECTS_MINIMAL],
+        )
+        self.assertEqual(models.calls[0]["config"].max_output_tokens, 220)
+        self.assertEqual(
+            self._levels(models),
+            [types.ThinkingLevel.MINIMAL, types.ThinkingLevel.MINIMAL, types.ThinkingLevel.LOW],
+        )
 
 
 class TestRetryOnlyOnQuota(unittest.TestCase):
