@@ -101,7 +101,7 @@ This makes the access failure reviewable but does not prove source behaviour: a
 plan whose design depends on the missing fact remains blocked, the validator
 stays red with `missing: successful capture`, and no implementer handoff may be
 recorded. The command and compressed record make the observation reviewable
-without treating planning history as repository state (#509, #520).
+without treating planning history as repository state.
 
 Captured bytes belong in `tests/fixtures/` only when a production-behaviour
 regression test reads the captured bytes in the same commit. By contrast, full
