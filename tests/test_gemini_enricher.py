@@ -341,11 +341,8 @@ class TestErrorClassification(unittest.TestCase):
 
 class TestThinkingConfigGate(unittest.TestCase):
     """Thinking must be suppressed with the version-correct knob so a short
-    2-line answer isn't eaten by the reasoning phase. Two-tier boundary (#338):
-    Gemini 3.x replaced `thinking_budget` with `thinking_level` — newer 3.x
-    models 400 on `thinking_budget=0`, so they get `thinking_level="minimal"`
-    (Google's documented near-zero setting). 2.5 still uses `thinking_budget=0`
-    (#107). Pre-2.5 models (2.0) get NO `thinking_config` — they 400 on it (§IV)."""
+    2-line answer isn't eaten by the reasoning phase. Gemini 2.5 uses
+    `thinking_budget`, while older models reject the whole thinking config."""
 
     def test_thinking_budget_zero_for_gemini_2_5(self) -> None:
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
@@ -354,32 +351,73 @@ class TestThinkingConfigGate(unittest.TestCase):
         self.assertIsNotNone(cfg.thinking_config)
         self.assertEqual(cfg.thinking_config.thinking_budget, 0)
 
-    def test_thinking_level_minimal_for_gemini_3_x(self) -> None:
-        # #338: 3.x models reject thinking_budget=0 (400) — the knob is
-        # thinking_level="minimal", and thinking_budget must stay unset.
-        client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
-        GeminiEnricher("models/gemini-3.1-flash-lite-preview", client).enrich(
-            _item(), _TWO_LINE_CFG
-        )
-        cfg = client.models.calls[-1]["config"]
-        self.assertIsNotNone(cfg.thinking_config)
-        self.assertEqual(cfg.thinking_config.thinking_level, types.ThinkingLevel.MINIMAL)
-        self.assertIsNone(cfg.thinking_config.thinking_budget)
-
-    def test_thinking_level_minimal_for_bare_major_gemini_3(self) -> None:
-        # Bare-major ID (no minor) is still 3.x → thinking_level="minimal".
-        client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
-        GeminiEnricher("models/gemini-3-flash-preview", client).enrich(_item(), _TWO_LINE_CFG)
-        cfg = client.models.calls[-1]["config"]
-        self.assertIsNotNone(cfg.thinking_config)
-        self.assertEqual(cfg.thinking_config.thinking_level, types.ThinkingLevel.MINIMAL)
-        self.assertIsNone(cfg.thinking_config.thinking_budget)
-
     def test_no_thinking_config_for_gemini_2_0(self) -> None:
         client = _FakeClient(_FakeResponse(text="Для кого: X\nЗачем: Y", finish_reason="STOP"))
         GeminiEnricher("models/gemini-2.0-flash", client).enrich(_item(), _TWO_LINE_CFG)
         cfg = client.models.calls[-1]["config"]
         self.assertIsNone(cfg.thinking_config)
+
+
+class _ThinkingPolicyModels:
+    """Record the one request policy used for each Gemini 3.x model."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def generate_content(self, *, model: str, contents: Any, config: Any = None) -> _FakeResponse:
+        self.calls.append({"model": model, "contents": contents, "config": config})
+        return _FakeResponse("Для кого: Developers\nЗачем: Ship changes")
+
+
+class TestThinkingPolicy(unittest.TestCase):
+    _MODEL_36 = "models/gemini-3.6-flash"
+    _MODEL_37 = "models/gemini-3.7-flash"
+
+    @staticmethod
+    def _client(models: _ThinkingPolicyModels) -> Any:
+        return SimpleNamespace(models=models)
+
+    @staticmethod
+    def _levels(models: _ThinkingPolicyModels) -> list[Any]:
+        return [call["config"].thinking_config.thinking_level for call in models.calls]
+
+    def test_gemini_3_x_uses_low_and_safe_budget_on_first_call(self) -> None:
+        models = _ThinkingPolicyModels()
+        enricher = GeminiEnricher(self._MODEL_37, self._client(models))
+
+        result = enricher.enrich(_item(), _TWO_LINE_CFG)
+
+        self.assertEqual(result, "Для кого: Developers\nЗачем: Ship changes")
+        self.assertEqual(len(models.calls), 1)
+        config = models.calls[0]["config"]
+        self.assertEqual(config.thinking_config.thinking_level, types.ThinkingLevel.LOW)
+        self.assertEqual(config.max_output_tokens, 1024)
+
+    def test_bare_major_gemini_3_uses_the_same_policy(self) -> None:
+        models = _ThinkingPolicyModels()
+        GeminiEnricher("models/gemini-3-flash-preview", self._client(models)).enrich(
+            _item(), _TWO_LINE_CFG
+        )
+
+        self.assertEqual(self._levels(models), [types.ThinkingLevel.LOW])
+        self.assertEqual(models.calls[0]["config"].max_output_tokens, 1024)
+
+    def test_rotation_uses_low_and_safe_budget_for_all_gemini_3_models(self) -> None:
+        models = _ThinkingPolicyModels()
+        rotator = RotatingGeminiEnricher([self._MODEL_36, self._MODEL_37], self._client(models))
+
+        first = rotator.enrich(_item("first"), _TWO_LINE_CFG)
+        rotator._current = 1
+        second = rotator.enrich(_item("second"), _TWO_LINE_CFG)
+
+        self.assertRegex(first, _TWO_LINE_PATTERN)
+        self.assertRegex(second, _TWO_LINE_PATTERN)
+        self.assertEqual(
+            [call["model"] for call in models.calls],
+            [self._MODEL_36, self._MODEL_37],
+        )
+        self.assertEqual(self._levels(models), [types.ThinkingLevel.LOW] * 2)
+        self.assertEqual([call["config"].max_output_tokens for call in models.calls], [1024, 1024])
 
 
 class TestRetryOnlyOnQuota(unittest.TestCase):

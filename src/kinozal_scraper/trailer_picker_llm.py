@@ -25,7 +25,7 @@ from kinozal_scraper.gemini_enricher import (
     GenaiClient,
     TryNextModel,
     _extract_finish_reason,
-    _thinking_config,
+    _thinking_policy,
     classify_generate_error,
 )
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile, TrailerPick
@@ -148,11 +148,12 @@ class GeminiJsonGenerator:
         return self._model_name
 
     def generate(self, prompt: str) -> str:
+        thinking_config, _ = _thinking_policy(self._model_name)
         config = types.GenerateContentConfig(
             temperature=0.2,
             response_mime_type="application/json",
             response_schema=PICK_SCHEMA,
-            thinking_config=_thinking_config(self._model_name),
+            thinking_config=thinking_config,
         )
         try:
             response = self._client.models.generate_content(

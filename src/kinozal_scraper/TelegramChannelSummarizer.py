@@ -21,7 +21,7 @@ from kinozal_scraper.gemini_enricher import (
     QuotaExhausted,
     TryNextModel,
     _extract_finish_reason,
-    _thinking_config,
+    _thinking_policy,
     classify_generate_error,
 )
 from kinozal_scraper.llm_observability import extract_usage, log_llm_call
@@ -115,10 +115,10 @@ class GeminiSummarizer:
     def _generate_content(self, model_name: str, request: str) -> tuple[Any, int]:
         """Generate once, retrying only transient service unavailability."""
         start = time.perf_counter()
+        thinking_config, _ = _thinking_policy(model_name)
+        config = types.GenerateContentConfig(thinking_config=thinking_config)
         response = self._client.models.generate_content(
-            model=model_name,
-            contents=request,
-            config=types.GenerateContentConfig(thinking_config=_thinking_config(model_name)),
+            model=model_name, contents=request, config=config
         )
         latency_ms = int((time.perf_counter() - start) * 1000)
         return response, latency_ms

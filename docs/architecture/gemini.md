@@ -33,9 +33,9 @@ rotation gives ~280 requests/day without upgrading.
 1. Try current model (skipping any marked dead this run)
 2. On `ResourceExhausted` (429) → advance to next live model, retry immediately
 3. On `NotFound` (404, model deprecated server-side) → mark this model dead
-   for the rest of the run, advance to next live model (see #128)
+   for the rest of the run, advance to next live model
 4. On `TryNextModel` (truncation, network timeout, any unexpected exception
-   on this specific item — see #130) → advance to next live model, do **not**
+   on this specific item) → advance to next live model, do **not**
    mark the model dead (same model may handle a different item fine)
 5. After all live models exhausted → 60s cooldown → clear the dead set →
    one more full rotation (a quota window may have rolled over; a 404'd
@@ -53,7 +53,7 @@ failure, without marking that model dead for later channels.
 
 `get_generation_models()` in `gemini_enricher.py`:
 1. `client.models.list()` — all available models (new `google.genai` SDK)
-2. Filter: `generateContent` in `Model.supported_actions` (was `supported_generation_methods` on the deprecated SDK, #107)
+2. Filter: `generateContent` in `Model.supported_actions`
 3. Filter: `_is_text_gemini()` — starts with `models/gemini-`, no suffix like `-tts`, `-image`, `-customtools`, `-computer-use`, `-robotics`
 4. Sort: newest version first (`_model_version_key`)
 
@@ -74,23 +74,22 @@ the same model.
 
 `GeminiEnricher.enrich` translates per-model failures into rotator signals so
 the rotator can give each item another chance on a different model before
-falling back to `FALLBACK_MARKER` (#128, #130):
+falling back to `FALLBACK_MARKER`:
 
 | Condition | Exception surfaced | Rotator action |
 |---|---|---|
 | `ResourceExhausted` (429, quota) | `QuotaExhausted` | switch to next live model |
 | `NotFound` (404, model deprecated mid-rotation) | `ModelUnavailable` | switch + mark dead for this run |
-| `400 INVALID_ARGUMENT` (malformed request, e.g. a `thinking_budget` a 3.x model rejects) | `ModelConfigRejected` | switch (rotate — other models may accept it), **but** ERROR-log + record in `config_rejected_models` → pipeline fires a Telegram alert + reds the job (§IV, #340) |
+| `400 INVALID_ARGUMENT` (malformed request) | `ModelConfigRejected` | switch model, ERROR-log, record `config_rejected_models`, fire a Telegram alert, and red the job (§IV) |
 | `TruncatedResponse` (MAX_TOKENS / SAFETY) | `TryNextModel` | switch to next live model |
 | Any other exception (network, non-API errors) | `TryNextModel` | switch to next live model |
 | `response_pattern` mismatch | (returns `FALLBACK_MARKER` directly) | no rotation — bad prompt is not a model problem |
 
-**Why `ModelConfigRejected` is loud, not silent (#340).** A `400 INVALID_ARGUMENT`
+**Why `ModelConfigRejected` is loud, not silent.** A `400 INVALID_ARGUMENT`
 is *our request* being malformed — deterministic (every item 400s identically on
 that model), a code bug, unlike a transient per-item `TryNextModel`. Absorbed as
 a routine `TryNextModel` such a bug is invisible: the rotator drops to a working
-model, notifications ship, the cron stays green, and no §IV alert fires — which
-is exactly how 3.x models rejecting `thinking_budget=0` stayed hidden (#338).
+model, notifications ship, the cron stays green, and no §IV alert fires.
 `ModelConfigRejected` restores visibility: rotation still delivers data, but the
 config bug reaches the operator (Telegram alert + red job). It is deliberately
 **not** dead-marked (unlike 404): the alert forces a quick fix so the per-item
@@ -116,8 +115,7 @@ removed, leading `*`/`#`/`>` markers are stripped, whitespace is collapsed,
 and the text is truncated to 400 characters. This is a defensive shaping of
 the *prompt input* — `item.description` itself is left untouched. Rationale:
 raw `<p>` from GitHub trending HTML often contains README markdown that
-correlated with echo / format-leak in model output (issue #106 — closed
-not-planned, fix lives in PR #102).
+correlates with echo and format leakage in model output.
 
 ### Output validation and fallback
 
@@ -138,22 +136,24 @@ Every call logs `model_name`, `prompt_len`, `resp_len`, `finish_reason`,
 and the first line of the answer at INFO level — the diagnostic surface
 needed to triage drift without instrumenting each call ad hoc.
 
-### Thinking suppression (`_thinking_config`)
+### Thinking suppression (`_thinking_policy`)
 
 Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends the
 whole `max_output_tokens` on thoughts and returns `MAX_TOKENS` on a valid short
-prompt (#107). The knob to suppress it is **version-specific** because Gemini 3
-replaced `thinking_budget` with `thinking_level`, and newer 3.x models (e.g.
-`gemini-3.6-flash`, `gemini-3.5-flash-lite`) return **`400 INVALID_ARGUMENT`** on
-`thinking_budget=0` (#338):
+prompt. The request knob is version-specific, so one pure policy selects the
+current API shape ([ADR-0008](../adr/0008-use-one-explicit-gemini-thinking-policy.md)):
 
-- `v ≥ 3.0` → `ThinkingConfig(thinking_level="minimal")` — Google's documented
-  near-zero setting (verified: STOP with no thinking tokens across 3.x).
-- `2.5 ≤ v < 3.0` → `ThinkingConfig(thinking_budget=0)`.
-- `v < 2.5` → no `thinking_config` — a 2.0 model 400s on any of it.
+- `v ≥ 3.0` uses `ThinkingConfig(thinking_level="low")` on its first and only
+  request. When the caller configures `max_output_tokens`, that limit is raised
+  up front to at least 1024; lower observed limits truncated after spending
+  their allowance on thinking.
+- `2.5 ≤ v < 3.0` keeps `ThinkingConfig(thinking_budget=0)`.
+- `v < 2.5` keeps no `thinking_config`; a 2.0 model rejects any such config.
 
-Sending `thinking_budget=0` to a 3.x model was a per-item 400 that the rotator
-absorbed (→ `TryNextModel`) but burned two round-trips before the first success.
+There is no per-model allow-list, probe, retry, or runtime capability cache. If
+a future model changes the request contract again, the existing
+`ModelConfigRejected` path makes that incompatibility visible instead of guessing
+another argument or value.
 
 ## Call observability — tokens & latency
 
@@ -181,8 +181,8 @@ OpenInference instrumentor for `google.genai` (the old-SDK instrumentor
 `openinference-instrumentation-google-generativeai` does not install on Python 3.12).
 It is **opt-in, local, and
 deliberately not committed**: no `arize-phoenix` / `openinference-*` in
-`requirements*.txt`, and no activation code in the repo — unrunnable-in-CI code rots
-(#145). The in-cron structured `llm_call` log stays the only production surface.
+`requirements*.txt`, and no activation code in the repo — unrunnable-in-CI code
+rots. The in-cron structured `llm_call` log stays the only production surface.
 
 Recipe (throwaway venv, real `GOOGLE_API_KEY`):
 
@@ -232,7 +232,7 @@ Both `github_new_popular` and `github_trending` write the enrich result to
 
 Pin-tests in `tests/test_pipeline_config.py::TestRussianEnrichPrompts`
 enforce that both sources' prompts contain the substrings `Для кого` and
-`Зачем` and that the template references `{summary_ru}` (#88).
+`Зачем` and that the template references `{summary_ru}`.
 
 `summary_ru` is **never** written to the Sheets row — it lives only in
 `item.raw` so the notification template can read it. No `ROW_HEADERS`
@@ -248,7 +248,7 @@ parameter and apply the same loop semantics:
   placeholder resolves to empty, notification still sends.
 - `QuotaExhausted` raised mid-loop → remaining items get the fallback value
   (`enrich.on_error` if non-empty, otherwise `FALLBACK_MARKER`), but every
-  notification still goes out (Principle IV; #128).
+  notification still goes out (Principle IV).
 
 ### Steam-specific fallback
 
@@ -257,4 +257,4 @@ English `short_description` is itself informative, so a failed translation
 (empty result, `FALLBACK_MARKER` from `TruncatedResponse`, `QuotaExhausted`,
 or `enricher is None`) falls back to `item.description`, not to the marker.
 The notification ships in English, with a WARNING in cron logs marking the
-degradation. Implemented in `steam_pipeline._apply_translation` (#124).
+degradation. Implemented in `steam_pipeline._apply_translation`.
