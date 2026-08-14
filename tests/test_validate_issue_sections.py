@@ -507,6 +507,12 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
     assert find_gaps(healthy_with_marker, issue_labels=("bug",), repo_root=repo_root) == []
 
 
+def test_evidence_replay_fixtures_are_checkout_byte_stable() -> None:
+    attributes = Path(".gitattributes").read_text(encoding="utf-8").splitlines()
+
+    assert "tests/fixtures/issue_509_rca/*.txt -text" in attributes
+
+
 def test_main_passes_live_bug_label_to_evidence_gate(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
