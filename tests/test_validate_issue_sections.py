@@ -8,9 +8,7 @@ the Cyrillic body decode.
 
 from __future__ import annotations
 
-import hashlib
 import importlib
-import json
 import subprocess
 import sys
 from pathlib import Path
@@ -339,25 +337,20 @@ def test_bug_issue_without_evidence_section_is_a_gap(tmp_path: Path) -> None:
     assert "Evidence" in gaps
 
 
-def test_evidence_naming_a_missing_path_is_a_gap(tmp_path: Path) -> None:
-    body = _body_with_evidence(_capture_evidence("tests/fixtures/missing.html"))
-    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
-    assert gaps == ["Evidence (missing: existing capture path or failed capture output)"]
+def test_evidence_path_outside_evidence_dir_is_a_gap(tmp_path: Path) -> None:
+    for path in ("tests/fixtures/captured.html", "evidence/../captured.html"):
+        body = _body_with_evidence(_capture_evidence(path))
+        gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+        assert gaps == ["Evidence (missing: capture path under evidence/)"]
 
 
-def test_evidence_naming_an_existing_capture_passes(tmp_path: Path) -> None:
-    capture = tmp_path / "tests" / "fixtures" / "captured.html"
-    capture.parent.mkdir(parents=True)
-    capture.write_text("<html>observed response</html>", encoding="utf-8")
-    body = _body_with_evidence(_capture_evidence("tests/fixtures/captured.html"))
+def test_evidence_path_under_evidence_dir_needs_no_file(tmp_path: Path) -> None:
+    body = _body_with_evidence(_capture_evidence("evidence/issue-520/captured.html"))
     assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
 
 
 def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path) -> None:
-    capture = tmp_path / "tests" / "fixtures" / "github" / "issue-509.json"
-    capture.parent.mkdir(parents=True)
-    capture.write_text('{"number": 509}', encoding="utf-8")
-    relative_path = "tests/fixtures/github/issue-509.json"
+    relative_path = "evidence/issue-509/github.json"
     body = _body_with_evidence(
         "capture: `gh api repos/ekolvah/kinozal_scraper/issues/509 "
         f"> {relative_path}`\n"
@@ -371,10 +364,7 @@ def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path
 
 
 def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Path) -> None:
-    capture = tmp_path / "tests" / "fixtures" / "captured.html"
-    capture.parent.mkdir(parents=True)
-    capture.write_text("<html>mixed external response</html>", encoding="utf-8")
-    path = "tests/fixtures/captured.html"
+    path = "evidence/issue-509/captured.html"
     body = _body_with_evidence(
         f"capture: `python scripts/capture_kinozal_fixture.py https://kinozal.tv {path}`\n"
         f"path: `{path}`\n"
@@ -407,10 +397,10 @@ def test_non_external_bug_can_record_evidence_not_applicable(tmp_path: Path) -> 
 
 
 def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path) -> None:
-    evidence = _capture_evidence("tests/fixtures/source-unavailable.html")
+    evidence = _capture_evidence("evidence/issue-509/source-unavailable.html")
     without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
     assert find_gaps(without_output, issue_labels=("bug",), repo_root=tmp_path) == [
-        "Evidence (missing: existing capture path or failed capture output)"
+        "Evidence (missing: failed capture output)"
     ]
 
     with_output = _body_with_evidence(
@@ -457,54 +447,35 @@ def test_parses_external_page():
 
 
 def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
-    repo_root = Path(__file__).resolve().parent.parent
-    fixture_root = repo_root / "tests" / "fixtures" / "issue_509_rca"
-    manifest = json.loads((fixture_root / "manifest.json").read_text(encoding="utf-8"))
-    for artifact in manifest["artifacts"]:
-        payload = (fixture_root / artifact["path"]).read_bytes()
-        assert hashlib.sha256(payload).hexdigest() == "".join(artifact["sha256_chunks"])
-
-    revision_one = (fixture_root / "issue_506_revision_1.txt").read_text(encoding="utf-8")
-    assert "Evidence" in find_gaps(revision_one, issue_labels=("bug",), repo_root=repo_root)
-    relative_wrong_plan = "tests/fixtures/issue_509_rca/issue_506_revision_1.txt"
+    wrong_plan = _full_body().replace(
+        _section_content("Implementation outline"),
+        "Reject the entire mixed source instead of classifying each item.",
+    )
+    assert "Evidence" in find_gaps(wrong_plan, issue_labels=("bug",))
+    relative_wrong_plan = "evidence/issue-506/top.html"
     revision_with_capture_only = (
-        f"{revision_one}\n## Evidence\n\n"
+        f"{wrong_plan}\n## Evidence\n\n"
         "capture: `python scripts/capture_kinozal_fixture.py "
         f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
         f"path: `{relative_wrong_plan}`\n"
     )
-    capture_only_gaps = find_gaps(
-        revision_with_capture_only, issue_labels=("bug",), repo_root=repo_root
-    )
+    capture_only_gaps = find_gaps(revision_with_capture_only, issue_labels=("bug",))
     assert (
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ) in capture_only_gaps
 
     # This deterministic gate validates the observation/decision record's shape,
-    # not whether its prose agrees with the plan. The archived over-broad plan can
+    # not whether its prose agrees with the plan. The synthetic over-broad plan can
     # therefore clear Evidence once all fields are present; planner evaluation and
     # architect review own the semantic same-input preservation decision.
     wrong_plan_with_complete_record = (
-        f"{revision_one}\n## Evidence\n\n{_capture_evidence(relative_wrong_plan)}\n"
+        f"{wrong_plan}\n## Evidence\n\n{_capture_evidence(relative_wrong_plan)}\n"
     )
     wrong_plan_gaps = find_gaps(
         wrong_plan_with_complete_record,
         issue_labels=("bug",),
-        repo_root=repo_root,
     )
     assert not any(gap.startswith("Evidence") for gap in wrong_plan_gaps)
-
-    # The marker did not exist when #506 was planned. The healthy archived body
-    # plus a complete mechanical record proves the new shape does not invalidate
-    # the item-level plan; its observed details-page facts remain archived content.
-    healthy = (fixture_root / "issue_506_final_item_level.txt").read_text(encoding="utf-8")
-    # The unmodified current nine-section body remains valid when the conditional
-    # bug Evidence rule is not requested.
-    assert find_gaps(healthy) == []
-    assert "### Live evidence" in healthy
-    relative_capture = "tests/fixtures/issue_509_rca/issue_506_final_item_level.txt"
-    healthy_with_marker = f"{healthy}\n## Evidence\n\n{_capture_evidence(relative_capture)}\n"
-    assert find_gaps(healthy_with_marker, issue_labels=("bug",), repo_root=repo_root) == []
 
 
 def test_evidence_replay_fixtures_are_checkout_byte_stable() -> None:

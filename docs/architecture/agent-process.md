@@ -55,19 +55,25 @@ paired-test: <the same captured input through one pipeline run keeps the valid r
 ```
 
 The command is specific to the external source and must include the exact path
-named on the next line. The validator checks that the command is present and the
-repository-relative file exists; it does not try to recognize every possible
-source tool or prove that the recorded conclusions are true. The remaining
-fields turn the capture into a reviewable design decision: compare at least the
-reported invalid record with an exact valid record from the same captured
-response. A sibling feed, query, category, or alternative source does not count
-as preservation of that record. A candidate that loses the preserved record is
-BLOCKING unless the issue records an explicit product decision authorizing that
-loss. Choose the narrowest boundary supported by the observation, trace the
-current production path before claiming that it needs another fetch, and expose
-collateral loss instead of silently accepting it. Use the narrowest read-only
-route below; never run a full pipeline that writes Sheets rows or sends
-Telegram notifications merely to collect evidence:
+named on the next line. That path is under `evidence/issue-<N>/`; the captured
+file is working-tree-only planning evidence, ignored by Git and kept locally
+only until merge. The reviewer receives a verified, safe, compressed observation
+record in the public issue, not the full payload. The validator checks the
+command, safe relative path, record fields, and explicit failed-capture output;
+it deliberately does not require the local file, which will be absent in a fresh
+clone or worktree. It does not try to recognize every possible source tool or
+prove that the recorded conclusions are true.
+
+The remaining fields turn the capture into a reviewable design decision:
+compare at least the reported invalid record with an exact valid record from the
+same captured response. A sibling feed, query, category, or alternative source
+does not count as preservation of that record. A candidate that loses the
+preserved record is BLOCKING unless the issue records an explicit product
+decision authorizing that loss. Choose the narrowest boundary supported by the
+observation, trace the current production path before claiming that it needs
+another fetch, and expose collateral loss instead of silently accepting it. Use
+the narrowest read-only route below; never run a full pipeline that writes
+Sheets rows or sends Telegram notifications merely to collect evidence:
 
 | Source | Capture route |
 | --- | --- |
@@ -94,9 +100,14 @@ output; an unsupported claim that the source is unavailable is still a gap.
 This makes the access failure reviewable but does not prove source behaviour: a
 plan whose design depends on the missing fact remains blocked, the validator
 stays red with `missing: successful capture`, and no implementer handoff may be
-recorded. A committed fixture can be fabricated, which no syntax gate can rule
-out, but the command and path make the observation cheap to reproduce and leave
-a reviewable claim (#509).
+recorded. The command and compressed record make the observation reviewable
+without treating planning history as repository state.
+
+Captured bytes belong in `tests/fixtures/` only when a production-behaviour
+regression test reads the captured bytes in the same commit. By contrast, full
+issue bodies, transcripts, and planning history are not test fixtures; removing
+the local `evidence/` copy after merge does not remove the issue's durable
+decision record.
 
 For a bug with no external-system behaviour to observe, the section instead
 starts with `n/a: <reason>`, naming why live capture does not apply. The section
