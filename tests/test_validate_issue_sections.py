@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 import scripts.validate_issue_sections as validator
 from scripts.validate_issue_sections import (
@@ -489,6 +490,175 @@ def test_main_passes_live_bug_label_to_evidence_gate(
 
     assert exc.value.code == 1
     assert "Evidence" in capsys.readouterr().err
+
+
+def _catalogue_rows() -> dict[str, dict[str, list[str]]]:
+    """The shipped matrix, rebuilt in the test so a mutation below is explicit."""
+    rows: dict[str, dict[str, list[str]]] = {
+        label: {"adds": [], "omits": []} for label in validator.TYPE_LABELS
+    }
+    rows["bug"]["adds"] = ["Evidence"]
+    return rows
+
+
+def _write_catalogue(path: Path, rows: object) -> Path:
+    path.write_text(yaml.safe_dump({"classes": rows}, sort_keys=True), encoding="utf-8")
+    return path
+
+
+class TestChangeClassMatrix:
+    """The change-class axis is data, not a chain of `if label == ...` (#516).
+
+    The base set keeps exactly one carrier (`REQUIRED_SECTIONS`); a row may only add
+    to it or omit from it. That is why every test here compares against the constant
+    rather than against a second literal list of nine headings.
+    """
+
+    def test_bug_row_pulls_evidence_into_the_required_set(self) -> None:
+        assert validator.required_sections("bug") == (*REQUIRED_SECTIONS, "Evidence")
+
+    def test_every_non_bug_class_requires_the_nine_base_sections(self) -> None:
+        for label in validator.TYPE_LABELS:
+            if label == validator.BUG_LABEL:
+                continue
+            assert validator.required_sections(label) == REQUIRED_SECTIONS, label
+
+    def test_issue_without_a_type_label_is_a_gap(self) -> None:
+        assert validator.type_label_gaps(("refactor",), 516) == []
+        for labels in ((), ("agentic-skill",)):
+            gaps = validator.type_label_gaps(labels, 516)
+            assert len(gaps) == 1
+            assert gaps[0].startswith(validator.TYPE_LABEL_GAP)
+
+    def test_two_type_labels_are_a_gap(self) -> None:
+        gaps = validator.type_label_gaps(("bug", "refactor"), 516)
+        assert len(gaps) == 1
+        assert gaps[0].startswith(validator.TYPE_LABEL_GAP)
+        assert "bug" in gaps[0] and "refactor" in gaps[0]
+
+    def test_type_label_gap_message_names_the_label_command_not_the_planner(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """A planner may not edit labels (§Planner runbook), so `/plan` is the wrong fix."""
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ()))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 1
+        error = capsys.readouterr().err
+        assert "gh issue edit 516 --add-label" in error
+        assert "/plan #516" not in error
+
+    def test_row_omitting_a_section_passes_through_main_without_a_key_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """The passing path must be derived from the resolved set, not from the base one."""
+        rows = _catalogue_rows()
+        rows["documentation"]["omits"] = ["Architect review"]
+        monkeypatch.setattr(
+            validator,
+            "_CHANGE_CLASS_CATALOGUE",
+            _write_catalogue(tmp_path / "change-classes.yaml", rows),
+        )
+        body = _body_with(tuple(s for s in REQUIRED_SECTIONS if s != "Architect review"))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("documentation",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        validator.main()
+
+        output = capsys.readouterr().out
+        assert "ok: issue #516 has all 8 required sections" in output
+
+    def test_passing_issue_reports_the_class_and_its_derived_red_obligation(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        validator.main()
+
+        assert "class: refactor — RED required" in capsys.readouterr().out
+
+        # Derived, not stored: drop `Test plan` from the row and the obligation follows.
+        rows = _catalogue_rows()
+        rows["chore"]["omits"] = ["Test plan"]
+        monkeypatch.setattr(
+            validator,
+            "_CHANGE_CLASS_CATALOGUE",
+            _write_catalogue(tmp_path / "change-classes.yaml", rows),
+        )
+        body = _body_with(tuple(s for s in REQUIRED_SECTIONS if s != "Test plan"))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("chore",)))
+
+        validator.main()
+
+        assert "class: chore — RED not required" in capsys.readouterr().out
+
+    def test_unreadable_catalogue_exits_two(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Neither a pass nor a fail: the verdict cannot be trusted (§IV)."""
+        monkeypatch.setattr(validator, "_CHANGE_CLASS_CATALOGUE", tmp_path / "absent.yaml")
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 2
+        assert "change-classes.yaml" in capsys.readouterr().err
+
+    @pytest.mark.parametrize(
+        "mutate",
+        [
+            pytest.param(lambda rows: rows.pop("chore"), id="row-set-is-not-the-nine-labels"),
+            pytest.param(
+                lambda rows: rows["chore"].update(omits=["Not A Base Section"]),
+                id="omits-outside-the-base-set",
+            ),
+            pytest.param(
+                lambda rows: rows["chore"].update(adds=["ADR"]),
+                id="adds-overlaps-the-base-set",
+            ),
+            pytest.param(
+                lambda rows: rows.update(chore="Evidence"),
+                id="row-is-not-a-mapping-of-two-lists",
+            ),
+        ],
+    )
+    def test_structurally_invalid_row_exits_two(
+        self,
+        mutate: Any,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        rows = _catalogue_rows()
+        mutate(rows)
+        monkeypatch.setattr(
+            validator,
+            "_CHANGE_CLASS_CATALOGUE",
+            _write_catalogue(tmp_path / "change-classes.yaml", rows),
+        )
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
+        monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
+
+        with pytest.raises(SystemExit) as exc:
+            validator.main()
+
+        assert exc.value.code == 2
+        assert "change-classes.yaml" in capsys.readouterr().err
 
 
 class TestOrphanScopeReminder:

@@ -9,7 +9,7 @@ import yaml
 
 from scripts.agent_orchestrator import RouteDecision, WorkflowState
 from scripts.review_gate import VERDICT_EXIT_CODES
-from scripts.validate_issue_sections import REQUIRED_SECTIONS
+from scripts.validate_issue_sections import REQUIRED_SECTIONS, TYPE_LABELS
 
 _REPO = Path(__file__).resolve().parent.parent
 # The readiness condition itself: canonical in agent-process.md, nowhere else.
@@ -104,6 +104,57 @@ def _provider_files() -> list[Path]:
 
 def _codex_skills() -> list[Path]:
     return sorted(path for path in (_REPO / ".agents" / "skills").glob("*") if path.is_dir())
+
+
+def _documented_change_class_matrix() -> dict[str, dict[str, tuple[str, ...]]]:
+    """Parse the `| label | adds | omits |` table from `agent-process.md` §Issue contract."""
+    process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+    matrix: dict[str, dict[str, tuple[str, ...]]] = {}
+    for line in process.splitlines():
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if len(cells) != 3 or not cells[0].startswith("`"):
+            continue
+        label = cells[0].strip("`")
+        if label not in TYPE_LABELS:
+            continue
+        matrix[label] = {
+            key: tuple(
+                item.strip().strip("`") for item in cell.split(",") if item.strip() not in ("", "—")
+            )
+            for key, cell in (("adds", cells[1]), ("omits", cells[2]))
+        }
+    return matrix
+
+
+class TestIssueContract:
+    """The change-class matrix has one machine-readable home (#516)."""
+
+    def test_every_type_label_has_a_change_class_row(self) -> None:
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "change-classes.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+
+        assert set(catalogue["classes"]) == set(TYPE_LABELS)
+        for label in TYPE_LABELS:
+            assert f"`{label}`" in process, f"type label {label!r} is undocumented"
+
+    def test_documented_change_class_matrix_matches_the_catalogue(self) -> None:
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "change-classes.yaml").read_text(
+                encoding="utf-8"
+            )
+        )
+
+        documented = _documented_change_class_matrix()
+        assert set(documented) == set(TYPE_LABELS), "the documented matrix skips a type label"
+        for label, row in catalogue["classes"].items():
+            assert documented[label] == {
+                "adds": tuple(row["adds"]),
+                "omits": tuple(row["omits"]),
+            }, f"documented row for {label!r} disagrees with the catalogue"
 
 
 class TestAgentProcess:

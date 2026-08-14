@@ -51,6 +51,21 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
 )
 EVIDENCE_SECTION = "Evidence"
 BUG_LABEL = "bug"
+# The taxonomy of governance convention 3, machine-readable so the change-class
+# catalogue can be checked against it instead of against itself. Exactly one of these
+# labels routes an issue to its row; anything else on the issue is a non-type label.
+TYPE_LABELS: tuple[str, ...] = (
+    "bug",
+    "chore",
+    "ci",
+    "documentation",
+    "enhancement",
+    "perf",
+    "refactor",
+    "security",
+    "testing",
+)
+TYPE_LABEL_GAP = "type label"
 EVIDENCE_NA_PREFIX = "n/a:"
 EVIDENCE_DECISION_FIELDS = (
     ("observed", "observed"),
@@ -66,6 +81,9 @@ MIN_CONTENT_CHARS = 5
 _MD = MarkdownIt("commonmark")
 
 _ROLE_CATALOGUE = Path(__file__).resolve().parents[1] / ".agents" / "orchestration" / "roles.yaml"
+_CHANGE_CLASS_CATALOGUE = (
+    Path(__file__).resolve().parents[1] / ".agents" / "orchestration" / "change-classes.yaml"
+)
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 _REVIEWER_ROLE = "architect_reviewer"
 # The trivial-change escape (#150). It carries no carrier name on purpose: a skipped
@@ -101,6 +119,21 @@ def reviewer_independence() -> dict[str, str]:
     if not isinstance(declared, dict) or not declared:
         raise CatalogueError(f"{_REVIEWER_ROLE}.adapter_independence is not a non-empty mapping")
     return declared
+
+
+def change_class_requirements() -> dict[str, dict[str, tuple[str, ...]]]:
+    """Per-type-label section deltas, relative to `REQUIRED_SECTIONS`."""
+    raise NotImplementedError
+
+
+def required_sections(label: str) -> tuple[str, ...]:
+    """The resolved, ordered section set a `label` issue must carry."""
+    raise NotImplementedError
+
+
+def type_label_gaps(labels: Sequence[str], issue_number: int) -> list[str]:
+    """Return the routing gap when an issue carries zero or several type labels."""
+    raise NotImplementedError
 
 
 def architect_review_provenance(content: str) -> str | None:
