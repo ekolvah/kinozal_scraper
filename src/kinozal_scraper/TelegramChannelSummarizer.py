@@ -17,12 +17,15 @@ from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponen
 
 from kinozal_scraper.gemini_enricher import (
     GenaiClient,
+    ModelConfigRejected,
     ModelUnavailable,
     QuotaExhausted,
     TryNextModel,
     _extract_finish_reason,
+    _initial_thinking_level,
     _thinking_config,
     classify_generate_error,
+    generate_with_thinking_fallback,
 )
 from kinozal_scraper.llm_observability import extract_usage, log_llm_call
 
@@ -102,6 +105,9 @@ class GeminiSummarizer:
         self._client = client
         self._broadcast_prompt = broadcast_prompt or _DEFAULT_BROADCAST_PROMPT
         self._chat_prompt = chat_prompt or _DEFAULT_CHAT_PROMPT
+        self._thinking_levels = {
+            model_name: _initial_thinking_level(model_name) for model_name in models
+        }
 
     @retry(
         retry=retry_if_exception(
@@ -115,11 +121,17 @@ class GeminiSummarizer:
     def _generate_content(self, model_name: str, request: str) -> tuple[Any, int]:
         """Generate once, retrying only transient service unavailability."""
         start = time.perf_counter()
-        response = self._client.models.generate_content(
-            model=model_name,
-            contents=request,
-            config=types.GenerateContentConfig(thinking_config=_thinking_config(model_name)),
-        )
+        level = self._thinking_levels[model_name]
+        config = types.GenerateContentConfig(thinking_config=_thinking_config(model_name))
+        try:
+            response, effective_level = generate_with_thinking_fallback(
+                self._client, model_name, request, config, level
+            )
+        except Exception as exc:
+            if level == "minimal" and classify_generate_error(exc) is ModelConfigRejected:
+                self._thinking_levels[model_name] = "low"
+            raise
+        self._thinking_levels[model_name] = effective_level
         latency_ms = int((time.perf_counter() - start) * 1000)
         return response, latency_ms
 

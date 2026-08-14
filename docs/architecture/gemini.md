@@ -80,7 +80,7 @@ falling back to `FALLBACK_MARKER` (#128, #130):
 |---|---|---|
 | `ResourceExhausted` (429, quota) | `QuotaExhausted` | switch to next live model |
 | `NotFound` (404, model deprecated mid-rotation) | `ModelUnavailable` | switch + mark dead for this run |
-| `400 INVALID_ARGUMENT` (malformed request, e.g. a `thinking_budget` a 3.x model rejects) | `ModelConfigRejected` | switch (rotate — other models may accept it), **but** ERROR-log + record in `config_rejected_models` → pipeline fires a Telegram alert + reds the job (§IV, #340) |
+| `400 INVALID_ARGUMENT` (malformed request) | `ModelConfigRejected` | a `minimal` thinking-level rejection first retries the same model at `low`; rejection at both levels still switches, ERROR-logs, records `config_rejected_models`, fires a Telegram alert, and reds the job (§IV, #340, #515) |
 | `TruncatedResponse` (MAX_TOKENS / SAFETY) | `TryNextModel` | switch to next live model |
 | Any other exception (network, non-API errors) | `TryNextModel` | switch to next live model |
 | `response_pattern` mismatch | (returns `FALLBACK_MARKER` directly) | no rotation — bad prompt is not a model problem |
@@ -142,18 +142,24 @@ needed to triage drift without instrumenting each call ad hoc.
 
 Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends the
 whole `max_output_tokens` on thoughts and returns `MAX_TOKENS` on a valid short
-prompt (#107). The knob to suppress it is **version-specific** because Gemini 3
-replaced `thinking_budget` with `thinking_level`, and newer 3.x models (e.g.
-`gemini-3.6-flash`, `gemini-3.5-flash-lite`) return **`400 INVALID_ARGUMENT`** on
-`thinking_budget=0` (#338):
+prompt (#107). The suppression knob is version-specific, and supported 3.x
+levels cannot be derived from the version number ([ADR-0008](../adr/0008-model-capability-comes-from-the-api-answer.md)):
 
-- `v ≥ 3.0` → `ThinkingConfig(thinking_level="minimal")` — Google's documented
-  near-zero setting (verified: STOP with no thinking tokens across 3.x).
-- `2.5 ≤ v < 3.0` → `ThinkingConfig(thinking_budget=0)`.
-- `v < 2.5` → no `thinking_config` — a 2.0 model 400s on any of it.
+- `v ≥ 3.0` starts with `ThinkingConfig(thinking_level="minimal")`. If the API
+  rejects that level with `400 INVALID_ARGUMENT`, the same request retries once
+  at `low`, and the result is remembered for that model for the rest of the run.
+- On the `low` fallback, a configured `max_output_tokens` is copied and raised to
+  at least 1024. The live production-shaped capture completed at 1024; 220 and
+  512 truncated after consuming their budget on thinking.
+- `2.5 ≤ v < 3.0` keeps `ThinkingConfig(thinking_budget=0)`.
+- `v < 2.5` keeps no `thinking_config`; a 2.0 model rejects any such config.
 
-Sending `thinking_budget=0` to a 3.x model was a per-item 400 that the rotator
-absorbed (→ `TryNextModel`) but burned two round-trips before the first success.
+The observed capability matrix is deliberately evidence, not an allow-list:
+3.6/3.5/3.1 accepted `minimal` with zero thinking tokens, while 3.7 rejected
+`minimal`, accepted `low`, and needed the larger output budget. A model that
+rejects both levels still surfaces the original SDK exception, preserving the
+existing config-rejection alert. The fallback emits one WARNING per model per
+run, so its one extra round-trip is visible and bounded.
 
 ## Call observability — tokens & latency
 

@@ -6,7 +6,7 @@ import logging
 import re
 import string
 import time
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, runtime_checkable
 
 from google import genai
 from google.genai import types
@@ -205,19 +205,29 @@ class NullEnricher:
 # Gemini 2.5+/3.x run an internal reasoning phase that, left unbounded, spends
 # the whole `max_output_tokens` on thoughts and returns `finish_reason=MAX_TOKENS`
 # on valid prompts (#107). The knob to suppress it is version-specific: Gemini 3
-# replaced `thinking_budget` with `thinking_level`, and some 3.x models
-# (e.g. gemini-3.6-flash, gemini-3.5-flash-lite) 400 on `thinking_budget=0` — so
-# 3.x uniformly gets `thinking_level="minimal"` (Google's documented near-zero
-# setting; STOPs on all 3.x), while 2.5 still uses `thinking_budget=0` (#338).
+# replaced `thinking_budget` with `thinking_level`, but support for individual
+# 3.x levels is not uniform. `minimal` is the initial probe; a rejecting model
+# is retried once at `low`, and that capability is remembered for the run (#515).
+# Gemini 2.5 still uses `thinking_budget=0` (#338).
 # Older models (2.0) reject any `thinking_config` with 400, so gate it by version.
 _THINKING_MIN_VERSION = 2.5
 _THINKING_LEVEL_MIN_VERSION = 3.0
+# Live capture `evidence/issue-515/production_budget.json`, entry 3, completed
+# at 1024; lower tested budgets truncated after spending tokens on thinking.
+_FALLBACK_MIN_OUTPUT_TOKENS = 1024
+ThinkingLevelName = Literal["minimal", "low"]
+_THINKING_LEVELS: dict[ThinkingLevelName, types.ThinkingLevel] = {
+    "minimal": types.ThinkingLevel.MINIMAL,
+    "low": types.ThinkingLevel.LOW,
+}
 
 
 def _thinking_config(model_name: str) -> types.ThinkingConfig | None:
-    """Version-correct thinking suppression: `thinking_level="minimal"` for
-    3.x (they 400 on `thinking_budget=0`, #338), `thinking_budget=0` for 2.5,
-    else `None` — passing any `thinking_config` to a 2.0 model 400s (#107)."""
+    """Return the version-correct initial suppression config.
+
+    Gemini 3.x starts at `minimal` and may fall back after a live rejection;
+    2.5 uses `thinking_budget=0`; older models receive no thinking config.
+    """
     version = _model_version_key(model_name)[0]
     if version >= _THINKING_LEVEL_MIN_VERSION:
         return types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL)
@@ -226,21 +236,66 @@ def _thinking_config(model_name: str) -> types.ThinkingConfig | None:
     return None
 
 
+def _initial_thinking_level(model_name: str) -> ThinkingLevelName | None:
+    """Return the per-run capability state used only by Gemini 3.x models."""
+    if _model_version_key(model_name)[0] >= _THINKING_LEVEL_MIN_VERSION:
+        return "minimal"
+    return None
+
+
+def _config_with_thinking_level(
+    config: types.GenerateContentConfig, level: ThinkingLevelName
+) -> types.GenerateContentConfig:
+    """Copy a request config with one level and fallback budget, never mutating it."""
+    update: dict[str, Any] = {
+        "thinking_config": types.ThinkingConfig(thinking_level=_THINKING_LEVELS[level]),
+    }
+    if level == "low" and config.max_output_tokens is not None:
+        update["max_output_tokens"] = max(config.max_output_tokens, _FALLBACK_MIN_OUTPUT_TOKENS)
+    return config.model_copy(update=update)
+
+
 def generate_with_thinking_fallback(
     client: GenaiClient,
     model_name: str,
     contents: Any,
     config: types.GenerateContentConfig,
-    level: str | None,
-) -> tuple[Any, str | None]:
-    """Generate with the effective thinking level for one model."""
-    raise NotImplementedError
+    level: ThinkingLevelName | None,
+) -> tuple[Any, ThinkingLevelName | None]:
+    """Generate once, probing `low` only when a 3.x model rejects `minimal`."""
+    initial_config = _config_with_thinking_level(config, level) if level else config
+    try:
+        response = client.models.generate_content(
+            model=model_name, contents=contents, config=initial_config
+        )
+    except Exception as original_exc:
+        if level != "minimal" or classify_generate_error(original_exc) is not ModelConfigRejected:
+            raise
+
+        fallback_config = _config_with_thinking_level(config, "low")
+        logger.warning(
+            "model %s rejected thinking_level=minimal; retrying thinking_level=low "
+            "with max_output_tokens=%s",
+            model_name,
+            fallback_config.max_output_tokens,
+        )
+        try:
+            response = client.models.generate_content(
+                model=model_name, contents=contents, config=fallback_config
+            )
+        except Exception as fallback_exc:
+            if classify_generate_error(fallback_exc) is ModelConfigRejected:
+                raise original_exc from fallback_exc
+            raise
+        return response, "low"
+    return response, level
 
 
 class GeminiEnricher:
     def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
         self._client = client
+        self._thinking_level = _initial_thinking_level(model_name)
 
     @property
     def model_name(self) -> str:
@@ -314,9 +369,22 @@ class GeminiEnricher:
     )
     def _generate(self, prompt: str, config: types.GenerateContentConfig) -> str:
         start = time.perf_counter()
-        response = self._client.models.generate_content(
-            model=self._model_name, contents=prompt, config=config
-        )
+        try:
+            response, effective_level = generate_with_thinking_fallback(
+                self._client,
+                self._model_name,
+                prompt,
+                config,
+                self._thinking_level,
+            )
+        except Exception as exc:
+            if (
+                self._thinking_level == "minimal"
+                and classify_generate_error(exc) is ModelConfigRejected
+            ):
+                self._thinking_level = "low"
+            raise
+        self._thinking_level = effective_level
         latency_ms = int((time.perf_counter() - start) * 1000)
         text: str = (response.text or "").strip()
         finish_reason = _extract_finish_reason(response)
