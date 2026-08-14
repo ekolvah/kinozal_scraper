@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -177,3 +178,98 @@ class TestDirectDelegation:
         issue_branch.main()
 
         assert calls == ["issue-254-add-commands"]
+
+
+class _Recorder:
+    """Doubles for both sibling modules, sharing one dispatch seam."""
+
+    def __init__(self, *, status_fails: bool = False) -> None:
+        self.branches: list[str] = []
+        self.statuses: list[tuple[int, str]] = []
+        self.status_fails = status_fails
+
+    def module(self, name: str) -> Any:
+        recorder = self
+
+        class _FakeNewBranch:
+            BRANCH_PREFIX = "issue-"
+
+            @staticmethod
+            def create_branch(branch: str) -> None:
+                recorder.branches.append(branch)
+
+        class _FakeStatus:
+            @staticmethod
+            def set_status(issue_number: int, status: str) -> None:
+                if recorder.status_fails:
+                    raise RuntimeError("gh project item-edit failed (rc=1): revoked project access")
+                recorder.statuses.append((issue_number, status))
+
+        return {"new_branch": _FakeNewBranch, "set_issue_status": _FakeStatus}[name]
+
+    def install(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(issue_branch, "_fetch_title", lambda n: "board status manual")
+        monkeypatch.setattr(issue_branch, "_sibling_module", self.module, raising=False)
+        # Also pinned by its own name so the pre-refactor code path cannot reach real git
+        # during RED; the contract asserted below is the status call, not this.
+        monkeypatch.setattr(issue_branch, "_new_branch_module", lambda: self.module("new_branch"))
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **k: subprocess.CompletedProcess(a[0] if a else [], 0, "", ""),
+        )
+        monkeypatch.setattr(sys, "argv", ["issue_branch.py", "519"])
+
+
+class TestStatusTransition:
+    """The branch is what «in progress» means, so the card moves after the checkout (#519).
+
+    Ordering is the whole point: a card must not claim `In Progress` before the branch
+    exists, and a board failure after a successful checkout must not be reported as a
+    failed branch creation.
+    """
+
+    def test_successful_branch_sets_in_progress(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        recorder = _Recorder()
+        recorder.install(monkeypatch)
+
+        issue_branch.main()
+
+        assert recorder.branches == ["issue-519-board-status-manual"]
+        assert recorder.statuses == [(519, "in-progress")]
+
+    def test_board_failure_warns_without_failing_branch_creation(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        recorder = _Recorder(status_fails=True)
+        recorder.install(monkeypatch)
+
+        issue_branch.main()
+
+        assert recorder.branches == ["issue-519-board-status-manual"]
+        error = capsys.readouterr().err
+        assert "warning: board status not updated" in error
+        assert "revoked project access" in error
+
+
+class TestCli:
+    def test_documented_cli_runs_from_a_clean_sys_path(self) -> None:
+        """`python scripts/issue_branch.py` puts `scripts/` on `sys.path`, not the repo root.
+
+        The second sibling module must therefore load by the same absolute-path route as
+        `new_branch.py`; a `scripts.` import would pass under pytest and fail here (B1).
+        """
+        repo_root = Path(__file__).resolve().parent.parent
+        completed = subprocess.run(
+            [sys.executable, "scripts/issue_branch.py"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            encoding="utf-8",
+        )
+
+        assert completed.stdout is not None and completed.stderr is not None
+        output = completed.stdout + completed.stderr
+        assert "ModuleNotFoundError" not in output, output
+        assert completed.returncode == 2, output
+        assert "Usage:" in output, output

@@ -383,6 +383,33 @@ class TestAgentProcess:
             for enumeration in _PLANNER_RUNBOOK_ENUMERATIONS:
                 assert enumeration not in text, f"{name} enumerates {enumeration!r}"
 
+    def test_planner_marks_planned_and_no_implementer_home_unmarks_it(self) -> None:
+        """The board flag is planner-only, in the canon and nowhere else (#519).
+
+        `--mark-planned` on the implementer's own validation would flip a card back from
+        `In Progress` to `Planned` on every re-validation, so the flag must not travel into
+        the delivery flow or into an implementer adapter that restates its commands.
+        """
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        runbook = process.split("## Planner runbook", 1)[1].split("\n## ", 1)[0]
+        flagged = "scripts/validate_issue_sections.py <N> --mark-planned"
+        # Both ends of the runbook: step 1 back-fills an already-planned issue before its
+        # early exit, step 5 marks the issue the planner has just finished.
+        assert runbook.count(flagged) == 2, "the planner runbook must carry the flag twice"
+
+        delivery = process.split("## Deterministic delivery flow", 1)[1].split("\n## ", 1)[0]
+        assert "issue_branch.py" in delivery
+        assert "--mark-planned" not in delivery, "the implementer's validation stays unflagged"
+
+        implementer_homes = (
+            _REPO / "AGENTS.md",
+            _REPO / ".agents" / "skills" / "implement-issue" / "SKILL.md",
+        )
+        for path in implementer_homes:
+            text = path.read_text(encoding="utf-8")
+            assert "validate_issue_sections.py" in text, f"{path.name} lost the validator call"
+            assert "--mark-planned" not in text, f"{path.name} carries a planner-only flag"
+
     def test_documented_verdict_words_come_from_the_validator(self) -> None:
         """The accepted verdicts have one home, the way the change-class matrix does (#516).
 
