@@ -126,6 +126,34 @@ class TestAgentProcess:
         ):
             assert marker in normalized
 
+    def test_evidence_is_working_tree_only_and_recorded_in_the_issue(self) -> None:
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
+            encoding="utf-8"
+        )
+        principles = (_REPO / "docs" / "architecture" / "principles.md").read_text(
+            encoding="utf-8"
+        )
+        for document in (process, principles):
+            normalized = " ".join(document.split())
+            assert "working-tree-only planning evidence" in normalized
+            assert "compressed observation record in the public issue" in normalized
+            assert "kept locally only until merge" in normalized
+
+    def test_evidence_directory_is_ignored(self) -> None:
+        patterns = (_REPO / ".gitignore").read_text(encoding="utf-8").splitlines()
+        assert "evidence/" in patterns
+
+    def test_planning_issue_snapshots_are_not_committed_fixtures(self) -> None:
+        fixture_root = _REPO / "tests" / "fixtures" / "issue_509_rca"
+        assert not fixture_root.exists()
+
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(
+            encoding="utf-8"
+        )
+        normalized = " ".join(process.split())
+        assert "full issue bodies, transcripts, and planning history are not test fixtures" in normalized
+        assert "production-behaviour regression test reads the captured bytes" in normalized
+
     def test_pr_template_records_agent_provenance(self) -> None:
         template = (_REPO / ".github" / "pull_request_template.md").read_text(encoding="utf-8")
         assert "## Agent record" in template
