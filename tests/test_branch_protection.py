@@ -418,18 +418,13 @@ class TestPrePushHook:
 
     def test_git_local_environment_discovery_failure_exits_two(self, tmp_path: Path) -> None:
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
-        git_stub = tmp_path / "bin" / "git"
-        git_stub.parent.mkdir()
-        git_stub.write_text(
-            "#!/usr/bin/env bash\necho 'git discovery unavailable' >&2\nexit 1\n",
+        bash_env = tmp_path / "fail-git.sh"
+        bash_env.write_text(
+            "git() { echo 'git discovery unavailable' >&2; return 1; }\n",
             encoding="utf-8",
             newline="\n",
         )
-        git_stub.chmod(0o755)
-        env = {
-            **os.environ,
-            "PATH": f"{git_stub.parent}{os.pathsep}{os.environ['PATH']}",
-        }
+        env = {**os.environ, "BASH_ENV": bash_env.as_posix()}
         result = self._run(tmp_path, env=env)
 
         assert result.returncode == 2
