@@ -15,7 +15,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable, Iterable
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 _EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
 
@@ -27,11 +27,10 @@ def _run(cmd: list[str]) -> None:
 
 def _find_modules() -> list[str]:
     return [
-        name
-        for name in _tracked_files()
-        if name.endswith(".py")
-        and not (_EXCLUDE_DIRS & set(PurePosixPath(name).parts))
-        and not any(part.startswith("pytest-cache-files-") for part in PurePosixPath(name).parts)
+        str(p)
+        for p in Path(".").rglob("*.py")
+        if not (_EXCLUDE_DIRS & set(p.parts))
+        and not any(part.startswith("pytest-cache-files-") for part in p.parts)
     ]
 
 

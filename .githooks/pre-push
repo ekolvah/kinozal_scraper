@@ -9,12 +9,6 @@
 # глотала `2>/dev/null` (#436). Поэтому `2>/dev/null` остался только на пробе.
 set -u
 
-# Git exports repository-local variables while invoking hooks. Clear only that
-# reported set so subprocesses rediscover the repository from their own cwd.
-for name in $(git rev-parse --local-env-vars); do
-    unset "$name"
-done
-
 PY=""
 for candidate in ".venv/Scripts/python" ".venv/bin/python" "py -3.12"; do
     # Без кавычек намеренно: "py -3.12" — это команда вместе с аргументом.

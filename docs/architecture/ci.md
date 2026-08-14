@@ -65,41 +65,6 @@ a check in the registry without updating `ci.yml` fails
 > [`pre-commit`](https://pre-commit.com) framework — which this repo
 > deliberately does **not** use ([§Consciously not adopted](#consciously-not-adopted)).
 
-### Worktree and checkout parity
-
-The local gate judges the tracked commit, not developer-owned ignored files. The
-mypy target list is filtered from `git ls-files`, so probes under an ignored
-`evidence/` directory cannot make an ordinary checkout disagree with GitHub CI.
-Failure to capture that tracked manifest remains exit `2`; it is never treated as
-an empty or clean scope.
-
-Git runs hooks with repository-local environment variables such as `GIT_DIR`.
-Before the interpreter probe and both gates, `.githooks/pre-push` clears exactly
-the names reported by `git rev-parse --local-env-vars`. Child processes then
-rediscover Git state from their own current directory, including when the push
-comes from a linked worktree or a test changes into a temporary directory.
-`BRANCH_PROTECTION_ALLOW_DRIFT` is not repository-local Git state and remains
-available to the protection probe.
-
-Files covered by raw-byte hashes must not pass through checkout EOL conversion.
-The issue-509 replay `*.txt` files therefore use a narrow `.gitattributes`
-`-text` rule; the rest of the repository retains its existing line-ending policy.
-
-If an intended working checkout is unexpectedly reported as bare, diagnose the
-repository before changing it:
-
-```bash
-git rev-parse --is-bare-repository
-git config --show-origin --get core.bare
-git config --show-origin --get core.worktree
-git worktree list --porcelain
-```
-
-The config origin and worktree registration distinguish a damaged working checkout
-from a legitimate bare repository. Do not set `core.bare=false` or invent a
-`core.worktree` path merely to make a gate green; repair only the confirmed local
-configuration or registration.
-
 ### Gate CLI exit codes
 
 Developer-flow gates whose caller distinguishes a domain verdict from missing
@@ -215,12 +180,9 @@ lint, secrets, pytest, pip-audit, pip-audit-dev, requirements, mypy, imports).
 The per-step split keeps the GitHub Actions UI granular (you see *which* gate
 failed) while the check set itself stays defined once, in `ci_check.py`.
 
-mypy type-checks every tracked `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
-`__pycache__`, `.audit-tmp`, `.claude`) and any `pytest-cache-files-*` dir.
-`ci_check._find_modules()` filters the POSIX paths returned by the same
-`_tracked_files()` manifest used by the secret gate. Ignored or untracked Python
-probes are intentionally outside both local and GitHub mypy scope; tracked Python
-files remain in scope on every platform.
+mypy type-checks every `*.py` outside `_EXCLUDE_DIRS` (`.venv`, `.git`,
+`__pycache__`, `.audit-tmp`, `.claude`) and any `pytest-cache-files-*` dir, via
+`ci_check._find_modules()` — the same discovery used locally.
 
 Imports between modules (`from kinozal_scraper.generic_pipeline import …`) are
 absolute package imports: the sources live in the installable package
