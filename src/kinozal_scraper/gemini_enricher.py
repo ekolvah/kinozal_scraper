@@ -6,7 +6,7 @@ import logging
 import re
 import string
 import time
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from google import genai
 from google.genai import types
@@ -201,88 +201,22 @@ class NullEnricher:
         return result
 
 
-# Gemini 2.5 and 3.x use different request fields for suppressing internal
-# reasoning. Model metadata does not expose that request dialect, so the version
-# boundary is isolated in `_thinking_policy`. Support for a specific 3.x level is
-# learned from the generate response instead of inferred from the version.
-# A production-shaped request completed with 1024 output tokens; lower tested
-# budgets truncated after spending their allowance on thinking.
-_FALLBACK_MIN_OUTPUT_TOKENS = 1024
-ThinkingLevelName = Literal["minimal", "low"]
-_THINKING_LEVELS: dict[ThinkingLevelName, types.ThinkingLevel] = {
-    "minimal": types.ThinkingLevel.MINIMAL,
-    "low": types.ThinkingLevel.LOW,
-}
-
-
 def _thinking_policy(
     model_name: str,
-) -> tuple[types.ThinkingConfig | None, ThinkingLevelName | None]:
-    """Return the initial config and fallback state for one request dialect."""
+) -> tuple[types.ThinkingConfig | None, int | None]:
+    """Return the current thinking config and optional output-token floor."""
     version = _model_version_key(model_name)[0]
     if version >= 3.0:
-        return (
-            types.ThinkingConfig(thinking_level=types.ThinkingLevel.MINIMAL),
-            "minimal",
-        )
+        return types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW), 1024
     if version >= 2.5:
         return types.ThinkingConfig(thinking_budget=0), None
     return None, None
-
-
-def _config_with_thinking_level(
-    config: types.GenerateContentConfig, level: ThinkingLevelName
-) -> types.GenerateContentConfig:
-    """Copy a request config with one level and fallback budget, never mutating it."""
-    update: dict[str, Any] = {
-        "thinking_config": types.ThinkingConfig(thinking_level=_THINKING_LEVELS[level]),
-    }
-    if level == "low" and config.max_output_tokens is not None:
-        update["max_output_tokens"] = max(config.max_output_tokens, _FALLBACK_MIN_OUTPUT_TOKENS)
-    return config.model_copy(update=update)
-
-
-def generate_with_thinking_fallback(
-    client: GenaiClient,
-    model_name: str,
-    contents: Any,
-    config: types.GenerateContentConfig,
-    level: ThinkingLevelName | None,
-) -> tuple[Any, ThinkingLevelName | None]:
-    """Generate once, probing `low` only when a 3.x model rejects `minimal`."""
-    initial_config = _config_with_thinking_level(config, "low") if level == "low" else config
-    try:
-        response = client.models.generate_content(
-            model=model_name, contents=contents, config=initial_config
-        )
-    except Exception as original_exc:
-        if level != "minimal" or classify_generate_error(original_exc) is not ModelConfigRejected:
-            raise
-
-        fallback_config = _config_with_thinking_level(config, "low")
-        logger.warning(
-            "model %s rejected thinking_level=minimal; retrying thinking_level=low "
-            "with max_output_tokens=%s",
-            model_name,
-            fallback_config.max_output_tokens,
-        )
-        try:
-            response = client.models.generate_content(
-                model=model_name, contents=contents, config=fallback_config
-            )
-        except Exception as fallback_exc:
-            if classify_generate_error(fallback_exc) is ModelConfigRejected:
-                raise original_exc from fallback_exc
-            raise
-        return response, "low"
-    return response, level
 
 
 class GeminiEnricher:
     def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
         self._client = client
-        self._thinking_config, self._thinking_level = _thinking_policy(model_name)
 
     @property
     def model_name(self) -> str:
@@ -314,10 +248,14 @@ class GeminiEnricher:
         }
         prompt = string.Template(prompt_template).safe_substitute(context)
 
+        thinking_config, min_output_tokens = _thinking_policy(self._model_name)
+        max_output_tokens = params.get("max_tokens", 150)
+        if min_output_tokens is not None:
+            max_output_tokens = max(max_output_tokens, min_output_tokens)
         config = types.GenerateContentConfig(
             temperature=params.get("temperature", 0.2),
-            max_output_tokens=params.get("max_tokens", 150),
-            thinking_config=self._thinking_config,
+            max_output_tokens=max_output_tokens,
+            thinking_config=thinking_config,
         )
 
         try:
@@ -356,22 +294,9 @@ class GeminiEnricher:
     )
     def _generate(self, prompt: str, config: types.GenerateContentConfig) -> str:
         start = time.perf_counter()
-        try:
-            response, effective_level = generate_with_thinking_fallback(
-                self._client,
-                self._model_name,
-                prompt,
-                config,
-                self._thinking_level,
-            )
-        except Exception as exc:
-            if (
-                self._thinking_level == "minimal"
-                and classify_generate_error(exc) is ModelConfigRejected
-            ):
-                self._thinking_level = "low"
-            raise
-        self._thinking_level = effective_level
+        response = self._client.models.generate_content(
+            model=self._model_name, contents=prompt, config=config
+        )
         latency_ms = int((time.perf_counter() - start) * 1000)
         text: str = (response.text or "").strip()
         finish_reason = _extract_finish_reason(response)

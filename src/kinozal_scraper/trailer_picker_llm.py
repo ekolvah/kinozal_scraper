@@ -23,12 +23,10 @@ from google.genai import types
 
 from kinozal_scraper.gemini_enricher import (
     GenaiClient,
-    ModelConfigRejected,
     TryNextModel,
     _extract_finish_reason,
     _thinking_policy,
     classify_generate_error,
-    generate_with_thinking_fallback,
 )
 from kinozal_scraper.trailer_strategy import Candidate, FilmProfile, TrailerPick
 
@@ -144,35 +142,25 @@ class GeminiJsonGenerator:
     def __init__(self, model_name: str, client: GenaiClient) -> None:
         self._model_name = model_name
         self._client = client
-        self._thinking_config, self._thinking_level = _thinking_policy(model_name)
 
     @property
     def model_name(self) -> str:
         return self._model_name
 
     def generate(self, prompt: str) -> str:
+        thinking_config, _ = _thinking_policy(self._model_name)
         config = types.GenerateContentConfig(
             temperature=0.2,
             response_mime_type="application/json",
             response_schema=PICK_SCHEMA,
-            thinking_config=self._thinking_config,
+            thinking_config=thinking_config,
         )
         try:
-            response, effective_level = generate_with_thinking_fallback(
-                self._client,
-                self._model_name,
-                prompt,
-                config,
-                self._thinking_level,
+            response = self._client.models.generate_content(
+                model=self._model_name, contents=prompt, config=config
             )
         except Exception as exc:
-            if (
-                self._thinking_level == "minimal"
-                and classify_generate_error(exc) is ModelConfigRejected
-            ):
-                self._thinking_level = "low"
             raise classify_generate_error(exc)() from exc
-        self._thinking_level = effective_level
 
         finish_reason = _extract_finish_reason(response)
         if finish_reason in ("MAX_TOKENS", "SAFETY"):

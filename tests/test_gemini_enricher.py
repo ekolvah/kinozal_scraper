@@ -404,9 +404,7 @@ class TestThinkingPolicy(unittest.TestCase):
 
     def test_rotation_uses_low_and_safe_budget_for_all_gemini_3_models(self) -> None:
         models = _ThinkingPolicyModels()
-        rotator = RotatingGeminiEnricher(
-            [self._MODEL_36, self._MODEL_37], self._client(models)
-        )
+        rotator = RotatingGeminiEnricher([self._MODEL_36, self._MODEL_37], self._client(models))
 
         first = rotator.enrich(_item("first"), _TWO_LINE_CFG)
         rotator._current = 1
@@ -419,9 +417,7 @@ class TestThinkingPolicy(unittest.TestCase):
             [self._MODEL_36, self._MODEL_37],
         )
         self.assertEqual(self._levels(models), [types.ThinkingLevel.LOW] * 2)
-        self.assertEqual(
-            [call["config"].max_output_tokens for call in models.calls], [1024, 1024]
-        )
+        self.assertEqual([call["config"].max_output_tokens for call in models.calls], [1024, 1024])
 
 
 class TestRetryOnlyOnQuota(unittest.TestCase):
