@@ -40,7 +40,7 @@ roles:
     adapter: "Claude /plan #N"
     authority: "May edit the issue body; may not create an implementation branch or change production code."
     entry_evidence: "Open issue and repository context."
-    completion_evidence: "Passing nine-section issue validation and ready handoff."
+    completion_evidence: "Passing issue validation for the change class and ready handoff."
     activation: "The issue has no validated plan."
     max_runs: 1
   architect_reviewer:

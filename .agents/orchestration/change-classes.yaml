@@ -1,0 +1,46 @@
+# Per-change-class issue requirements, keyed on the type label of governance
+# convention 3 (`docs/architecture/agent-process.md`). Its single consumer is
+# `scripts/validate_issue_sections.py`, which resolves the required section set
+# from the issue's one type label; the documented matrix in §Issue contract is
+# pinned to this file by `tests/test_agent_process.py::TestIssueContract`.
+#
+# `adds` and `omits` are deltas relative to `REQUIRED_SECTIONS` in the validator,
+# which stays the single carrier of the base set — a row never restates it. Both
+# keys are always written, even when empty, so no class is resolved by an
+# implicit default. The architect-review and RED obligations have no field of
+# their own: they are derived from `Architect review` and `Test plan` being part
+# of the resolved set, so no two fields can contradict each other.
+classes:
+  bug:
+    # The observation record the planner owes before a fix is designed (#509).
+    adds: ["Evidence"]
+    omits: []
+  chore:
+    adds: []
+    omits: []
+  ci:
+    adds: []
+    omits: []
+  documentation:
+    # Omits nothing on purpose: in this repository the documentation *is* the
+    # product, guarded by test_doc_links / test_doc_narrative / test_doc_headers /
+    # test_agent_process, so such an issue routinely carries a real test node and
+    # can hold a real architecture decision. The trivial case keeps its existing
+    # escape — a one-line `skipped:` in `Architect review`.
+    adds: []
+    omits: []
+  enhancement:
+    adds: []
+    omits: []
+  perf:
+    adds: []
+    omits: []
+  refactor:
+    adds: []
+    omits: []
+  security:
+    adds: []
+    omits: []
+  testing:
+    adds: []
+    omits: []

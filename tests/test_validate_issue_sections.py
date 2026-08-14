@@ -258,7 +258,7 @@ class TestArchitectReviewProvenance:
         monkeypatch.setattr(
             validator,
             "_fetch_issue",
-            lambda _n: (self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"), ()),
+            lambda _n: (self._body(f"reviewer: {_SELF_ADAPTER}\n\nfindings"), ("refactor",)),
         )
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
@@ -274,7 +274,7 @@ class TestArchitectReviewProvenance:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ()))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "474"])
 
         validator.main()
@@ -333,24 +333,29 @@ def _capture_evidence(path: str) -> str:
     )
 
 
-def test_bug_issue_without_evidence_section_is_a_gap(tmp_path: Path) -> None:
-    gaps = find_gaps(_full_body(), issue_labels=("bug",), repo_root=tmp_path)
+# Since #516 the `bug` requirement is a catalogue row, not a label argument: the tests
+# below ask for the resolved set of that class rather than passing labels into the parser.
+_BUG_SECTIONS = validator.required_sections("bug")
+
+
+def test_bug_issue_without_evidence_section_is_a_gap() -> None:
+    gaps = find_gaps(_full_body(), required=_BUG_SECTIONS)
     assert "Evidence" in gaps
 
 
-def test_evidence_path_outside_evidence_dir_is_a_gap(tmp_path: Path) -> None:
+def test_evidence_path_outside_evidence_dir_is_a_gap() -> None:
     for path in ("tests/fixtures/captured.html", "evidence/../captured.html"):
         body = _body_with_evidence(_capture_evidence(path))
-        gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+        gaps = find_gaps(body, required=_BUG_SECTIONS)
         assert gaps == ["Evidence (missing: capture path under evidence/)"]
 
 
-def test_evidence_path_under_evidence_dir_needs_no_file(tmp_path: Path) -> None:
+def test_evidence_path_under_evidence_dir_needs_no_file() -> None:
     body = _body_with_evidence(_capture_evidence("evidence/issue-520/captured.html"))
-    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(body, required=_BUG_SECTIONS) == []
 
 
-def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path) -> None:
+def test_source_specific_capture_still_requires_a_decision_record() -> None:
     relative_path = "evidence/issue-509/github.json"
     body = _body_with_evidence(
         "capture: `gh api repos/ekolvah/kinozal_scraper/issues/509 "
@@ -358,13 +363,13 @@ def test_source_specific_capture_still_requires_a_decision_record(tmp_path: Path
         f"path: `{relative_path}`"
     )
 
-    gaps = find_gaps(body, issue_labels=("bug",), repo_root=tmp_path)
+    gaps = find_gaps(body, required=_BUG_SECTIONS)
     assert gaps == [
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ]
 
 
-def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Path) -> None:
+def test_external_evidence_requires_a_preservation_decision_record() -> None:
     path = "evidence/issue-509/captured.html"
     body = _body_with_evidence(
         f"capture: `python scripts/capture_kinozal_fixture.py https://kinozal.tv {path}`\n"
@@ -378,29 +383,28 @@ def test_external_evidence_requires_a_preservation_decision_record(tmp_path: Pat
         "paired-test: one run keeps the wanted record and rejects the unwanted record"
     )
 
-    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(body, required=_BUG_SECTIONS) == []
 
 
-def test_non_bug_issue_does_not_require_evidence(tmp_path: Path) -> None:
-    assert find_gaps(_full_body(), issue_labels=("enhancement",), repo_root=tmp_path) == []
+def test_non_bug_issue_does_not_require_evidence() -> None:
+    assert validator.required_sections("enhancement") == REQUIRED_SECTIONS
+    assert find_gaps(_full_body(), required=validator.required_sections("enhancement")) == []
 
 
-def test_non_external_bug_can_record_evidence_not_applicable(tmp_path: Path) -> None:
+def test_non_external_bug_can_record_evidence_not_applicable() -> None:
     body = _body_with_evidence(
         "n/a: the defect is pure review-gate exit-code logic with no external data source"
     )
-    assert find_gaps(body, issue_labels=("bug",), repo_root=tmp_path) == []
+    assert find_gaps(body, required=_BUG_SECTIONS) == []
 
     missing_reason = _body_with_evidence("n/a:")
-    assert find_gaps(missing_reason, issue_labels=("bug",), repo_root=tmp_path) == [
-        "Evidence (missing: n/a reason)"
-    ]
+    assert find_gaps(missing_reason, required=_BUG_SECTIONS) == ["Evidence (missing: n/a reason)"]
 
 
-def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path) -> None:
+def test_capture_failure_marker_records_output_but_blocks_handoff() -> None:
     evidence = _capture_evidence("evidence/issue-509/source-unavailable.html")
     without_output = _body_with_evidence(f"{evidence}\nstatus: failed")
-    assert find_gaps(without_output, issue_labels=("bug",), repo_root=tmp_path) == [
+    assert find_gaps(without_output, required=_BUG_SECTIONS) == [
         "Evidence (missing: failed capture output)"
     ]
 
@@ -408,7 +412,7 @@ def test_capture_failure_marker_records_output_but_blocks_handoff(tmp_path: Path
         f"{evidence}\nstatus: failed\noutput:\n\n```text\n"
         "primary fetch failed; authenticated mirror login failed\n```"
     )
-    assert find_gaps(with_output, issue_labels=("bug",), repo_root=tmp_path) == [
+    assert find_gaps(with_output, required=_BUG_SECTIONS) == [
         "Evidence (missing: successful capture)"
     ]
 
@@ -452,7 +456,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
         _section_content("Implementation outline"),
         "Reject the entire mixed source instead of classifying each item.",
     )
-    assert "Evidence" in find_gaps(wrong_plan, issue_labels=("bug",))
+    assert "Evidence" in find_gaps(wrong_plan, required=_BUG_SECTIONS)
     relative_wrong_plan = "evidence/issue-506/top.html"
     revision_with_capture_only = (
         f"{wrong_plan}\n## Evidence\n\n"
@@ -460,7 +464,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
         f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
         f"path: `{relative_wrong_plan}`\n"
     )
-    capture_only_gaps = find_gaps(revision_with_capture_only, issue_labels=("bug",))
+    capture_only_gaps = find_gaps(revision_with_capture_only, required=_BUG_SECTIONS)
     assert (
         "Evidence (missing: observed, preserve, change, boundaries, collateral, reuse, paired test)"
     ) in capture_only_gaps
@@ -472,10 +476,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
     wrong_plan_with_complete_record = (
         f"{wrong_plan}\n## Evidence\n\n{_capture_evidence(relative_wrong_plan)}\n"
     )
-    wrong_plan_gaps = find_gaps(
-        wrong_plan_with_complete_record,
-        issue_labels=("bug",),
-    )
+    wrong_plan_gaps = find_gaps(wrong_plan_with_complete_record, required=_BUG_SECTIONS)
     assert not any(gap.startswith("Evidence") for gap in wrong_plan_gaps)
 
 
@@ -609,7 +610,7 @@ class TestChangeClassMatrix:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """Neither a pass nor a fail: the verdict cannot be trusted (§IV)."""
-        monkeypatch.setattr(validator, "_CHANGE_CLASS_CATALOGUE", tmp_path / "absent.yaml")
+        monkeypatch.setattr(validator, "_CHANGE_CLASS_CATALOGUE", tmp_path / "change-classes.yaml")
         monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (_full_body(), ("refactor",)))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "516"])
 
@@ -671,7 +672,7 @@ class TestOrphanScopeReminder:
             "Real content для Out of scope which is long enough.",
             "- Follow-up for the historical audit.",
         )
-        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ()))
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (body, ("refactor",)))
         monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "368"])
 
         validator.main()

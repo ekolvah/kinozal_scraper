@@ -42,7 +42,7 @@ nothing to rename) but the **hierarchy of knowledge carriers**:
 |---|---|---|
 | `CLAUDE.md` (root) | Thin router: what app this is, environment pitfalls, and pointers. **Target: < 200 lines** | Every session, in full |
 | `.claude/rules/*.md` | Operational instructions, **one file = one topic**; can be path-scoped with frontmatter `paths:` | Every session (or only when working on matching paths) |
-| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral role catalogue: Codex and Claude adapters for planner/implementer/fixer, the Claude reviewer subagent, control plane, and local hook policies | On invocation / at start |
+| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral catalogues (roles **and** change classes): Codex and Claude adapters for planner/implementer/fixer, the Claude reviewer subagent, control plane, and local hook policies | On invocation / at start |
 | `docs/architecture/*.md` | Reference: how the code works (runtime/pipeline/storage/gemini/…) plus this project map and `principles.md` | On demand |
 | `docs/adr/*.md` | Explanation: why the decision was made this way and which alternatives were rejected (MADR 4.0.0, append-only) | Linked from a state document |
 | `~/.claude/projects/<repo>/memory/` | Auto-memory: **machine- or process-specific only** (see below) | `MEMORY.md` index every session |
@@ -101,10 +101,10 @@ measures actual consumption (#464), from Claude Code transcripts by branch and t
   not rewritten** — correct typos and broken links, and express a changed decision in a new record
   that the old one links to forward. The size guide is up to ~200 lines: a longer file displaces
   the context for which it was opened. `tests/test_adr_records.py` holds the structure. The `## ADR`
-  issue section (`REQUIRED_SECTIONS`) gates whether a record was considered: a link or explicit
-  `none: <reason>`. The gate does not judge whether the decision merits a record — that is a
-  cost-of-change judgement; it guarantees the question was **asked**, just as `## Architect review`
-  guarantees awareness rather than review quality (#150).
+  issue section (part of the base `REQUIRED_SECTIONS`, kept by every change class) gates whether a
+  record was considered: a link or explicit `none: <reason>`. The gate does not judge whether the
+  decision merits a record — that is a cost-of-change judgement; it guarantees the question was
+  **asked**, just as `## Architect review` guarantees awareness rather than review quality (#150).
 - **Wording of principles §I–VII** → canonical in [`principles.md`](principles.md), referenced by
   number (`architect-reviewer.md`, `mindset.md`); **do not change the numbering**.
 - **Enforcement facts** (git prohibitions) → canonical in `.claude/settings.json`
@@ -328,7 +328,7 @@ out of scope.
 | File | Question answered |
 |---|---|
 | `evidence/` (Git-ignored) | Working-tree-only planning captures retained until merge; the durable compressed record and fixture boundary are canonical in [`agent-process.md` §Issue contract](agent-process.md#issue-contract) |
-| `scripts/validate_issue_sections.py` + `scripts/check_orphan_scope.py` | Verifies the nine base issue sections, conditional bug `Evidence`, and `Agent handoff`; on a passing issue, also surfaces the non-blocking reminder for an explicit `Out of scope` follow-up without `#N` or `wontfix`/`YAGNI` (#368). Gate for planner and implementer adapters; the reminder itself never changes the exit code |
+| `scripts/validate_issue_sections.py` + `scripts/check_orphan_scope.py` + `.agents/orchestration/change-classes.yaml` | Verifies the section set **resolved from the issue's one type label** (base `REQUIRED_SECTIONS` ± the class row) plus the `Agent handoff` and `Architect review` field contracts, and fails when an issue carries zero or several type labels; on a passing issue, prints the resolved class with its derived RED obligation and surfaces the non-blocking reminder for an explicit `Out of scope` follow-up without `#N` or `wontfix`/`YAGNI` (#368). Gate for planner and implementer adapters; the reminder itself never changes the exit code |
 | `scripts/capture_kinozal_fixture.py` + `scripts/capture_external_fixture.py` + `scripts/check_fixture_ratchet.py` | Reproducible Evidence capture through the Kinozal production fetcher or narrow read-only GitHub, Telegram, Gemini, Sheets, and stdin routes; the ratchet rejects new external-HTML parser tests that construct their input inline (#509). Canonical routing and repository-safety contract: [`agent-process.md` §Issue contract](agent-process.md#issue-contract) |
 | `scripts/agent_orchestrator.py` + `.agents/orchestration/roles.yaml` | Read-only control plane: a single role catalogue, evidence-based next action, and bounded escalation; does not invoke providers or replace required gates |
 | `scripts/review_gate.py` | Whether the PR review/fix cycle continues: reads required contexts at the current head and the number of already reviewed heads, then returns an exit-code verdict (`0` ready-for-human, `10` fix-blocking, `20` escalate, `30` review-pending; `2` is `gh`/capture failure, not a verdict). It changes and posts nothing. The rule "fix only blocking; `should-fix` is the maintainer's decision" was twice ignored as prose (#458, #465), so it now has an exit code rather than a list item ([principles.md §Scripts over instructions](principles.md#scripts-over-instructions)). Severity comes from the already calculated `agent-review` check run, not parsed review body; budget is `fixer.max_runs` from the role catalogue. Prose home: [`agent-process.md` §Review-gate verdicts](agent-process.md#review-gate-verdicts) (#467) |
