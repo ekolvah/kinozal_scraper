@@ -5,7 +5,9 @@ Usage: python scripts/issue_branch.py <issue-number>
 
 Reads the issue title via `gh issue view`, derives a kebab-case ASCII
 slug, and delegates to `scripts/new_branch.py` to do the actual checkout
-(which itself guarantees branching from fresh origin/main HEAD).
+(which itself guarantees branching from fresh origin/main HEAD). Once the
+branch exists, it moves the issue's Status on GitHub Project 1 to
+`In Progress` through `scripts/set_issue_status.py` (#519).
 """
 
 from __future__ import annotations
@@ -30,10 +32,10 @@ def slugify(title: str) -> str:
     return "-".join(words[:MAX_SLUG_WORDS])
 
 
-def _new_branch_module() -> ModuleType:
-    """Load the sibling `new_branch.py` by absolute path and return the module.
+def _sibling_module(name: str) -> ModuleType:
+    """Load a sibling `scripts/<name>.py` by absolute path and return the module.
 
-    Loaded by absolute file path — NOT `from scripts.new_branch import ...` —
+    Loaded by absolute file path — NOT `from scripts.<name> import ...` —
     because the documented CLI `python scripts/issue_branch.py <N>` sets
     `sys.path[0]` to the script's dir (`scripts/`), and the repo root is never
     on `sys.path` (the editable install only adds `src/`). A package import
@@ -45,12 +47,30 @@ def _new_branch_module() -> ModuleType:
     of re-spawning a second interpreter.
     """
     spec = importlib.util.spec_from_file_location(
-        "scripts.new_branch", Path(__file__).with_name("new_branch.py")
+        f"scripts.{name}", Path(__file__).with_name(f"{name}.py")
     )
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _new_branch_module() -> ModuleType:
+    return _sibling_module("new_branch")
+
+
+def _mark_in_progress(issue_number: int) -> None:
+    """Move the issue's board card to `In Progress`; never fail the branch over it (#519).
+
+    Called after the checkout on purpose: the branch is what «in progress» means, so the card
+    must not claim it before the branch exists. Bookkeeping, so a failed board write is
+    visible on stderr and leaves the exit code alone — reporting a created branch as a failure
+    would be worse than a stale card.
+    """
+    try:
+        _sibling_module("set_issue_status").set_status(issue_number, "in-progress")
+    except (RuntimeError, ValueError, OSError) as exc:
+        print(f"warning: board status not updated: {exc}", file=sys.stderr)
 
 
 def build_branch_name(issue_number: int, title: str) -> str:
@@ -106,6 +126,7 @@ def main() -> None:
     title = _fetch_title(n)
     branch = build_branch_name(n, title)
     _new_branch_module().create_branch(branch)
+    _mark_in_progress(n)
 
 
 if __name__ == "__main__":

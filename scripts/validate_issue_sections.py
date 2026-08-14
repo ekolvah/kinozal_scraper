@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """Validate that a GitHub issue body contains all required sections.
 
-Usage: python scripts/validate_issue_sections.py <issue-number>
+Usage: python scripts/validate_issue_sections.py <issue-number> [--mark-planned]
+
+`--mark-planned` is the planner's flag: on a passing validation *and only then* it moves
+the issue's Status on GitHub Project 1 to `Planned` (#519). The unflagged call — the one the
+implementer makes before creating a branch — stays read-only, so re-validating an issue never
+moves its card back from `In Progress`.
 
 Which sections are required is resolved from the issue's one type label through
 `.agents/orchestration/change-classes.yaml` (#516), so a change class is data
@@ -30,6 +35,9 @@ from markdown_it import MarkdownIt
 
 check_orphan_scope = importlib.import_module(
     f"{__package__}.check_orphan_scope" if __package__ else "check_orphan_scope"
+)
+set_issue_status = importlib.import_module(
+    f"{__package__}.set_issue_status" if __package__ else "set_issue_status"
 )
 
 REQUIRED_SECTIONS: tuple[str, ...] = (
@@ -491,14 +499,40 @@ def _fetch_body(issue_number: int) -> str:
     return _fetch_issue(issue_number)[0]
 
 
+MARK_PLANNED_FLAG = "--mark-planned"
+
+
+def _mark_planned(issue_number: int) -> None:
+    """Move the issue's board card to `Planned`; never change this script's verdict (#519).
+
+    The transition rides the planner's passing validation instead of becoming another
+    numbered prose step, which is the shape that got skipped twice before (#458, #465). It is
+    bookkeeping, so a failed board write is visible on stderr and leaves the exit code alone:
+    turning a validated plan into a failed one would let the board gate the hand-off.
+    """
+    try:
+        set_issue_status.set_status(issue_number, "planned")
+    except (RuntimeError, ValueError) as exc:
+        print(f"warning: board status not updated: {exc}", file=sys.stderr)
+
+
 def main() -> None:
-    if len(sys.argv) != 2:
-        print("Usage: python scripts/validate_issue_sections.py <issue-number>", file=sys.stderr)
+    argv = sys.argv[1:]
+    # Manual parsing, like the issue-number branch below: the flag is planner-only, and the
+    # implementer's call of the same script must stay read-only.
+    mark_planned = MARK_PLANNED_FLAG in argv
+    positional = [arg for arg in argv if arg != MARK_PLANNED_FLAG]
+    if len(positional) != 1:
+        print(
+            f"Usage: python scripts/validate_issue_sections.py <issue-number> "
+            f"[{MARK_PLANNED_FLAG}]",
+            file=sys.stderr,
+        )
         sys.exit(2)
     try:
-        n = int(sys.argv[1])
+        n = int(positional[0])
     except ValueError:
-        print(f"error: issue number must be int (got {sys.argv[1]!r})", file=sys.stderr)
+        print(f"error: issue number must be int (got {positional[0]!r})", file=sys.stderr)
         sys.exit(2)
     body, labels = _fetch_issue(n)
     try:
@@ -534,6 +568,8 @@ def main() -> None:
             )
         for reminder in check_orphan_scope.format_reminders(n, body):
             print(reminder)
+        if mark_planned:
+            _mark_planned(n)
         return
     print(f"error: issue #{n} is not ready:", file=sys.stderr)
     for g in gaps:
