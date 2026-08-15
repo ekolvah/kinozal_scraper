@@ -44,7 +44,7 @@ roles:
     adapter: "Claude discovery subagent"
     authority: "May run the read-only capture routes listed in the issue contract and write the captured fixture into the working tree; may not edit the issue body, write plan sections, create an implementation branch, or change production code."
     entry_evidence: "A bug issue whose Evidence block is not yet accepted, plus access to the capture route its source needs."
-    completion_evidence: "An Evidence block that `validate_issue_sections.py --evidence-only` accepts, or an explicit `n/a: <reason>`."
+    completion_evidence: "A returned Evidence block that `validate_issue_sections.py <N> --evidence-only --body-file <path>` accepts."
     activation: "A bug issue whose Evidence block is not yet accepted."
     # Two, not one: the contract's `status: failed` branch expects capture-fail → fix
     # access → capture again. A cap of one would escalate that routine retry to a human.

@@ -162,10 +162,12 @@ issue bodies, transcripts, and planning history are not test fixtures; removing
 the local `evidence/` copy after merge does not remove the issue's durable
 decision record.
 
-For a bug with no external-system behaviour to observe, the section instead
-starts with `n/a: <reason>`, naming why live capture does not apply. The section
-is still required, so choosing that branch is a visible claim rather than a
-silently omitted discovery step.
+For a bug with no external-system behaviour to observe, the fields above are
+replaced by `n/a: <reason>` naming why live capture does not apply. The
+provenance line still comes first: the `n/a` branch is a discovery **verdict**,
+so it carries the same carrier the fields would have. The section is still
+required, so choosing that branch is a visible claim rather than a silently
+omitted discovery step.
 
 The `## Prior art` section that every other class adds records the search
 **outside** this repository — the maintained library, standard tool, or upstream
@@ -259,11 +261,16 @@ notifications merely to collect evidence. A failed capture records
 budgeted, because a failed capture is normally retried once after access is
 fixed; a third attempt is a standing external obstacle and goes to a human.
 
-**Completion.** `python scripts/validate_issue_sections.py <N> --evidence-only`
-exits 0. It judges that one block and ignores the rest of the body, so the role
-can finish before the other sections exist — running the full gate here would
-report the planner's unwritten sections as failures of the role that never owed
-them.
+**Completion.** Write the block to a file and run
+`python scripts/validate_issue_sections.py <N> --evidence-only --body-file <path>`
+until it exits 0; then return the block. The check judges that one block and
+ignores everything else, so the role finishes before the other sections exist —
+running the full gate here would report the planner's unwritten sections as
+failures of the role that never owed them. It reads the file rather than the
+issue because this role may not edit the issue: at completion the block exists
+only in the hand-off, and a gate the owing role cannot reach is not a gate. The
+planner may re-run the same flag without `--body-file` after recording the block,
+which is then the check on what actually landed.
 
 **Fixture hand-off.** The captured file stays untracked at discovery time;
 `evidence/` is git-ignored planning evidence. The implementer `git add`s it in

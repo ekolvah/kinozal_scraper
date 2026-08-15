@@ -600,6 +600,93 @@ def test_evidence_only_mode_ignores_the_other_sections(
     assert "discovery provenance line" in capsys.readouterr().err
 
 
+def test_evidence_only_judges_the_candidate_block_the_role_controls(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Discovery may not edit the issue, so its completion check cannot read the issue.
+
+    Reading the block through `gh issue view` made the documented completion condition
+    unreachable by the role that owes it: the block is not in the body until the planner
+    writes it, and the planner writes it once, at the end of its own run.
+    """
+    candidate = tmp_path / "evidence-block.md"
+    candidate.write_text(
+        f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n", encoding="utf-8"
+    )
+
+    def _no_gh(_n: int) -> tuple[str, tuple[str, ...]]:
+        raise AssertionError("the candidate block must not be fetched from the issue")
+
+    monkeypatch.setattr(validator, "_fetch_issue", _no_gh)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["validate_issue_sections.py", "517", "--evidence-only", "--body-file", str(candidate)],
+    )
+
+    validator.main()
+
+    assert "Evidence" in capsys.readouterr().out
+
+    candidate.write_text(
+        f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n".replace(
+            f"{_DISCOVERY_LINE}\n", ""
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 1
+    assert "discovery provenance line" in capsys.readouterr().err
+
+
+def test_body_file_is_refused_outside_the_evidence_gate(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """A local file may stand in for one block, never for the issue the hand-off gates.
+
+    Accepting it on the full run would let an implementer validate a body that is not the
+    one a reviewer reads — the gate would pass while saying nothing about the issue.
+    """
+    candidate = tmp_path / "body.md"
+    candidate.write_text(_full_body(), encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["validate_issue_sections.py", "509", "--body-file", str(candidate)]
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 2
+    # Not the usage banner: that fires for any argument-count mistake, and would stay green
+    # if `--body-file` were silently honoured on the full run.
+    assert "only applies to" in capsys.readouterr().err
+
+
+def test_missing_body_file_is_a_capture_failure_not_a_verdict(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """An unreadable source is neither a pass nor a fail of the block (§IV)."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "validate_issue_sections.py",
+            "517",
+            "--evidence-only",
+            "--body-file",
+            str(tmp_path / "absent.md"),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 2
+    assert "absent.md" in capsys.readouterr().err
+
+
 def test_main_passes_live_bug_label_to_evidence_gate(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

@@ -64,9 +64,11 @@ it, exactly the division `architect_reviewer` already uses for findings. The hum
 unchanged — `/plan #N` invokes the discovery carrier as its first step — so the sequence the document
 describes and the sequence `decide()` produces are the same sequence.
 
-Two exit codes carry the decision. `validate_issue_sections.py <N> --evidence-only` judges the
-`## Evidence` block alone, so the stage terminates on a check rather than on prose while the
-planner's other sections do not exist yet. And the section's first non-empty line must be
+Two exit codes carry the decision. `validate_issue_sections.py <N> --evidence-only --body-file
+<path>` judges the `## Evidence` block alone, so the stage terminates on a check rather than on
+prose while the planner's other sections do not exist yet. It reads the candidate block from disk
+because the role may not edit the issue: at completion the block exists only in the hand-off, and a
+gate its owing role cannot reach would be decoration. And the section's first non-empty line must be
 `discovery: <carrier>` with the carrier declared in the catalogue, resolved by the same helper that
 already resolves the `reviewer:` marker.
 

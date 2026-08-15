@@ -2,11 +2,17 @@
 """Validate that a GitHub issue body contains all required sections.
 
 Usage: python scripts/validate_issue_sections.py <issue-number> [--mark-planned]
+       [--evidence-only [--body-file <path>]]
 
 `--mark-planned` is the planner's flag: on a passing validation *and only then* it moves
 the issue's Status on GitHub Project 1 to `Planned` (#519). The unflagged call — the one the
 implementer makes before creating a branch — stays read-only, so re-validating an issue never
 moves its card back from `In Progress`.
+
+`--evidence-only` is the `discovery` role's flag: it judges the `## Evidence` block alone,
+so the role terminates on an exit code while the planner's other sections do not exist yet.
+`--body-file` points it at the candidate block on disk, because discovery may not edit the
+issue and its block is therefore not in the body when the role finishes (#517).
 
 Which sections are required is resolved from the issue's one type label through
 `.agents/orchestration/change-classes.yaml` (#516), so a change class is data
@@ -555,9 +561,10 @@ def _fetch_body(issue_number: int) -> str:
 
 MARK_PLANNED_FLAG = "--mark-planned"
 EVIDENCE_ONLY_FLAG = "--evidence-only"
+BODY_FILE_FLAG = "--body-file"
 
 
-def _evidence_only(issue_number: int, body: str) -> None:
+def _evidence_only(issue_number: int, body: str, source: str) -> None:
     """Judge the `## Evidence` block alone, for the role that finishes before a plan (#517).
 
     The nine-section run would report the planner's unwritten sections as failures of
@@ -566,12 +573,37 @@ def _evidence_only(issue_number: int, body: str) -> None:
     """
     gaps = find_gaps(body, required=(EVIDENCE_SECTION,))
     if not gaps:
-        print(f"ok: issue #{issue_number} has an accepted {EVIDENCE_SECTION} block")
+        print(
+            f"ok: {source} carries an accepted {EVIDENCE_SECTION} block for issue #{issue_number}"
+        )
         return
-    print(f"error: issue #{issue_number} {EVIDENCE_SECTION} is not ready:", file=sys.stderr)
+    print(
+        f"error: {source} is not a ready {EVIDENCE_SECTION} block for issue #{issue_number}:",
+        file=sys.stderr,
+    )
     for gap in gaps:
         print(f"  - {gap}", file=sys.stderr)
     sys.exit(1)
+
+
+def _take_option(argv: list[str], flag: str) -> tuple[list[str], str | None]:
+    """Pull `--flag <value>` out of `argv`, returning the remainder and the value."""
+    if flag not in argv:
+        return argv, None
+    index = argv.index(flag)
+    if index + 1 >= len(argv):
+        print(f"error: {flag} needs a path", file=sys.stderr)
+        sys.exit(2)
+    return argv[:index] + argv[index + 2 :], argv[index + 1]
+
+
+def _read_candidate(path: str) -> str:
+    """Read a candidate block from disk; an unreadable source is not a verdict (§IV)."""
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"error: cannot read {path}: {exc}", file=sys.stderr)
+        sys.exit(2)
 
 
 def _mark_planned(issue_number: int) -> None:
@@ -588,10 +620,13 @@ def _mark_planned(issue_number: int) -> None:
         print(f"warning: board status not updated: {exc}", file=sys.stderr)
 
 
-def main() -> None:
-    argv = sys.argv[1:]
-    # Manual parsing, like the issue-number branch below: the flag is planner-only, and the
-    # implementer's call of the same script must stay read-only.
+def _parse_argv(raw: list[str]) -> tuple[int, bool, bool, str | None]:
+    """Resolve `<issue-number>` and the three flags, or exit 2 (#517, #519).
+
+    Manual parsing, like the issue-number branch: the flags are role-specific, and the
+    implementer's call of the same script must stay read-only.
+    """
+    argv, body_file = _take_option(raw, BODY_FILE_FLAG)
     mark_planned = MARK_PLANNED_FLAG in argv
     evidence_only = EVIDENCE_ONLY_FLAG in argv
     flags = {MARK_PLANNED_FLAG, EVIDENCE_ONLY_FLAG}
@@ -599,21 +634,40 @@ def main() -> None:
     if len(positional) != 1:
         print(
             f"Usage: python scripts/validate_issue_sections.py <issue-number> "
-            f"[{MARK_PLANNED_FLAG}] [{EVIDENCE_ONLY_FLAG}]",
+            f"[{MARK_PLANNED_FLAG}] [{EVIDENCE_ONLY_FLAG} [{BODY_FILE_FLAG} <path>]]",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if body_file is not None and not evidence_only:
+        # A local file may stand in for one block, never for the issue a hand-off gates:
+        # otherwise the implementer's gate would pass on a body no reviewer ever reads.
+        print(
+            f"error: {BODY_FILE_FLAG} only applies to {EVIDENCE_ONLY_FLAG}; "
+            f"the full run judges the issue, not a local file",
             file=sys.stderr,
         )
         sys.exit(2)
     try:
-        n = int(positional[0])
+        return int(positional[0]), mark_planned, evidence_only, body_file
     except ValueError:
         print(f"error: issue number must be int (got {positional[0]!r})", file=sys.stderr)
         sys.exit(2)
+
+
+def main() -> None:
+    n, mark_planned, evidence_only, body_file = _parse_argv(sys.argv[1:])
+    if body_file is not None:
+        # `discovery` may not edit the issue, so at its completion the block it produced is
+        # not in the body yet. Reading it through `gh` would make the role's own gate
+        # unreachable by the role that owes it, which is the defect this branch closes.
+        _evidence_only(n, _read_candidate(body_file), body_file)
+        return
     body, labels = _fetch_issue(n)
     try:
         if evidence_only:
             # Before the label resolution below: the block is required by exactly one
             # class, and the role that produces it is asked for the block, not the class.
-            _evidence_only(n, body)
+            _evidence_only(n, body, f"issue #{n}")
             return
         # Label resolution lives here, not in `find_gaps`: which sections apply is a
         # property of the issue's change class, while the parser stays pure over the set

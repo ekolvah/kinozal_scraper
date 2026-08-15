@@ -22,7 +22,10 @@ Only the interface below is specific to this adapter:
   reading it rather than working from memory. How far the observation goes and
   which route it may use are defined there, not here. This adapter's provenance
   line, the first line of the block it produces:
-  `discovery: Codex $plan-issue #N self-discovery`.
+  `discovery: Codex $plan-issue #N self-discovery`. Write that block to a file
+  outside the repository and run
+  `python scripts/validate_issue_sections.py <N> --evidence-only --body-file <file>`
+  before recording it in the body.
 - There is no local reviewer subagent here, so perform the architect review
   yourself against
   [the architect review contract](../../../docs/architecture/agent-process.md#architect-review-contract),
