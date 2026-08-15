@@ -1,0 +1,17 @@
+{
+  "note": "Captured 2026-08-15 for issue #542: the Loki logs instance reported zero received bytes and zero active streams, and the same query window carried no metric series.",
+  "captured_at_utc": "2026-08-15T16:03:56Z",
+  "window": {
+    "days": 14,
+    "start_unix": 1785600236,
+    "end_unix": 1786809836
+  },
+  "events": {
+    "status_code": 200,
+    "series": []
+  },
+  "metrics": {
+    "status_code": 200,
+    "series": []
+  }
+}

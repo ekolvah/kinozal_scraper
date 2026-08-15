@@ -1,0 +1,66 @@
+{
+  "note": "Captured 2026-08-15 for issue #542, 14-day window: both signals carry series, which is what the verdict rests on. Not a healthy baseline — the whole event half is the single setup-probe bucket that operations.md describes as the symptom. Stack identifiers removed.",
+  "captured_at_utc": "2026-08-15T16:03:56Z",
+  "window": {
+    "days": 14,
+    "start_unix": 1785600236,
+    "end_unix": 1786809836
+  },
+  "events": {
+    "status_code": 200,
+    "series": [
+      {
+        "labels": {
+          "service_version": "2.1.220"
+        },
+        "non_zero": [
+          [
+            1786554000,
+            "54"
+          ]
+        ]
+      }
+    ]
+  },
+  "metrics": {
+    "status_code": 200,
+    "series": [
+      {
+        "labels": {
+          "service_version": "2.1.220",
+          "terminal_type": "non-interactive"
+        },
+        "non_zero": [
+          [
+            1786809836,
+            "2"
+          ]
+        ]
+      },
+      {
+        "labels": {
+          "service_version": "2.1.231",
+          "terminal_type": "non-interactive"
+        },
+        "non_zero": [
+          [
+            1786809836,
+            "18"
+          ]
+        ]
+      },
+      {
+        "labels": {
+          "service_version": "2.1.232",
+          "terminal_type": "non-interactive"
+        },
+        "non_zero": [
+          [
+            1786809836,
+            "11"
+          ]
+        ]
+      }
+    ]
+  }
+}
