@@ -324,14 +324,14 @@ selector — `| event_name="tool_result" | success="false"` — including the
 
 Putting an attribute inside `{...}` is a silent failure, not an error: Loki
 answers HTTP 200 with an empty result, and the panel renders as a flat zero
-line. All Loki panels shipped that way from #471 until #543. The observed label
-list lives in `capture.log_index_labels` of
+line. Every Loki panel shipped that way and stayed empty for months (#471,
+#543). The observed label list lives in `capture.log_index_labels` of
 `observability/claude-code/signal-catalogue.json`, and
 `tests/test_claude_otel_assets.py::TestGrafanaDashboard::test_loki_selectors_contain_only_index_labels`
 reads it to reject any selector carrying anything else. That guard is
-structural: it proves the form, never that a query returns data. Once event
-delivery is restored (#542), open panels 5, 10, and 11 once and confirm
-non-empty series.
+structural: it proves the form, never that a query returns data. Open panels 5,
+10, and 11 once and confirm non-empty series after event delivery is restored
+(#542).
 
 ### Fourteen-day baseline
 
