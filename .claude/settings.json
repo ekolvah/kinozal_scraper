@@ -39,6 +39,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python -m scripts.hooks pre-read",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "PostToolUse": [

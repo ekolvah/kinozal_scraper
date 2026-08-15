@@ -15,7 +15,10 @@ it is not (a silent setup degradation).
 
 from __future__ import annotations
 
+import os
 import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
@@ -189,3 +192,21 @@ class TestCaptureFailureIsSetupBroken:
         returncode, output = _run_ruff("some_file.py")
         assert returncode == _RUFF_EXEC_ERROR
         assert "capture failed" in output
+
+
+def test_pre_read_is_an_accepted_subcommand() -> None:
+    """`main()` is fail-CLOSED on an unknown argv (exit 2). Behind a `Read` matcher that
+    reads as "deny every Read in the session" — the opposite of the fail-open policy — so
+    the dispatcher's allowlist is a guarded requirement, not an implementation detail (#534).
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "scripts.hooks", "pre-read"],
+        input="{}",
+        capture_output=True,
+        encoding="utf-8",
+        cwd=Path(__file__).resolve().parents[1],
+        env={**os.environ, "PYTHONUTF8": "1"},
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == ""

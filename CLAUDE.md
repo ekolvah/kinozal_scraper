@@ -11,7 +11,8 @@ Windows + git-bash. Every pitfall below has recurred ≥2 times—do not reopen 
 - **Utilities**: `jq` and `rg` are **absent**—parse JSON/text with pure-Python scripts in `scripts/`. `sed` and
   `awk` do exist (`/usr/bin/`). Reading files through the shell (`ls`, `find`, `cat`, `sed -n`, `grep`/`head`/`tail`
   on a file operand) is denied by a `PreToolUse` hook that names the replacement tool (#485); pipe stages are
-  untouched. `awk` is not covered. The earlier blanket "no `jq`/`sed`/`awk`" stated a preference as an
+  untouched. `awk` is not covered. The same hook meters `Read` itself: a slice over the byte budget is denied
+  with the `limit` that fits handed back (#534). The earlier blanket "no `jq`/`sed`/`awk`" stated a preference as an
   environment fact, which is why it did not hold.
 - **Paths**: `~/` does not resolve reliably in shell hooks and settings.json. Use absolute paths (`C:/Users/<username>/...` or `$HOME/...` in bash).
 - **PowerShell ≠ bash**: `$null` (not `/dev/null`), `$env:VAR` (not `$VAR`), and backtick for line continuation. Invoke the Bash tool explicitly for POSIX scripts.

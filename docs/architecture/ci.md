@@ -179,6 +179,15 @@ must never brick `Bash`. It is also why the navigation entries are *not* in `per
 — a matching deny rule blocks before the hook runs and would swallow the message
 (`tests/test_navigation_policy.py` guards that).
 
+The same policy owns a second `PreToolUse` event, matcher `Read` (`pre-read`, #534). The Bash
+branch parses a command; this one measures the **bytes of the slice `Read` will actually
+return** (`[offset, offset + limit)`, computed hook-side) against a 28 000-byte budget, and the
+denial hands back the concrete `limit` that fits, the measured size, and an approximate token
+figure. A threshold keyed on "is `limit` present" would have been a rename: `limit` counts
+lines and `Read` truncates at 2000 of them, so `limit=2000` returns every file in this
+repository whole. Same failure mode as the Bash branch — anything unmeasurable (missing file,
+directory, non-UTF-8 bytes, a format where slicing is meaningless) yields no decision.
+
 This is instant feedback that **complements, never replaces** `ci_check.py` (the
 canonical pre-push gate), and is unrelated to the `pre-commit`/`tox` *framework*
 ([consciously declined](#consciously-not-adopted)) — that no-go is about a PR-time
