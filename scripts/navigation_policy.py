@@ -1,4 +1,9 @@
-"""Navigation policy: shell routes into the filesystem that a Claude tool replaces (#485).
+"""Navigation policy: routes into the filesystem whose cost a cheaper call avoids (#485, #534).
+
+Two routes, one policy. A shell command that reads a file has a tool that replaces it
+(`navigation_hint`, #485); a `Read` that pulls a whole large file into context has a cheaper
+form of itself — a `Grep` or a slice (`read_budget_hint`, #534). Both refusals name the
+replacement, and both are advisory about cost, never about safety.
 
 Deliberately separate from `scripts/agent_policy.py`. That module is the *security*
 policy shared with Codex, and its `denied_reason()` asserts danger; this one asserts only
@@ -24,6 +29,7 @@ from __future__ import annotations
 
 import shlex
 from dataclasses import dataclass
+from pathlib import Path
 
 _SEPARATORS = frozenset({"|", "||", "&&", ";", "&", "|&", "\n"})
 _REDIRECTS = frozenset({">", ">>", ">|", ">&", "&>", "&>>", "<", "<<", "<<<", "<&"})
@@ -207,9 +213,100 @@ def navigation_hint(command: str) -> str | None:
     return None if hint is None else f"{hint} Repository navigation goes through tools (#485)."
 
 
+# The budget, in bytes of the slice `Read` will actually return.
+#
+# Derived from a measurement over the 203 tracked files on 2026-08-15, not from taste. The
+# text corpus ran p50/p75/p90/p95 = 6457 / 13311 / 25694 / 41000 bytes; `principles.md` (16108)
+# and `testing.md` (24113) are the two documents this repository orders read *whole*, and the
+# smallest driver of the incident below was `tests/test_agent_orchestrator.py` (31410). 28000
+# is the corridor between them: above everything prescribed whole, below every driver. A
+# 16000 threshold was rejected for missing `principles.md` by 108 bytes — pure friction on the
+# hottest agent route, saving nothing, since that content is prescribed in full.
+#
+# Tuning direction is DOWNWARD ONLY, and only on observation. A ratchet that starts loose and
+# tightens on data costs less than one that starts tight and gets routed around.
 _READ_BUDGET_BYTES = 28_000
+
+# Formats where `offset`/`limit` are not line offsets into text, so the replacement this
+# policy names would not apply.
+_UNSLICEABLE = frozenset({".pdf", ".ipynb", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
+
+
+def _lines_that_fit(lines: list[bytes], start: int) -> int:
+    """How many lines from `start` stay inside the budget — at least one, so the message
+    never hands back an empty slice."""
+    total = 0
+    fits = 0
+    for line in lines[start:]:
+        total += len(line)
+        if total > _READ_BUDGET_BYTES:
+            break
+        fits += 1
+    return max(fits, 1)
 
 
 def read_budget_hint(file_path: object, offset: object = None, limit: object = None) -> str | None:
-    """Return a replacement message when a `Read` slice exceeds the byte budget (#534)."""
-    raise NotImplementedError
+    """Return a replacement message when a `Read` slice exceeds the byte budget (#534).
+
+    Why `Read` needs a gate of its own. #485 closed the shell route into the filesystem, but
+    whole-file `Read` stayed ungated and turned out to be the expensive one. Measured while
+    implementing #517: 53 steps before a single line of code, context 29k → 166k, driven by
+    ten whole-file reads. The harm is not re-sending those bytes — that goes through
+    `cache_read` — it is the chain **ceiling → compaction → reading the same files again**;
+    the session paid for its five largest files twice.
+
+    Why the budget is on bytes and not on the presence of `limit`. `limit` counts LINES and
+    `Read` truncates at 2000 of them, while the longest file here is 1196 lines: an explicit
+    `limit=2000` returns byte-identical content to a whole-file read for every file in this
+    repository. So the measurement is the slice `[offset, offset + limit)` as it lands on
+    disk, computed here — the hook's own bytes never enter the agent's context.
+
+    The token figure is APPROXIMATE in both directions. `bytes / 4` holds for Latin text; for
+    Cyrillic, UTF-8 spends ~2 bytes per character at ~1 token per character, so the byte count
+    overstates the size (the refusal fires early, on the policy's side) while the printed
+    estimate understates the tokens. Neither number is exact and the message says so.
+
+    Fail-open on every axis it cannot measure — a non-string path, a missing file, a
+    directory, bytes that are not UTF-8, a format where slicing is meaningless. This policy
+    claims only that a cheaper route exists, so anything unmeasurable is "no opinion".
+
+    The hook is STATELESS: after a compaction, a legitimately large read pays the
+    refusal-and-retry again. That is the accepted price of not carrying session state into a
+    `PreToolUse` hook, recorded here so it is not reopened as a bug.
+
+    Mechanics confirmed against the documentation, not guessed: `PreToolUse` matches ANY tool
+    name, not just `Bash`, and `permissionDecisionReason` is delivered to the model —
+    https://code.claude.com/docs/en/hooks
+
+    Revision condition: the maintainer watches context growth before the first edit through
+    the existing `scripts/token_trend.py`. If refusals fire and that growth does not fall,
+    tighten the threshold or revert the rule; do not build a second measurer.
+    """
+    if not isinstance(file_path, str):
+        return None
+    if (offset is not None and not isinstance(offset, int)) or (
+        limit is not None and not isinstance(limit, int)
+    ):
+        return None
+    path = Path(file_path)
+    try:
+        if not path.is_file() or path.suffix.lower() in _UNSLICEABLE:
+            return None
+        raw = path.read_bytes()
+        raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError, ValueError):
+        return None
+    lines = raw.splitlines(keepends=True)
+    start = max(offset - 1, 0) if offset is not None else 0
+    window = lines[start:] if limit is None else lines[start : start + max(limit, 0)]
+    size = sum(len(line) for line in window)
+    if size <= _READ_BUDGET_BYTES:
+        return None
+    return (
+        f'Read("{file_path}") returns {size} bytes (~{size // 4} tokens, approximate) — over '
+        f"the {_READ_BUDGET_BYTES}-byte budget. Grep for the symbol you need, or read the "
+        f"largest slice that fits from here: offset={start + 1}, "
+        f"limit={_lines_that_fit(lines, start)}. "
+        "Rewriting the file whole? Read it in slices first — never Write over bytes you have "
+        "not seen. Reading is budgeted like shell navigation (#534)."
+    )
