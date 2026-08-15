@@ -312,6 +312,27 @@ destination. A missing compaction, agent, or skill dimension is displayed as
 unavailable, never as zero. Claude's cost metric is estimated and must not be
 used as a billing source of truth.
 
+### LogQL query shape for this stack
+
+The Logs datasource has exactly one index label, `service_name`. This is a
+property of the stack, not of the Claude Code signals: `event_name`,
+`session_id`, `success`, `tool_name`, and every numeric attribute arrive as
+**structured metadata**, which a stream selector cannot see. So a query starts
+at `{service_name="claude-code"}` and filters everything else *after* the
+selector — `| event_name="tool_result" | success="false"` — including the
+`unwrap` of a numeric attribute.
+
+Putting an attribute inside `{...}` is a silent failure, not an error: Loki
+answers HTTP 200 with an empty result, and the panel renders as a flat zero
+line. All Loki panels shipped that way from #471 until #543. The observed label
+list lives in `capture.log_index_labels` of
+`observability/claude-code/signal-catalogue.json`, and
+`tests/test_claude_otel_assets.py::TestGrafanaDashboard::test_loki_selectors_contain_only_index_labels`
+reads it to reject any selector carrying anything else. That guard is
+structural: it proves the form, never that a query returns data. Once event
+delivery is restored (#542), open panels 5, 10, and 11 once and confirm
+non-empty series.
+
 ### Fourteen-day baseline
 
 Grafana Cloud Free remains usable after the trial, but metrics and logs have a
