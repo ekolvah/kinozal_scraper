@@ -113,15 +113,34 @@ _ORCHESTRATION = Path(__file__).resolve().parents[1] / ".agents" / "orchestratio
 _ROLE_CATALOGUE = _ORCHESTRATION / "roles.yaml"
 _CHANGE_CLASS_CATALOGUE = _ORCHESTRATION / "change-classes.yaml"
 _REVIEWER_ROLE = "architect_reviewer"
+_DISCOVERY_ROLE = "discovery"
 # The trivial-change escape (#150). It carries no carrier name on purpose: a skipped
 # review has no reviewer to name.
 SKIP_PREFIX = "skipped:"
 REVIEWER_PREFIX = "reviewer:"
+DISCOVERY_PREFIX = "discovery:"
 SELF_REVIEW = "self"
 
 
 class CatalogueError(RuntimeError):
-    """The role catalogue could not be read as the source of reviewer names."""
+    """The role catalogue could not be read as the source of carrier names."""
+
+
+def _declared_role_field(role: str, field: str) -> object:
+    """One reader for the catalogue, shared by both provenance gates (#517).
+
+    Forking it would fork the failure mode too: a second reader that returns `{}` on an
+    unreadable file turns a broken catalogue into a *weaker* gate instead of the exit-2
+    every caller here already routes through.
+    """
+    try:
+        catalogue = yaml.safe_load(_ROLE_CATALOGUE.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise CatalogueError(f"cannot read {_ROLE_CATALOGUE}: {exc}") from exc
+    try:
+        return catalogue["roles"][role][field]
+    except (KeyError, TypeError) as exc:
+        raise CatalogueError(f"{_ROLE_CATALOGUE} declares no {role}.{field}") from exc
 
 
 def reviewer_independence() -> dict[str, str]:
@@ -133,19 +152,25 @@ def reviewer_independence() -> dict[str, str]:
     the carrier, and whether that carrier reviews its own plan is a property of the
     carrier, not a claim in the issue body.
     """
-    try:
-        catalogue = yaml.safe_load(_ROLE_CATALOGUE.read_text(encoding="utf-8"))
-    except (OSError, yaml.YAMLError) as exc:
-        raise CatalogueError(f"cannot read {_ROLE_CATALOGUE}: {exc}") from exc
-    try:
-        declared = catalogue["roles"][_REVIEWER_ROLE]["adapter_independence"]
-    except (KeyError, TypeError) as exc:
-        raise CatalogueError(
-            f"{_ROLE_CATALOGUE} declares no {_REVIEWER_ROLE}.adapter_independence"
-        ) from exc
+    declared = _declared_role_field(_REVIEWER_ROLE, "adapter_independence")
     if not isinstance(declared, dict) or not declared:
         raise CatalogueError(f"{_REVIEWER_ROLE}.adapter_independence is not a non-empty mapping")
     return declared
+
+
+def discovery_carriers() -> tuple[str, ...]:
+    """The carriers permitted to sign a `## Evidence` block (#517).
+
+    Only the names, unlike `reviewer_independence`: whether a carrier is independent
+    changes what an architect review *means*, while an observation is the same
+    observation whoever ran the capture. The gate resolves the name and stops.
+    """
+    declared = _declared_role_field(_DISCOVERY_ROLE, "adapters")
+    if not isinstance(declared, list) or not all(isinstance(name, str) for name in declared):
+        raise CatalogueError(f"{_DISCOVERY_ROLE}.adapters is not a non-empty list of carriers")
+    if not declared:
+        raise CatalogueError(f"{_DISCOVERY_ROLE}.adapters is not a non-empty list of carriers")
+    return tuple(declared)
 
 
 def change_class_requirements() -> dict[str, dict[str, tuple[str, ...]]]:
@@ -342,8 +367,37 @@ def _failed_capture_has_output(content: str) -> bool:
     return bool(output)
 
 
+def evidence_provenance_gaps(content: str) -> list[str]:
+    """Return what the section's `discovery:` line is missing, mirroring `architect_review_gaps`.
+
+    Only the **first non-empty line** counts, for the reason spelled out in
+    `architect_review_provenance`: the fields below routinely quote the marker while
+    discussing this very gate, so a substring match would pass exactly the case the
+    gate exists to catch (§IV).
+    """
+    first = next((line.strip() for line in content.splitlines() if line.strip()), "")
+    if not first.lower().startswith(DISCOVERY_PREFIX):
+        return ["discovery provenance line"]
+    if first[len(DISCOVERY_PREFIX) :].strip() not in discovery_carriers():
+        return ["declared discovery adapter"]
+    return []
+
+
+def _after_provenance(content: str) -> str:
+    """The section body below its provenance line."""
+    lines = content.splitlines()
+    first = next((index for index, line in enumerate(lines) if line.strip()), len(lines))
+    return "\n".join(lines[first + 1 :])
+
+
 def evidence_gaps(content: str) -> list[str]:
     """Return mechanical gaps in a bug issue's observation and decision record."""
+    provenance = evidence_provenance_gaps(content)
+    if provenance:
+        return provenance
+    # Everything below is unchanged, only re-based onto the remainder: the `n/a:` branch
+    # and the capture fields judge the record, and the record starts after the signature.
+    content = _after_provenance(content)
     first = next((line.strip() for line in content.splitlines() if line.strip()), "")
     if first.casefold().startswith(NA_PREFIX):
         if first[len(NA_PREFIX) :].strip():
@@ -500,6 +554,24 @@ def _fetch_body(issue_number: int) -> str:
 
 
 MARK_PLANNED_FLAG = "--mark-planned"
+EVIDENCE_ONLY_FLAG = "--evidence-only"
+
+
+def _evidence_only(issue_number: int, body: str) -> None:
+    """Judge the `## Evidence` block alone, for the role that finishes before a plan (#517).
+
+    The nine-section run would report the planner's unwritten sections as failures of
+    `discovery`, which never owed them — an exit code that says "not ready" about the
+    wrong role is worse than no exit code, because it is acted on.
+    """
+    gaps = find_gaps(body, required=(EVIDENCE_SECTION,))
+    if not gaps:
+        print(f"ok: issue #{issue_number} has an accepted {EVIDENCE_SECTION} block")
+        return
+    print(f"error: issue #{issue_number} {EVIDENCE_SECTION} is not ready:", file=sys.stderr)
+    for gap in gaps:
+        print(f"  - {gap}", file=sys.stderr)
+    sys.exit(1)
 
 
 def _mark_planned(issue_number: int) -> None:
@@ -521,11 +593,13 @@ def main() -> None:
     # Manual parsing, like the issue-number branch below: the flag is planner-only, and the
     # implementer's call of the same script must stay read-only.
     mark_planned = MARK_PLANNED_FLAG in argv
-    positional = [arg for arg in argv if arg != MARK_PLANNED_FLAG]
+    evidence_only = EVIDENCE_ONLY_FLAG in argv
+    flags = {MARK_PLANNED_FLAG, EVIDENCE_ONLY_FLAG}
+    positional = [arg for arg in argv if arg not in flags]
     if len(positional) != 1:
         print(
             f"Usage: python scripts/validate_issue_sections.py <issue-number> "
-            f"[{MARK_PLANNED_FLAG}]",
+            f"[{MARK_PLANNED_FLAG}] [{EVIDENCE_ONLY_FLAG}]",
             file=sys.stderr,
         )
         sys.exit(2)
@@ -536,6 +610,11 @@ def main() -> None:
         sys.exit(2)
     body, labels = _fetch_issue(n)
     try:
+        if evidence_only:
+            # Before the label resolution below: the block is required by exactly one
+            # class, and the role that produces it is asked for the block, not the class.
+            _evidence_only(n, body)
+            return
         # Label resolution lives here, not in `find_gaps`: which sections apply is a
         # property of the issue's change class, while the parser stays pure over the set
         # it is handed (#516).

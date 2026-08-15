@@ -16,9 +16,14 @@ and are not copied here. This file contains only harness-specific material.
 1. Follow the canonical planner runbook, including the discovery branch the issue's change class
    selects; `Read`/`Grep` supply the repository-context source only, and `WebSearch`/`WebFetch` the
    outside-the-repository one.
-2. The **`architect-reviewer` subagent** performs the architect review in runbook step 3
+2. The **`discovery` subagent** performs the observation runbook step 2 delegates
+   (persona: `.claude/agents/discovery.md`), not the main session; its contract is
+   [`../../docs/architecture/agent-process.md#discovery-runbook`](../../docs/architecture/agent-process.md#discovery-runbook).
+   Record the block it returns unchanged. Its provenance line, the first line of that
+   block: `discovery: Claude discovery subagent`.
+3. The **`architect-reviewer` subagent** performs the architect review in runbook step 3
    (persona: `.claude/agents/architect-reviewer.md`), not the main session. Its provenance
    line, the first line of `## Architect review`: `reviewer: Claude architect-reviewer subagent`.
-3. Write the body with `gh issue edit $ARGUMENTS --body "<complete issue contract>"`.
-4. On completion, provide the issue link and hand off to the `implementer`. The user selects the entry point: Codex
+4. Write the body with `gh issue edit $ARGUMENTS --body "<complete issue contract>"`.
+5. On completion, provide the issue link and hand off to the `implementer`. The user selects the entry point: Codex
    `$implement-issue #$ARGUMENTS` (the repository default) or `/implement $ARGUMENTS` in this session.

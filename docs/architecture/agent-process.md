@@ -12,6 +12,7 @@ are Claude for `planner` and `reviewer`, and Codex for `implementer` and
 
 | Role | Required input | Required result | Next role |
 | --- | --- | --- | --- |
+| `discovery` | Bug issue with an unaccepted `## Evidence` block | Captured fixture in the working tree and an `## Evidence` block the `--evidence-only` gate accepts | `planner` |
 | `planner` | Issue, repository context, and user decisions | Complete issue body, architect-review decision, passing issue validator | `implementer` |
 | `implementer` | Passing issue body | Focused branch, RED evidence, implementation, docs, PR | `reviewer` |
 | `reviewer` | Plan, diff, and checks | Visible, actionable findings or an explicit clean result | `fixer` or human |
@@ -85,6 +86,7 @@ external system. When the plan describes how to read, parse, or classify externa
 data, use this shape:
 
 ```md
+discovery: <carrier declared for the `discovery` role in roles.yaml>
 capture: `<source-specific reproducible command that writes the path below>`
 path: `<repository-relative path>`
 observed: <the source fact that explains the reported failure>
@@ -95,6 +97,15 @@ collateral: <whether each candidate preserves or loses that exact valid record>
 reuse: <current production path traced to the existing input/fetch usable by the narrow boundary>
 paired-test: <the same captured input through one pipeline run keeps the valid record and rejects the invalid record>
 ```
+
+The first non-empty line is the provenance marker, resolved against
+`.agents/orchestration/roles.yaml` exactly as `reviewer:` is in
+`## Architect review`; only that line counts, because the fields below routinely
+quote the marker while discussing this gate. Sections written before the rule
+existed carry no such line and do not become invalid retroactively; the next
+planner run reds on it, and a declared carrier may attest to a fixture that is
+already present instead of re-running the capture, provided it inspected that
+fixture. What the line proves is stated in §Discovery runbook.
 
 The command is specific to the external source and must include the exact path
 named on the next line. That path is under `evidence/issue-<N>/`; the captured
@@ -210,6 +221,62 @@ improvise: a discovery section records work someone actually carried out, so an
 implementer that finds `## Prior art` missing stops and
 returns the issue to a planner rather than inventing the search.
 
+## Discovery runbook
+
+These steps belong to the `discovery` role, not to an adapter. It activates on
+a bug issue whose Evidence block is not yet accepted, and it runs **before** the
+planner: a plan that describes how to read, parse, or classify external data
+needs the observation as input, not as a note appended afterwards. Why this is a
+role of its own rather than a widened planner authority:
+[ADR-0009](../adr/0009-discovery-is-a-separate-role-chained-inside-the-planner-run.md).
+
+**Authority.** Discovery may run the read-only capture routes in §Issue contract
+and write the captured fixture into the working tree. It may not edit the issue
+body, write plan sections, create an implementation branch, or change production
+code. It returns the `## Evidence` block; the planner writes that block into the
+issue. This is the division `architect_reviewer` already uses — the role that
+produced an artifact is not the role that publishes it — so what reaches the
+issue stays attributable to whoever actually did the work.
+
+**Bounds of the observation.** When the plan describes how to read, parse, or
+classify data from an external system,
+observe that live system before writing the plan.
+From that observation, record one invalid record and one exact valid record from
+the same response, compare candidate fix boundaries, and state whether each
+boundary loses that preserved record.
+Replacing it with a sibling feed or category is data loss, not preservation.
+Inspect the current call path before deciding whether a narrower classification
+needs a new fetch. Record both the capture and that decision in the block, and
+name one paired test that sends the same captured input through one pipeline run
+and proves that the valid record remains while the invalid one changes.
+Otherwise record `n/a: <reason>` there;
+this is discovery, not an E2E test or a substitute for a human product decision.
+
+**Route.** Use the narrowest read-only route in the §Issue contract capture
+table; never run a full pipeline that writes Sheets rows or sends Telegram
+notifications merely to collect evidence. A failed capture records
+`status: failed` with its output exactly as that section defines. Two runs are
+budgeted, because a failed capture is normally retried once after access is
+fixed; a third attempt is a standing external obstacle and goes to a human.
+
+**Completion.** `python scripts/validate_issue_sections.py <N> --evidence-only`
+exits 0. It judges that one block and ignores the rest of the body, so the role
+can finish before the other sections exist — running the full gate here would
+report the planner's unwritten sections as failures of the role that never owed
+them.
+
+**Fixture hand-off.** The captured file stays untracked at discovery time;
+`evidence/` is git-ignored planning evidence. The implementer `git add`s it in
+the RED commit only when a production-behaviour regression test reads those bytes
+in the same commit. A fixture that is missing when the implementer needs it means
+discovery runs again — never that the implementer writes the bytes by hand.
+
+**What the provenance line does not prove.** `discovery: <carrier>` records who
+claimed the observation, not that the observation happened. The gate resolves the
+carrier against `.agents/orchestration/roles.yaml` and stops there; a fabricated
+record reads exactly like an honest one (§IV). What the line buys is attribution:
+an anonymous claim cannot be questioned, and a named one can.
+
 ## Planner runbook
 
 These steps belong to the `planner` role, not to an adapter. Every planner entry
@@ -221,18 +288,11 @@ arrives, how a reviewer is invoked, how the body is written back.
    early exit, so report that and stop.
 2. Use all four sources of answers. Read and search the repository first. Ask
    at most three clarifying questions per session, and only about decisions such
-   as priority or product intent. When the plan describes how to read, parse, or
-   classify data from an external system, observe that live system before
-   writing the plan. From that observation, record one invalid record and one
-   exact valid record from the same response, compare candidate fix boundaries,
-   and state whether each boundary loses that preserved record. Replacing it
-   with a sibling feed or category is data loss, not preservation. Inspect the
-   current call path before deciding whether a narrower classification needs a
-   new fetch. Record both the capture and that decision in `## Evidence`, and
-   name one paired test that sends the same captured input through one pipeline
-   run and proves that the valid record remains while the invalid one changes.
-   Otherwise record `n/a: <reason>` there; this is discovery, not an E2E test or
-   a substitute for a human product decision. For every other class, the fourth
+   as priority or product intent. On a `bug` issue the fourth source is the live
+   external system, and the `discovery` role observes it: obtain that role's
+   `## Evidence` block and record it in the section verbatim. A planner does not
+   re-decide how far the observation goes, and does not paraphrase what came
+   back — §Discovery runbook owns both. For every other class, the fourth
    source is the world outside this repository: search for the maintained
    library, standard tool, or upstream feature that already solves the problem
    **before** designing the code, and record the search, the candidates, and the
@@ -499,9 +559,9 @@ the initial roles. `python scripts/agent_orchestrator.py <state.json>` is its
 read-only, advisory control plane: it reports the next adapter/action, missing
 evidence, and a bounded escalation path. It never invokes a model, changes the
 repository, posts to GitHub, or replaces deterministic CI and branch
-protection. The default route is planner → conditional architect reviewer →
-implementer → deterministic CI → PR reviewer → conditional fixer → human
-merge. The cap table below is the canonical documented copy of the catalogue
+protection. The default route is conditional discovery → planner → conditional
+architect reviewer → implementer → deterministic CI → PR reviewer → conditional
+fixer → human merge. The cap table below is the canonical documented copy of the catalogue
 limits; an exhausted cap escalates to a human rather than silently retrying.
 After ten completed PRs, compare rework rate, actionable-review yield, cycle
 time, and invocation counts before adding a specialist such as the separate
@@ -515,6 +575,9 @@ it is not generated by CI and no command changes it.
 | --- | --- | --- |
 | `plan_completed` | yes | boolean |
 | `issue_kind` | yes | `trivial` or `nontrivial` |
+| `evidence_required` | no | boolean; default `false`; `true` for a bug issue whose Evidence block is not yet accepted |
+| `evidence_completed` | no | boolean; default `false` |
+| `discovery_runs` | no | non-negative integer; default `0` |
 | `architect_completed` | no | boolean; default `false` |
 | `architect_skip_reason` | no | string or `null`; required for a trivial issue |
 | `implementation_completed` | no | boolean; default `false` |
@@ -547,6 +610,7 @@ role. In particular, `deterministic_ci` is a deliberate non-catalogue step.
 
 | Role | Max runs | Scope |
 | --- | --- | --- |
+| `discovery` | 2 | per issue; the second run is the retry after a failed capture |
 | `planner` | 1 | per issue |
 | `architect_reviewer` | 1 | per issue |
 | `implementer` | 1 | per issue |
@@ -561,11 +625,11 @@ the known entry points in `adapters:`, which route reaches each of them in
 so naming a provider is a default, not a restriction:
 
 - Claude `/plan #N` runs the planner runbook and invokes the local
-  `architect-reviewer` subagent.
+  `architect-reviewer` and `discovery` subagents.
 - Codex `$plan-issue #N` runs the same runbook through the repository skill in
-  `.agents/skills/plan-issue/`. Having no local reviewer subagent, it performs
-  the architect review itself and records that in the section's provenance line,
-  as §Who reviewed, recorded requires.
+  `.agents/skills/plan-issue/`. Having no local subagents, it performs both the
+  architect review and the discovery capture itself and records each in its
+  section's provenance line, as §Who reviewed, recorded requires.
 - Codex `$implement-issue #N` runs the delivery flow through the skill in
   `.agents/skills/implement-issue/`. It implements and fixes; it does not
   invent a replacement plan.

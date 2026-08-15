@@ -16,6 +16,13 @@ Only the interface below is specific to this adapter:
 - The issue number arrives as `#N` in the user's request.
 - Work through every source of answers the runbook step 2 names, in its order;
   the list is canonical there and is not enumerated here.
+- There is no local discovery subagent here either, so run the observation
+  yourself against
+  [the discovery runbook](../../../docs/architecture/agent-process.md#discovery-runbook),
+  reading it rather than working from memory. How far the observation goes and
+  which route it may use are defined there, not here. This adapter's provenance
+  line, the first line of the block it produces:
+  `discovery: Codex $plan-issue #N self-discovery`.
 - There is no local reviewer subagent here, so perform the architect review
   yourself against
   [the architect review contract](../../../docs/architecture/agent-process.md#architect-review-contract),
