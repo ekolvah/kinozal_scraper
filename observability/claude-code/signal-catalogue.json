@@ -10,7 +10,13 @@
       "agent_id",
       "skill_name",
       "compaction"
-    ]
+    ],
+    "log_index_labels": {
+      "observed": "2026-08-15",
+      "labels": [
+        "service_name"
+      ]
+    }
   },
   "signals": {
     "metrics": [

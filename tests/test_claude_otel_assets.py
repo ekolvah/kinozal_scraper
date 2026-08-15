@@ -42,13 +42,30 @@ def _catalogue_refs(catalogue: dict[str, Any]) -> set[str]:
     return refs
 
 
-def _dashboard_targets(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
-    targets: list[dict[str, Any]] = []
+def _targets_with_datasource(dashboard: dict[str, Any]) -> list[tuple[dict[str, Any], str | None]]:
+    """Pair every target with its effective datasource type; a target overrides its panel."""
+    pairs: list[tuple[dict[str, Any], str | None]] = []
     for row in dashboard["panels"]:
-        targets.extend(row.get("targets", []))
-        for panel in row.get("panels", []):
-            targets.extend(panel.get("targets", []))
-    return targets
+        for panel in (row, *row.get("panels", [])):
+            panel_type = (panel.get("datasource") or {}).get("type")
+            for target in panel.get("targets", []):
+                target_type = (target.get("datasource") or {}).get("type")
+                pairs.append((target, target_type or panel_type))
+    return pairs
+
+
+def _dashboard_targets(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
+    return [target for target, _ in _targets_with_datasource(dashboard)]
+
+
+def _stream_selector_labels(expr: str) -> set[str]:
+    """Label names inside the ``{...}`` stream selectors of a LogQL expression."""
+    selectors = re.findall(r"\{([^{}]*)\}", expr)
+    assert selectors, f"LogQL expression without a stream selector: {expr}"
+    labels: set[str] = set()
+    for selector in selectors:
+        labels.update(re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\s*(?:=~|!~|!=|=)", selector))
+    return labels
 
 
 class TestOtelTemplate:
@@ -133,6 +150,36 @@ class TestGrafanaDashboard:
         assert targets
         assert all(target["catalogueRef"] in known_refs for target in targets)
         assert all(target.get("expr") or target.get("query") for target in targets)
+
+    def test_loki_selectors_contain_only_index_labels(self) -> None:
+        """Structured metadata inside ``{...}`` matches nothing and fails silently (#543)."""
+        catalogue = _load_json(SIGNAL_CATALOGUE)
+        index_labels = set(catalogue["capture"]["log_index_labels"]["labels"])
+        assert index_labels
+
+        # The preserved valid record from the same live response: an index label in the
+        # selector stays legal, and this half runs before the negative one.
+        assert not _stream_selector_labels('{service_name="claude-code"}') - index_labels
+
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        loki_targets = [
+            target
+            for target, datasource_type in _targets_with_datasource(dashboard)
+            if datasource_type == "loki"
+        ]
+        assert loki_targets, "no Loki target resolved: the guard would pass vacuously"
+
+        violations: list[tuple[str, list[str]]] = []
+        for target in loki_targets:
+            expr = target["expr"]
+            outside_index = sorted(_stream_selector_labels(expr) - index_labels)
+            if outside_index:
+                violations.append((expr, outside_index))
+
+        assert not violations, (
+            "a Loki stream selector may carry only the index labels captured from the stack; "
+            f"filter every other attribute after the selector: {violations}"
+        )
 
     def test_minimum_decision_panels_are_present(self) -> None:
         dashboard = _load_json(GRAFANA_DASHBOARD)
