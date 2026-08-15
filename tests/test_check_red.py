@@ -1,14 +1,18 @@
 """Tests for `scripts/check_red.py` — the RED gate of `/implement`.
 
 Covers the junit verdict rules (subtest failures redden the parent; a collection
-error, a skip-only run or an empty report is NOT red) and the exit code taken
-when the subprocess capture itself breaks.
+error, a skip-only run or an empty report is NOT red), the exit code taken
+when the subprocess capture itself breaks, and the output budget: the gate's
+answer must stay a fixed size while the suite it runs grows (#533).
 """
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
+from collections.abc import Callable
+from pathlib import Path
 
 import pytest
 
@@ -109,10 +113,156 @@ class TestEvaluateReport:
         assert not ok
         assert "0" in msg or "no test" in msg.lower()
 
+    def test_sampled_branch_names_the_total(self) -> None:
+        # Every other node here carries at most two names, so they only ever exercise
+        # the under-the-cap path. Above the cap the message must still answer the
+        # question the operator asked: how many, and which ones as an example (#533).
+        ok, msg = evaluate_report(_many_cases(163))
+        assert not ok
+        assert "163" in msg
+        assert len(msg) <= 1_200, f"verdict line is {len(msg)} chars"
+        assert "test_green_0" in msg
+        assert "test_green_162" not in msg
+
     def test_malformed_report_raises(self) -> None:
         # Inability to count must not open the way to GREEN (§IV/§VI).
         with pytest.raises(ValueError):
             evaluate_report("not xml at all")
+
+
+def _many_cases(green: int, failed: int = 12) -> str:
+    """A report of a realistic shape: a large green suite around a few failing tests."""
+    cases = [
+        _case(f"test_green_{i}", classname="tests.test_generated.TestBig") for i in range(green)
+    ]
+    cases += [
+        _case(f"test_fail_{i}", "failure", classname="tests.test_generated.TestBig")
+        for i in range(failed)
+    ]
+    return _report(*cases)
+
+
+def _fake_pytest(
+    report_xml: str, stdout: str = "", seen: list[str] | None = None
+) -> Callable[..., subprocess.CompletedProcess[str]]:
+    """Stand in for the pytest subprocess: write the junit report, return its output.
+
+    A process boundary, like the double in `TestCaptureFailureExitCode` — running
+    pytest inside pytest is what this double exists to avoid.
+    """
+
+    def fake_run(cmd: list[str], **_: object) -> subprocess.CompletedProcess[str]:
+        if seen is not None:
+            seen.extend(cmd)
+        junit = next(arg.split("=", 1)[1] for arg in cmd if arg.startswith("--junitxml="))
+        Path(junit).write_text(report_xml, encoding="utf-8")
+        return subprocess.CompletedProcess(args=cmd, returncode=1, stdout=stdout, stderr="")
+
+    return fake_run
+
+
+def _run_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    report_xml: str,
+    stdout: str = "",
+    seen: list[str] | None = None,
+) -> str:
+    """Run `main()` against a prepared report and return everything it emitted."""
+    monkeypatch.setattr(subprocess, "run", _fake_pytest(report_xml, stdout, seen))
+    monkeypatch.setattr(sys, "argv", argv)
+    with pytest.raises(SystemExit):
+        main()
+    captured = capsys.readouterr()
+    return captured.out + captured.err
+
+
+class TestOutputBudget:
+    """The gate's answer must not grow with the suite it runs (#533).
+
+    Measured before the cap: a not-RED run over two green files printed 7 901
+    characters, 7 699 of them a single line naming 96 green tests — ~4.9k tokens
+    re-sent on every later call of the session, for a verdict of one line.
+    """
+
+    def test_many_green_tests_stay_within_budget(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        combined = _run_gate(
+            monkeypatch,
+            capsys,
+            ["check_red.py", "tests/"],
+            _many_cases(163),
+            "x" * 20_000,
+        )
+        assert len(combined) <= 3_000, f"gate emitted {len(combined)} chars"
+        # The count is the part that changes the next action; it survives the cap (§IV).
+        assert "163" in combined
+
+    def test_budget_is_flat_in_test_count(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # The property, not a second absolute threshold: a suite six times larger
+        # may only add the digits of the counts it reports.
+        small = _run_gate(monkeypatch, capsys, ["check_red.py", "tests/"], _many_cases(163))
+        large = _run_gate(monkeypatch, capsys, ["check_red.py", "tests/"], _many_cases(1_000))
+        assert len(large) - len(small) <= 32
+
+    def test_full_flag_restores_what_the_default_cuts(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Stated as the difference between the two runs on purpose: "--full prints
+        # everything" is trivially true while nothing is cut, and would pass on the
+        # very code this issue exists to change.
+        stdout = "HEAD_MARKER" + "x" * 20_000 + "TAIL_MARKER"
+        capped = _run_gate(
+            monkeypatch, capsys, ["check_red.py", "tests/"], _many_cases(163), stdout
+        )
+        full = _run_gate(
+            monkeypatch, capsys, ["check_red.py", "--full", "tests/"], _many_cases(163), stdout
+        )
+        assert "test_green_162" not in capped and "HEAD_MARKER" not in capped
+        assert "test_green_162" in full, "--full must list every green test"
+        assert "HEAD_MARKER" in full and "TAIL_MARKER" in full
+
+    def test_truncation_marker_precedes_the_tail(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        stdout = "HEAD_MARKER" + "x" * 20_000 + "TAIL_MARKER"
+        combined = _run_gate(
+            monkeypatch, capsys, ["check_red.py", "tests/"], _many_cases(163), stdout
+        )
+        # Truncation is an anomaly, so it is announced where it will be read —
+        # before the retained tail, not after it (§IV).
+        marker = re.search(r"^\[[^\n]*\d+[^\n]*--full[^\n]*\]$", combined, re.M)
+        assert marker, "a cut dump must name the dropped size and the flag that restores it"
+        assert marker.start() < combined.index("TAIL_MARKER")
+        assert "HEAD_MARKER" not in combined
+
+
+class TestCli:
+    """The argument contract of the gate: paths in, exit codes 0/1/2 out."""
+
+    def test_no_paths_exits_with_usage_code(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(sys, "argv", ["check_red.py"])
+        with pytest.raises(SystemExit) as exc:
+            main()
+        assert exc.value.code == 2, "no paths is a usage error, not 'tests are not red'"
+
+    def test_full_flag_is_not_taken_as_a_path(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        seen: list[str] = []
+        _run_gate(
+            monkeypatch,
+            capsys,
+            ["check_red.py", "--full", "tests/test_x.py"],
+            _many_cases(1),
+            seen=seen,
+        )
+        assert "tests/test_x.py" in seen
+        assert "--full" not in seen, "the gate's own flag must not reach pytest as a path"
 
 
 class TestCaptureFailureExitCode:
