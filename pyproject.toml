@@ -88,7 +88,12 @@ line-ending = "auto"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
-addopts = "-ra -p no:cacheprovider"
+# `-q` is here, not inside ci_check's pytest step, because the agent also runs bare
+# `python -m pytest tests/test_x.py` during /implement, and only the global setting
+# covers those runs. It removes the per-file progress map (measured on a green suite:
+# 8 090 → 2 368 characters), while a failing run keeps its traceback, `E ` lines and
+# short summary unchanged (1 430 → 1 003). Do not narrow it to one call site (#533).
+addopts = "-q -ra -p no:cacheprovider"
 # Put src/ on sys.path so `import kinozal_scraper.<module>` resolves in tests
 # without requiring an editable install — the package dir is src/kinozal_scraper.
 pythonpath = ["src"]

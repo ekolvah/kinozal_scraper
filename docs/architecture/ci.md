@@ -31,6 +31,18 @@ is a policy violation, and `2` means trustworthy evidence could not be obtained.
 is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
 see the lint gates below.)
 
+**Output is budgeted, and this line is the forcing function.** `addopts` in
+`pyproject.toml` carries `-q`, so a green run of the gate prints the summary rather than a
+per-file progress map: measured 2026-08-15, `python -m pytest` fell from 8 090 to 2 368
+characters and the whole gate from 9 056 to about 3 300. A failing run is untouched —
+traceback, `E ` lines and the short summary all remain (1 430 → 1 003 characters). The
+motive is the agent session, where every character is re-sent on each later call (#533),
+so the flag stays global rather than moving into `ci_check.check_pytest()`: agents also
+run `python -m pytest tests/test_x.py` by hand. There is deliberately no test asserting
+the flag is present — that is a resource-only regression, which
+[`testing.md`](testing.md#rule-when-a-test-is-not-worth-writing) sends to a forcing
+function such as this paragraph rather than to a guard test (precedent #207).
+
 **Runtime — minutes, not seconds; this doc is the canonical number.** The two
 `pip-audit` steps dominate (network calls to the advisory DB) and `pytest` is the
 other slow one; the rest are seconds. Measured 2026-07-29 on the maintainer's
