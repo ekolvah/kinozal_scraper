@@ -34,7 +34,15 @@ _REQUIRED_ROLE_FIELDS = frozenset(
     }
 )
 _REQUIRED_INITIAL_ROLES = frozenset(
-    {"planner", "architect_reviewer", "implementer", "pr_reviewer", "fixer", "human_merge"}
+    {
+        "discovery",
+        "planner",
+        "architect_reviewer",
+        "implementer",
+        "pr_reviewer",
+        "fixer",
+        "human_merge",
+    }
 )
 _NON_CATALOGUE_STEPS = frozenset({"deterministic_ci"})
 
@@ -51,6 +59,13 @@ class WorkflowState:
     reviewed_heads: tuple[str, ...]
     review_outcome: str | None
     fixer_revisions: int
+    # A bug issue observes before it plans (#517). Two fields rather than one, for the
+    # same reason `plan_completed` is not derived from `issue_kind`: "the block is owed"
+    # and "the block exists" are different facts, and collapsing them would let a
+    # missing observation read as a class that never needed one.
+    evidence_required: bool = False
+    evidence_completed: bool = False
+    discovery_runs: int = 0
     planner_runs: int = 0
     architect_runs: int = 0
     implementer_runs: int = 0
@@ -178,6 +193,8 @@ def _role_adapter(name: str, role: Mapping[str, Any], route: str | None) -> str:
 
 def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
     completed: list[str] = []
+    if state.evidence_required and state.evidence_completed:
+        completed.append("discovery")
     if state.plan_completed:
         completed.append("planner")
     if state.architect_completed or (state.issue_kind == "trivial" and state.architect_skip_reason):
@@ -232,6 +249,22 @@ def _decision(
         next_action=action or adapter,
         route=state.route,
     )
+
+
+def _discovery_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision | None:
+    """The observation a bug plan needs as input, routed before the plan (#517).
+
+    Ahead of `_planning_decision` rather than inside it: sending the planner first would
+    ask it to write a plan whose required input does not exist yet, which is how the
+    `## Evidence` section came to be filled by whichever role happened to be running.
+    """
+    if not state.evidence_required or state.evidence_completed:
+        return None
+    if state.discovery_runs >= catalogue["roles"]["discovery"]["max_runs"]:
+        return _decision(
+            "human_merge", catalogue, state, status="escalate", action="human observation decision"
+        )
+    return _decision("discovery", catalogue, state)
 
 
 def _planning_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision | None:
@@ -353,7 +386,8 @@ def decide(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision:
             # route, so a typo would otherwise resolve into a confident wrong name.
             raise ValueError(f"unknown run route {state.route!r}; declared routes are {known}")
     return (
-        _planning_decision(state, catalogue)
+        _discovery_decision(state, catalogue)
+        or _planning_decision(state, catalogue)
         or _implementation_decision(state, catalogue)
         or _review_decision(state, catalogue)
     )
@@ -397,6 +431,9 @@ def _state_from_json(payload: Mapping[str, Any]) -> WorkflowState:
             reviewed_heads=reviewed_heads,
             review_outcome=optional_string("review_outcome"),
             fixer_revisions=nonnegative_integer("fixer_revisions"),
+            evidence_required=boolean("evidence_required", default=False),
+            evidence_completed=boolean("evidence_completed", default=False),
+            discovery_runs=nonnegative_integer("discovery_runs"),
             planner_runs=nonnegative_integer("planner_runs"),
             architect_runs=nonnegative_integer("architect_runs"),
             implementer_runs=nonnegative_integer("implementer_runs"),

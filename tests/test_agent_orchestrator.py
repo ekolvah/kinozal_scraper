@@ -434,6 +434,25 @@ class TestRouteResolution:
         assert decide(_state(), catalogue).next_role == "architect_reviewer"
         assert decide(_state(architect_completed=True), catalogue).next_role == "implementer"
 
+    def test_evidence_required_issue_routes_to_discovery_before_planning(self) -> None:
+        """A bug issue observes first, then plans (#517).
+
+        Routing to the planner while the `## Evidence` block is still missing is what
+        produced the section nobody owed: the planner would be sent to write a plan
+        whose required input does not exist yet.
+        """
+        catalogue = load_catalog()
+
+        first = decide(_state(plan_completed=False, evidence_required=True), catalogue)
+        assert first.next_role == "discovery"
+        assert first.status == "next"
+
+        after = decide(
+            _state(plan_completed=False, evidence_required=True, evidence_completed=True),
+            catalogue,
+        )
+        assert after.next_role == "planner"
+
     def test_trivial_issue_requires_a_recorded_architect_skip_reason(self) -> None:
         catalogue = load_catalog()
 
@@ -484,6 +503,27 @@ class TestBudgetLimits:
         assert decision.next_role == "human_merge"
         assert decision.status == "escalate"
         assert decision.next_action == expected_action
+
+    def test_exhausted_discovery_budget_escalates_to_a_human(self) -> None:
+        """Two runs, because a failed capture is retried once after access is fixed.
+
+        The third attempt is not a retry, it is a standing external obstacle — the case
+        the `status: failed` branch already writes down, so the router hands it to a
+        person instead of looping.
+        """
+        catalogue = load_catalog()
+
+        second = decide(
+            _state(plan_completed=False, evidence_required=True, discovery_runs=1), catalogue
+        )
+        assert second.next_role == "discovery"
+
+        decision = decide(
+            _state(plan_completed=False, evidence_required=True, discovery_runs=2), catalogue
+        )
+        assert decision.next_role == "human_merge"
+        assert decision.status == "escalate"
+        assert decision.next_action == "human observation decision"
 
     def test_reviewer_budget_is_bound_to_head_sha(self) -> None:
         catalogue = load_catalog()
@@ -543,6 +583,18 @@ class TestEvidenceTruthfulness:
         assert decision.next_role == "architect_reviewer"
         assert decision.status == "next"
         assert decision.completed_roles == ("planner",)
+
+    def test_discovery_is_not_reported_completed_without_its_evidence(self) -> None:
+        """Selection is not completion, for the new role as for every other one."""
+        in_progress = decide(_state(plan_completed=False, evidence_required=True), load_catalog())
+        assert in_progress.next_role == "discovery"
+        assert "discovery" not in in_progress.completed_roles
+
+        handed_off = decide(_state(evidence_required=True, evidence_completed=True), load_catalog())
+        assert "discovery" in handed_off.completed_roles
+
+        # A change class that never asks for the block must not claim the role ran.
+        assert "discovery" not in decide(_state(), load_catalog()).completed_roles
 
     def test_nontrivial_architect_skip_does_not_report_completion(self) -> None:
         decision = decide(

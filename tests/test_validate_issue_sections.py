@@ -336,8 +336,16 @@ def _body_with_evidence(content: str) -> str:
     return f"{_full_body()}\n## Evidence\n\n{content}\n"
 
 
+# Since #517 the section opens with the carrier that ran the capture, the way
+# `## Architect review` opens with the reviewer. Spelled out rather than imported, so a
+# renamed carrier fails here instead of agreeing with the catalogue by construction.
+_DISCOVERY_CARRIER = "Claude discovery subagent"
+_DISCOVERY_LINE = f"discovery: {_DISCOVERY_CARRIER}"
+
+
 def _capture_evidence(path: str) -> str:
     return (
+        f"{_DISCOVERY_LINE}\n"
         "capture: `python scripts/capture_kinozal_fixture.py "
         f"https://kinozal.tv/details.php?id=1 {path}`\n"
         f"path: `{path}`\n"
@@ -376,6 +384,7 @@ def test_evidence_path_under_evidence_dir_needs_no_file() -> None:
 def test_source_specific_capture_still_requires_a_decision_record() -> None:
     relative_path = "evidence/issue-509/github.json"
     body = _body_with_evidence(
+        f"{_DISCOVERY_LINE}\n"
         "capture: `gh api repos/ekolvah/kinozal_scraper/issues/509 "
         f"> {relative_path}`\n"
         f"path: `{relative_path}`"
@@ -390,6 +399,7 @@ def test_source_specific_capture_still_requires_a_decision_record() -> None:
 def test_external_evidence_requires_a_preservation_decision_record() -> None:
     path = "evidence/issue-509/captured.html"
     body = _body_with_evidence(
+        f"{_DISCOVERY_LINE}\n"
         f"capture: `python scripts/capture_kinozal_fixture.py https://kinozal.tv {path}`\n"
         f"path: `{path}`\n"
         "observed: one external collection contains both wanted and unwanted records\n"
@@ -413,11 +423,12 @@ def test_non_bug_issue_does_not_require_evidence() -> None:
 
 def test_non_external_bug_can_record_evidence_not_applicable() -> None:
     body = _body_with_evidence(
+        f"{_DISCOVERY_LINE}\n"
         "n/a: the defect is pure review-gate exit-code logic with no external data source"
     )
     assert find_gaps(body, required=_BUG_SECTIONS) == []
 
-    missing_reason = _body_with_evidence("n/a:")
+    missing_reason = _body_with_evidence(f"{_DISCOVERY_LINE}\nn/a:")
     assert find_gaps(missing_reason, required=_BUG_SECTIONS) == ["Evidence (missing: n/a reason)"]
 
 
@@ -480,6 +491,7 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
     relative_wrong_plan = "evidence/issue-506/top.html"
     revision_with_capture_only = (
         f"{wrong_plan}\n## Evidence\n\n"
+        f"{_DISCOVERY_LINE}\n"
         "capture: `python scripts/capture_kinozal_fixture.py "
         f"https://kinozal.tv/top.php?t=0 {relative_wrong_plan}`\n"
         f"path: `{relative_wrong_plan}`\n"
@@ -498,6 +510,212 @@ def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
     )
     wrong_plan_gaps = find_gaps(wrong_plan_with_complete_record, required=_BUG_SECTIONS)
     assert not any(gap.startswith("Evidence") for gap in wrong_plan_gaps)
+
+
+def test_evidence_requires_a_discovery_provenance_line() -> None:
+    """Who ran the capture is part of the record, not folklore (#517).
+
+    The sibling of the `reviewer:` marker in `## Architect review`: the block already
+    claims a live observation, and until now nothing said which carrier made it. The
+    line does not prove the observation happened — it makes the claim attributable.
+    """
+    body = _body_with_evidence(
+        _capture_evidence("evidence/issue-517/top.html").replace(f"{_DISCOVERY_LINE}\n", "")
+    )
+
+    assert find_gaps(body, required=_BUG_SECTIONS) == [
+        "Evidence (missing: discovery provenance line)"
+    ]
+
+
+def test_evidence_rejects_an_undeclared_discovery_carrier() -> None:
+    """The carrier is resolved against the catalogue, so a name cannot be invented."""
+    body = _body_with_evidence(
+        _capture_evidence("evidence/issue-517/top.html").replace(
+            _DISCOVERY_CARRIER, "a helpful assistant"
+        )
+    )
+
+    assert find_gaps(body, required=_BUG_SECTIONS) == [
+        "Evidence (missing: declared discovery adapter)"
+    ]
+
+
+def test_evidence_provenance_only_counts_on_the_first_line() -> None:
+    """Prose quoting the marker is not a provenance line, and vice versa (§IV).
+
+    Exactly the reason `architect_review_provenance` reads only the first non-empty
+    line: this section's own `observed:` field routinely discusses the gate.
+    """
+    evidence = _capture_evidence("evidence/issue-517/top.html")
+    quoted_later = _body_with_evidence(
+        f"{evidence}\nnotes: a run that wrote `discovery: a helpful assistant` would not count"
+    )
+    assert find_gaps(quoted_later, required=_BUG_SECTIONS) == []
+
+    buried = _body_with_evidence(
+        f"The capture below was taken live.\n{evidence}",
+    )
+    assert find_gaps(buried, required=_BUG_SECTIONS) == [
+        "Evidence (missing: discovery provenance line)"
+    ]
+
+
+def test_evidence_na_branch_still_carries_the_provenance_line() -> None:
+    """`n/a:` is an attributable decision too: someone decided there is nothing to observe."""
+    no_line = _body_with_evidence("n/a: pure exit-code logic with no external data source")
+    assert find_gaps(no_line, required=_BUG_SECTIONS) == [
+        "Evidence (missing: discovery provenance line)"
+    ]
+
+    with_line = _body_with_evidence(
+        f"{_DISCOVERY_LINE}\nn/a: pure exit-code logic with no external data source"
+    )
+    assert find_gaps(with_line, required=_BUG_SECTIONS) == []
+
+
+def test_evidence_only_mode_ignores_the_other_sections(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The discovery role finishes before a plan exists, so it needs its own exit code.
+
+    Running the full nine-section gate to check one block would report the eight sections
+    the planner has not written yet as failures of the role that never owed them.
+    """
+    accepted = f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n"
+    monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (accepted, ("bug",)))
+    monkeypatch.setattr(sys, "argv", ["validate_issue_sections.py", "517", "--evidence-only"])
+
+    validator.main()
+
+    assert "Evidence" in capsys.readouterr().out
+
+    rejected = accepted.replace(f"{_DISCOVERY_LINE}\n", "")
+    monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (rejected, ("bug",)))
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 1
+    assert "discovery provenance line" in capsys.readouterr().err
+
+
+def test_evidence_only_judges_the_candidate_block_the_role_controls(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Discovery may not edit the issue, so its completion check cannot read the issue.
+
+    Reading the block through `gh issue view` made the documented completion condition
+    unreachable by the role that owes it: the block is not in the body until the planner
+    writes it, and the planner writes it once, at the end of its own run.
+    """
+    candidate = tmp_path / "evidence-block.md"
+    candidate.write_text(
+        f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n", encoding="utf-8"
+    )
+
+    def _no_gh(_n: int) -> tuple[str, tuple[str, ...]]:
+        raise AssertionError("the candidate block must not be fetched from the issue")
+
+    monkeypatch.setattr(validator, "_fetch_issue", _no_gh)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["validate_issue_sections.py", "517", "--evidence-only", "--body-file", str(candidate)],
+    )
+
+    validator.main()
+
+    assert "Evidence" in capsys.readouterr().out
+
+    candidate.write_text(
+        f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n".replace(
+            f"{_DISCOVERY_LINE}\n", ""
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 1
+    assert "discovery provenance line" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("body_file_route", [True, False])
+def test_unreadable_role_catalogue_exits_two_on_both_evidence_routes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    body_file_route: bool,
+) -> None:
+    """A broken catalogue is not a rejected block (§IV).
+
+    Exit 1 is this gate's "the block is not ready" verdict, so leaking a `CatalogueError`
+    as one tells the discovery carrier to edit a correct block until its budget escalates
+    the catalogue's problem to a human as an observation problem.
+    """
+    accepted = f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n"
+    monkeypatch.setattr(validator, "_ROLE_CATALOGUE", tmp_path / "absent-roles.yaml")
+    argv = ["validate_issue_sections.py", "517", "--evidence-only"]
+    if body_file_route:
+        candidate = tmp_path / "evidence-block.md"
+        candidate.write_text(accepted, encoding="utf-8")
+        argv += ["--body-file", str(candidate)]
+    else:
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (accepted, ("bug",)))
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 2
+    assert "absent-roles.yaml" in capsys.readouterr().err
+
+
+def test_body_file_is_refused_outside_the_evidence_gate(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """A local file may stand in for one block, never for the issue the hand-off gates.
+
+    Accepting it on the full run would let an implementer validate a body that is not the
+    one a reviewer reads — the gate would pass while saying nothing about the issue.
+    """
+    candidate = tmp_path / "body.md"
+    candidate.write_text(_full_body(), encoding="utf-8")
+    monkeypatch.setattr(
+        sys, "argv", ["validate_issue_sections.py", "509", "--body-file", str(candidate)]
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 2
+    # Not the usage banner: that fires for any argument-count mistake, and would stay green
+    # if `--body-file` were silently honoured on the full run.
+    assert "only applies to" in capsys.readouterr().err
+
+
+def test_missing_body_file_is_a_capture_failure_not_a_verdict(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """An unreadable source is neither a pass nor a fail of the block (§IV)."""
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "validate_issue_sections.py",
+            "517",
+            "--evidence-only",
+            "--body-file",
+            str(tmp_path / "absent.md"),
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 2
+    assert "absent.md" in capsys.readouterr().err
 
 
 def test_main_passes_live_bug_label_to_evidence_gate(
