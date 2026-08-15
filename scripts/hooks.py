@@ -279,6 +279,11 @@ def pre_bash_response(payload: dict) -> dict | None:
     }
 
 
+def pre_read_response(payload: dict) -> dict | None:
+    """Return Claude's PreToolUse denial shape when a `Read` slice busts the budget (#534)."""
+    raise NotImplementedError
+
+
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in {"on-edit", "pre-bash"}:
         print(

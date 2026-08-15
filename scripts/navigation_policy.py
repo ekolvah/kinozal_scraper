@@ -205,3 +205,11 @@ def navigation_hint(command: str) -> str | None:
         return None
     hint = _hint(command, depth=0)
     return None if hint is None else f"{hint} Repository navigation goes through tools (#485)."
+
+
+_READ_BUDGET_BYTES = 28_000
+
+
+def read_budget_hint(file_path: object, offset: object = None, limit: object = None) -> str | None:
+    """Return a replacement message when a `Read` slice exceeds the byte budget (#534)."""
+    raise NotImplementedError
