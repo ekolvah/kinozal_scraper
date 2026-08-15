@@ -294,15 +294,42 @@ an already-running process retains its inherited environment. Keep the normal
 export intervals at 60 seconds for metrics and 5 seconds for events. Shorter
 intervals are for a bounded setup probe only.
 
+**Restarting the terminal is not enough when Claude Code runs inside an IDE**
+(#542). An editor extension spawns its own `claude` binary from the editor's
+environment, so the user-scope edit reaches it only after the *editor itself* is
+restarted. This is not a theoretical risk: on 2026-08-15 all twelve live
+`claude.exe` processes spawned by VSCode carried nine `OTEL_*` variables instead
+of ten — `OTEL_EXPORTER_OTLP_ENDPOINT` was missing from every one of them while
+`HKCU\Environment` held it. Claude Code has no default endpoint, so those
+processes had nowhere to send events. The metric half kept working because a
+different, longer-lived process still carried the full environment, which is
+exactly what made the failure look like a backend or version problem: events had
+in fact never arrived from an interactive session, and the whole fourteen-day
+Loki content was one hour bucket from the setup probe.
+
+Restoring the variable in a probe process restored delivery within roughly one
+minute of ingest lag. Run `python scripts/check_otel_event_delivery.py` after
+any environment change to confirm it, rather than inferring delivery from a
+successful Claude response.
+
 ### Verify and import
 
 1. Run one real Claude session long enough for both export intervals.
-2. In Claude debug output, confirm that the first metrics and logs exports both
-   succeed. A successful Claude response alone does not prove telemetry delivery.
-3. In Grafana Explore, select the stack Metrics datasource and confirm a
-   `claude_code_*` metric. Select the stack Logs datasource and query
-   `{service_name="claude-code"}`.
-4. Import the shared `observability/agent-telemetry/dashboard.json` through
+2. Run `python scripts/check_otel_event_delivery.py --minutes 120`. It reads both
+   signals over one window through the Grafana datasource proxy and exits
+   non-zero when sessions appear in metrics and no event series reaches Loki over
+   the same window. Exit `0` with `ok:` is delivery confirmed; exit `2` is an
+   unreadable stack, never a healthy one; a `window-empty` verdict means no
+   session ran, so nothing was proven. The check is deliberately thresholdless
+   (ADR-0006 defers thresholds) and read-only (ADR-0010).
+
+   It replaces the former manual steps 2–3 — client debug output and two Explore
+   queries. Those steps were the accepted coverage boundary for four months and
+   nobody ran them, which is how event delivery stayed broken without a single
+   red signal. Allow about a minute of ingest lag before trusting a negative
+   result: a probe that waited 45 seconds concluded the opposite of the truth
+   (#542).
+3. Import the shared `observability/agent-telemetry/dashboard.json` through
    **Dashboards → New → Import**, then select the stack Metrics and Logs
    datasources. A Grafana service-account token with Editor permission is
    needed only for API-driven verification/import, not for ingestion.

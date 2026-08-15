@@ -459,12 +459,20 @@ decision goes to" route — and the rule itself — live in
   automation. It cannot authenticate to the maintainer's Grafana stack, prove that Claude Code's
   bundled exporter still maps headers and metric temporality correctly, observe backend name
   translation, or execute Grafana's import/query path. Those are credentialed external contracts.
-  The accepted boundary is a manual live check from
-  [`operations.md`](operations.md#verify-and-import): first metrics and logs exports both succeed,
-  destination queries return both signal types, content fields remain redacted/absent, and the
-  dashboard imports. **Revisit trigger:** a provider changes the exporter or OTLP mapping, the
-  dashboard import fails, or a captured signal/attribute disappears. Update the values-free
-  catalogue only from a new live capture; never make a missing dimension pass as zero.
+  The boundary has since moved: delivery itself is no longer a manual step (#542).
+  `python scripts/check_otel_event_delivery.py` reads both signals over one window and exits
+  non-zero when sessions appear in metrics and no event series reaches Loki, so the discrepancy
+  now carries an exit code instead of an operator's intention to look. Its own verdict logic is
+  unit-tested on the captured windows in `tests/fixtures/otel-delivery-*.json`
+  (`tests/test_otel_event_delivery.py`); what stays offline-unprovable is the Prometheus/Loki
+  response shape the thin I/O wrapper normalizes, which no fixture of a *raw* proxy answer covers.
+  **Still manual:** dashboard import, and confirming that content fields remain redacted/absent.
+  **Revisit trigger:** a provider changes the exporter or OTLP mapping, the dashboard import
+  fails, a captured signal/attribute disappears, or the proxy response shape changes under the
+  wrapper. The previous wording made the whole live check manual, it was never run, and event
+  delivery stayed broken for months while every offline test passed — a trigger nobody executes
+  is not a boundary. Update the values-free catalogue only from a new live capture; never make a
+  missing dimension pass as zero.
 
 - **AO. Offline tests cannot prove Codex → Alloy → Grafana delivery or shared-dashboard import
   (#472).** `tests/test_codex_otel_assets.py` guards metrics-only Codex config, loopback receiver,
