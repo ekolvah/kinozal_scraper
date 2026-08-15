@@ -641,6 +641,37 @@ def test_evidence_only_judges_the_candidate_block_the_role_controls(
     assert "discovery provenance line" in capsys.readouterr().err
 
 
+@pytest.mark.parametrize("body_file_route", [True, False])
+def test_unreadable_role_catalogue_exits_two_on_both_evidence_routes(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+    body_file_route: bool,
+) -> None:
+    """A broken catalogue is not a rejected block (§IV).
+
+    Exit 1 is this gate's "the block is not ready" verdict, so leaking a `CatalogueError`
+    as one tells the discovery carrier to edit a correct block until its budget escalates
+    the catalogue's problem to a human as an observation problem.
+    """
+    accepted = f"## Evidence\n\n{_capture_evidence('evidence/issue-517/top.html')}\n"
+    monkeypatch.setattr(validator, "_ROLE_CATALOGUE", tmp_path / "absent-roles.yaml")
+    argv = ["validate_issue_sections.py", "517", "--evidence-only"]
+    if body_file_route:
+        candidate = tmp_path / "evidence-block.md"
+        candidate.write_text(accepted, encoding="utf-8")
+        argv += ["--body-file", str(candidate)]
+    else:
+        monkeypatch.setattr(validator, "_fetch_issue", lambda _n: (accepted, ("bug",)))
+    monkeypatch.setattr(sys, "argv", argv)
+
+    with pytest.raises(SystemExit) as exc:
+        validator.main()
+
+    assert exc.value.code == 2
+    assert "absent-roles.yaml" in capsys.readouterr().err
+
+
 def test_body_file_is_refused_outside_the_evidence_gate(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:

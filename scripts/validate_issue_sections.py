@@ -656,14 +656,17 @@ def _parse_argv(raw: list[str]) -> tuple[int, bool, bool, str | None]:
 
 def main() -> None:
     n, mark_planned, evidence_only, body_file = _parse_argv(sys.argv[1:])
-    if body_file is not None:
-        # `discovery` may not edit the issue, so at its completion the block it produced is
-        # not in the body yet. Reading it through `gh` would make the role's own gate
-        # unreachable by the role that owes it, which is the defect this branch closes.
-        _evidence_only(n, _read_candidate(body_file), body_file)
-        return
-    body, labels = _fetch_issue(n)
+    # Every route that can reach the catalogue sits inside this `try`, including the
+    # `--body-file` branch below: a route outside it reports an unreadable catalogue as
+    # exit 1, which is this gate's "the block is not ready" verdict about a good block.
     try:
+        if body_file is not None:
+            # `discovery` may not edit the issue, so at its completion the block it produced
+            # is not in the body yet. Reading it through `gh` would make the role's own gate
+            # unreachable by the role that owes it, which is the defect this branch closes.
+            _evidence_only(n, _read_candidate(body_file), body_file)
+            return
+        body, labels = _fetch_issue(n)
         if evidence_only:
             # Before the label resolution below: the block is required by exactly one
             # class, and the role that produces it is asked for the block, not the class.
