@@ -1,0 +1,29 @@
+{
+  "note": "Constructed from the issue-542 captures by keeping the event half and emptying the metric half: the mirror failure operations.md records, where a wrong metrics temporality preference is rejected while log export keeps succeeding. Stack identifiers removed.",
+  "captured_at_utc": "2026-08-15T16:03:56Z",
+  "window": {
+    "minutes": 120,
+    "start_unix": 1786802636,
+    "end_unix": 1786809836
+  },
+  "events": {
+    "status_code": 200,
+    "series": [
+      {
+        "labels": {
+          "service_version": "2.1.232"
+        },
+        "non_zero": [
+          [
+            1786809000,
+            "14"
+          ]
+        ]
+      }
+    ]
+  },
+  "metrics": {
+    "status_code": 200,
+    "series": []
+  }
+}

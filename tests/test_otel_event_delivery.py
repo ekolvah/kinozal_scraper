@@ -11,6 +11,7 @@ import pytest
 from scripts.check_otel_event_delivery import (
     DeliveryUnavailable,
     delivery_verdict,
+    main,
     read_credentials,
     signal_series,
 )
@@ -35,17 +36,28 @@ class TestDeliveryVerdict:
         assert "2.1.232" in reported, "the finding must name the metric series that did arrive"
         assert "0" in reported, "the finding must name the event count that did not"
 
-        accepted = delivery_verdict(_observation("otel-delivery-accepted.json"))
+        accepted = delivery_verdict(_observation("otel-delivery-both-signals.json"))
 
         assert accepted.state == "aligned"
         assert accepted.findings == ()
 
     def test_aligned_signals_report_no_gap(self) -> None:
         """A window carrying both signals exits zero, or the check becomes always-red."""
-        verdict = delivery_verdict(_observation("otel-delivery-accepted.json"))
+        verdict = delivery_verdict(_observation("otel-delivery-both-signals.json"))
 
         assert verdict.exit_code() == 0
         assert verdict.findings == ()
+
+    def test_events_without_metrics_is_reported(self) -> None:
+        """The mirror of #542: a rejected metrics export must not print "both arrived"."""
+        verdict = delivery_verdict(_observation("otel-delivery-metrics-gap.json"))
+
+        assert verdict.state == "metrics-missing"
+        assert verdict.state != "aligned"
+        assert verdict.exit_code() != 0
+        reported = " ".join(verdict.findings)
+        assert "2.1.232" in reported, "the finding must name the event series that did arrive"
+        assert "temporality" in reported, "the finding must point at the cause it shares with"
 
     def test_empty_window_is_reported_as_empty(self) -> None:
         """No sessions at all is inconclusive, and must not read as health (§IV)."""
@@ -57,11 +69,8 @@ class TestDeliveryVerdict:
 
 
 class TestDeliveryIO:
-    def test_missing_credentials_fails_loudly(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_missing_credentials_fails_loudly(self) -> None:
         """Absent credentials raise; they never report an absence of gaps."""
-        monkeypatch.delenv("GRAFANA_URL", raising=False)
-        monkeypatch.delenv("GRAFANA_SERVICE_ACCOUNT_TOKEN", raising=False)
-
         with pytest.raises(DeliveryUnavailable) as failure:
             read_credentials({})
 
@@ -85,3 +94,17 @@ class TestDeliveryIO:
 
         assert signal_series(observation["metrics"], "metrics")
         assert signal_series(observation["events"], "events") == []
+
+
+class TestExitCodes:
+    def test_a_malformed_capture_is_unavailable_not_a_gap(self, tmp_path: Path) -> None:
+        """Exit 1 means "sessions without events"; a crash must not borrow that meaning."""
+        broken = tmp_path / "half-a-window.json"
+        broken.write_text(json.dumps({"window": {"minutes": 60}}), encoding="utf-8")
+
+        assert main(["--observation", str(broken)]) == 2
+
+    def test_a_captured_gap_exits_one(self) -> None:
+        """The exit code the operator is told to read comes from the verdict, end to end."""
+        assert main(["--observation", str(FIXTURES / "otel-delivery-gap.json")]) == 1
+        assert main(["--observation", str(FIXTURES / "otel-delivery-both-signals.json")]) == 0

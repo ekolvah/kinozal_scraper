@@ -461,12 +461,14 @@ decision goes to" route — and the rule itself — live in
   translation, or execute Grafana's import/query path. Those are credentialed external contracts.
   The boundary has since moved: delivery itself is no longer a manual step (#542).
   `python scripts/check_otel_event_delivery.py` reads both signals over one window and exits
-  non-zero when sessions appear in metrics and no event series reaches Loki, so the discrepancy
-  now carries an exit code instead of an operator's intention to look. Its own verdict logic is
+  non-zero when either half is missing while the other arrived, so the discrepancy now carries an
+  exit code instead of an operator's intention to look. Its own verdict logic is
   unit-tested on the captured windows in `tests/fixtures/otel-delivery-*.json`
   (`tests/test_otel_event_delivery.py`); what stays offline-unprovable is the Prometheus/Loki
   response shape the thin I/O wrapper normalizes, which no fixture of a *raw* proxy answer covers.
-  **Still manual:** dashboard import, and confirming that content fields remain redacted/absent.
+  **Still manual:** dashboard import, and confirming that content fields remain redacted/absent —
+  the latter is a different property from delivery, kept as its own Explore step in
+  [`operations.md`](operations.md#verify-and-import) because the check never inspects line content.
   **Revisit trigger:** a provider changes the exporter or OTLP mapping, the dashboard import
   fails, a captured signal/attribute disappears, or the proxy response shape changes under the
   wrapper. The previous wording made the whole live check manual, it was never run, and event

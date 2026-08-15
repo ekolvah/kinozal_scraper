@@ -46,9 +46,9 @@ The delta this ADR records against ADR-0006 is narrow and bounded:
 
 * The repository may contain a script that authenticates to the Grafana stack **read-only** —
   `GET` through the datasource proxy — using credentials that live outside git, in `.env`.
-* It stays **thresholdless**. Its finding is the observable fact "sessions present in metrics and
-  zero event series over the same window", not a tuned lag limit. ADR-0006's deferral of
-  thresholds until a measured baseline stands unchanged.
+* It stays **thresholdless**. Its finding is the observable fact "one signal present over the
+  window and zero series of the other", in both directions, not a tuned lag limit. ADR-0006's
+  deferral of thresholds until a measured baseline stands unchanged.
 * It stays **operator-invoked**. No daemon, no scheduler, no hook, no CI wiring, no writes to the
   stack, no issue creation, no model invocation.
 * The dashboard's prohibitions are untouched: no `alert` in the dashboard JSON, no bespoke

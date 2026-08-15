@@ -1,5 +1,5 @@
 {
-  "note": "Captured 2026-08-15 for issue #542, 14-day window: the one hour bucket in which events were accepted, beside the metric sessions of the same window. Stack identifiers removed.",
+  "note": "Captured 2026-08-15 for issue #542, 14-day window: both signals carry series, which is what the verdict rests on. Not a healthy baseline — the whole event half is the single setup-probe bucket that operations.md describes as the symptom. Stack identifiers removed.",
   "captured_at_utc": "2026-08-15T16:03:56Z",
   "window": {
     "days": 14,

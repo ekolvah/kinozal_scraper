@@ -317,11 +317,18 @@ successful Claude response.
 1. Run one real Claude session long enough for both export intervals.
 2. Run `python scripts/check_otel_event_delivery.py --minutes 120`. It reads both
    signals over one window through the Grafana datasource proxy and exits
-   non-zero when sessions appear in metrics and no event series reaches Loki over
-   the same window. Exit `0` with `ok:` is delivery confirmed; exit `2` is an
-   unreadable stack, never a healthy one; a `window-empty` verdict means no
-   session ran, so nothing was proven. The check is deliberately thresholdless
-   (ADR-0006 defers thresholds) and read-only (ADR-0010).
+   non-zero when either half is missing while the other arrived — `events-missing`
+   for the gap this check was written for (#542), `metrics-missing` for its
+   mirror, where the metrics endpoint rejects an export the logs endpoint accepts. Exit `0` with `ok:` is delivery
+   confirmed; exit `2` is an unreadable stack or an unexpected failure, never a
+   healthy one; a `window-empty` verdict means no session ran, so nothing was
+   proven. The check is deliberately thresholdless (ADR-0006 defers thresholds)
+   and read-only (ADR-0010).
+
+   It needs `GRAFANA_URL` and `GRAFANA_SERVICE_ACCOUNT_TOKEN` in the local `.env`
+   (or the process environment). Both are read only from there, never committed;
+   a **Viewer**-permission token suffices, because every call is a datasource-proxy
+   read.
 
    It replaces the former manual steps 2–3 — client debug output and two Explore
    queries. Those steps were the accepted coverage boundary for four months and
@@ -329,10 +336,14 @@ successful Claude response.
    red signal. Allow about a minute of ingest lag before trusting a negative
    result: a probe that waited 45 seconds concluded the opposite of the truth
    (#542).
-3. Import the shared `observability/agent-telemetry/dashboard.json` through
+3. Confirm the redaction the check does not look at: in Explore, query
+   `{service_name="claude-code"}` and open one line. Prompt and completion content
+   fields must be absent, not merely empty. Delivery and redaction are different
+   properties, and only the first one now has an exit code.
+4. Import the shared `observability/agent-telemetry/dashboard.json` through
    **Dashboards → New → Import**, then select the stack Metrics and Logs
-   datasources. A Grafana service-account token with Editor permission is
-   needed only for API-driven verification/import, not for ingestion.
+   datasources. Importing through the API needs a token with Editor permission;
+   the verification in step 2 does not, and ingestion needs neither.
 
 The dashboard uses only signal names and attributes captured from the real
 destination. A missing compaction, agent, or skill dimension is displayed as
