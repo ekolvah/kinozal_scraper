@@ -179,7 +179,12 @@ def fetch_observation(
         "window": {"minutes": minutes, "start_unix": start, "end_unix": end}
     }
     for signal, (url, query) in requests_by_signal.items():
-        parameters = {"query": query, "start": start, "end": end, "step": 60}
+        parameters: dict[str, str | int] = {
+            "query": query,
+            "start": start,
+            "end": end,
+            "step": 60,
+        }
         try:
             answer = session.get(url, params=parameters, timeout=REQUEST_TIMEOUT_SECONDS)
         except requests.RequestException as failure:

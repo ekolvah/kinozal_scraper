@@ -19,7 +19,8 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def _observation(name: str) -> dict[str, Any]:
-    return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+    captured: dict[str, Any] = json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+    return captured
 
 
 class TestDeliveryVerdict:
