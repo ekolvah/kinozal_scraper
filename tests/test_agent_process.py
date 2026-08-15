@@ -71,6 +71,20 @@ _PLANNER_RUNBOOK_ENUMERATIONS = (
     "## Evidence",
     "## Prior art",
 )
+_DISCOVERY_RUNBOOK_ANCHOR = "agent-process.md#discovery-runbook"
+# The observation bounds the planner runbook carried until #517. They move wholesale to
+# the discovery runbook, so each one is asserted present there and absent from the planner
+# step that now only records the returned block. Stated once here because they are both
+# the move assertion and a shared-gate definition no provider file may carry.
+_DISCOVERY_RUNBOOK_BOUNDS = (
+    "observe that live system before writing the plan",
+    "Replacing it with a sibling feed or category is data loss, not preservation",
+    "this is discovery, not an E2E test or a substitute for a human product decision",
+)
+# One sentence, four homes: the runbook, `activation:`, `entry_evidence:`, and the router's
+# documented input row. An activation that reads differently in any of them is a second
+# rule nobody agreed to (#517).
+_DISCOVERY_ACTIVATION = "bug issue whose Evidence block is not yet accepted"
 # A shared gate is *defined* by an enumeration or a bound, never by naming a script:
 # `test_canonical_contract_and_codex_skill_keep_all_implementer_gates` deliberately
 # requires command names inside the adapters, so a blanket "no gates here" rule would
@@ -100,6 +114,10 @@ _SHARED_GATE_DEFINITIONS = (
         "docs/architecture/agent-process.md",
     ),
     ("reuse/build verdict", "docs/architecture/agent-process.md"),
+    # The observation bounds now belong to the discovery runbook. They were canon before
+    # the move too, so enrolling them here guards the same thing on the new home: an
+    # adapter may invoke the role, never re-decide how far the observation goes (#517).
+    *((bound, "docs/architecture/agent-process.md") for bound in _DISCOVERY_RUNBOOK_BOUNDS),
     # The migration rule for issues planned before the discovery section existed. It is an
     # *implementer* obligation, so it belongs in the tuple that globs every provider file
     # rather than in the planner-adapter markers.
@@ -255,15 +273,14 @@ class TestAgentProcess:
             (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
         )
 
-        for role in (
-            "planner",
-            "architect_reviewer",
-            "implementer",
-            "pr_reviewer",
-            "fixer",
-            "human_merge",
-        ):
-            assert f"| `{role}` | {catalogue['roles'][role]['max_runs']} |" in process
+        # Derived from the catalogue rather than a literal tuple: a role added there with
+        # no row in the cap table is exactly the drift this node exists to catch, and a
+        # hardcoded list goes green on it (#517).
+        assert catalogue["roles"], "the role catalogue collapsed to nothing"
+        for role, data in catalogue["roles"].items():
+            assert f"| `{role}` | {data['max_runs']} |" in process, (
+                f"role {role!r} has no documented run cap"
+            )
 
     def test_documented_carrier_selection_modes_match_the_catalogue(self) -> None:
         """A selection mode nobody documented is a rule only the validator knows (#478)."""
@@ -382,6 +399,95 @@ class TestAgentProcess:
                 assert marker not in text, f"{name} restates the runbook bound {marker!r}"
             for enumeration in _PLANNER_RUNBOOK_ENUMERATIONS:
                 assert enumeration not in text, f"{name} enumerates {enumeration!r}"
+
+    def test_discovery_role_declares_carriers_for_the_evidence_contract(self) -> None:
+        """The `## Evidence` block has a role that owes it, not just a section (#517).
+
+        The contract already demanded a live observation, a preserved record, and a
+        boundary comparison, while every declared role's authority stopped short of
+        producing them. A section nobody owns is filled by whoever happens to be
+        running, which is the state this catalogue entry ends.
+        """
+        catalogue = yaml.safe_load(
+            (_REPO / ".agents" / "orchestration" / "roles.yaml").read_text(encoding="utf-8")
+        )
+        assert "discovery" in catalogue["roles"], "no role produces the bug Evidence block"
+        role = catalogue["roles"]["discovery"]
+
+        assert role["contract"] == f"docs/architecture/{_DISCOVERY_RUNBOOK_ANCHOR}"
+        assert set(role["adapters"]) == {
+            "Claude discovery subagent",
+            "Codex $plan-issue #N self-discovery",
+        }
+        assert role["carrier_selection"] == "run_route"
+        assert role["adapter"] == "Claude discovery subagent"
+        # Two runs, because the contract's `status: failed` branch expects capture-fail,
+        # fix access, capture again — a cap of one would escalate a routine retry.
+        assert role["max_runs"] == 2
+        # Authority stops where the planner's begins: the same division `architect_reviewer`
+        # already uses, so the artifact stays attributable to the role that produced it.
+        authority = role["authority"]
+        for forbidden in ("may not edit the issue body", "production code"):
+            assert forbidden in authority, f"discovery authority lost {forbidden!r}"
+
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        assert "## Discovery runbook" in process, "the canonical discovery runbook is missing"
+        assert process.index("## Discovery runbook") < process.index("## Planner runbook"), (
+            "the discovery runbook must precede the planner runbook it feeds"
+        )
+        runbook = " ".join(process.split("## Discovery runbook", 1)[1].split("\n## ", 1)[0].split())
+        # One activation sentence, in the runbook, in both catalogue fields, and in the
+        # router's documented input row.
+        assert _DISCOVERY_ACTIVATION in runbook
+        assert _DISCOVERY_ACTIVATION in role["activation"]
+        assert _DISCOVERY_ACTIVATION in role["entry_evidence"]
+        assert "--evidence-only" in role["completion_evidence"], (
+            "completion evidence must name the check that accepts it, not a prose bar"
+        )
+        # The honest limit: the gate reads a claim, never the observation itself.
+        assert "claimed the observation" in runbook, (
+            "the runbook stopped naming what a provenance line does not prove"
+        )
+
+    def test_planner_runbook_delegates_the_observation_to_discovery(self) -> None:
+        """The bounds move; they are not copied into a second home (#517).
+
+        Absence from the planner runbook is the half that matters: leaving the old
+        wording in place would make the new role advisory and the two texts free to
+        drift apart at the first change to either.
+        """
+        process = (_REPO / "docs" / "architecture" / "agent-process.md").read_text(encoding="utf-8")
+        planner = " ".join(process.split("## Planner runbook", 1)[1].split("\n## ", 1)[0].split())
+        discovery = " ".join(
+            process.split("## Discovery runbook", 1)[1].split("\n## ", 1)[0].split()
+        )
+
+        for bound in _DISCOVERY_RUNBOOK_BOUNDS:
+            normalized = " ".join(bound.split())
+            assert normalized in discovery, f"the discovery runbook lost {bound!r}"
+            assert normalized not in planner, f"the planner runbook still decides {bound!r}"
+        assert "verbatim" in planner, (
+            "the planner step no longer says it records the returned block unchanged"
+        )
+
+        adapters = {
+            _REPO / ".claude" / "commands" / "plan.md": "discovery: Claude discovery subagent",
+            _REPO
+            / ".agents"
+            / "skills"
+            / "plan-issue"
+            / "SKILL.md": "discovery: Codex $plan-issue #N self-discovery",
+        }
+        for path, provenance in adapters.items():
+            text = path.read_text(encoding="utf-8")
+            assert _DISCOVERY_RUNBOOK_ANCHOR in text, (
+                f"{path.name} does not point at {_DISCOVERY_RUNBOOK_ANCHOR}"
+            )
+            assert provenance in text, f"{path.name} does not name its discovery carrier"
+
+        persona = _REPO / ".claude" / "agents" / "discovery.md"
+        assert persona.exists(), "the Claude discovery carrier has no persona file"
+        assert _DISCOVERY_RUNBOOK_ANCHOR in persona.read_text(encoding="utf-8")
 
     def test_planner_marks_planned_and_no_implementer_home_unmarks_it(self) -> None:
         """The board flag is planner-only, in the canon and nowhere else (#519).
