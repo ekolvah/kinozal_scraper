@@ -478,7 +478,8 @@ decision goes to" route — and the rule itself — live in
   **Consciously rejected coverage (#549):** no guard test pins the events half of
   `capture.signal_provenance` to `status == "unreproduced"` in
   `observability/claude-code/signal-catalogue.json` — that value is expected to turn `verified`
-  once #542's operator step lands, and a value-pinning test would then fail as the truth improved
+  once the operator step restoring event delivery lands (#542), and a value-pinning test would
+  then fail as the truth improved
   ([`testing.md`](testing.md#rule-when-a-test-is-not-worth-writing)). The structural invariant that
   *does* stay guarded: every half carries its own `status`/`observed`/`claude_code_versions`, a
   non-`verified` half carries `absent_on`, and the flat top-level verdict this replaced
