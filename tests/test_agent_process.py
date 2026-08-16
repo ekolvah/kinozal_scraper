@@ -719,3 +719,31 @@ class TestAgentProcess:
         assert "manual IDE-agent review" not in process
         assert "`clean` and `rework` pass" in process
         assert "`blocking` reds the check" in process
+
+    def test_mindset_names_the_red_to_green_recovery_recipe(self) -> None:
+        """#536: the second #517 compaction lands at the RED->GREEN boundary, not exploration.
+
+        The recipe's home is `mindset.md` (harness token tactics); pinned markers keep the
+        adapter (`implement.md`) honest about pointing here instead of restating it.
+        """
+        mindset = (_REPO / ".claude" / "rules" / "mindset.md").read_text(encoding="utf-8")
+        for marker in (
+            "RED→GREEN boundary",
+            "`/compact <focus>`",
+            "git branch --show-current",
+            "one `gh issue view <N>`",
+            "do not add a second remedy for the same phase",
+        ):
+            assert marker in mindset, f"mindset.md lost the RED->GREEN recovery marker {marker!r}"
+
+    def test_implement_md_points_at_the_boundary_recipe_without_restating_it(self) -> None:
+        """canonical-home discipline: the adapter names the recipe, it does not copy it."""
+        command = (_REPO / ".claude" / "commands" / "implement.md").read_text(encoding="utf-8")
+        assert "RED→GREEN boundary" in command
+        assert "mindset.md" in command
+        assert "git branch --show-current" not in command, (
+            "implement.md restates the recovery recipe instead of pointing at mindset.md"
+        )
+        assert "gh issue view <N>" not in command, (
+            "implement.md restates the recovery recipe instead of pointing at mindset.md"
+        )
