@@ -46,12 +46,9 @@ Always-load (without `paths:`): the tactics are needed in every session, not onl
   the Bash tool limit. Command-specific timings are in `CLAUDE.md` §Environment.
 - **Edit files with `Edit`/`Write`, not a heredoc script** (`python - <<'PY'`): the harness draws the changed
   file into context and retains it until the session ends.
-- **RED→GREEN boundary in `/implement`**: of the two auto-compactions measured in #517, the first is
-  #534's territory (whole-file reads before the first edit); the second lands at the end of writing the
-  RED tests, right at the RED→GREEN boundary. At that boundary—immediately after the RED commit—ask the
-  user to run `/compact <focus>`, naming exactly three facts in the focus: the issue number, the
-  branch (`git branch --show-current`), and the RED commit; do not wait for an untargeted auto-compact.
-  Recover state afterward from those three plus one `gh issue view <N>`, not by re-reading files
-  already reflected in the RED commit's diff. Revision condition: watch whether the second compaction
-  keeps recurring at this boundary in upcoming `/implement` sessions; if not, the recipe is confirmed—if
-  it does, fix the trigger, do not add a second remedy for the same phase.
+- **RED→GREEN boundary in `/implement`**: a second auto-compaction lands at the end of writing RED
+  tests (first compaction is #534's territory; measured in #517). Right after the RED commit, ask the
+  user to run `/compact <focus>`, naming: issue number, branch (`git branch --show-current`), RED
+  commit. Recover state from those plus one `gh issue view <N>`, not by re-reading files already in
+  the RED commit's diff. Revision condition: if the second compaction stops recurring, the recipe is
+  confirmed; if it recurs, fix the trigger — do not add a second remedy for the same phase.
