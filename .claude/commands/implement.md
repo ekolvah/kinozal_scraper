@@ -19,8 +19,10 @@ and are not copied here. This file contains only harness-specific material.
 1. Follow the canonical delivery flow. Do not invent a plan: a failing
    `validate_issue_sections.py` returns work to the `planner`; it is not a reason to complete the plan yourself.
 2. Edit files with `Edit`/`Write`, not a heredoc script ([mindset](../rules/mindset.md)).
-3. `ci_check.py` and `git push` take minutes — make **one foreground invocation with an increased `timeout`**,
+3. Right after the canonical flow's RED commit, apply the RED→GREEN boundary recipe in
+   [mindset.md](../rules/mindset.md) (pointer only, do not restate it here).
+4. `ci_check.py` and `git push` take minutes — make **one foreground invocation with an increased `timeout`**,
    with no background execution or polling loop (timings and pitfalls: `CLAUDE.md` §Environment).
-4. The **exit code of `python -m scripts.review_gate <PR>`** ends the loop, not your reading of
+5. The **exit code of `python -m scripts.review_gate <PR>`** ends the loop, not your reading of
    findings. Actions for each verdict are in §Review-gate verdicts; do not copy that table here.
-5. On completion, provide the PR link, the gate verdict, and an explicit “merge is your step”.
+6. On completion, provide the PR link, the gate verdict, and an explicit “merge is your step”.
