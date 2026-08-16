@@ -475,6 +475,20 @@ decision goes to" route — and the rule itself — live in
   delivery stayed broken for months while every offline test passed — a trigger nobody executes
   is not a boundary. Update the values-free catalogue only from a new live capture; never make a
   missing dimension pass as zero.
+  **Consciously rejected coverage (#549):** no guard test pins the events half of
+  `capture.signal_provenance` to `status == "unreproduced"` in
+  `observability/claude-code/signal-catalogue.json` — that value is expected to turn `verified`
+  once the operator step restoring event delivery lands (#542), and a value-pinning test would
+  then fail as the truth improved
+  ([`testing.md`](testing.md#rule-when-a-test-is-not-worth-writing)). The structural invariant that
+  *does* stay guarded: every half carries its own `status`/`observed`/`claude_code_versions`, a
+  non-`verified` half carries `absent_on`, and the flat top-level verdict this replaced
+  (`capture.status`/`captured_at`/`claude_code_version`) may not resurface
+  (`test_each_signal_half_carries_its_own_observation`). One half's `verified` status is never
+  inherited by the other — each is its own claim, evidenced by its own capture. **Revisit trigger:**
+  `python scripts/check_otel_event_delivery.py` exits `0`; update the events half's provenance from
+  that new live capture, not by hand-editing the JSON, or the `unreproduced` marker goes stale in
+  the opposite direction and starts lying about a gap that has since closed.
 
 - **AO. Offline tests cannot prove Codex → Alloy → Grafana delivery or shared-dashboard import
   (#472).** `tests/test_codex_otel_assets.py` guards metrics-only Codex config, loopback receiver,

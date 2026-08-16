@@ -104,9 +104,8 @@ class TestSignalCatalogue:
     def test_catalogue_contains_names_and_attributes_but_no_values(self) -> None:
         catalogue = _load_json(SIGNAL_CATALOGUE)
 
-        assert catalogue["schema_version"] == 1
+        assert catalogue["schema_version"] == 2
         assert catalogue["capture"]["destination"] == "Grafana Cloud"
-        assert catalogue["capture"]["status"] == "verified"
         assert catalogue["signals"]["metrics"]
         assert catalogue["signals"]["events"]
 
@@ -124,6 +123,31 @@ class TestSignalCatalogue:
         assert '"value"' not in serialized
         assert '"values"' not in serialized
         assert '"sample"' not in serialized
+
+    def test_each_signal_half_carries_its_own_observation(self) -> None:
+        """A half's verified status may not be inferred from the other half (#549)."""
+        catalogue = _load_json(SIGNAL_CATALOGUE)
+        provenance = catalogue["capture"]["signal_provenance"]
+
+        assert set(provenance) == set(catalogue["signals"])
+
+        for entry in provenance.values():
+            assert entry["status"] in {"verified", "unreproduced"}
+            assert entry["observed"]
+            assert entry["claude_code_versions"]
+            assert all(isinstance(version, str) for version in entry["claude_code_versions"])
+            if entry["status"] != "verified":
+                absent_on = entry["absent_on"]
+                assert absent_on["observed"]
+                assert absent_on["claude_code_versions"]
+                assert all(
+                    isinstance(version, str) for version in absent_on["claude_code_versions"]
+                )
+
+        # The flat verdict this replaces may not resurface at the top level.
+        assert "status" not in catalogue["capture"]
+        assert "captured_at" not in catalogue["capture"]
+        assert "claude_code_version" not in catalogue["capture"]
 
 
 class TestGrafanaDashboard:

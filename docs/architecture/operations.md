@@ -350,6 +350,14 @@ destination. A missing compaction, agent, or skill dimension is displayed as
 unavailable, never as zero. Claude's cost metric is estimated and must not be
 used as a billing source of truth.
 
+Verification is per half, not per catalogue: `capture.signal_provenance` in
+`observability/claude-code/signal-catalogue.json` carries a separate `status`,
+`observed` date, and `claude_code_versions` for `metrics` and for `events`
+(#549). A `verified` metrics half does not carry the events half with it — the
+events entry stays `unreproduced`, with its own `absent_on` observation, until
+a new live capture (e.g. a green `check_otel_event_delivery.py`, step 2 above)
+updates it.
+
 ### LogQL query shape for this stack
 
 The Logs datasource has exactly one index label, `service_name`. This is a
