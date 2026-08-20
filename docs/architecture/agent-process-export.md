@@ -8,6 +8,18 @@ layers below, the official Claude Code plugin marketplace for the Claude-adapter
 the actual template repository, the plugin package, and installing either into a target project is
 out of scope here — a follow-up issue opened when that build starts.
 
+## Manifest scope
+
+This manifest classifies the agentic-process contract's own files — the docs, scripts, and
+adapter files `roles.yaml` and the tables below name directly — plus, for each, the tests that
+gate it by matching name. It is not a claim that every file reachable by *any* transitive
+reference (every fixture, every `conftest.py`, every CLI-flag or edge-case test) has a row: three
+rounds of review each found a further tranche of those at finer grain, which is a sign the
+hand-maintained boundary sits at "the contract and its direct gates," not at "everything Python
+can import from there." A row is added when a reader following a table entry would hit a missing
+file *the entry itself depends on to run* (e.g. a template a test asserts exists) — not for every
+file a test module happens to also read.
+
 ## Layer 0 — provider-neutral core (copier)
 
 | File | Export status | Templated fields |
@@ -34,7 +46,11 @@ out of scope here — a follow-up issue opened when that build starts.
 | `scripts/hooks.py` + `scripts/navigation_policy.py` | generic as-is | None — `hooks.py`'s `pre-bash`/`pre-read` entry points import `navigation_policy.py` directly (same layer, so the import resolves within one copier payload); its `on-edit` checks (`run_on_paths`) are reused by Codex's `scripts/codex_hooks.py` (Layer 2, also copier-distributed — see §Install order below) |
 | `docs/adr/0004-controller-pr-review-runs-on-the-workflow-token.md`, `docs/adr/0009-discovery-is-a-separate-role-chained-inside-the-planner-run.md` | generic as-is | None — both explain design decisions behind the exported mechanism itself (the review-gate trust model, the discovery role), not a product feature |
 | `docs/adr/0005-english-repository-documentation.md` | generic as-is | None — explains the choice `scripts/check_language.py` enforces; a target project either adopts the same decision or drops the script, same as that row |
-| `tests/test_agent_process.py`, `tests/test_hooks.py`, `tests/test_navigation_policy.py`, `tests/test_codex_hooks.py`, `tests/test_review_gate.py`, `tests/test_language_policy.py`, `tests/test_adr_records.py`, `tests/test_doc_headers.py`, `tests/test_doc_links.py`, `tests/test_doc_narrative.py`, `tests/test_agent_orchestrator.py`, `tests/test_issue_branch.py`, `tests/test_branch_protection.py`, `tests/test_ci_check.py`, `tests/test_agent_frontmatter.py` | generic as-is | None as a set — each test gates the row above with the matching name; a row marked "generic templated" above (`check_branch_protection.py`, `ci_check.py`) still exports its test as-is, because the test itself asserts the templated *mechanism*, not the templated *value* |
+| `docs/adr/0003-second-carrier-for-the-required-review-gate.md`, `docs/adr/0011-agentic-process-distribution-mechanism.md` | generic as-is | None — 0003 is the design record the carriers row above cites by number; 0011 is the mechanism decision this manifest itself implements. Both are process-generic, no kinozal content |
+| `docs/adr/template.md` | generic as-is | None — the stock MADR template; `tests/test_adr_records.py:160` hard-asserts it exists, so it is a required input of an exported test, not optional narrative |
+| `.github/pull_request_template.md` | generic templated | Repository name in the header comment (line 2); the section structure (`## Summary`, `## Agent record`, `## Test plan`, `## Risk & Rollback`, `## Docs touched`) mirrors the issue contract, which is process vocabulary. Required input: `tests/test_agent_process.py:252,321` reads it directly |
+| `tests/test_agent_process.py`, `tests/test_hooks.py`, `tests/test_navigation_policy.py`, `tests/test_codex_hooks.py`, `tests/test_review_gate.py`, `tests/test_language_policy.py`, `tests/test_adr_records.py`, `tests/test_doc_narrative.py`, `tests/test_agent_orchestrator.py`, `tests/test_issue_branch.py`, `tests/test_branch_protection.py`, `tests/test_ci_check.py`, `tests/test_agent_frontmatter.py` | generic as-is | None as a set — each test gates the row above with the matching name; a row marked "generic templated" above (`check_branch_protection.py`, `ci_check.py`) still exports its test as-is, because the test itself asserts the templated *mechanism*, not the templated *value*. Scope note: this row and the file-gate rows around it are the process contract's docs/scripts/adapters core and the tests that directly gate them — it is not a claim that every fixture, `conftest.py`, or CLI-flag test in `tests/` has a row; §Manifest scope (top of file) states that boundary explicitly |
+| `tests/test_doc_links.py`, `tests/test_doc_headers.py` | generic templated | Both hard-code the directories they scan: `test_doc_links.py`'s `_EXPECTED_SCOPE_DIRS` (line 83) and `test_doc_headers.py`'s `_SCOPED_DIRS` (lines 47-50) both include `docs/architecture` and `.claude/rules` — a Layer 0 test whose parameter list names a Layer 1 directory. A copier-only install (no Claude plugin) fails those parameters until `.claude/rules` exists, so the templated field is the directory list itself; a Codex-only target either drops the Layer 1 entries from both lists or installs Layer 1 before running the exported test suite |
 
 ## Layer 1 — Claude adapter (plugin marketplace)
 
@@ -44,19 +60,34 @@ out of scope here — a follow-up issue opened when that build starts.
 | `.claude/agents/discovery.md`, `.claude/agents/architect-reviewer.md` | generic as-is | Personas reference the Layer 0 contract, not this repository's domain |
 | `.claude/rules/mindset.md` | generic templated | Harness token tactics are generic; the RED→GREEN boundary recipe's measured timings (`#517`) and this repository's `CLAUDE.md` §Environment pointer are not |
 | `.claude/rules/workflow.md` | generic templated | Structure is generic; the default-adapter statement names this repository's `roles.yaml` |
-| `.claude/rules/testing.md` | generic as-is | Path-scoped operational checklist; every rule is a pointer to Layer 0 (`principles.md`, `docs/architecture/testing.md` — Not exported, below), no repository-specific content of its own |
-| `.claude/settings.json` | generic templated | `permissions.deny` travels as-is. The hook `command` strings do not: a real Claude Code plugin cannot ship a project's `.claude/settings.json` verbatim, and a plugin-provided hook resolves its own files through `${CLAUDE_PLUGIN_ROOT}`, not through `$CLAUDE_PROJECT_DIR` + `python -m scripts.hooks` the way this repository's copy does. Porting this file into a plugin means rewriting its hook commands to the plugin path convention — see §Install order below. The `SessionStart` hook invoking `scripts/token_trend.py` is additionally dropped — that script is Not exported (telemetry, below) |
+| `.claude/rules/testing.md` | generic as-is | Path-scoped operational checklist; every rule links to Layer 0 (`principles.md`) or to the target project's own equivalent of `docs/architecture/testing.md` — that file itself is Not exported (below), so this row's own links need the §Link policy treatment, not a "Layer 0" description; no repository-specific content of its own |
+| `.claude/settings.json` | generic as-is | `permissions.deny` and the three hook entries travel as-is: the hook `command` strings already resolve through `$CLAUDE_PROJECT_DIR` (Claude Code's own env var for the project root, e.g. `cd "$CLAUDE_PROJECT_DIR" && python -m scripts.hooks pre-bash`), which a plugin-distributed hook has access to the same as a project-native one — `${CLAUDE_PLUGIN_ROOT}` only matters for a script bundled *inside* the plugin package, which `scripts/hooks.py` deliberately is not (it is Layer 0, copier-installed into the project). Packaging this content into a plugin manifest's own `hooks` schema (rather than shipping this literal JSON file) is a format transform, not a command rewrite — see §Install order below for the one real dependency this split creates. The `SessionStart` hook invoking `scripts/token_trend.py` is dropped from the exported copy — that script is Not exported (telemetry, below) |
 
 ### Install order across layers
 
-Layer 1 is not self-sufficient: `.claude/settings.json`'s hook commands invoke `scripts/hooks.py`
-(Layer 0), so a target project's Claude plugin only works once the Layer 0 copier payload is
-installed into the same checkout — installing the plugin first gives hooks that fail to resolve
-their target script. This is a real cross-channel install-order dependency, not just a shared file
-list: Layer 0 (copier) and Layer 1 (plugin marketplace) are two different distribution mechanisms
-(ADR-0011), so nothing enforces the order automatically the way a single package manager's
-dependency graph would. State the order explicitly wherever the plugin is installed: copier first,
-plugin second.
+Layer 1 is still not self-sufficient, independent of how its hooks are packaged: every hook
+command targets `scripts/hooks.py` (Layer 0), so a target project's Claude plugin only works once
+the Layer 0 copier payload is installed into the same checkout — installing the plugin first gives
+hooks whose command resolves to a file that is not there yet. This is a real cross-channel
+install-order dependency, not just a shared file list: Layer 0 (copier) and Layer 1 (plugin
+marketplace) are two different distribution mechanisms (ADR-0011), so nothing enforces the order
+automatically the way a single package manager's dependency graph would. State the order explicitly
+wherever the plugin is installed: copier first, plugin second.
+
+## Link policy for cross-layer references
+
+**Decision: an exported file's Markdown links to a Not-exported target get the same
+rewrite-or-drop treatment as `#N` citations (§Citation policy), applied at export time.**
+`tests/test_doc_links.py::test_every_internal_link_resolves` (exported, Layer 0) resolves every
+relative link in its scope against the tree, so an exported file that still points at a
+Not-exported one — `agent-process.md` → `project-map.md`; `.claude/rules/testing.md` →
+`docs/architecture/testing.md`, `coverage-gaps.md` — ships a payload whose own gate fails on
+first run. The export-time transform: either rewrite the link to the target project's
+own file at that path (the common case — `testing.md` and `project-map.md` are exactly the kind
+of file a target project is expected to author its own copy of, per their Not-exported rows), or
+drop the sentence if no equivalent is expected to exist. Left unresolved, no per-file row is
+missing — the manifest already marks these targets Not exported — but the exported *payload* is
+broken by a link the manifest did not think to rewrite.
 
 ## Layer 2 — Codex adapter (copier)
 
@@ -81,6 +112,7 @@ plugin second.
 | `docs/architecture/testing.md` | Its checklist is this repository's own boundary map (Sheets/Telegram/YouTube/kinozal.tv fixtures, which layer gets a real vs. fake client) — process-shaped but not process-generic; a target project's equivalent needs its own authoring against its own external systems |
 | `docs/architecture/project-map.md` | Mixed, like `CLAUDE.md`: the §Canonical-home IA policy this manifest itself leans on is a portable pattern, but the file-map table it sits inside is a per-file index of this repository's own tree and does not generalize |
 | `docs/architecture/coverage-gaps.md` | A ledger of this repository's own accepted untested-behaviour history (entries A–AP); the pattern — "known test gaps get a stable-ID ledger entry instead of a silently-dropped TODO" — is worth a target project adopting, but the entries themselves are this repository's own |
+| `docs/architecture/agent-process-export.md` (this file) | Every row classifies a path in *this* repository's tree; a target project needs its own audit of its own files, not a copy of this table. What travels is the *pattern* — Layer 0/1/2 columns, generic-as-is/templated/Not-exported status, §Citation and §Link policy — the same relationship this row's neighbors (`CLAUDE.md`, `project-map.md`) already have to their own portable patterns |
 
 ## Citation policy for `#N` references
 

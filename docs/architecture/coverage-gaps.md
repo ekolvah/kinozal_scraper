@@ -505,13 +505,15 @@ decision goes to" route — and the rule itself — live in
   unavailable rather than zero.
 
 - **AP. Export-manifest completeness has no automated guard (#560).**
-  `docs/architecture/agent-process-export.md` classifies, by hand, every file the agentic-process
-  contract's own tables reference or import (the transitive closure this manifest was built to
-  cover); nothing asserts that a newly added `.claude/`, `.agents/`, or process-script file lands
-  in exactly one of its tables going forward. **Accepted for now** — the manifest documents a decision
-  with no consumer yet (ADR-0011's actual copier template is a follow-up issue); an assertion
-  mirroring `tests/test_agent_process.py::test_every_declared_role_adapter_resolves_to_its_contract`
-  (a missing entry is a failure, not a silent skip) is the natural guard once that template
+  `docs/architecture/agent-process-export.md` classifies, by hand, the agentic-process contract's
+  own docs/scripts/adapters plus the tests that directly gate them (its own §Manifest scope states
+  that boundary — not every fixture or `conftest.py` a gated test also happens to import); nothing
+  asserts that a newly added `.claude/`, `.agents/`, or process-script file lands in exactly one of
+  its tables going forward, or that a link inside an exported file still resolves to another
+  exported file (§Link policy). **Accepted for now** — the manifest documents a decision with no
+  consumer yet (ADR-0011's actual copier template is a follow-up issue); an assertion mirroring
+  `tests/test_agent_process.py::test_every_declared_role_adapter_resolves_to_its_contract` (a
+  missing entry is a failure, not a silent skip) is the natural guard once that template
   repository exists to read the manifest and a drift would have a downstream effect. Adding the
   guard before that consumer exists would gate a file no automation reads today — deferred, not
   rejected; revisit when the follow-up issue starts.
