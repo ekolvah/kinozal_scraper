@@ -28,7 +28,7 @@ so the actual export (#560's own follow-up) does not reopen it.
 
 * A vendored copy needs a **built-in** drift check, not a "remember to
   re-sync" discipline — an unenforced sync script is exactly the silent-skip
-  design [`principles.md` §IV](../architecture/principles.md) forbids.
+  design [`principles.md` §IV](../architecture/principles.md#iv-visibility-over-silence) forbids.
 * Part of the core is **not** verbatim-portable: `scripts/set_issue_priority.py`
   and `scripts/set_issue_status.py` embed this repository's GitHub Project
   IDs, and `scripts/check_branch_protection.py` embeds this repository's

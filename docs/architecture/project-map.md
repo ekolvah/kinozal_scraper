@@ -317,7 +317,7 @@ out of scope.
 | `operations.md` | How the production run and maintainer-operated services are run: schedule and step order, environment variables and secrets, failure isolation (#245) and alerting (#310), operator runbooks (`TELETHON_SESSION` rotation), patient Soldout retries, Claude Code direct OTel, and the Codex → Alloy → Grafana setup, verification, rollback, and baseline review (#471, #472). Took the runtime half of `ci.md` (#418) | ✅ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts / call observability (token+latency `llm_call` log + Phoenix development recipe, #145) | ✅ |
 | `llm-security.md` | Enricher LLM threats (OWASP LLM Top 10 → safeguards/residual) plus Claude/Codex development-telemetry trust boundaries: prompt-injection fence, output escaping, honest blast radius, content-logging deny flags, loopback Alloy, and external metadata exposure (#308, #471, #472) | ✅ |
-| `agent-process-export.md` | Which files of the agentic-process contract can move to a new project as-is, templated, or not at all; the `#N`-citation and exported-payload-size decisions. Canonical entry point, together with [ADR-0011](../adr/0011-agentic-process-distribution-mechanism.md), for how the agentic process is shared between projects | ✅ |
+| `agent-process-export.md` | Which files of the agentic-process contract can move to a new project as-is, templated, or not at all; the `#N`-citation and exported-payload-size decisions. Canonical entry point, together with [ADR-0011](../adr/0011-agentic-process-distribution-mechanism.md), for how the agentic process is shared between projects | ❌ (manifest + 2 decisions) |
 
 ### `docs/adr/`
 
