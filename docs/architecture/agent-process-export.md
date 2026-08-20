@@ -26,12 +26,15 @@ out of scope here — a follow-up issue opened when that build starts.
 | `scripts/check_branch_protection.py` | generic templated | `REQUIRED_CONTEXTS`/`NOT_REQUIRED` — this repository's specific required-check names |
 | `scripts/ci_check.py` | generic templated | The `CHECKS` registry names this repository's specific tool invocations (ruff, pytest, pip-audit, import-linter); the run/report loop is generic |
 | `scripts/capture_external_fixture.py` + `scripts/check_fixture_ratchet.py` | generic templated | The narrow read-only route list (GitHub, Telegram, Gemini, Sheets) names this repository's external systems; the capture/ratchet mechanism is generic |
-| `scripts/check_language.py` | generic as-is | None — enforces this repository's English-only documentation choice (ADR-0005); a target project either keeps the script wholesale or drops it, not a per-field template |
-| `scripts/gh_io.py` | generic as-is | None — the `gh` CLI transport `scripts/review_gate.py` and the two review-gate carriers below share |
-| `scripts/check_agent_review_outcome.py` + `scripts/request_codex_review.py` | generic as-is | None — the review gate's two carriers (ADR-0003/ADR-0004); read `.github/workflows/agent-review.yml`'s structured outcome and Codex's PR review state, not this repository's domain |
+| `scripts/check_language.py` | generic templated | `_EXPECTED_AREAS` (check_language.py:36-45) hard-codes this repository's own directory layout (`src/`, `tests/`, `.github/` Markdown areas); a target project keeps the ADR-0005 decision and the scan mechanism but re-lists its own area paths |
+| `scripts/gh_io.py` | generic as-is | None — the `gh` CLI transport the two review-gate carriers below import (`scripts/review_gate.py` shells out to `gh` through its own `subprocess.run` and does not import this module) |
+| `scripts/check_agent_review_outcome.py` + `scripts/request_codex_review.py` | generic as-is | None — the review gate's two carriers (ADR-0003/ADR-0004); read `.github/workflows/agent-review.yml`'s structured outcome and Codex's PR review state. Both arrive inert without an invoker: `agent-review.yml` is Not exported (below), so a target project must author an equivalent review workflow before these carriers run |
 | `scripts/__init__.py` | generic templated | The package docstring names `kinozal_scraper` |
 | `.agents/orchestration/state.example.json` | generic as-is | None — a schema example, no repository content |
-| `scripts/hooks.py` | generic as-is | None — the Claude-only `pre-bash`/`pre-read` entry points route through `scripts/navigation_policy.py` (Layer 1 below); the `on-edit` checks (`run_on_paths`) are reused by Codex's `scripts/codex_hooks.py` (Layer 2 below), so this module is shared rather than Claude-only |
+| `scripts/hooks.py` + `scripts/navigation_policy.py` | generic as-is | None — `hooks.py`'s `pre-bash`/`pre-read` entry points import `navigation_policy.py` directly (same layer, so the import resolves within one copier payload); its `on-edit` checks (`run_on_paths`) are reused by Codex's `scripts/codex_hooks.py` (Layer 2, also copier-distributed — see §Install order below) |
+| `docs/adr/0004-controller-pr-review-runs-on-the-workflow-token.md`, `docs/adr/0009-discovery-is-a-separate-role-chained-inside-the-planner-run.md` | generic as-is | None — both explain design decisions behind the exported mechanism itself (the review-gate trust model, the discovery role), not a product feature |
+| `docs/adr/0005-english-repository-documentation.md` | generic as-is | None — explains the choice `scripts/check_language.py` enforces; a target project either adopts the same decision or drops the script, same as that row |
+| `tests/test_agent_process.py`, `tests/test_hooks.py`, `tests/test_navigation_policy.py`, `tests/test_codex_hooks.py`, `tests/test_review_gate.py`, `tests/test_language_policy.py`, `tests/test_adr_records.py`, `tests/test_doc_headers.py`, `tests/test_doc_links.py`, `tests/test_doc_narrative.py`, `tests/test_agent_orchestrator.py`, `tests/test_issue_branch.py`, `tests/test_branch_protection.py`, `tests/test_ci_check.py`, `tests/test_agent_frontmatter.py` | generic as-is | None as a set — each test gates the row above with the matching name; a row marked "generic templated" above (`check_branch_protection.py`, `ci_check.py`) still exports its test as-is, because the test itself asserts the templated *mechanism*, not the templated *value* |
 
 ## Layer 1 — Claude adapter (plugin marketplace)
 
@@ -41,9 +44,19 @@ out of scope here — a follow-up issue opened when that build starts.
 | `.claude/agents/discovery.md`, `.claude/agents/architect-reviewer.md` | generic as-is | Personas reference the Layer 0 contract, not this repository's domain |
 | `.claude/rules/mindset.md` | generic templated | Harness token tactics are generic; the RED→GREEN boundary recipe's measured timings (`#517`) and this repository's `CLAUDE.md` §Environment pointer are not |
 | `.claude/rules/workflow.md` | generic templated | Structure is generic; the default-adapter statement names this repository's `roles.yaml` |
-| `.claude/rules/testing.md` | generic as-is | Path-scoped operational checklist; every rule is a pointer to Layer 0 (`principles.md`, `testing.md`), no repository-specific content |
-| `.claude/settings.json` | generic templated | `permissions.deny` and the `PreToolUse`/`PostToolUse` hook wiring travel as-is; the `SessionStart` hook invoking `scripts/token_trend.py` is dropped in the exported copy — that script is Not exported (telemetry, below) |
-| `scripts/navigation_policy.py` | generic as-is | None — the token-economy routing policy behind `mindset.md`'s PreToolUse rule; no repository-specific path or denylist entry |
+| `.claude/rules/testing.md` | generic as-is | Path-scoped operational checklist; every rule is a pointer to Layer 0 (`principles.md`, `docs/architecture/testing.md` — Not exported, below), no repository-specific content of its own |
+| `.claude/settings.json` | generic templated | `permissions.deny` travels as-is. The hook `command` strings do not: a real Claude Code plugin cannot ship a project's `.claude/settings.json` verbatim, and a plugin-provided hook resolves its own files through `${CLAUDE_PLUGIN_ROOT}`, not through `$CLAUDE_PROJECT_DIR` + `python -m scripts.hooks` the way this repository's copy does. Porting this file into a plugin means rewriting its hook commands to the plugin path convention — see §Install order below. The `SessionStart` hook invoking `scripts/token_trend.py` is additionally dropped — that script is Not exported (telemetry, below) |
+
+### Install order across layers
+
+Layer 1 is not self-sufficient: `.claude/settings.json`'s hook commands invoke `scripts/hooks.py`
+(Layer 0), so a target project's Claude plugin only works once the Layer 0 copier payload is
+installed into the same checkout — installing the plugin first gives hooks that fail to resolve
+their target script. This is a real cross-channel install-order dependency, not just a shared file
+list: Layer 0 (copier) and Layer 1 (plugin marketplace) are two different distribution mechanisms
+(ADR-0011), so nothing enforces the order automatically the way a single package manager's
+dependency graph would. State the order explicitly wherever the plugin is installed: copier first,
+plugin second.
 
 ## Layer 2 — Codex adapter (copier)
 
@@ -64,7 +77,10 @@ out of scope here — a follow-up issue opened when that build starts.
 | `scripts/capture_kinozal_fixture.py` | Captures fixtures from the Kinozal production fetcher — this repository's own scrape target, not a process concern |
 | `scripts/eval_trailers.py`, `scripts/eval_summarizer.py` | Product-domain evaluation harnesses (trailer selection, Telegram summaries), not agentic-process tooling |
 | `observability/claude-code/`, `observability/codex/`, `observability/agent-telemetry/`, `scripts/check_codex_otel_config.py`, `scripts/check_otel_event_delivery.py`, `scripts/token_trend.py` | Telemetry pipeline wired to this repository's Grafana Cloud instance and credentials; a genuinely reusable telemetry template is a separate, larger decision than this manifest scopes |
-| `.github/workflows/*.yml` | Encode this repository's specific job steps, dependency install, and test paths; a target project's CI needs its own authoring, not a copy |
+| `.github/workflows/*.yml`, including `agent-review.yml` | Encode this repository's specific job steps, dependency install, and test paths; a target project's CI needs its own authoring, not a copy. `agent-review.yml` specifically is the workflow the two review-gate carrier scripts above depend on — a target project must author its own equivalent, not just import the carrier scripts |
+| `docs/architecture/testing.md` | Its checklist is this repository's own boundary map (Sheets/Telegram/YouTube/kinozal.tv fixtures, which layer gets a real vs. fake client) — process-shaped but not process-generic; a target project's equivalent needs its own authoring against its own external systems |
+| `docs/architecture/project-map.md` | Mixed, like `CLAUDE.md`: the §Canonical-home IA policy this manifest itself leans on is a portable pattern, but the file-map table it sits inside is a per-file index of this repository's own tree and does not generalize |
+| `docs/architecture/coverage-gaps.md` | A ledger of this repository's own accepted untested-behaviour history (entries A–AP); the pattern — "known test gaps get a stable-ID ledger entry instead of a silently-dropped TODO" — is worth a target project adopting, but the entries themselves are this repository's own |
 
 ## Citation policy for `#N` references
 
@@ -99,5 +115,6 @@ same operative-rule-plus-one-sentence-rationale split the Canonical-home rule al
 internal moves (`project-map.md` §Canonical-home rule), not a blanket trim of rules. No automated
 guard: the qualitative form is already gated where it is authored (`tests/test_doc_narrative.py`),
 and a byte-count assertion on a not-yet-existing export would guard nothing today. Making the actual
-cut is the copier-template build's own work (tracked in `docs/architecture/coverage-gaps.md` **AP**),
-not this manifest's.
+cut is the copier-template build's own work, tracked by the follow-up issue this record's opening
+paragraph names (opened when that build starts) — `docs/architecture/coverage-gaps.md` is the wrong
+home for it, since that ledger is scoped to untested behaviour, not a doc-trimming task.

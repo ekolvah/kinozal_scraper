@@ -5,7 +5,7 @@
 > (goal-function priority (2)). Strategy — levels, taxonomy, what we mock — is
 > [`testing.md`](testing.md); this file is the case-by-case ledger it refers to.
 >
-> Records carry stable letter IDs (`A`…`AI`); a state doc links to the letter instead of
+> Records carry stable letter IDs (`A`…`AP`); a state doc links to the letter instead of
 > retelling the reasoning next to itself.
 
 Every bug category in the [taxonomy](testing.md#bug-taxonomy) is covered by tests today (navigate to
@@ -505,9 +505,10 @@ decision goes to" route — and the rule itself — live in
   unavailable rather than zero.
 
 - **AP. Export-manifest completeness has no automated guard (#560).**
-  `docs/architecture/agent-process-export.md` classifies every file of the agentic-process
-  contract by hand; nothing asserts that a newly added `.claude/`, `.agents/`, or process-script
-  file lands in exactly one of its tables. **Accepted for now** — the manifest documents a decision
+  `docs/architecture/agent-process-export.md` classifies, by hand, every file the agentic-process
+  contract's own tables reference or import (the transitive closure this manifest was built to
+  cover); nothing asserts that a newly added `.claude/`, `.agents/`, or process-script file lands
+  in exactly one of its tables going forward. **Accepted for now** — the manifest documents a decision
   with no consumer yet (ADR-0011's actual copier template is a follow-up issue); an assertion
   mirroring `tests/test_agent_process.py::test_every_declared_role_adapter_resolves_to_its_contract`
   (a missing entry is a failure, not a silent skip) is the natural guard once that template
