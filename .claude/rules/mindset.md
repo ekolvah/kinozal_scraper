@@ -46,7 +46,8 @@ Always-load (without `paths:`): the tactics are needed in every session, not onl
   the Bash tool limit. Command-specific timings are in `CLAUDE.md` §Environment.
 - **Edit files with `Edit`/`Write`, not a heredoc script** (`python - <<'PY'`): the harness draws the changed
   file into context and retains it until the session ends.
-- **RED→GREEN boundary in `/agent-process:implement`**: after RED, compact. After the RED commit, ask
+- **RED→GREEN boundary in `/implement`**: a second auto-compaction lands at the end of writing RED
+  tests (first compaction is #534's territory; measured in #517). Right after the RED commit, ask the
   user to run `/compact <focus>`, naming: issue number, branch (`git branch --show-current`), RED
   commit. Recover state from those plus one `gh issue view <N>`, not by re-reading files already in
   the RED commit's diff. Revision condition: if the second compaction stops recurring, the recipe is

@@ -631,7 +631,7 @@ the known entry points in `adapters:`, which route reaches each of them in
 `adapter_routes:`, and the fallback in `adapter:` for a run that names no route,
 so naming a provider is a default, not a restriction:
 
-- Claude `/agent-process:plan #N` runs the planner runbook and invokes the local
+- Claude `/plan #N` runs the planner runbook and invokes the local
   `architect-reviewer` and `discovery` subagents.
 - Codex `$plan-issue #N` runs the same runbook through the repository skill in
   `.agents/skills/plan-issue/`. Having no local subagents, it performs both the
@@ -640,7 +640,7 @@ so naming a provider is a default, not a restriction:
 - Codex `$implement-issue #N` runs the delivery flow through the skill in
   `.agents/skills/implement-issue/`. It implements and fixes; it does not
   invent a replacement plan.
-- Claude `/agent-process:implement #N` runs the same delivery flow through
+- Claude `/implement #N` runs the same delivery flow through
   `.claude/commands/implement.md`, so one agent can carry an issue from plan to
   PR. It is a declared entry point, not the fallback: `adapter:` still names
   Codex for `implementer` and `fixer`, and a run reaches this one by requesting

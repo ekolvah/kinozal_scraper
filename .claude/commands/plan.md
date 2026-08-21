@@ -3,7 +3,7 @@ description: Structure a GitHub issue body into its required sections before han
 argument-hint: <issue-number>
 ---
 
-# /agent-process:plan N — structure an issue body
+# /plan N — structure an issue body
 
 Claude adapter for the `planner` role. The steps, limits, and section contracts are canonical in
 [`../../docs/architecture/agent-process.md#planner-runbook`](../../docs/architecture/agent-process.md#planner-runbook);
@@ -26,5 +26,4 @@ and are not copied here. This file contains only harness-specific material.
    line, the first line of `## Architect review`: `reviewer: Claude architect-reviewer subagent`.
 4. Write the body with `gh issue edit $ARGUMENTS --body "<complete issue contract>"`.
 5. On completion, provide the issue link and hand off to the `implementer`. The user selects the entry point: Codex
-   `$implement-issue #$ARGUMENTS` (the repository default) or
-   `/agent-process:implement $ARGUMENTS` in this session.
+   `$implement-issue #$ARGUMENTS` (the repository default) or `/implement $ARGUMENTS` in this session.

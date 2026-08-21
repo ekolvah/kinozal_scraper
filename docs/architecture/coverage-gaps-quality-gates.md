@@ -78,7 +78,7 @@
 
   **Not every new branch is covered — consciously (#410).** Tests pin three **distinguishing**
   decisions where confusing outcomes is costly: `check_red` → code 2 ("gate broken"), not 1
-  ("tests are not red") — `/agent-process:implement` step 3 treats them differently; `hooks._run_ruff` →
+  ("tests are not red") — `/implement` step 3 treats them differently; `hooks._run_ruff` →
   `setup_broken` signal, not exception (otherwise stderr reaches the user but not the agent);
   `ci_check._tracked_files` → "file set is unknown", not misleading "no files to scan". Branches
   in `open_pr`/`set_issue_priority`/`issue_branch`/`validate_issue_sections`/`verify_pr_link` remain
