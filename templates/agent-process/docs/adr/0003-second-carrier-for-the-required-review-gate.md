@@ -15,7 +15,7 @@ Claude subscription quota exhaustion therefore locks **all** PRs: the gate is ma
 cannot bypass it, and quota recovery can take hours.
 
 The other roles survive carrier failure trivially: the planner and implementer are selected by a launch
-route (`adapter_routes`, )—a person simply opens another chat. The reviewer has no route: CI, not a
+route (`adapter_routes`)—a person simply opens another chat. The reviewer has no route: CI, not a
 person, starts it.
 
 Question: how can the role receive a second carrier without weakening the gate or paying for what a
