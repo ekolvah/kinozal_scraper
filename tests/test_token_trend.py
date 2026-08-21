@@ -34,14 +34,12 @@ from scripts.token_trend import (
     aggregate_by_branch,
     collect,
     detect_growth,
-    effective_tokens,
     format_alert,
     format_report,
     health_anomalies,
     issue_branches,
     ledger_lines,
     merge_ledger,
-    model_scale,
     parse_ledger,
     parse_lines,
     read_payload,
@@ -104,12 +102,11 @@ def _stats(
         turns=turns,
         first_seen=first,
         last_seen=first,
-        effective=per_turn * turns,
-        input_tokens=0,
+        input_tokens=int(per_turn * turns),
         output_tokens=0,
         cache_read=0,
         cache_write=0,
-        sidechain_effective=0.0,
+        sidechain_tokens=0,
     )
 
 
@@ -165,28 +162,35 @@ class TestParse:
         assert records == []
 
 
-class TestEffectiveCost:
-    def test_cache_read_weighted_below_fresh_input(self) -> None:
-        fresh = UsageRecord("t", "s", "b", "claude-opus-5", False, 1000, 0, 0, 0, 0)
-        cached = UsageRecord("t", "s", "b", "claude-opus-5", False, 0, 0, 1000, 0, 0)
-        assert effective_tokens(cached) == pytest.approx(effective_tokens(fresh) * 0.1)
+class TestRawTokenAccounting:
+    def test_total_is_the_sum_of_observed_counts(self) -> None:
+        """A non-Opus model must not change the observed-token total."""
+        records, _ = parse_lines(
+            [
+                _line(
+                    model="claude-haiku-4-5",
+                    input_tokens=7,
+                    output_tokens=3,
+                    cache_read=100,
+                    cache_5m=20,
+                    cache_1h=30,
+                )
+            ]
+        )
+        assert aggregate_by_branch(records)["issue-1-a"].total_tokens == 160
 
-    def test_one_hour_cache_write_costlier_than_five_minute(self) -> None:
-        """Real data is dominated by `ephemeral_1h`—weight 2.0 versus 1.25."""
-        write_5m = UsageRecord("t", "s", "b", "claude-opus-5", False, 0, 0, 0, 1000, 0)
-        write_1h = UsageRecord("t", "s", "b", "claude-opus-5", False, 0, 0, 0, 0, 1000)
-        assert effective_tokens(write_1h) > effective_tokens(write_5m)
-
-    def test_weights_selected_per_model(self) -> None:
-        """Moving to another model changes the aggregate rather than hiding within it."""
-        assert model_scale("claude-sonnet-5") < model_scale("claude-opus-5")
-        assert model_scale("claude-haiku-4-5") < model_scale("claude-sonnet-5")
-        opus = UsageRecord("t", "s", "b", "claude-opus-5", False, 1000, 0, 0, 0, 0)
-        haiku = UsageRecord("t", "s", "b", "claude-haiku-4-5", False, 1000, 0, 0, 0, 0)
-        assert effective_tokens(haiku) < effective_tokens(opus)
-
-    def test_unknown_model_scale_is_neutral(self) -> None:
-        assert model_scale("some-future-model") == 1.0
+    def test_token_types_remain_separately_reported(self) -> None:
+        records, _ = parse_lines(
+            [_line(input_tokens=7, output_tokens=3, cache_read=100, cache_5m=20, cache_1h=30)]
+        )
+        stats = aggregate_by_branch(records)["issue-1-a"]
+        assert (stats.input_tokens, stats.output_tokens, stats.cache_read, stats.cache_write) == (
+            7,
+            3,
+            100,
+            50,
+        )
+        assert stats.total_tokens == 160
 
 
 class TestAggregate:
@@ -200,7 +204,7 @@ class TestAggregate:
         stats = aggregate_by_branch(records)["issue-9-x"]
         assert stats.turns == 2
         assert stats.output_tokens == 200
-        assert stats.per_turn == pytest.approx(stats.effective / 2)
+        assert stats.per_turn == pytest.approx(stats.total_tokens / 2)
 
     def test_main_branch_bucketed_apart_from_issue_branches(self) -> None:
         """`main` is 37% of turns and heterogeneous: planning, review, and reading."""
@@ -241,7 +245,7 @@ class TestAggregate:
         )
         stats = aggregate_by_branch(records)["issue-1-a"]
         assert stats.turns == 1
-        assert stats.per_turn == pytest.approx(stats.effective)
+        assert stats.per_turn == pytest.approx(stats.total_tokens)
 
     def test_synthetic_records_excluded_from_denominator(self) -> None:
         """Service records are not billed: they are not turns and would lower `per_turn`."""
@@ -276,8 +280,8 @@ class TestAggregate:
             ]
         )
         stats = aggregate_by_branch(records)["issue-1-a"]
-        assert stats.sidechain_effective > 0
-        assert stats.sidechain_effective < stats.effective
+        assert stats.sidechain_tokens is not None and stats.sidechain_tokens > 0
+        assert stats.sidechain_tokens < stats.total_tokens
 
 
 class TestHealth:
@@ -288,8 +292,8 @@ class TestHealth:
     def test_no_files_is_not_an_anomaly(self) -> None:
         assert health_anomalies([], [], files_seen=0) == []
 
-    def test_empty_model_is_an_unknown_weight(self) -> None:
-        """An empty model receives a neutral weight—the only unknown weight with no signal."""
+    def test_missing_model_is_an_anomaly(self) -> None:
+        """A renamed or empty `message.model` stays visible without price weights."""
         records = [UsageRecord("t", "s", "b", "", False, 1, 0, 0, 0, 0)]
         assert [a.kind for a in health_anomalies(records, [], files_seen=1)] == ["unknown_model"]
 
@@ -340,15 +344,76 @@ class TestLedger:
         assert anomalies != []
 
 
+class TestLedgerMigration:
+    @staticmethod
+    def _schema_1_line() -> str:
+        return json.dumps(
+            {
+                "schema": 1,
+                "branch": "issue-legacy",
+                "turns": 2,
+                "first_seen": "2026-07-01",
+                "last_seen": "2026-07-02",
+                "effective": 123.0,
+                "input_tokens": 7,
+                "output_tokens": 3,
+                "cache_read": 100,
+                "cache_write": 50,
+                "sidechain_effective": 40.0,
+            }
+        )
+
+    def test_schema_1_line_keeps_reconstructible_raw_counts(self) -> None:
+        restored, anomalies = parse_ledger([self._schema_1_line()])
+        assert anomalies == []
+        entry = restored["issue-legacy"]
+        assert (entry.input_tokens, entry.output_tokens, entry.cache_read, entry.cache_write) == (
+            7,
+            3,
+            100,
+            50,
+        )
+        lines = ledger_lines(restored)
+        assert json.loads(lines[0])["schema"] == 2
+        round_tripped, read_anomalies = parse_ledger(lines)
+        assert read_anomalies == []
+        assert round_tripped == restored
+
+    def test_legacy_sidechain_is_unavailable_not_zero(self) -> None:
+        restored, _ = parse_ledger([self._schema_1_line()])
+        assert restored["issue-legacy"].sidechain_tokens is None
+
+
 class TestDetect:
+    def test_absolute_floor_remains_a_gate_near_measured_baseline(self) -> None:
+        """A 40% rise around the observed 100k baseline alone is still too noisy to alert."""
+        old = [_stats(f"issue-o{i}", per_turn=100_000, first=f"2026-07-0{i + 1}") for i in range(5)]
+        relative_only = [
+            _stats(f"issue-r{i}", per_turn=140_000, first=f"2026-08-0{i + 1}") for i in range(5)
+        ]
+        enough_raw_growth = [
+            _stats(f"issue-n{i}", per_turn=200_000, first=f"2026-08-0{i + 1}") for i in range(5)
+        ]
+        assert detect_growth(old + relative_only).status == "steady"
+        assert detect_growth(old + enough_raw_growth).status == "grown"
+
     def test_growth_above_threshold_reports_verdict(self) -> None:
-        old = [_stats(f"issue-o{i}", per_turn=1000, first=f"2026-07-0{i + 1}") for i in range(5)]
-        new = [_stats(f"issue-n{i}", per_turn=100_000, first=f"2026-08-0{i + 1}") for i in range(5)]
+        floor = token_trend.DEFAULT_ABS_FLOOR
+        old = [_stats(f"issue-o{i}", per_turn=floor, first=f"2026-07-0{i + 1}") for i in range(5)]
+        new = [
+            _stats(f"issue-n{i}", per_turn=floor * 3, first=f"2026-08-0{i + 1}") for i in range(5)
+        ]
         assert detect_growth(old + new).status == "grown"
 
     def test_growth_below_threshold_is_silent(self) -> None:
-        old = [_stats(f"issue-o{i}", per_turn=100_000, first=f"2026-07-0{i + 1}") for i in range(5)]
-        new = [_stats(f"issue-n{i}", per_turn=105_000, first=f"2026-08-0{i + 1}") for i in range(5)]
+        floor = token_trend.DEFAULT_ABS_FLOOR
+        old = [
+            _stats(f"issue-o{i}", per_turn=floor * 3, first=f"2026-07-0{i + 1}") for i in range(5)
+        ]
+        new = [
+            _stats(f"issue-n{i}", per_turn=floor * 3 + floor / 10, first=f"2026-08-0{i + 1}")
+            for i in range(5)
+        ]
         assert detect_growth(old + new).status == "steady"
 
     def test_single_outlier_branch_does_not_trigger(self) -> None:
@@ -360,8 +425,13 @@ class TestDetect:
 
     def test_relative_growth_below_absolute_floor_is_silent(self) -> None:
         """Doubling tiny branches is not degradation, but small-sample noise."""
-        old = [_stats(f"issue-o{i}", per_turn=100, first=f"2026-07-0{i + 1}") for i in range(5)]
-        new = [_stats(f"issue-n{i}", per_turn=1000, first=f"2026-08-0{i + 1}") for i in range(5)]
+        floor = token_trend.DEFAULT_ABS_FLOOR
+        old = [
+            _stats(f"issue-o{i}", per_turn=floor / 100, first=f"2026-07-0{i + 1}") for i in range(5)
+        ]
+        new = [
+            _stats(f"issue-n{i}", per_turn=floor / 10, first=f"2026-08-0{i + 1}") for i in range(5)
+        ]
         assert detect_growth(old + new).status == "steady"
 
     def test_insufficient_window_is_not_growth(self) -> None:
@@ -381,12 +451,11 @@ class TestDetect:
             turns=0,
             first_seen="2026-08-03",
             last_seen="2026-08-03",
-            effective=100_000.0,
-            input_tokens=0,
+            input_tokens=100_000,
             output_tokens=0,
             cache_read=0,
             cache_write=0,
-            sidechain_effective=100_000.0,
+            sidechain_tokens=100_000,
         )
         assert detect_growth([*old, *new, turnless]) == detect_growth([*old, *new])
 
@@ -725,17 +794,16 @@ class TestFormatReport:
                 turns=4,
                 first_seen="2026-08-01",
                 last_seen="2026-08-02",
-                effective=100_000.0,
-                input_tokens=1,
+                input_tokens=100_000,
                 output_tokens=1,
                 cache_read=1,
                 cache_write=1,
-                sidechain_effective=40_000.0,
+                sidechain_tokens=40_000,
             )
         ]
         assert "sidechain" in format_report(stats, detect_growth(stats), []).lower()
 
-    def test_turnless_branch_shows_dash_not_zero(self) -> None:
+    def test_report_header_is_raw_tokens_and_unavailable_sidechain_prints_dash(self) -> None:
         """`per-turn 0.0k` beside a non-empty `effective` reads as “the branch is free.”"""
         stats = [
             BranchStats(
@@ -743,18 +811,20 @@ class TestFormatReport:
                 turns=0,
                 first_seen="2026-08-01",
                 last_seen="2026-08-01",
-                effective=100_000.0,
-                input_tokens=0,
+                input_tokens=100_000,
                 output_tokens=0,
                 cache_read=0,
                 cache_write=0,
-                sidechain_effective=100_000.0,
+                sidechain_tokens=None,
             )
         ]
         lines = format_report(stats, detect_growth(stats), []).splitlines()
         header = lines[0].split()
         row = next(line for line in lines if "issue-subagents-only" in line).split()
+        assert "tokens" in header
+        assert "effective" not in header
         assert row[header.index("per-turn")] == "—"
+        assert row[header.index("sidechain")] == "—"
 
     def test_anomalies_reach_the_report(self) -> None:
         text = format_report([], detect_growth([]), [Anomaly("no_usage_records", "0 файлов")])
@@ -839,12 +909,11 @@ class TestExitCodes:
             "turns": "12",
             "first_seen": "2026-08-01",
             "last_seen": "2026-08-01",
-            "effective": 1.0,
             "input_tokens": 0,
             "output_tokens": 0,
             "cache_read": 0,
             "cache_write": 0,
-            "sidechain_effective": 0.0,
+            "sidechain_tokens": 0,
         }
         ledger = transcripts / token_trend.LEDGER_NAME
         ledger.write_text(json.dumps(broken), encoding="utf-8")

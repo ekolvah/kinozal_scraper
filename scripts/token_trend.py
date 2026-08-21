@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Actual token use in Claude Code development sessions and its growth detector (#464).
+"""Raw token use in Claude Code development sessions and its growth detector (#464, #565).
 
 **Why.** Priority (2) in the objective function had no measurement: static ratchet
-`tests/test_always_load_budget.py` guards *declared* cost (always-load bytes), not paid
-cost—bytes multiplied by turns through `cache_read`.
+`tests/test_always_load_budget.py` guards *declared* cost (always-load bytes), not observed
+token volume.
 
 **Data carrier.** Claude Code transcripts (`~/.claude/projects/<slug>/*.jsonl`) are cleaned
 by `cleanupPeriodDays` (default 30 days), so are not durable storage. Per-branch aggregate
@@ -41,37 +41,13 @@ class TextSink(Protocol):
     def write(self, text: str, /) -> int: ...
 
 
-# Cost relative to fresh input token of the same model (Anthropic pricing on 2026-08-06:
-# Opus 5 $5/$25 per Mtok, cache read 0.1x base input, cache write 1.25x at 5m TTL and 2x at 1h).
-# Ratios within a model are common to the line; only base price differs and lives in
-# `_MODEL_SCALE`, so moving work to another model changes the aggregate.
-_RATIO_OUTPUT = 5.0
-_RATIO_CACHE_READ = 0.1
-_RATIO_CACHE_WRITE_5M = 1.25
-_RATIO_CACHE_WRITE_1H = 2.0
-
-# Base input-token price relative to Opus 5 ($5/Mtok = 1.0), keyed by `model` substring.
-# Family matching rather than exact id is deliberate: a new family version inherits weight
-# without anomaly on each release. Limitation: price change within family is invisible; check
-# when bumping weights.
-_MODEL_SCALE: dict[str, float] = {
-    "fable": 2.0,
-    "opus": 1.0,
-    "sonnet": 0.6,
-    "haiku": 0.2,
-    # Claude Code service records (21 in real sample): zero usage, not billed. They are in the
-    # table not for weight, but to avoid `unknown_model` on every start.
-    "<synthetic>": 0.0,
-}
-_UNKNOWN_MODEL_SCALE = 1.0
-
 # Buckets excluded from trend: `main` is heterogeneous (planning, review, reading), and
 # no-branch records are sessions outside repository context. Both report, neither detects.
 MAIN_BUCKET = "main"
 NO_BRANCH_BUCKET = "(no-branch)"
 
 LEDGER_NAME = "token_ledger.jsonl"
-LEDGER_SCHEMA = 1
+LEDGER_SCHEMA = 2
 
 # Deliberately no ledger pruning: a branch line is ~200 B, so 72 current-history buckets are
 # under 15 KB and the file grows by a few branches weekly. Parsing cost is years away; an
@@ -85,11 +61,12 @@ CLI_FLAGS = ("--hook", "--report")
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
-# Threshold and window came from implementation-stage data (numbers in PR body). Threshold
-# is deliberately large: alert enters every start context, so sensitivity itself costs priority (2).
+# Threshold and window came from implementation-stage data (numbers in PR body). On 2026-08-21,
+# two five-branch windows measured 120,241.9 then 103,680.3 raw tokens/turn. The 100k floor is
+# on the observed baseline's order, so it remains a distinct gate beyond 40% relative growth.
 DEFAULT_WINDOW = 5
 DEFAULT_REL_THRESHOLD = 0.4
-DEFAULT_ABS_FLOOR = 20_000.0
+DEFAULT_ABS_FLOOR = 100_000.0
 
 # Transcript-reading window exceeds Claude Code retention (30 days): older data is already in
 # ledger, so rereading it on every start is unnecessary.
@@ -133,17 +110,21 @@ class BranchStats:
     turns: int
     first_seen: str
     last_seen: str
-    effective: float
     input_tokens: int
     output_tokens: int
     cache_read: int
     cache_write: int
-    sidechain_effective: float
+    sidechain_tokens: int | None
+
+    @property
+    def total_tokens(self) -> int:
+        """All independently observed token counters, with no price conversion."""
+        return self.input_tokens + self.output_tokens + self.cache_read + self.cache_write
 
     @property
     def per_turn(self) -> float:
-        """Effective tokens per turn: scale for “each step became more expensive.”"""
-        return self.effective / self.turns if self.turns else 0.0
+        """Observed tokens per main-loop turn."""
+        return self.total_tokens / self.turns if self.turns else 0.0
 
 
 @dataclass(frozen=True)
@@ -231,31 +212,14 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]
     return records, anomalies
 
 
-def model_scale(model: str) -> float:
-    """Model base-price multiplier; unknown model is 1.0 and triggers anomaly."""
-    lowered = model.lower()
-    for marker, scale in _MODEL_SCALE.items():
-        if marker in lowered:
-            return scale
-    return _UNKNOWN_MODEL_SCALE
+def is_expected_model(model: str) -> bool:
+    """Recognize transcript model syntax without assigning it a price or weight."""
+    return model == "<synthetic>" or model.lower().startswith("claude-")
 
 
-def is_known_model(model: str) -> bool:
-    """Whether model is in weight table: a new model makes aggregate incorrect."""
-    lowered = model.lower()
-    return any(marker in lowered for marker in _MODEL_SCALE)
-
-
-def effective_tokens(record: UsageRecord) -> float:
-    """Aggregate in Opus 5 input equivalents, weighted by relative price."""
-    weighted = (
-        record.input_tokens
-        + record.output_tokens * _RATIO_OUTPUT
-        + record.cache_read * _RATIO_CACHE_READ
-        + record.cache_write_5m * _RATIO_CACHE_WRITE_5M
-        + record.cache_write_1h * _RATIO_CACHE_WRITE_1H
-    )
-    return weighted * model_scale(record.model)
+def is_synthetic(record: UsageRecord) -> bool:
+    """Service records have a literal model marker in Claude Code transcripts."""
+    return record.model == "<synthetic>"
 
 
 def health_anomalies(
@@ -282,13 +246,9 @@ def health_anomalies(
                 "high_anomaly_rate", f"нераспарсенных строк {share:.0%} ({len(parse_anomalies)})"
             )
         )
-    # Empty model also gets neutral weight and belongs here with a new one; otherwise it
-    # would be the only unknown weight without a signal.
-    unknown = sorted({r.model or "(пусто)" for r in records if not is_known_model(r.model)})
+    unknown = sorted({r.model or "(пусто)" for r in records if not is_expected_model(r.model)})
     if unknown:
-        anomalies.append(
-            Anomaly("unknown_model", f"нет в таблице весов: {', '.join(unknown)} — цифры занижены")
-        )
+        anomalies.append(Anomaly("unknown_model", f"unexpected model field: {', '.join(unknown)}"))
     return anomalies
 
 
@@ -297,10 +257,10 @@ def counts_as_turn(record: UsageRecord) -> bool:
 
     A turn is a **main** agent-loop step. Sidechain records (subagents) are cheap and many,
     while subagent spawning is recommended (`mindset.md`): in denominator they would dilute
-    `per_turn` and report `steady` amid rising cost. Their cost remains in `effective` and a
-    separate column. Service `<synthetic>` records are not billed, so are not turns either.
+    `per_turn` and report `steady` amid rising consumption. Their raw tokens remain in a separate
+    column. Service `<synthetic>` records are not turns either.
     """
-    return not record.is_sidechain and model_scale(record.model) > 0
+    return not record.is_sidechain and not is_synthetic(record)
 
 
 def _earliest(current: str, candidate: str) -> str:
@@ -313,7 +273,13 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
     """Fold records into branch aggregate; no-branch records get a bucket, not discard."""
     stats: dict[str, BranchStats] = {}
     for record in records:
-        cost = effective_tokens(record)
+        raw_tokens = (
+            record.input_tokens
+            + record.output_tokens
+            + record.cache_read
+            + record.cache_write_5m
+            + record.cache_write_1h
+        )
         current = stats.get(record.branch)
         if current is None:
             stats[record.branch] = BranchStats(
@@ -321,12 +287,11 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
                 turns=int(counts_as_turn(record)),
                 first_seen=record.timestamp,
                 last_seen=record.timestamp,
-                effective=cost,
                 input_tokens=record.input_tokens,
                 output_tokens=record.output_tokens,
                 cache_read=record.cache_read,
                 cache_write=record.cache_write_5m + record.cache_write_1h,
-                sidechain_effective=cost if record.is_sidechain else 0.0,
+                sidechain_tokens=raw_tokens if record.is_sidechain else 0,
             )
             continue
         stats[record.branch] = BranchStats(
@@ -334,13 +299,12 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
             turns=current.turns + int(counts_as_turn(record)),
             first_seen=_earliest(current.first_seen, record.timestamp),
             last_seen=max(current.last_seen, record.timestamp),
-            effective=current.effective + cost,
             input_tokens=current.input_tokens + record.input_tokens,
             output_tokens=current.output_tokens + record.output_tokens,
             cache_read=current.cache_read + record.cache_read,
             cache_write=current.cache_write + record.cache_write_5m + record.cache_write_1h,
-            sidechain_effective=current.sidechain_effective
-            + (cost if record.is_sidechain else 0.0),
+            sidechain_tokens=(current.sidechain_tokens or 0)
+            + (raw_tokens if record.is_sidechain else 0),
         )
     return stats
 
@@ -394,16 +358,15 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
         except json.JSONDecodeError as exc:
             anomalies.append(Anomaly("malformed_line", f"ledger line {index + 1}: {exc}"))
             continue
-        if not isinstance(payload, dict) or payload.pop("schema", None) != LEDGER_SCHEMA:
+        if not isinstance(payload, dict):
             anomalies.append(
-                Anomaly(
-                    "ledger_schema", f"ledger line {index + 1}: ожидалась schema {LEDGER_SCHEMA}"
-                )
+                Anomaly("ledger_schema", f"ledger line {index + 1}: expected JSON object")
             )
             continue
         try:
-            entry = BranchStats(**payload)
-        except TypeError as exc:
+            schema = payload.pop("schema", None)
+            entry = _migrate_ledger_entry(schema, payload)
+        except (KeyError, TypeError) as exc:
             anomalies.append(Anomaly("ledger_schema", f"ledger line {index + 1}: {exc}"))
             continue
         if not _fields_well_typed(entry):
@@ -419,6 +382,25 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
     return stats, anomalies
 
 
+def _migrate_ledger_entry(schema: object, payload: dict) -> BranchStats:
+    """Read the raw portion of schema 1 without inventing its priced sidechain breakdown."""
+    if schema == LEDGER_SCHEMA:
+        return BranchStats(**payload)
+    if schema == 1:
+        return BranchStats(
+            branch=payload["branch"],
+            turns=payload["turns"],
+            first_seen=payload["first_seen"],
+            last_seen=payload["last_seen"],
+            input_tokens=payload["input_tokens"],
+            output_tokens=payload["output_tokens"],
+            cache_read=payload["cache_read"],
+            cache_write=payload["cache_write"],
+            sidechain_tokens=None,
+        )
+    raise TypeError(f"expected schema {LEDGER_SCHEMA} or 1 (got {schema!r})")
+
+
 def _fields_well_typed(entry: BranchStats) -> bool:
     """Ledger field types: `schema` version guards shape, not types."""
     return (
@@ -426,12 +408,11 @@ def _fields_well_typed(entry: BranchStats) -> bool:
         and isinstance(entry.turns, int)
         and isinstance(entry.first_seen, str)
         and isinstance(entry.last_seen, str)
-        and isinstance(entry.effective, int | float)
         and isinstance(entry.input_tokens, int)
         and isinstance(entry.output_tokens, int)
         and isinstance(entry.cache_read, int)
         and isinstance(entry.cache_write, int)
-        and isinstance(entry.sidechain_effective, int | float)
+        and (entry.sidechain_tokens is None or isinstance(entry.sidechain_tokens, int))
     )
 
 
@@ -484,17 +465,18 @@ def format_report(stats: Iterable[BranchStats], verdict: Verdict, anomalies: lis
     """Full branch table and verdict."""
     rows = sorted(stats, key=lambda s: (s.first_seen, s.branch))
     lines = [
-        f"{'branch':<48} {'turns':>6} {'effective':>12} {'per-turn':>10} "
+        f"{'branch':<48} {'turns':>6} {'tokens':>12} {'per-turn':>10} "
         f"{'cache_read':>12} {'sidechain':>11}"
     ]
     for entry in rows:
         # Dash, not `0.0k`: a bucket without main turns has no denominator, and zero beside
-        # nonempty `effective` would read as “branch is free.”
+        # nonempty token total would read as “branch is free.”
         per_turn = _k(entry.per_turn) if entry.turns else "—"
+        sidechain = _k(entry.sidechain_tokens) if entry.sidechain_tokens is not None else "—"
         lines.append(
-            f"{entry.branch[:48]:<48} {entry.turns:>6} {_k(entry.effective):>12} "
+            f"{entry.branch[:48]:<48} {entry.turns:>6} {_k(entry.total_tokens):>12} "
             f"{per_turn:>10} {_k(entry.cache_read):>12} "
-            f"{_k(entry.sidechain_effective):>11}"
+            f"{sidechain:>11}"
         )
     lines.append("")
     if verdict.status == "insufficient_data":
