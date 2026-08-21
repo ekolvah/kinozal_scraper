@@ -392,7 +392,12 @@ Create a separate threshold/notification issue only when a measured boundary
 has both a named operator action and a tolerable observed false-positive rate.
 Otherwise the threshold remains YAGNI. Keep `scripts/token_trend.py` and its
 SessionStart hook: the local ledger retains git-branch attribution and history
-that the 14-day Grafana window does not provide.
+that the 14-day Grafana window does not provide. Its report uses observed raw
+tokens (input + output + cache-read + cache-creation), never a tariff-derived
+cost proxy. The 40,000 raw-token/turn floor was calibrated on 2026-08-21 from
+two five-branch medians of 120,241.9 and 103,680.3; it filters their 16,561.6
+observed decline while preserving the existing 40% growth condition. A legacy
+schema-1 sidechain figure is unavailable, not zero, because it was price-weighted.
 
 ### Rollback and rotation
 
