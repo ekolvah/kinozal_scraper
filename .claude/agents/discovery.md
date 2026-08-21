@@ -1,6 +1,6 @@
 ---
 name: discovery
-description: Invoke from /plan on a `bug` issue whose `## Evidence` block is not yet accepted; run the read-only capture against the live external system and return the block for the planner to record. Produces the observation a plan about external data depends on.
+description: Invoke from /agent-process:plan on a `bug` issue whose `## Evidence` block is not yet accepted; run the read-only capture against the live external system and return the block for the planner to record. Produces the observation a plan about external data depends on.
 tools: Read, Grep, Glob, Bash, WebFetch
 model: claude-opus-5
 effort: high

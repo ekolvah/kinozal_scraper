@@ -8,6 +8,7 @@ pattern for `change-classes.yaml`.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -331,6 +332,9 @@ class TestTemplateRenders:
         assert copied.returncode == 0, copied.stderr
         missing = [path for path, _status in claude_files if not (rendered / path).is_file()]
         assert not missing, f"Claude-adapter render is missing: {missing}"
+        settings = json.loads((rendered / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        assert "SessionStart" not in settings["hooks"]
+        assert set(settings["hooks"]) == {"PreToolUse", "PostToolUse"}
 
         for command in (
             [sys.executable, "-m", "compileall", "-q", "scripts", "tests"],

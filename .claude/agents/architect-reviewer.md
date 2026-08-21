@@ -1,6 +1,6 @@
 ---
 name: architect-reviewer
-description: Invoke to review a plan or issue body BEFORE implementation (from /plan for substantive work); place findings in the required `## Architect review` issue section. Catches design defects before code is written.
+description: Invoke to review a plan or issue body BEFORE implementation (from /agent-process:plan for substantive work); place findings in the required `## Architect review` issue section. Catches design defects before code is written.
 tools: Read, Grep, Glob
 model: claude-opus-5
 effort: high

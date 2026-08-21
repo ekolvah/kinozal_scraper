@@ -3,7 +3,7 @@ description: Deliver a planned issue to a PR — branch, RED→GREEN, docs, CI g
 argument-hint: <issue-number>
 ---
 
-# /implement N — deliver an issue to a PR
+# /agent-process:implement N — deliver an issue to a PR
 
 Claude adapter for the `implementer` and `fixer` roles. The steps, gates, exit codes, and loop
 termination rule are canonical in

@@ -51,16 +51,16 @@ roles:
   planner:
     contract: "docs/architecture/agent-process.md#planner-runbook"
     adapters:
-      - "Claude /plan #N"
+      - "Claude /agent-process:plan #N"
       - "Codex $plan-issue #N"
     adapter_files:
-      "Claude /plan #N": ".claude/commands/plan.md"
+      "Claude /agent-process:plan #N": ".claude/commands/plan.md"
       "Codex $plan-issue #N": ".agents/skills/plan-issue/SKILL.md"
     adapter_routes:
-      claude: "Claude /plan #N"
+      claude: "Claude /agent-process:plan #N"
       codex: "Codex $plan-issue #N"
     carrier_selection: "run_route"
-    adapter: "Claude /plan #N"
+    adapter: "Claude /agent-process:plan #N"
     authority: "May edit the issue body; may not create an implementation branch or change production code."
     entry_evidence: "Open issue and repository context."
     completion_evidence: "Passing issue validation for the change class and ready handoff."
@@ -91,12 +91,12 @@ roles:
     contract: "docs/architecture/agent-process.md#deterministic-delivery-flow"
     adapters:
       - "Codex $implement-issue #N"
-      - "Claude /implement #N"
+      - "Claude /agent-process:implement #N"
     adapter_files:
       "Codex $implement-issue #N": ".agents/skills/implement-issue/SKILL.md"
-      "Claude /implement #N": ".claude/commands/implement.md"
+      "Claude /agent-process:implement #N": ".claude/commands/implement.md"
     adapter_routes:
-      claude: "Claude /implement #N"
+      claude: "Claude /agent-process:implement #N"
       codex: "Codex $implement-issue #N"
     carrier_selection: "run_route"
     adapter: "Codex $implement-issue #N"
@@ -130,12 +130,12 @@ roles:
     contract: "docs/architecture/agent-process.md#review-gate-verdicts"
     adapters:
       - "Codex $implement-issue #N review/fix loop"
-      - "Claude /implement #N review/fix loop"
+      - "Claude /agent-process:implement #N review/fix loop"
     adapter_files:
       "Codex $implement-issue #N review/fix loop": ".agents/skills/implement-issue/SKILL.md"
-      "Claude /implement #N review/fix loop": ".claude/commands/implement.md"
+      "Claude /agent-process:implement #N review/fix loop": ".claude/commands/implement.md"
     adapter_routes:
-      claude: "Claude /implement #N review/fix loop"
+      claude: "Claude /agent-process:implement #N review/fix loop"
       codex: "Codex $implement-issue #N review/fix loop"
     carrier_selection: "run_route"
     adapter: "Codex $implement-issue #N review/fix loop"

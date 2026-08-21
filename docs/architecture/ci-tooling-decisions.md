@@ -25,7 +25,7 @@ without its own gate section above (otherwise, a line at the gate's location). T
 - **`tox`/`nox` (#255)—no.** They solve a matrix of **Python versions**; the project is pinned to one, 3.12.
   **Revisit:** a real requirement for a multi-version matrix emerges.
 - **Spec Kit (#114)—removed.** Its role—specification → plan → tasks—is covered by local
-  `/plan #N` → `$implement-issue #N`, which lives in the repository, is gated by
+  `/agent-process:plan #N` → `$implement-issue #N`, which lives in the repository, is gated by
   `scripts/validate_issue_sections.py`, and keeps the plan in the issue body rather than a separate
   artifact tree. The cost of an external framework is `/speckit-*` commands and spec files on top of the same
   contract. **Revisit:** a need emerges that the local flow does not cover.

@@ -28,7 +28,7 @@ file a test module happens to also read.
 |---|---|---|
 | `docs/architecture/agent-process.md` | generic templated | Repository name/owner in examples; the discovery-runbook capture-route names that name kinozal-specific scripts (`capture_kinozal_fixture.py`); `#N` citations (see §Citation policy) |
 | `docs/architecture/principles.md` | generic templated | Repository name in illustrative examples; `#N` citations |
-| `.agents/orchestration/roles.yaml` | generic as-is | None — `adapter_files` values are already repository-relative paths that hold in any project with the same directory layout |
+| `.agents/orchestration/roles.yaml` | generic as-is | Repository-relative paths describe project-native carriers and Copier-installed `.claude/rules`; plugin-provided `commands/` and `agents/` are logical carrier sources, not target-tree paths |
 | `.agents/orchestration/change-classes.yaml` | generic as-is | None |
 | `scripts/validate_issue_sections.py` + `scripts/check_orphan_scope.py` | generic as-is | None — section names and the type-label taxonomy are process vocabulary, not domain vocabulary |
 | `scripts/agent_orchestrator.py` | generic as-is | None |
@@ -53,29 +53,26 @@ file a test module happens to also read.
 | `.github/pull_request_template.md` | generic templated | Repository name in the header comment (line 2); the section structure (`## Summary`, `## Agent record`, `## Test plan`, `## Risk & Rollback`, `## Docs touched`) mirrors the issue contract, which is process vocabulary |
 | `pyproject.toml` | generic templated | Supplies the portable default's `ruff` line length and pytest discovery paths. It deliberately excludes the source package name and import contracts; a target owns those product-specific settings |
 | `tests/test_hooks.py`, `tests/test_navigation_policy.py`, `tests/test_codex_hooks.py`, `tests/test_review_gate.py`, `tests/test_language_policy.py`, `tests/test_adr_records.py`, `tests/test_agent_orchestrator.py`, `tests/test_issue_branch.py`, `tests/test_branch_protection.py`, `tests/test_ci_check.py` | generic as-is | None as a set — each test gates the row above with the matching name where that input is exported. Integration classes skip when their optional workflow, hook, or Claude-adapter input is absent; their pure script checks remain active. A row marked "generic templated" above (`check_branch_protection.py`, `ci_check.py`) still exports its test as-is, because the test itself asserts the templated *mechanism*, not the templated *value*. Scope note: this row and the file-gate rows around it are the process contract's docs/scripts/adapters core and the tests that directly gate them — it is not a claim that every fixture, `conftest.py`, or CLI-flag test in `tests/` has a row; §Manifest scope (top of file) states that boundary explicitly |
-| `tests/test_doc_links.py`, `tests/test_doc_headers.py`, `tests/test_doc_narrative.py` | generic templated | Each hard-codes documentation directories that include Layer 1 `.claude` paths. A copier-only install (no Claude plugin) must drop those paths; a target that installs Layer 1 may include them. The templated field is therefore the directory list, selected by the explicit adapter answer. |
+| `tests/test_doc_links.py`, `tests/test_doc_headers.py`, `tests/test_doc_narrative.py` | generic templated | Each hard-codes documentation directories that include the Copier-delivered Layer 1 `.claude/rules` path. A target without the Claude adapter must drop it; a Claude-adapter target includes that rules directory. The templated field is therefore the directory list, selected by the explicit adapter answer. |
 
-## Layer 1 — Claude adapter (plugin marketplace)
+## Layer 1 — Claude adapter
 
-| File | Export status | Notes |
-|---|---|---|
-| `.claude/commands/plan.md`, `.claude/commands/implement.md` | generic as-is | Link to Layer 0 sections by anchor; no repository-specific content of their own |
-| `.claude/agents/discovery.md`, `.claude/agents/architect-reviewer.md` | generic as-is | Personas reference the Layer 0 contract, not this repository's domain |
-| `.claude/rules/mindset.md` | generic templated | Harness token tactics are generic; the RED→GREEN boundary recipe's measured timings (`#517`) and this repository's `CLAUDE.md` §Environment pointer are not |
-| `.claude/rules/workflow.md` | generic templated | Structure is generic; the default-adapter statement names this repository's `roles.yaml` |
-| `.claude/rules/testing.md` | generic as-is | Path-scoped operational checklist; every rule links to Layer 0 (`principles.md`) or to the target project's own equivalent of `docs/architecture/testing.md` — that file itself is Not exported (below), so this row's own links need the §Link policy treatment, not a "Layer 0" description; no repository-specific content of its own |
-| `.claude/settings.json` | generic as-is | `permissions.deny` and the three hook entries travel as-is: the hook `command` strings already resolve through `$CLAUDE_PROJECT_DIR` (Claude Code's own env var for the project root, e.g. `cd "$CLAUDE_PROJECT_DIR" && python -m scripts.hooks pre-bash`), which a plugin-distributed hook has access to the same as a project-native one — `${CLAUDE_PLUGIN_ROOT}` only matters for a script bundled *inside* the plugin package, which `scripts/hooks.py` deliberately is not (it is Layer 0, copier-installed into the project). Packaging this content into a plugin manifest's own `hooks` schema (rather than shipping this literal JSON file) is a format transform, not a command rewrite — see §Install order below for the one real dependency this split creates. The `SessionStart` hook invoking `scripts/token_trend.py` is dropped from the exported copy — that script is Not exported (telemetry, below) |
+| File | Export status | Channel | Notes |
+|---|---|---|---|
+| `.claude/commands/plan.md`, `.claude/commands/implement.md` | generic as-is | plugin marketplace | Link to Layer 0 sections by anchor; no repository-specific content of their own |
+| `.claude/agents/discovery.md`, `.claude/agents/architect-reviewer.md` | generic as-is | plugin marketplace | Personas reference the Layer 0 contract, not this repository's domain |
+| `.claude/rules/mindset.md` | generic templated | copier | Harness token tactics are generic; the source repository's measured timings and environment pointer are stripped or generalized |
+| `.claude/rules/workflow.md` | generic templated | copier | Structure is generic; the default-adapter statement is generalized for a target project's role catalogue |
+| `.claude/rules/testing.md` | generic as-is | copier | Path-scoped operational checklist; its links to Not-exported `docs/architecture/testing.md` and `coverage-gaps.md` are dropped under §Link policy |
+| `.claude/settings.json` | generic as-is | copier | The whole file travels as one unit: `permissions.deny` plus the three non-`SessionStart` hook entries. Its commands resolve `scripts/hooks.py` from the Layer 0 Copier payload; the plugin carries no hooks |
 
 ### Install order across layers
 
-Layer 1 is still not self-sufficient, independent of how its hooks are packaged: every hook
-command targets `scripts/hooks.py` (Layer 0), so a target project's Claude plugin only works once
-the Layer 0 copier payload is installed into the same checkout — installing the plugin first gives
-hooks whose command resolves to a file that is not there yet. This is a real cross-channel
-install-order dependency, not just a shared file list: Layer 0 (copier) and Layer 1 (plugin
-marketplace) are two different distribution mechanisms (ADR-0011), so nothing enforces the order
-automatically the way a single package manager's dependency graph would. State the order explicitly
-wherever the plugin is installed: copier first, plugin second.
+Layer 1's Copier channel includes every hook command and therefore installs beside its
+`scripts/hooks.py` Layer 0 target. The plugin channel carries only commands and agents, but it still
+depends on the Layer 0 contract they link to. State the order explicitly wherever the plugin is
+installed: Copier first, plugin second. This is a real cross-channel dependency: Copier and the
+plugin marketplace do not share a package-manager dependency graph.
 
 ## Link policy for cross-layer references
 

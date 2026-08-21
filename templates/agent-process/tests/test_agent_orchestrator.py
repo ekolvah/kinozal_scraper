@@ -181,7 +181,7 @@ class TestRunRoute:
             (
                 "planner",
                 {"plan_completed": False},
-                "Claude /plan #N",
+                "Claude /agent-process:plan #N",
                 "Codex $plan-issue #N",
             ),
             (
@@ -193,13 +193,13 @@ class TestRunRoute:
             (
                 "implementer",
                 {"architect_completed": True},
-                "Claude /implement #N",
+                "Claude /agent-process:implement #N",
                 "Codex $implement-issue #N",
             ),
             (
                 "fixer",
                 {**_READY_FOR_REVIEW, "review_outcome": "rework"},
-                "Claude /implement #N review/fix loop",
+                "Claude /agent-process:implement #N review/fix loop",
                 "Codex $implement-issue #N review/fix loop",
             ),
         ],

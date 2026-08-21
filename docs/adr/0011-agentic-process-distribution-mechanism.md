@@ -112,6 +112,13 @@ existing structural guards (`tests/test_adr_records.py`,
 — a real copier template producing a real second-project checkout — is the
 scope of the follow-up issue that builds it, not of this record.
 
+**2026-08-21 confirmation.** The Claude Code plugin documentation fetched on 2026-08-21
+has neither a `permissions` nor a `rules` field in `plugin.json`; the requested `rules`
+field remains unshipped (anthropics/claude-code#21163). The premise that these project
+files could travel in the marketplace plugin was therefore false. `.claude/rules/*.md`
+and `.claude/settings.json` remain Layer 1 Claude-adapter content, but distribute through
+its Copier channel instead; the plugin channel is limited to commands and agents.
+
 ## Pros and Cons of the Options
 
 ### copier
@@ -175,3 +182,5 @@ scope of the follow-up issue that builds it, not of this record.
 * Revisit this record if a target project's parameterization needs outgrow
   what a single `copier.yml` answer set can express, or if the Claude Code
   plugin marketplace stops supporting explicit (pull-on-demand) updates.
+* Revisit the Layer 1 channel assignment if upstream ships a `rules` field for
+  Claude Code plugins.
