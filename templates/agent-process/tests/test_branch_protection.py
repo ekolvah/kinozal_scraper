@@ -207,6 +207,10 @@ class TestProtectionFetch:
             assert context in printed
 
 
+@pytest.mark.skipif(
+    not _WORKFLOWS.is_dir(),
+    reason="the generated project does not include GitHub workflow definitions",
+)
 class TestDeclarationMatchesWorkflows:
     """Offline half: the script declaration does not diverge from repository workflows."""
 
@@ -338,6 +342,10 @@ class TestDeclarationMatchesWorkflows:
         assert declaration_problems(workflows, (), {}) == []
 
 
+@pytest.mark.skipif(
+    not _HOOK.is_file(),
+    reason="the generated project does not include a pre-push hook",
+)
 class TestPrePushHook:
     """The hook truly executes: stubs count calls, order, and stderr."""
 
