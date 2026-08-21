@@ -11,7 +11,7 @@ behaviour change and implementation must abort.
 Outcome comes from the **junit report** (`--junitxml`, pytest core plus stdlib parsing),
 not run-summary counts: `N failed, M passed` lacks test identity, and `unittest.subTest`
 desynchronizes them—a failed subtest appears in `failed` while its parent appears in
-`passed` (, observed in ). The report yields outcome PER TEST, eliminating the
+`passed` (as observed in prior executions). The report yields outcome PER TEST, eliminating the
 class of externally-green-only tests. Do not simplify this back to summary parsing.
 
 **Output is budgeted.** The answer is one verdict, but it used to grow with the

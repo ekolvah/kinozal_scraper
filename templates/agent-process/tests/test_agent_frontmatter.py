@@ -1,7 +1,7 @@
-"""Anti-drift guards for the local agent surface (`.claude/agents/*.md`, ).
+"""Anti-drift guards for the local agent surface (`.claude/agents/*.md`).
 
 A static guard without network or credentials—of the same genre as `tests/test_agent_review_workflow.py`
-(, the cloud half of the same defect) and `tests/test_settings_deny.py`.
+The cloud half of the same defect is covered by `tests/test_settings_deny.py`.
 
 **What is guarded.** `model: opus` is an ALIAS, not an ID: according to Claude Code documentation
 (https://code.claude.com/docs/en/sub-agents, §Choose a model), the field accepts an alias
@@ -22,7 +22,7 @@ only reject too much, not allow too much.
 same form as the cloud half (`TestCoverageFirstPrompt` below): presence of a
 coverage-first contract + absence of removed suppression wording. What is NOT caught is a
 **semantic paraphrase** of the filter (“be selective”, “write only about important things”): no exit code
-checks it here or in . This residual gap is recorded in the ledger
+checks it here. This residual gap is recorded in the ledger
 [`coverage-gaps.md`](../docs/architecture/coverage-gaps.md),
 so the rejection is not reopened as work-for-work.
 
@@ -165,12 +165,12 @@ class TestFindingsContractScope:
 
 
 class TestCoverageFirstPrompt:
-    """Prompt body: the “grade rather than filter” contract (, acceptance #4).
+    """Prompt body: the “grade rather than filter” contract and its acceptance criteria.
 
     Mirrors `TestCoverageFirstPrompt` in `tests/test_agent_review_workflow.py`:
     there it is a cloud reviewer and here a local plan reviewer; the defect is the same—
     an instruction to be “shorter” converts a weak finding into no finding rather than
-    low severity (confirmed by the reviewer when directly asked, ).
+    low severity (confirmed when the reviewer is directly asked).
 
     **Substance guard, not cosmetics:** the model pin is one line, while the change’s
     substance is the rewritten prompt; without these tests the behavior change has no coverage.
@@ -212,7 +212,7 @@ class TestCoverageFirstPrompt:
             f"{path.name}: suppression phrasing is back in the agent prompt {present} — "
             "it converts a weak finding into no finding at all instead of a low "
             "severity, and a filtered finding is indistinguishable from a review that "
-            "never ran (§IV, )"
+            "never ran (§IV)."
         )
 
     @pytest.mark.parametrize("path", _findings_agents(), ids=lambda p: p.name)

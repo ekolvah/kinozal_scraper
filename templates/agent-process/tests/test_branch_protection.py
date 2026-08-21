@@ -104,9 +104,9 @@ class TestAllowDrift:
         import scripts.check_branch_protection as guard
 
         self._patch_actual(monkeypatch, ["quality", "pr-link"])
-        guard.main(["--allow-drift", "agent-review снят для мержа "])
+        guard.main(["--allow-drift", f"agent-review снят для мержа #{458}"])
         out = capsys.readouterr().out
-        assert "" in out, "the stated reason must reach the push output"
+        assert f"#{458}" in out, "the stated reason must reach the push output"
 
     def test_allow_drift_requires_a_reason(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import scripts.check_branch_protection as guard

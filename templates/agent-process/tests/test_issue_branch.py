@@ -144,7 +144,7 @@ class TestFetchTitleFailures:
 class TestDirectDelegation:
     """`issue_branch.main()` must build the branch in-process via
     `new_branch.create_branch`, not by re-spawning a second interpreter
-    (`subprocess.run([sys.executable, ...])`, ). This is also the first
+    (`subprocess.run([sys.executable, ...])`). This is also the first
     coverage of `main()`'s orchestration.
     """
 

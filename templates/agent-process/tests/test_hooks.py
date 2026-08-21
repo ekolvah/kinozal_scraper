@@ -1,4 +1,4 @@
-"""Unit tests for the session-level PostToolUse hook (`scripts/hooks.py`, ).
+"""Unit tests for the session-level PostToolUse hook (`scripts/hooks.py`).
 
 The hook fires after every Edit/Write and dispatches two cheap checks in one
 process: ruff (check-only) on `*.py`, and a pip-compile reminder on

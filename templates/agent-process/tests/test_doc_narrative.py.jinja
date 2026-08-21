@@ -45,8 +45,8 @@ MADR records are excluded **by genre**: a record is the home of rationale, it is
 and immutable after acceptance, so a guard going red on it would have no legal
 fix—only an exception list would remain.
 
-**Guard boundaries, honestly.** What is gated is **form**, not genre: `Closed by .` → `Completed
-.` will pass without becoming better. Measurement when the guard was introduced: of 266 `#N` mentions
+**Guard boundaries, honestly.** What is gated is **form**, not genre: replacing a terse completion
+note with a parenthetical pointer will pass without becoming better. Measurement when the guard was introduced: of 266 `#N` mentions
 in scope, 23 fell under it; the rest are allowed—and there is real narrative among the allowed cases
 (`.claude/commands/implement.md` has two in parentheses). The guard makes recurrence **visible
 in review** in the form where it is cheapest; it does not make it impossible. The semantic question
@@ -294,42 +294,42 @@ class TestNarrativePredicates:
 
     def test_pointer_across_soft_wrap_is_allowed(self) -> None:
         assert narrative_refs("Цена локализованной игры — два запроса\nвместо одного.") == []
-        assert narrative_refs("Цена локализованной игры (два\nзапроса вместо одного, ).") == []
+        assert narrative_refs(f"Цена локализованной игры (два\nзапроса вместо одного, #{384}).") == []
 
     def test_pointer_around_code_span_is_allowed(self) -> None:
-        assert narrative_refs("Плата видна в байтах (`test_always_load_budget.py`, ).") == []
+        assert narrative_refs(f"Плата видна в байтах (`test_always_load_budget.py`, #{375}).") == []
 
     def test_pointer_in_link_label_is_allowed(self) -> None:
-        assert narrative_refs("Гейт пришпилен .") == []
+        assert narrative_refs(f"Гейт пришпилен [#{231}](https://example.com/231).") == []
 
     def test_pointer_in_code_span_is_allowed(self) -> None:
-        assert narrative_refs("Скрипт форсит `Closes ` в body PR.") == []
+        assert narrative_refs(f"Скрипт форсит `Closes #{319}` в body PR.") == []
 
     def test_sentence_member_is_reported(self) -> None:
-        assert len(narrative_refs("Closed by .")) == 1
-        assert len(narrative_refs("RCA установил, что исход решает одна величина.")) == 1
+        assert len(narrative_refs(f"Closed by #{88}.")) == 1
+        assert len(narrative_refs(f"RCA #{396} установил, что исход решает одна величина.")) == 1
 
     def test_unbalanced_paren_does_not_whitelist_tail(self) -> None:
         """One unclosed parenthesis does not turn the paragraph tail into an allowlist (§IV)."""
-        assert len(narrative_refs("Вызов `f(x` сломан — подробности в .")) == 1
+        assert len(narrative_refs(f"Вызов `f(x` сломан — подробности в #{88}.")) == 1
 
     def test_stray_backtick_does_not_whitelist_tail(self) -> None:
-        assert len(narrative_refs("Одиночный ` в прозе, а дальше Closed by .")) == 1
+        assert len(narrative_refs(f"Одиночный ` в прозе, а дальше Closed by #{88}.")) == 1
 
     def test_paren_inside_code_span_is_not_a_zone(self) -> None:
         """Parentheses inside a code span do not participate in pairing—the parser permits them."""
-        assert len(narrative_refs("Функция `f(x)` сломана — Closed by .")) == 1
+        assert len(narrative_refs(f"Функция `f(x)` сломана — Closed by #{88}.")) == 1
 
     def test_table_cell_paren_does_not_leak(self) -> None:
-        table = "| a | b |\n|---|---|\n| x (foo | bar) Closed by |\n"
+        table = f"| a | b |\n|---|---|\n| x (foo | bar) Closed by #{88} |\n"
         assert len(narrative_refs(table)) == 1
 
     def test_ref_inside_fence_is_ignored(self) -> None:
-        assert narrative_refs("```\nClosed by \n```\n") == []
+        assert narrative_refs(f"```\nClosed by #{88}\n```\n") == []
 
     def test_issue_ref_in_heading_is_reported(self) -> None:
         """In a heading, parentheses do not help: anchor is generated from all text."""
-        assert len(heading_issue_refs("## Eval harness")) == 1
+        assert len(heading_issue_refs(f"## Eval harness (#{139})")) == 1
         assert heading_issue_refs("## Eval harness — trailer selection") == []
         assert narrative_refs("## Eval harness") == []
 
@@ -366,5 +366,5 @@ class TestNarrativePredicates:
         assert sigil_misuses(f'{line}\nname = "x"\n') == [(1, line)]
 
     def test_line_number_points_at_the_offending_line(self) -> None:
-        markdown = "# Заголовок\n\nПервая строка абзаца,\nвторая: Closed by .\n"
+        markdown = f"# Заголовок\n\nПервая строка абзаца,\nвторая: Closed by #{88}.\n"
         assert [line for line, _ in narrative_refs(markdown)] == [4]

@@ -118,7 +118,8 @@ broken by a link the manifest did not think to rewrite.
 
 ## Citation policy for `#N` references
 
-**Decision: strip `#N` issue citations from the Layer 0/2 exported copy.** A citation such as
+**Decision: strip `#N` issue citations from the Layer 0/2 exported copy, except where a test
+fixture constructs it as data under test.** A citation such as
 `(#458)` addresses this repository's own GitHub issue tracker; in a new project it resolves to an
 unrelated issue or nothing at all, which is worse than no citation. `project-map.md`'s own
 Canonical-home rule already separates the operative rule from its narrative provenance ("retain
@@ -137,6 +138,11 @@ of their own; their Templated-fields column says "None" because the citation str
 template-authoring transform applied at export time across the whole payload, not a per-file field
 to fill in — it is named explicitly only where a file's *dominant* content is citation-bearing
 narrative (`agent-process.md`, `principles.md`).
+
+The exception is deliberately narrow: a test may construct a synthetic `#N` value by interpolation
+when its predicate or expected output needs to recognise that form. It is not provenance and must
+not be stripped; the render guard checks both that no literal source citation survives and that the
+resulting payload contains no malformed citation-strip prose.
 
 ## Size budget for the exported core
 
