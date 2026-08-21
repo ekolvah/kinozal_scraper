@@ -360,9 +360,13 @@ class TestInteractionMetrics:
         )
 
         stats = aggregate_by_branch(records)["issue-1-a"]
+        health = health_anomalies(records, anomalies, files_seen=1)
 
         assert [anomaly.kind for anomaly in anomalies] == ["read_without_path"]
         assert (stats.read_calls, stats.repeated_reads) == (1, 0)
+        assert [anomaly.kind for anomaly in health] == ["read_without_path"]
+        assert "read_without_path" in format_report([stats], detect_growth([stats]), health)
+        assert "read_without_path" in format_alert(detect_growth([stats]), health)
 
 
 class TestHealth:

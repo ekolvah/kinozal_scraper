@@ -303,7 +303,7 @@ def health_anomalies(
     files_seen: int,
     anomaly_rate_threshold: float = 0.05,
 ) -> list[Anomaly]:
-    """Sample-level anomalies: schema drift (files exist, records do not) and bad-line share."""
+    """Sample-level anomalies: schema drift, bad lines, and incomplete Read inputs."""
     anomalies: list[Anomaly] = []
     if files_seen and not records:
         anomalies.append(
@@ -312,13 +312,19 @@ def health_anomalies(
                 f"файлов прочитано {files_seen}, usage-записей 0 — вероятен schema drift",
             )
         )
-    total = len(records) + len(parse_anomalies)
-    if total and len(parse_anomalies) / total > anomaly_rate_threshold:
-        share = len(parse_anomalies) / total
+    malformed_lines = [anomaly for anomaly in parse_anomalies if anomaly.kind == "malformed_line"]
+    total = len(records) + len(malformed_lines)
+    if total and len(malformed_lines) / total > anomaly_rate_threshold:
+        share = len(malformed_lines) / total
         anomalies.append(
             Anomaly(
-                "high_anomaly_rate", f"нераспарсенных строк {share:.0%} ({len(parse_anomalies)})"
+                "high_anomaly_rate", f"нераспарсенных строк {share:.0%} ({len(malformed_lines)})"
             )
+        )
+    pathless_reads = sum(anomaly.kind == "read_without_path" for anomaly in parse_anomalies)
+    if pathless_reads:
+        anomalies.append(
+            Anomaly("read_without_path", f"Read calls without file_path: {pathless_reads}")
         )
     unknown = sorted({r.model or "(пусто)" for r in records if not is_expected_model(r.model)})
     if unknown:
