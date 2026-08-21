@@ -15,8 +15,8 @@
 # system in `Evidence`, and every other class records the search outside the
 # repository in `Prior art`. The split is on `bug` rather than on `enhancement`
 # because the motivating case is `refactor` work: a flat layout was chosen and
-# then had to be reversed once it cut the project off from `import-linter`
-# The target project may extend this catalogue without changing the validator.
+# then had to be reversed once it cut the project off from `import-linter`.
+# Adding a change class requires both a row here and a matching `TYPE_LABELS` entry.
 classes:
   bug:
     # The observation record the planner owes before a fix is designed.
