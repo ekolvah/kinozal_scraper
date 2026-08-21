@@ -34,12 +34,13 @@ from typing import Any, cast
 ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 # GitHub computes closingIssuesReferences asynchronously after `gh pr create`, so
 # the first read races and can report empty even for a correct `Closes #N` body
-# (observed dogfooding this script on PR ). Poll before declaring the link
+# (observed while dogfooding this script). Poll before declaring the link
 # broken — otherwise the §IV guard fires false-positive on every PR.
 #
-# Budget sizing: the old ~8s window (5×2.0s) was exhausted on PR ,
+# Budget sizing: the old ~8s window (5×2.0s) was exhausted during a slow
 # where indexing took ~30+s → false-positive `NOT linked` for a correct `Closes
-# `. Widened to ~48s (12×4.0s) to cover the observed ~30–40s lag. The
+# closing-reference update. Widened to ~48s (12×4.0s) to cover the observed
+# ~30–40s lag. The
 # fast-path returns on the first non-empty read, so a healthy PR pays nothing;
 # the wider budget only lengthens the worst case on a genuine failure — rare,
 # since `ensure_closes_line` forces the keyword in, and non-destructive (the PR

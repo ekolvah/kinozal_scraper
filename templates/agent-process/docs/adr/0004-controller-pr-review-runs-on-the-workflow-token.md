@@ -77,14 +77,10 @@ it is a second, independent credential.
 
 ### Confirmation
 
-Guards:
-`tests/test_agent_review_workflow.py::TestReviewOutcomeGate::test_review_uses_workflow_token_instead_of_app_token_exchange`
-(input is set and equals `${{ github.token }}`),
-`::test_enforcement_steps_pass_no_controller_classification_options` (workflow removed from
-classification in one change with the CLI),
-`tests/test_check_agent_review_outcome.py::TestOutcome::test_an_empty_outcome_is_unavailable_on_every_pr`,
-`tests/test_review_gate.py::TestEvidence::test_controller_paths_are_not_special_in_the_verdict`,
-`tests/test_agent_process.py::TestAgentProcess::test_review_outcome_enforcement_is_documented_without_a_path_exception`.
+Guards: `tests/test_review_gate.py::TestEvidence::test_controller_paths_are_not_special_in_the_verdict`
+verifies the portable gate rule. The workflow-token configuration and its invocation are target-authored, so the
+target project must test that its own workflow passes the token and enforcement output without a controller-path
+exception.
 
 What guards do not prove is that a live run actually passes: that is an external side of the contract. Verify
 it on the PR making the change (it is inherently a controller PR): the log lacks `Skipping action due to workflow validation`,

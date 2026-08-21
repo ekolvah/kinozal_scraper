@@ -1,0 +1,18 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".git", ".venv", "__pycache__", ".ruff_cache"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG001", "ARG002", "SLF001"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["scripts"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]

@@ -74,13 +74,13 @@ def _parser() -> argparse.ArgumentParser:
     stdin.add_argument("path", type=Path)
     _add_safety_confirmation(stdin)
 
-{% endif %}{% if "github" in fixture_routes %}    github = routes.add_parser("github", help="capture one GitHub REST GET through gh api")
+{% endif -%}
+{% if "github" in fixture_routes %}    github = routes.add_parser("github", help="capture one GitHub REST GET through gh api")
     github.add_argument("endpoint")
     github.add_argument("path", type=Path)
     _add_safety_confirmation(github)
 
-{% endif %}
-    return parser
+{% endif %}    return parser
 
 
 def main(argv: Sequence[str] | None = None) -> None:

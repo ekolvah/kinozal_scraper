@@ -92,13 +92,10 @@ already resolves the `reviewer:` marker.
 
 ### Confirmation
 
-Guards: `tests/test_agent_process.py::TestAgentProcess::test_discovery_role_declares_carriers_for_the_evidence_contract`
-and `::test_planner_runbook_delegates_the_observation_to_discovery` (the catalogue entry, the runbook
-order, one activation sentence in four homes, and the bounds present in the new home and absent from
-the old one); the moved bounds join `_SHARED_GATE_DEFINITIONS`, so no adapter may re-decide them;
-`tests/test_validate_issue_sections.py` (the provenance gate, first-non-empty-line resolution, the
-`n/a:` branch, and `--evidence-only`); `tests/test_agent_orchestrator.py` (discovery before planning,
-budget escalation, and `discovery` not reported completed without its evidence).
+Guards: `tests/test_agent_orchestrator.py` verifies discovery before planning, budget escalation, and that
+`discovery` is not reported completed without its evidence. The target project should add focused tests for its
+own issue-validation adapter; the portable catalogue and runbook keep their shared bounds in
+`_SHARED_GATE_DEFINITIONS`, so no adapter may re-decide them.
 
 What the guards do not prove: that a capture recorded in a block was actually run. That is the
 fabrication limit above, and it is not testable from inside the repository.

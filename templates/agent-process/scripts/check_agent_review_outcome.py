@@ -111,11 +111,11 @@ def main(argv: Sequence[str] | None = None) -> None:
         print(f"ok: {producer} outcome is clean")
         return
     if outcome == "rework":
-        # : report completeness is not merge authority. The prompt requires
+        # Report completeness is not merge authority. The prompt requires
         # every finding to be reported, so a should-fix finding is the normal
         # outcome of a thorough review — reding the required check on it made a
-        # green result unreachable by construction (ten rounds on PR , the
-        # last four purely cosmetic). The findings stay visible in the PR and
+        # green result unreachable by construction after repeated cosmetic-only
+        # rounds. The findings stay visible in the PR and
         # become the maintainer's call, not an automatic barrier.
         print(
             f"::warning::{producer} reported should-fix findings. They are published "

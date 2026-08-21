@@ -230,7 +230,7 @@ def check_imports() -> None:
 # run order for a full pre-commit pass. ci.yml references these names via --only.
 CHECKS: dict[str, Callable[[], None]] = {
 {% for check in ci_checks %}    {{ check.name | tojson }}: {{ check.function }},
-{% endfor %}
+{% endfor -%}
 }
 
 

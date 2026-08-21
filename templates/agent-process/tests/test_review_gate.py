@@ -30,7 +30,7 @@ from scripts.review_gate import (
     main,
 )
 
-# The four heads of PR , in push order: round 1 was `blocking`, rounds 2-4
+# The four heads in this synthetic sequence: round 1 was `blocking`, rounds 2-4
 # green — the run the gate would have stopped two rounds earlier. Only the
 # short prefixes are the real ones; the tails are padding to 40 hex chars,
 # because nothing here depends on a SHA resolving.
@@ -223,7 +223,7 @@ class TestEvidence:
     def test_controller_paths_are_not_special_in_the_verdict(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """: the review controller is reviewed normally, so its verdict is normal.
+        """The review controller is reviewed normally, so its verdict is normal.
 
         While carrier 1 was unreachable for these PRs, a green check did not
         prove a review existed and the gate escalated to manual IDE inspection.

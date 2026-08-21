@@ -51,9 +51,11 @@ REQUIRED_CONTEXTS: tuple[str, ...] = (
 
 # PR jobs deliberately NOT required, with reasons. An empty reason is a forgotten decision,
 # not an accepted one, so the guard rejects it.
-NOT_REQUIRED: dict[str, str] = {
+{% if not_required_contexts %}NOT_REQUIRED: dict[str, str] = {
 {% for context, reason in not_required_contexts.items() %}    {{ context | tojson }}: {{ reason | tojson }},
 {% endfor %}}
+{% else %}NOT_REQUIRED: dict[str, str] = {}
+{% endif %}
 
 BRANCH = "main"
 # `gh` substitutes `{owner}`/`{repo}` placeholders; no leading slash, or Windows MSYS

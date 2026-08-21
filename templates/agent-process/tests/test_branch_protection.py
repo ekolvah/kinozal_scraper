@@ -72,7 +72,7 @@ class TestDriftDetection:
 
 
 class TestAllowDrift:
-    """: a gate that regularly demands bypassing teaches bypassing.
+    """A gate that regularly demands bypassing teaches bypassing.
 
     The maintainer removes `agent-review` from required to merge a PR whose review
     is red by construction; the drift detector then blocks every push to unrelated

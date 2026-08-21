@@ -246,6 +246,10 @@ class TestClaudeAdapter:
         assert pre_read_response({"tool_input": {"file_path": None}}) is None
 
 
+@pytest.mark.skipif(
+    not _CLAUDE_SETTINGS.is_file(),
+    reason="the generated project does not include the optional Claude adapter",
+)
 class TestClaudeHookWiring:
     def test_pretooluse_hook_is_wired_for_bash(self) -> None:
         entries = _settings()["hooks"]["PreToolUse"]

@@ -83,8 +83,8 @@ return, where a role with two carriers silently attributed a run to the wrong ag
 * Bad, because the review contract is duplicated in two copies: carrier 1’s workflow prompt and carrier 2’s
   `AGENTS.md` § Code Review Rules. They cannot be combined into one file—`claude-code-action` has no
   `prompt-file` input, GitHub Actions has no YAML anchors, and Codex reads only its own file. The compensation
-  is prompt guards parameterized for both carriers (`tests/test_agent_review_workflow.py`, `_CARRIERS`), so
-  divergent copies make the test red.
+  is target-owned prompt guards parameterized for both carriers, so divergent copies make that target's
+  test red.
 * Bad, because carriers respond in different formats and to different bars: carrier 1 writes inline comments
   and a structured outcome; carrier 2 leaves a normal GitHub review and GitHub publicly documents it as
   surfacing P0/P1 findings, narrower than this coverage-first contract. Therefore a green check from carrier 2
@@ -97,14 +97,9 @@ return, where a role with two carriers silently attributed a run to the wrong ag
 
 ### Confirmation
 
-Guards: `tests/test_agent_review_workflow.py::TestFallbackCarrier` (step order, activation condition,
-absence of paid credentials, verdict tied to head SHA, bounded wait, output name, single contract home,
-producer attribution, and red gate when the second carrier is missing), `tests/test_request_codex_review.py`
-(which review counts as a verdict, head-SHA selection, state mapping, payload round trip through the enforcement
-script, visible timeout),
-`tests/test_check_agent_review_outcome.py::TestClassify` and `::TestProducerAttribution`,
-`tests/test_agent_orchestrator.py::TestCarrierSelection`,
-`tests/test_agent_process.py::test_documented_carrier_selection_modes_match_the_catalogue`.
+Guards: `tests/test_agent_orchestrator.py::TestCarrierSelection` verifies the portable carrier-selection
+mechanism. The workflow that invokes either carrier is deliberately target-authored; its target project must
+test the step order, head-SHA verdict, output hand-off, and provider-specific review-state mapping there.
 
 What the guards do not prove: that Codex responds to `@codex review` from the bot and sets the review state
 as `AGENTS.md` requests. Both sides of that contract are external, verified by one live run; until then the

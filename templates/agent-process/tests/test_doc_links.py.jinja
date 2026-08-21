@@ -81,15 +81,14 @@ _CODE_SPAN_REF = re.compile(r"^[\w./-]+\.md#\S+$", re.UNICODE)
 # `test_doc_headers.py::test_every_scoped_directory_contributes`). `.claude/rules` and
 # `.claude/commands` are Layer 1 (Claude adapter) directories: they only exist, and are only
 # in scope, when that adapter is installed.
-_EXPECTED_SCOPE_DIRS = (
+{% if claude_adapter_installed %}_EXPECTED_SCOPE_DIRS = (
     "docs/architecture",
     "docs/adr",
-{% if claude_adapter_installed %}
     ".claude/rules",
     ".claude/commands",
-{% endif %}
 )
-
+{% else %}_EXPECTED_SCOPE_DIRS = ("docs/architecture", "docs/adr")
+{% endif %}
 
 def slugify(heading_text: str) -> str:
     """GitHub anchor from heading text (github-slugger rules)."""

@@ -37,7 +37,7 @@ _EXPECTED_AREAS = {
     "root Markdown": lambda path: path.suffix == ".md" and len(path.parts) == 1,
 {% for root in language_markdown_roots %}    {{ (root + " Markdown") | tojson }}: lambda path: path.suffix == ".md" and path.parts[0] == {{ root | tojson }},
 {% endfor %}{% for root in language_python_roots %}    {{ (root + " Python") | tojson }}: lambda path: path.suffix == ".py" and path.parts[0] == {{ root | tojson }},
-{% endfor %}
+{% endfor -%}
 }
 
 

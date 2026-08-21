@@ -89,11 +89,6 @@ ci_checks:
     - {name: "language", function: "check_language"}
     - {name: "secrets", function: "check_secrets"}
     - {name: "pytest", function: "check_pytest"}
-    - {name: "pip-audit", function: "check_pip_audit"}
-    - {name: "pip-audit-dev", function: "check_pip_audit_dev"}
-    - {name: "requirements", function: "check_requirements"}
-    - {name: "mypy", function: "check_mypy"}
-    - {name: "imports", function: "check_imports"}
 
 fixture_routes:
   type: yaml
@@ -108,7 +103,7 @@ language_markdown_roots:
 language_python_roots:
   type: yaml
   help: Top-level directories whose Python is checked for the language policy.
-  default: ["scripts", "src", "tests"]
+  default: ["scripts", "tests"]
 
 claude_adapter_installed:
   type: bool

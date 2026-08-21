@@ -31,6 +31,10 @@ def _ci_yml_check_names() -> set[str]:
     return names
 
 
+@pytest.mark.skipif(
+    not _CI_YML.is_file(),
+    reason="the generated project does not include a repository-specific CI workflow",
+)
 class TestStepParity:
     """The core defect: ci.yml duplicated the check list by hand and drifted —
     some registry checks were silently missing in CI. After the registry refactor,

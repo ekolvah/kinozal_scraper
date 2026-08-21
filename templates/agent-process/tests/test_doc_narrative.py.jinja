@@ -86,13 +86,13 @@ _ISSUE_REF = re.compile(r"(?<!\w)#\d+\b")
 # Opaque-zone placeholder: retains length so offsets remain accurate.
 _OPAQUE = "\x00"
 
-_EXPECTED_SCOPE_DIRS = (
+{% if claude_adapter_installed %}_EXPECTED_SCOPE_DIRS = (
     "docs/architecture",
-{% if claude_adapter_installed %}
     ".claude/rules",
     ".claude/commands",
-{% endif %}
 )
+{% else %}_EXPECTED_SCOPE_DIRS = ("docs/architecture",)
+{% endif -%}
 
 # Non-issue uses of the sigil: rule number and board number. The dictionary is **closed**—the exact
 # condition for rejecting the date branch (ledger **AC**) and selecting this one. It does not live only in
@@ -293,8 +293,12 @@ class TestNarrativePredicates:
         assert narrative_refs(f"Дискриминатор сверяет точный литерал (#{385}).") == []
 
     def test_pointer_across_soft_wrap_is_allowed(self) -> None:
-        assert narrative_refs(f"Цена локализованной игры — два запроса\nвместо одного (#{384}).") == []
-        assert narrative_refs(f"Цена локализованной игры (два\nзапроса вместо одного, #{384}).") == []
+        assert (
+            narrative_refs(f"Цена локализованной игры — два запроса\nвместо одного (#{384}).") == []
+        )
+        assert (
+            narrative_refs(f"Цена локализованной игры (два\nзапроса вместо одного, #{384}).") == []
+        )
 
     def test_pointer_around_code_span_is_allowed(self) -> None:
         assert narrative_refs(f"Плата видна в байтах (`test_always_load_budget.py`, #{375}).") == []

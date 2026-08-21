@@ -9,7 +9,9 @@ pattern for `change-classes.yaml`.
 from __future__ import annotations
 
 import re
+import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -24,7 +26,8 @@ _ABS_ISSUE_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper/issues
 _SOURCE_REPOSITORY_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper(?:/|\b)")
 _STRIPPED_PROSE_HOLE = re.compile(
     r"(?:\([ \t]*,|,[ \t]+\)|\([ \t]*'s\b|"
-    r"\b(?:in|on|by|from|with|after)[ \t]+\.(?:[ \t\r\n]|$))"
+    r"\b(?:in|on|by|from|with|after)[ \t]+\.(?:[ \t\r\n]|$)|"
+    r"\bPR[ \t]+(?:\)|,)|\bthe[ \t]+/[ \t]+\w+|\"\"\":[ \t]*)"
 )
 
 # Cells whose secondary backtick token is relative to the primary path's own directory,
@@ -129,7 +132,7 @@ class TestTemplateManifestParity:
 
 def _run_copier_copy(dest: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["python", "-m", "copier", "copy", "-f", str(_TEMPLATE), str(dest)],
+        [sys.executable, "-m", "copier", "copy", "-f", str(_TEMPLATE), str(dest)],
         cwd=_REPO,
         capture_output=True,
         encoding="utf-8",
@@ -143,6 +146,12 @@ def rendered_payload(tmp_path_factory: pytest.TempPathFactory) -> Path:
     result = _run_copier_copy(dest)
     assert result.returncode == 0, result.stderr
     return dest
+
+
+def _initialize_git_repository(path: Path) -> None:
+    for command in (["git", "init", "--quiet"], ["git", "add", "--all"]):
+        result = subprocess.run(command, cwd=path, capture_output=True, encoding="utf-8")
+        assert result.returncode == 0, result.stderr
 
 
 class TestTemplateRenders:
@@ -215,3 +224,30 @@ class TestTemplateRenders:
                 if not resolved.is_file():
                     dangling.append(f"{path.relative_to(rendered_payload)} -> {target}")
         assert not dangling, f"dangling relative links in rendered payload: {dangling}"
+
+    def test_exported_docs_do_not_claim_missing_test_guards(self, rendered_payload: Path) -> None:
+        missing = []
+        test_path_re = re.compile(r"`(tests/test_[\w_]+\.py)(?::[^`]*)?`")
+        for path in (rendered_payload / "docs").rglob("*.md"):
+            for test_path in test_path_re.findall(path.read_text(encoding="utf-8")):
+                if not (rendered_payload / test_path).is_file():
+                    missing.append(f"{path.relative_to(rendered_payload)} -> {test_path}")
+        assert not missing, "exported documentation names absent test guards:\n" + "\n".join(
+            missing
+        )
+
+    def test_default_rendered_payload_passes_its_quality_gate(
+        self, rendered_payload: Path, tmp_path: Path
+    ) -> None:
+        """The documented default must work without source-only CI or adapters."""
+        checked_payload = tmp_path / "checked-payload"
+        shutil.copytree(rendered_payload, checked_payload)
+        _initialize_git_repository(checked_payload)
+        result = subprocess.run(
+            [sys.executable, "scripts/ci_check.py"],
+            cwd=checked_payload,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        assert result.returncode == 0, result.stdout + result.stderr

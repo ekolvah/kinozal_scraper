@@ -124,7 +124,7 @@ class TestPipCompileGuard:
 
 
 class TestMemoryWriteGuard:
-    """: writes to out-of-repo agent memory are a governance trigger.
+    """Writes to out-of-repo agent memory are a governance trigger.
 
     The Memory↔repo policy is enforced by a pure path predicate, like
     `_is_python`/`_is_requirements_in`. It emits a checkpoint reminder (exit 2),
