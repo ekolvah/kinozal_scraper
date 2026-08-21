@@ -189,6 +189,37 @@ class TestEffectiveCost:
         assert model_scale("some-future-model") == 1.0
 
 
+class TestRawTokenAccounting:
+    def test_total_is_the_sum_of_observed_counts(self) -> None:
+        """A non-Opus model must not change the observed-token total."""
+        records, _ = parse_lines(
+            [
+                _line(
+                    model="claude-haiku-4-5",
+                    input_tokens=7,
+                    output_tokens=3,
+                    cache_read=100,
+                    cache_5m=20,
+                    cache_1h=30,
+                )
+            ]
+        )
+        assert aggregate_by_branch(records)["issue-1-a"].total_tokens == 160
+
+    def test_token_types_remain_separately_reported(self) -> None:
+        records, _ = parse_lines(
+            [_line(input_tokens=7, output_tokens=3, cache_read=100, cache_5m=20, cache_1h=30)]
+        )
+        stats = aggregate_by_branch(records)["issue-1-a"]
+        assert (stats.input_tokens, stats.output_tokens, stats.cache_read, stats.cache_write) == (
+            7,
+            3,
+            100,
+            50,
+        )
+        assert stats.total_tokens == 160
+
+
 class TestAggregate:
     def test_branch_totals_and_per_turn(self) -> None:
         records, _ = parse_lines(
@@ -338,6 +369,46 @@ class TestLedger:
         line = json.dumps({"schema": LEDGER_SCHEMA + 1, "branch": "issue-1-a"})
         _, anomalies = parse_ledger([line])
         assert anomalies != []
+
+
+class TestLedgerMigration:
+    @staticmethod
+    def _schema_1_line() -> str:
+        return json.dumps(
+            {
+                "schema": 1,
+                "branch": "issue-legacy",
+                "turns": 2,
+                "first_seen": "2026-07-01",
+                "last_seen": "2026-07-02",
+                "effective": 123.0,
+                "input_tokens": 7,
+                "output_tokens": 3,
+                "cache_read": 100,
+                "cache_write": 50,
+                "sidechain_effective": 40.0,
+            }
+        )
+
+    def test_schema_1_line_keeps_reconstructible_raw_counts(self) -> None:
+        restored, anomalies = parse_ledger([self._schema_1_line()])
+        assert anomalies == []
+        entry = restored["issue-legacy"]
+        assert (entry.input_tokens, entry.output_tokens, entry.cache_read, entry.cache_write) == (
+            7,
+            3,
+            100,
+            50,
+        )
+        lines = ledger_lines(restored)
+        assert json.loads(lines[0])["schema"] == 2
+        round_tripped, read_anomalies = parse_ledger(lines)
+        assert read_anomalies == []
+        assert round_tripped == restored
+
+    def test_legacy_sidechain_is_unavailable_not_zero(self) -> None:
+        restored, _ = parse_ledger([self._schema_1_line()])
+        assert restored["issue-legacy"].sidechain_tokens is None
 
 
 class TestDetect:
