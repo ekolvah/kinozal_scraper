@@ -3,12 +3,12 @@
 
 Usage: python scripts/open_pr.py --title "<title>" [--body-file <path>]
 
-Root cause it fixes (precedent → issue stayed open after merge):
+Root cause it fixes: an issue stayed open after merge because
 PR→issue auto-linking hung on two fragile assumptions in the implementer prose:
   1. a `(closes #N)` keyword in the *commit body* — squash-merge rebuilds the
      commit from the PR title and DROPS the feature-commit body, keyword and all;
-  2. a hand-typed keyword in the PR body — which wrote in Russian
-     (a Russian “closes ”), while GitHub only parses English `close/fix/resolve`.
+  2. a hand-typed localized keyword in the PR body, while GitHub only parses
+     English `close/fix/resolve` keywords.
 
 An English `Closes #N` in the PR *body* survives squash (the linkage is computed
 from the body at PR-creation time, not from any commit). So this script derives N
@@ -38,7 +38,6 @@ ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 # broken — otherwise the §IV guard fires false-positive on every PR.
 #
 # Budget sizing: the old ~8s window (5×2.0s) was exhausted during a slow
-# where indexing took ~30+s → false-positive `NOT linked` for a correct `Closes
 # closing-reference update. Widened to ~48s (12×4.0s) to cover the observed
 # ~30–40s lag. The
 # fast-path returns on the first non-empty read, so a healthy PR pays nothing;
@@ -86,14 +85,14 @@ def has_closing_reference(view_json: str) -> bool:
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
-    # `None` with requested capture means capture failed (: the reader thread died).
+    # `None` with requested capture means the reader thread failed.
     # Each call site formerly used `or ""`, replacing failure with emptiness—“gh returned
     # nothing”—and letting the script proceed on phantom data. A nonzero return code is
     # NOT an exception: the caller decides, and its error-reporting path must execute.
     if result.stdout is None or result.stderr is None:
         # Code 2, as in sibling `verify_pr_link.py`: infrastructure failure must differ
         # from a verdict. Code 1 is used for legitimate outcomes (“PR NOT linked”,
-        # “gh pr create failed”); merging capture failure into them repeats .
+        # “gh pr create failed”); capture failure must remain a distinct outcome.
         print(
             f"error: capture failed for `{' '.join(cmd)}` (rc={result.returncode}): "
             f"stdout={result.stdout!r} stderr={result.stderr!r}",

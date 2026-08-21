@@ -69,8 +69,8 @@ requesting changes only for a blocking finding. If it does not reply in time, th
 
 The role catalog gained `carrier_selection` (`run_route` | `ci_failover` | `sole`).
 `pr_reviewer` declares `ci_failover` and `adapter_routes: null`: its carrier does not depend on the
-launch route. The field is declared, not inferred from the number of adapters—otherwise defect would
-return, where a role with two carriers silently attributed a run to the wrong agent.
+launch route. The field is declared, not inferred from the number of adapters—otherwise a role with
+two carriers could silently attribute a run to the wrong agent.
 
 ### Consequences
 

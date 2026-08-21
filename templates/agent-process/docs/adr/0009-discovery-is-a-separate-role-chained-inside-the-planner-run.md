@@ -8,7 +8,7 @@ decision-makers: ekolvah
 
 ## Context and Problem Statement
 
-Since a `bug` issue must carry a completed observation of the external system before its plan
+A `bug` issue must carry a completed observation of the external system before its plan
 may be written: the `## Evidence` block with `capture:` / `path:` / `observed:` / `preserve:` /
 `change:` / `boundaries:` / `collateral:` / `reuse:` / `paired-test:`, backed by a captured fixture.
 
@@ -20,10 +20,10 @@ working tree. And the section carried no provenance line, so a real capture, an 
 observation, and no observation at all were indistinguishable in the issue body.
 
 So the process mandated an artifact whose carrier was unnamed and whose authority was contradicted —
-the same class of invisibility that (self-review indistinguishable from independent review) and
- (a role covered by one provider and not another) already fixed elsewhere.
+the same class of invisibility as self-review being indistinguishable from independent review,
+or a role being covered by one provider and not another.
 
-The architect review of pushed back on the answer, not the diagnosis: the two concrete defects
+The architect review pushed back on the answer, not the diagnosis: the two concrete defects
 are ~15 lines apart, and neither needs a new role. That objection is what this record exists to
 answer.
 

@@ -55,7 +55,7 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     "Out of scope",
     # Architect-review findings (or an explicit `skipped: <reason>`). Enforced as
     # a gate so the review is a consciously-decided step, never silently skipped
-    # . Persona lives in `.claude/agents/architect-reviewer.md`; criteria in
+    # Persona lives in `.claude/agents/architect-reviewer.md`; criteria live in
     # `docs/architecture/principles.md`.
     "Architect review",
     # Link to the MADR record this issue's decision lands in, or an explicit
@@ -582,7 +582,7 @@ def _evidence_only(issue_number: int, body: str, source: str) -> None:
         file=sys.stderr,
     )
     for gap in gaps:
-        print(f" - {gap}", file=sys.stderr)
+        print(f"  - {gap}", file=sys.stderr)
     sys.exit(1)
 
 
@@ -709,7 +709,7 @@ def main() -> None:
         return
     print(f"error: issue #{n} is not ready:", file=sys.stderr)
     for g in gaps:
-        print(f" - {g}", file=sys.stderr)
+        print(f"  - {g}", file=sys.stderr)
     if len(gaps) > len(label_gaps):
         # The most common way to “lose” many sections is an unclosed ```; under CommonMark it
         # consumes the rest of the document and GitHub renders it as gray code. Give a hint,

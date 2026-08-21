@@ -116,7 +116,7 @@ broken by a link the manifest did not think to rewrite.
 | `tests/test_agent_process.py` | Pins this repository's complete documentation, Git-ignore, and Layer 1 adapter surface. Its source-repository assertions cannot be made true in a portable Layer 0/2 payload; `tests/test_agent_process_template.py` instead renders the payload and runs its default quality gate before export is accepted |
 | `docs/architecture/testing.md` | Its checklist is this repository's own boundary map (Sheets/Telegram/YouTube/kinozal.tv fixtures, which layer gets a real vs. fake client) — process-shaped but not process-generic; a target project's equivalent needs its own authoring against its own external systems |
 | `docs/architecture/project-map.md` | Mixed, like `CLAUDE.md`: the §Canonical-home IA policy this manifest itself leans on is a portable pattern, but the file-map table it sits inside is a per-file index of this repository's own tree and does not generalize |
-| `docs/architecture/coverage-gaps.md` | A ledger of this repository's own accepted untested-behaviour history (entries A–AP); the pattern — "known test gaps get a stable-ID ledger entry instead of a silently-dropped TODO" — is worth a target project adopting, but the entries themselves are this repository's own |
+| `docs/architecture/coverage-gaps.md` | A ledger of this repository's own accepted untested-behaviour history (entries A–AQ); the pattern — "known test gaps get a stable-ID ledger entry instead of a silently-dropped TODO" — is worth a target project adopting, but the entries themselves are this repository's own |
 | `docs/architecture/agent-process-export.md` (this file) | Every row classifies a path in *this* repository's tree; a target project needs its own audit of its own files, not a copy of this table. What travels is the *pattern* — Layer 0/1/2 columns, generic-as-is/templated/Not-exported status, §Citation and §Link policy — the same relationship this row's neighbors (`CLAUDE.md`, `project-map.md`) already have to their own portable patterns |
 
 ## Citation policy for `#N` references
@@ -129,9 +129,10 @@ Canonical-home rule already separates the operative rule from its narrative prov
 the decision plus one sentence explaining why it is still valid... move the narrative... to the
 issue/PR body"); export applies that same split one level further out — the `#N` pointer is
 provenance for *this* repository's history, not part of the rule a new project needs to follow.
-Traceability to the source decision is not lost: a copier-generated project keeps a
-`.copier-answers.yml` pinning the exact template commit, which is a stronger and more durable
-address than a bare issue number would be in a foreign tracker.
+Traceability to the source decision is not lost: the in-tree copier build records its source path
+and selected answers in `.copier-answers.yml`, while this repository's Git history records the
+exact source revision. A separately published, versioned template source would also let Copier
+record `_commit` for later updates; the in-tree build does not claim that capability.
 
 The strip applies uniformly to every Layer 0 and Layer 2 file, not only the two rows above that name
 it. `roles.yaml`, `change-classes.yaml`, and most of the gate scripts (`validate_issue_sections.py`,

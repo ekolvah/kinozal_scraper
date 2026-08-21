@@ -3,16 +3,15 @@
 # default. Naming a provider is therefore a default, not a restriction.
 # `adapter_files` declares the carrier of every entry point, keyed identically to
 # `adapters`: a repository path, or an explicit `null` where the carrier is not a
-# file (a GitHub Action, a person). A missing key is a failure, not a skip — see
-# `tests/test_agent_process.py::test_every_declared_role_adapter_resolves_to_its_contract`.
+# file (a GitHub Action, a person). A missing key is invalid catalogue data, not a skip.
 # `carrier_selection` declares HOW this role's carrier is chosen: `run_route`
-# (the human's chat picks it), `ci_failover` (a workflow picks it at run time,
-# ), or `sole` (one carrier). It is declared rather than derived from the
+# (the human's chat picks it), `ci_failover` (a workflow picks it at run time),
+# or `sole` (one carrier). It is declared rather than derived from the
 # adapter count, because two alternatives do not imply two providers to choose
 # between per run.
 # `adapter_routes` maps a run route onto the entry point that runs it, so the
-# control plane can name the agent of *this* run instead of the file constant
-#. Matching is literal and case-sensitive. A `run_route` role maps every
+# control plane can name the agent of *this* run instead of the file constant.
+# Matching is literal and case-sensitive. A `run_route` role maps every
 # adapter to exactly one route, which makes `adapters` derivable from it — kept
 # anyway, because `adapter_files` is keyed on it. The other two modes declare an
 # explicit `null`: their carrier is route-independent, and a missing key stays a

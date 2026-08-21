@@ -24,10 +24,14 @@ _CITATION = re.compile(r"#\d{2,4}\b")
 _LINKED_CITATION = re.compile(r"\[#\d{2,4}\]\([^)]*\)")
 _ABS_ISSUE_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper/issues/\d+")
 _SOURCE_REPOSITORY_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper(?:/|\b)")
+_SOURCE_PROVENANCE_ID = re.compile(r"(?<!/runs/)\b\d{8,}\b")
 _STRIPPED_PROSE_HOLE = re.compile(
     r"(?:\([ \t]*,|,[ \t]+\)|\([ \t]*'s\b|"
     r"\b(?:in|on|by|from|with|after)[ \t]+\.(?:[ \t\r\n]|$)|"
-    r"\bPR[ \t]+(?:\)|,)|\bthe[ \t]+/[ \t]+\w+|\"\"\":[ \t]*)"
+    r"\bPR[ \t]+(?:\)|,)|\bthe[ \t]+/[ \t]+\w+|\"\"\":[ \t]*|"
+    r"\([^()\r\n]*\b(?:see|root[ \t]+cause)[ \t]*\)|"
+    r"\b(?:in|on|by|from|with|after)[ \t]+[,)]|"
+    r"(?:^|\n)[ \t]*#[ \t]*(?:\)[ \t]*,|[).,:;](?=[ \t]|$)))"
 )
 
 # Cells whose secondary backtick token is relative to the primary path's own directory,
@@ -130,9 +134,15 @@ class TestTemplateManifestParity:
         assert '_templates_suffix: ".jinja"' in content
 
 
-def _run_copier_copy(dest: Path) -> subprocess.CompletedProcess[str]:
+def _run_copier_copy(
+    dest: Path, *, data_file: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    command = [sys.executable, "-m", "copier", "copy", "-f"]
+    if data_file is not None:
+        command.extend(["--data-file", str(data_file)])
+    command.extend([str(_TEMPLATE), str(dest)])
     return subprocess.run(
-        [sys.executable, "-m", "copier", "copy", "-f", str(_TEMPLATE), str(dest)],
+        command,
         cwd=_REPO,
         capture_output=True,
         encoding="utf-8",
@@ -171,10 +181,12 @@ class TestTemplateRenders:
         )
         assert rendered_size <= _exported_core_size_budget()
 
-    def test_copier_records_answers_for_a_future_update(self, rendered_payload: Path) -> None:
+    def test_copier_records_source_and_answers(self, rendered_payload: Path) -> None:
         answers = rendered_payload / ".copier-answers.yml"
-        assert answers.is_file(), "Copier output must retain its update metadata"
-        assert "_src_path:" in answers.read_text(encoding="utf-8")
+        assert answers.is_file(), "Copier output must retain its source and selected answers"
+        content = answers.read_text(encoding="utf-8")
+        assert "_src_path:" in content
+        assert "template revision" not in content
 
     def test_no_citation_survives_in_rendered_payload(self, rendered_payload: Path) -> None:
         offenders = []
@@ -203,9 +215,21 @@ class TestTemplateRenders:
                 content = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 continue
-            if "Issue: []." in content or _STRIPPED_PROSE_HOLE.search(content):
+            if (
+                "Issue: []." in content
+                or _STRIPPED_PROSE_HOLE.search(content)
+                or _SOURCE_PROVENANCE_ID.search(content)
+            ):
                 malformed.append(str(path.relative_to(rendered_payload)))
         assert not malformed, f"citation stripping left malformed prose: {malformed}"
+
+    def test_exported_markdown_has_balanced_parentheses(self, rendered_payload: Path) -> None:
+        unbalanced = []
+        for path in rendered_payload.rglob("*.md"):
+            content = path.read_text(encoding="utf-8")
+            if content.count("(") != content.count(")"):
+                unbalanced.append(str(path.relative_to(rendered_payload)))
+        assert not unbalanced, f"exported Markdown has unbalanced parentheses: {unbalanced}"
 
     def test_no_relative_markdown_link_dangles_in_rendered_payload(
         self, rendered_payload: Path
@@ -225,16 +249,20 @@ class TestTemplateRenders:
                     dangling.append(f"{path.relative_to(rendered_payload)} -> {target}")
         assert not dangling, f"dangling relative links in rendered payload: {dangling}"
 
-    def test_exported_docs_do_not_claim_missing_test_guards(self, rendered_payload: Path) -> None:
+    def test_exported_text_does_not_claim_missing_test_guards(self, rendered_payload: Path) -> None:
         missing = []
         test_path_re = re.compile(r"`(tests/test_[\w_]+\.py)(?::[^`]*)?`")
-        for path in (rendered_payload / "docs").rglob("*.md"):
-            for test_path in test_path_re.findall(path.read_text(encoding="utf-8")):
+        for path in rendered_payload.rglob("*"):
+            if not path.is_file():
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            for test_path in test_path_re.findall(content):
                 if not (rendered_payload / test_path).is_file():
                     missing.append(f"{path.relative_to(rendered_payload)} -> {test_path}")
-        assert not missing, "exported documentation names absent test guards:\n" + "\n".join(
-            missing
-        )
+        assert not missing, "exported text names absent test guards:\n" + "\n".join(missing)
 
     def test_default_rendered_payload_passes_its_quality_gate(
         self, rendered_payload: Path, tmp_path: Path
@@ -251,3 +279,37 @@ class TestTemplateRenders:
             errors="replace",
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+    @pytest.mark.parametrize(
+        ("fixture_routes", "case_name"),
+        (("[github]", "github_only"), ("[stdin]", "stdin_only")),
+    )
+    def test_non_default_template_branches_compile_and_format(
+        self, tmp_path: Path, fixture_routes: str, case_name: str
+    ) -> None:
+        """Exercise both sides of every current conditional Jinja branch."""
+        data_file = tmp_path / "answers.yml"
+        data_file.write_text(
+            "claude_adapter_installed: true\n"
+            "not_required_contexts:\n"
+            "  advisory: target-specific workflow\n"
+            f"fixture_routes: {fixture_routes}\n",
+            encoding="utf-8",
+        )
+        rendered = tmp_path / case_name
+        copied = _run_copier_copy(rendered, data_file=data_file)
+        assert copied.returncode == 0, copied.stderr
+
+        for command in (
+            [sys.executable, "-m", "compileall", "-q", "scripts", "tests"],
+            [sys.executable, "-m", "ruff", "format", "--check", "."],
+            [sys.executable, "-m", "ruff", "check", "."],
+        ):
+            result = subprocess.run(
+                command,
+                cwd=rendered,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+            assert result.returncode == 0, result.stdout + result.stderr

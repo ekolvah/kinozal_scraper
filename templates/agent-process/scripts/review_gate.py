@@ -5,9 +5,9 @@ Run it as a module so the cross-script imports resolve:
     python -m scripts.review_gate <PR>
 
 The stop rule («fix blocking findings; `should-fix` is the maintainer's call and
-does not gate the loop») was prose in a long document, and prose was skipped
-twice: ten review rounds on PR and four on , where rounds 3-4
-only fixed defects introduced by round 2's own fix. `principles.md` §Scripts over instructions names the
+does not gate the loop») was prose in a long document and was repeatedly skipped;
+later rounds only fixed defects introduced by an earlier round's own fix.
+`principles.md` §Scripts over instructions names the
 remedy — a deterministic step becomes a script with an exit code, not another
 bullet. This gate replaces the existing «inspect the reviewer outcome» step; it
 adds no round trip.

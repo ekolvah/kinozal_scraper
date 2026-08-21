@@ -248,9 +248,9 @@ def _lines_that_fit(lines: list[bytes], start: int) -> int:
 def read_budget_hint(file_path: object, offset: object = None, limit: object = None) -> str | None:
     """Return a replacement message when a `Read` slice exceeds the byte budget.
 
-    Why `Read` needs a gate of its own. closed the shell route into the filesystem, but
-    whole-file `Read` stayed ungated and turned out to be the expensive one. Measured while
-    implementing : 53 steps before a single line of code, context 29k → 166k, driven by
+    Why `Read` needs a gate of its own. The shell route into the filesystem was closed, but
+    whole-file `Read` stayed ungated and turned out to be the expensive one. A measured run
+    took 53 steps before a single line of code, with context growing from 29k to 166k, driven by
     ten whole-file reads. The harm is not re-sending those bytes — that goes through
     `cache_read` — it is the chain **ceiling → compaction → reading the same files again**;
     the session paid for its five largest files twice.

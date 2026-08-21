@@ -65,7 +65,7 @@ class TestBuildBranchName:
 
 class TestFetchTitleEncoding:
     def test_cyrillic_title_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        cyrillic_title = "/plan и /implement не работают после PR "
+        cyrillic_title = f"/plan и /implement не работают после PR #{121}"
         payload = json.dumps({"state": "OPEN", "title": cyrillic_title}, ensure_ascii=False)
 
         def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:

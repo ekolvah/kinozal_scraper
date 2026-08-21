@@ -148,8 +148,8 @@ def main() -> None:
     paths = args.paths
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "red.xml"
-        # No `-q` here: the verbosity of this run has one home, `addopts` in pyproject.toml
-        # . `-q` is `action="count"`, so a second one would silently push this
+        # No `-q` here: the verbosity of this run has one home, `addopts` in
+        # pyproject.toml. `-q` is `action="count"`, so a second one would silently push this
         # subprocess to verbosity −2.
         cmd = [sys.executable, "-m", "pytest", "--tb=no", f"--junitxml={report}", *paths]
         completed = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")

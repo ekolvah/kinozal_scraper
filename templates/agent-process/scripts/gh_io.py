@@ -1,7 +1,7 @@
 """The GitHub boundary the review gate talks across: `gh` reads and step outputs.
 
 Nothing here is policy. How a `gh` call fails (non-zero exit, or `stdout is None`
-— the reader died on decoding, /), how `--paginate --slurp` shapes a
+because the reader died on decoding), how `--paginate --slurp` shapes a
 collection, and how a step publishes `key=value` for the next step are all
 contracts GitHub owns, not this repo. Carrier 2 was about to make a second
 copy of each; a second copy is a place for them to drift apart silently.

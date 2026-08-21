@@ -8,10 +8,10 @@ decision-makers: ekolvah
 
 ## Context and Problem Statement
 
- A PR changing `.github/workflows/claude-review.yml` received no review from carrier 1 **at all**:
+A PR changing `.github/workflows/claude-review.yml` received no review from carrier 1 **at all**:
 `anthropics/claude-code-action` completed successfully after printing
 `Skipping action due to workflow validation`, while the required `claude-review` context
-turned green. There was no model invocation and no comment; run 31242341386 on PR reproduced this:
+turned green. There was no model invocation and no comment; the outcome classifier reproduced this:
 `Classify review outcome` printed `valid=false`, while enforcement released the PR under the carve-out.
 
 The cause is OIDC exchange for the Anthropic GitHub App token. A token is issued only to a run whose workflow

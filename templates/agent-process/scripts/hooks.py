@@ -42,7 +42,7 @@ it does not (a silent setup degradation).
 
 This is session-level instant feedback during agentic work; it does NOT replace
 `scripts/ci_check.py` (the canonical pre-push gate) and is unrelated to the
-pre-commit/tox *framework* declined in /.
+pre-commit/tox *framework*, which is intentionally outside this adapter.
 """
 
 from __future__ import annotations

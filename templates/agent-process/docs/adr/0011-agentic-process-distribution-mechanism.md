@@ -67,9 +67,11 @@ already implies.
   repository's own audit (`docs/architecture/agent-process-export.md`) marks
   "generic templated" — values that must change per project (repository
   name, GitHub Project IDs, required-context lists) — which cruft and git
-  subtree do not parameterize at all. `copier update` gives drift detection
-  and a 3-way merge for free, so the target project never has to trust "we
-  remembered to re-sync" as the only claim standing between it and staleness.
+  subtree do not parameterize at all. Once the template is published from a
+  versioned source, `copier update` gives drift detection and a 3-way merge for
+  free, so the target project never has to trust "we remembered to re-sync" as
+  the only claim standing between it and staleness. An in-tree build records
+  the source path and selected answers but has no source `_commit` to update.
 * **Layer 1 (Claude-specific adapter files)** distributes through the
   **official Claude Code plugin marketplace** (`.claude-plugin/plugin.json` +
   `marketplace.json`, `/plugin marketplace add` + `/plugin install`).
@@ -117,8 +119,8 @@ scope of the follow-up issue that builds it, not of this record.
 
 * Good, because Jinja parameterization covers exactly the values this
   repository's audit found non-portable.
-* Good, because `copier update` is a maintained 3-way-merge drift check, not
-  a script this project would own.
+* Good, because a versioned Copier source provides a maintained 3-way-merge
+  drift check, not a script this project would own.
 * Neutral, because it adds a build step (authoring the template and its
   `copier.yml`) that a plain file copy would not need.
 

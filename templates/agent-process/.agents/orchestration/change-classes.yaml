@@ -1,8 +1,7 @@
 # Per-change-class issue requirements, keyed on the type label of governance
 # convention 3 (`docs/architecture/agent-process.md`). Its single consumer is
 # `scripts/validate_issue_sections.py`, which resolves the required section set
-# from the issue's one type label; the documented matrix in §Issue contract is
-# pinned to this file by `tests/test_agent_process.py::TestIssueContract`.
+# from the issue's one type label; this file is the machine-readable matrix.
 #
 # `adds` and `omits` are deltas relative to `REQUIRED_SECTIONS` in the validator,
 # which stays the single carrier of the base set — a row never restates it. Both
@@ -17,7 +16,7 @@
 # repository in `Prior art`. The split is on `bug` rather than on `enhancement`
 # because the motivating case is `refactor` work: a flat layout was chosen and
 # then had to be reversed once it cut the project off from `import-linter`
-#.
+# The target project may extend this catalogue without changing the validator.
 classes:
   bug:
     # The observation record the planner owes before a fix is designed.

@@ -21,8 +21,8 @@ semantic question) or whether its rationale is still current. Presence ≠ corre
 `test_doc_headers.py`: the guard ensures there is **something to debate** in review.
 
 **Scope is derived from the glob**, not from a list: the next record enters the invariant
-automatically. The guard against an empty catalogue counters the same §IV vacuum as `test_doc_headers.py`
-and `test_agent_frontmatter.py`: “nothing to check” must differ from “everything is fine”.
+automatically. The guard against an empty catalogue counters the same §IV vacuum as
+`test_doc_headers.py`: “nothing to check” must differ from “everything is fine”.
 """
 
 from __future__ import annotations

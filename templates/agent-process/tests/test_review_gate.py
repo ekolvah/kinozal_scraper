@@ -64,7 +64,7 @@ def _evidence(**overrides: Any) -> ReviewEvidence:
 
 class TestVerdict:
     def test_green_required_checks_are_ready_for_human(self) -> None:
-        """Round 2 of : no blocking finding, two should-fix — the loop ends."""
+        """No blocking finding and two should-fix findings end the loop."""
         verdict = evaluate(_evidence(), fixer_budget=3)
 
         assert verdict.name == "ready-for-human"
@@ -107,7 +107,7 @@ class TestVerdict:
         assert REVIEW_CONTEXT in verdict.reason
 
     def test_exhausted_fixer_budget_escalates(self) -> None:
-        """Round 4 of : three revisions spent, so no fifth round is routed."""
+        """Three spent fixer revisions prevent routing a fourth revision."""
         evidence = _evidence(
             head_sha=_ROUND_4,
             checks=_checks({REVIEW_CONTEXT: ("COMPLETED", "FAILURE")}),

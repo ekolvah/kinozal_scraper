@@ -6,8 +6,8 @@ Usage: python scripts/new_branch.py issue-N-short-slug
 Steps: refuse if working tree is dirty → checkout main → pull --ff-only
 → prune merged [gone] branches → checkout -b <name>. Ensures every
 issue-* branch starts at origin/main HEAD so squash-merges don't cause
-history divergence (see ), and that local `[gone]` branches from
-already-merged-and-deleted PRs don't pile up (see ).
+history divergence, and prunes local `[gone]` branches left by merged and
+deleted PRs.
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ def is_valid_branch_name(name: str) -> bool:
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, check=True, text=True, capture_output=capture, encoding="utf-8")
-    # `stdout=None` used to normalize to `""` as a Windows quirk.
-    # showed this is a symptom of a decoding reader that died, and closed the cause.
+    # `stdout=None` used to normalize to `""` as a Windows quirk. It is actually
+    # a symptom of a decoding reader that died, so preserve it as capture failure.
     # With requested capture, None now means genuine capture failure,
     # and normalization would replace it with emptiness: `_prune_gone_branches`
     # would report “pruned: 0 merged branches,” indistinguishable from an honest “nothing

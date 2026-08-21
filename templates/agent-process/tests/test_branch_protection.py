@@ -1,7 +1,7 @@
 """Guards around required status checks for the `main` branch.
 
-Actual enforcement lives in GitHub configuration **outside the repository**: before , the `pr-link`
-workflow existed, was red in the UI, and blocked nothing because it was absent from
+Actual enforcement lives in GitHub configuration **outside the repository**: the `pr-link`
+workflow once existed and was red in the UI, yet blocked nothing because it was absent from
 `required_status_checks.contexts`. The defect class is presence ≠ correctness.
 
 There are three independent layers here:
@@ -323,8 +323,12 @@ class TestDeclarationMatchesWorkflows:
 
     def test_yaml_extension_workflow_is_loaded(self, tmp_path: Path) -> None:
         """GitHub accepts `.yaml`; a guard blind to it would be vacuously green."""
-        (tmp_path / "a.yml").write_text("on:\n pull_request:\njobs:\n one: {}\n", encoding="utf-8")
-        (tmp_path / "b.yaml").write_text("on:\n pull_request:\njobs:\n two: {}\n", encoding="utf-8")
+        (tmp_path / "a.yml").write_text(
+            "on:\n  pull_request:\njobs:\n  one: {}\n", encoding="utf-8"
+        )
+        (tmp_path / "b.yaml").write_text(
+            "on:\n  pull_request:\njobs:\n  two: {}\n", encoding="utf-8"
+        )
         loaded = load_workflows(tmp_path)
         assert set(loaded) == {"a.yml", "b.yaml"}
         problems = declaration_problems(loaded, (), {})
@@ -452,7 +456,7 @@ class TestPrePushHook:
 
     def test_allow_drift_reason_reaches_protection_probe(self, tmp_path: Path) -> None:
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
-        reason = "PATCH-first migration for "
+        reason = "temporary branch-protection migration"
         result = self._run(tmp_path, env={**os.environ, "BRANCH_PROTECTION_ALLOW_DRIFT": reason})
 
         assert result.returncode == 0, result.stderr
@@ -469,7 +473,7 @@ class TestPrePushHook:
         assert not any("ci_check.py" in c for c in self._gate_calls(tmp_path))
 
     def test_failing_gate_is_not_rerun_under_the_next_interpreter(self, tmp_path: Path) -> None:
-        """A red gate is a verdict, not “the interpreter is wrong” (root cause )."""
+        """A red gate is a verdict, not an interpreter-discovery failure."""
         self._stub(tmp_path / ".venv" / "Scripts" / "python", "scripts")
         self._stub(tmp_path / ".venv" / "bin" / "python", "bin")
         (tmp_path / "rc-ci_check.py").write_text("1", encoding="utf-8")
