@@ -1,12 +1,14 @@
 **Question this document answers:** which files of this repository's agentic-process contract
 can move to a new project as-is, which need per-project parameterization, and which never leave —
-the manifest a future copier template and Claude Code plugin are built from, not the build itself.
+the manifest consumed by the tracked copier template and the future Claude Code plugin.
 
 The distribution mechanism this manifest feeds is decided in
 [ADR-0011](../adr/0011-agentic-process-distribution-mechanism.md): copier for the two exported
-layers below, the official Claude Code plugin marketplace for the Claude-adapter layer. Building
-the actual template repository, the plugin package, and installing either into a target project is
-out of scope here — a follow-up issue opened when that build starts.
+layers below, the official Claude Code plugin marketplace for the Claude-adapter layer.
+[`templates/agent-process/`](../../templates/agent-process/) is the reviewed,
+one-shot seed for the external copier-template repository; its parity and render
+guard is `tests/test_agent_process_template.py`. Creating that external repository,
+the plugin package, and an installation in a target project remain separate work.
 
 ## Manifest scope
 
@@ -144,9 +146,7 @@ sized for this repository's own history — precedent narrative like "twice igno
 #465)" earns its place here because it explains why a rule is an exit code and not a checklist item,
 for readers who already share that history, but a new project's readers do not. The cut applies the
 same operative-rule-plus-one-sentence-rationale split the Canonical-home rule already uses for
-internal moves (`project-map.md` §Canonical-home rule), not a blanket trim of rules. No automated
-guard: the qualitative form is already gated where it is authored (`tests/test_doc_narrative.py`),
-and a byte-count assertion on a not-yet-existing export would guard nothing today. Making the actual
-cut is the copier-template build's own work, tracked by the follow-up issue this record's opening
-paragraph names (opened when that build starts) — `docs/architecture/coverage-gaps.md` is the wrong
-home for it, since that ledger is scoped to untested behaviour, not a doc-trimming task.
+internal moves (`project-map.md` §Canonical-home rule), not a blanket trim of rules. The qualitative
+form is already gated where it is authored (`tests/test_doc_narrative.py`); the copier-template render
+guard now verifies the concrete 30 KB payload. The export keeps operative rules plus one rationale
+sentence rather than repository-history narrative.

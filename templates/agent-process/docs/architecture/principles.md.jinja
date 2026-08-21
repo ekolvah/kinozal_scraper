@@ -1,0 +1,242 @@
+# {{ repo_name }} architectural principles
+
+**Question this document answers:** which principles, workflow rules and quality
+gates are binding in this repo, and what wins when two documents disagree. This is
+the **source of truth**: `CLAUDE.md` and the other `docs/architecture/*.md` files are
+runtime guidance and reference implementation detail — where they conflict with this
+document, this document wins.
+
+**Not here.** The *procedural* half of the workflow (branch creation, PR discipline,
+labels, role hand-offs, the architect-review gate) is delegated to
+[the agent process](agent-process.md) — see §Governance. How each gate is
+implemented and configured, and which coverage gaps are consciously accepted, are
+this project's own docs to author.
+
+## Goal function
+
+Every agent working in this repository optimises the same three goals, in this
+strict order. They are the *why* behind §I–§VII: when two principles pull in
+different directions, the higher goal decides.
+
+1. **Minimize future bug-fixing and support.** Root cause before fix — no
+   workaround or shim until the cause is named (§V). A visible anomaly beats a
+   silent skip: degradation reaches the operator as a marker, not as silence
+   (§IV). Bug fixes are test-first: failing test → code → green (§I).
+2. **Optimize token spend**, both development and runtime. Do not produce
+   artefacts, scripts, or infrastructure a task does not need (§VII); before an
+   expensive step — a subagent, a web search, a wide grep — weigh whether it
+   pays for itself. Watch for work for work.
+3. **Preserve predictability and user control.** One PR is one logical unit;
+   risky or shared-state actions are confirmed with the user even when they are
+   technically permitted. The procedural half of this goal lives in
+   [the agent process](agent-process.md).
+
+### Scripts over instructions
+
+A deterministic step of any multi-step workflow ("check X", "make sure Y",
+"extract Z") becomes **a script with an exit code and unit tests** on its pure
+functions, not a line of prose. Prohibitions become a deny-list, a hook, or
+branch protection — never "remember not to do X". Trigger heuristic: the moment
+a rule is phrased as "must not forget about X", X belongs in a script or a gate.
+
+**Rationale:** an agent skips prose items in a long pipeline; `exit 0/1` always runs.
+
+## Core Principles
+
+### I. Test-First (NON-NEGOTIABLE)
+
+For every behavioural change a failing test exists **before** the implementation
+commit. The implementer workflow enforces this: write tests from the
+issue's `## Test plan` section, run the test suite to confirm RED, then write
+code to make them GREEN.
+
+Exceptions, all narrow: (a) rename / move of an already-tested symbol, (b)
+documentation-only PRs, (c) one-line non-behavioural fixes (typos, comments).
+Anything that changes what the code *does* needs a test that would have caught
+the prior behaviour. The converse — when a *non-behavioural* regression still
+does not earn a guard test (a resource-only cost, not correctness/safety) — is
+a target-project coverage decision to record explicitly.
+
+A test that pins a known production bug (`TestConfigValidationKnownGaps` style)
+is allowed only when an issue tracks the fix; when fixed, the test MUST be
+inverted to assert the correct behaviour.
+
+**Rationale:** code-then-tests hides drift for months; writing the test first
+makes the contract explicit and the divergence audible.
+
+### II. Protocol Boundaries with Dependency Injection
+
+Every external service is hidden behind a `typing.Protocol` and injected into
+callers. Production wires real clients in `if __name__ == "__main__":` blocks;
+tests wire in-memory doubles via the same constructor signature.
+
+Each external dependency gets its own Protocol boundary. Implementations receive
+ready clients, never credentials; tests use in-memory doubles, not mocks of
+internal functions.
+
+**Rationale:** mocking internal logic lets production drift undetected; Protocol
+doubles exercise the real code path with deterministic external state.
+
+### III. Delivery Truthfulness
+
+The system MUST NOT silently lose user-visible data. If a pipeline finds new
+items but cannot deliver the corresponding notification, the run MUST surface
+that as an explicit operational failure: log ERROR, mark the result not-ok
+where that type is used, and exit non-zero from the run-script step. A
+best-effort technical alert should be sent when the failure is not the
+delivery transport itself.
+
+Persisted dedupe state MUST reflect confirmed delivery. If the delivery channel
+is unavailable, the run is red with enough logs to identify missed items.
+
+**Rationale:** users must be able to distinguish "there was no news" from "the
+system failed to deliver news" — a silent green run that does neither destroys
+trust.
+
+### IV. Visibility Over Silence
+
+A degraded item reaches the user as a **visible anomaly**, not a silent skip.
+If the pipeline extracted a row but a field is unusable (empty URL, missing
+image, broken asset), the item is still emitted with a clear gap marker AND a
+WARNING log line.
+
+Conversely, fatal extraction errors (zero rows, malformed source) MUST log
+ERROR and the relevant run-script step MUST exit non-zero so CI surfaces the
+failure.
+
+The same rule applies after extraction: failed notification delivery,
+summarization failures, and failed technical alerts MUST NOT be collapsed into
+"no new items/messages."
+
+Forbid swallowed parse errors and fail-open branches. CI enforces no blind
+`except` and `logger.exception` in handlers; an already-visible broad catch
+needs an inline rationale, and configuration may not disable the rule.
+
+**Rationale:** silent degradation is the worst kind of bug — a visible gap or a
+red CI badge is a forcing function for someone to look.
+
+### V. Root Cause Before Fix
+
+Before changing code in response to a bug or unexpected behaviour, the failure
+mode MUST be reproduced and located. Instrument before patching: inspect logs,
+inputs, and the failure point before proposing a change. When the behaviour to
+be designed is how an external system is read or classified, observation of
+that live system is part of locating the failure; repository reasoning alone
+is not evidence.
+
+Preserve the response under `evidence/issue-<N>/` with a reproducible command
+appropriate to that source — working-tree-only planning evidence, ignored by
+Git and kept locally only until merge; a verified, safe, compressed
+observation record in the public issue is the durable review artifact, not
+the full payload. [The agent process](agent-process.md#issue-contract) names
+the read-only capture route per external source and the observation fields
+the evidence record must carry: the failing record plus an exact valid record
+from the same captured response (replacing it with a sibling feed or category
+is data loss, not preservation), the fix boundaries compared, and the
+production call path traced before claiming a narrow fix needs another fetch.
+Captured bytes become a committed regression fixture only when a
+production-behaviour test reads them in the same commit.
+
+No workarounds, shims, retries, broader try/except, or CI-bypass flags are
+accepted as fixes when the underlying mechanism is not understood. If the
+immediate fix proves too large for the current PR, the PR may ship a
+**documented mitigation** (e.g. raise-and-skip with a linked issue), but the
+mitigation itself must be a deliberate choice, not a guess.
+
+**Rationale:** a shim that hides a root cause becomes load-bearing later;
+cheap-now is expensive-later.
+
+### VI. Fail-Fast Configuration
+
+Declarative config is validated at load time. Errors that can be caught at
+startup MUST NOT surface mid-run: bad selectors, unresolved macro
+placeholders, non-positive limits, missing required fields, mismatched
+schemas.
+
+A central validator function is the gate. When a new class of config error
+becomes possible, the validator MUST grow a check for it in the same PR.
+
+**Rationale:** a config-validation gap otherwise surfaces in the next
+scheduled run, days after the typo was introduced.
+
+### VII. Simplicity First
+
+Every change is the **minimum diff that solves the stated task — nothing speculative.**
+No unrequested features, premature abstractions, or error-handling beyond what the task
+needs (auth / payments / security excepted). Heuristic: if the solution could be half its
+length, rewrite it; an abstraction with a single caller is inlined, not introduced.
+
+**Surgical changes:** touch only what the task requires and match the surrounding style;
+do NOT "improve" or refactor adjacent unbroken code inside an unrelated diff. Removing
+dead code is a separate, deliberate unit (one-PR-one-unit,
+[the agent process](agent-process.md)), not silently widened scope. New
+dependencies / packages / build steps are not added without asking first — prefer stdlib
+and existing repo packages.
+
+Not machine-gated: "over-complicated" is a semantic judgement. It is enforced at
+**plan stage** by the [architect review contract](agent-process.md#architect-review-contract),
+whose reviewer reads the [goal function](#goal-function) above; a diff-stage automated
+review then reviews the actual PR as a second pass.
+
+**Rationale:** over-engineering is a systematic LLM-agent failure mode, cheapest to
+prevent as a standing default — more code is more bug/support surface (goal 1) and
+more dev + runtime tokens (goal 2).
+
+## Development Workflow
+
+The procedural workflow rules (branch creation, PR discipline, labels,
+plan→implement flow, pre-commit gate, dependency consistency, architect-review
+gate) are an **operational procedure**, delegated to their canonical home
+[the agent process](agent-process.md). They
+supplement the principles above and are **equally binding**. This file does not
+restate them — edit them there.
+
+## Quality Gates
+
+A PR MAY merge only when:
+
+- All CI checks are green (format, lint, tests, type-check, dependency audit).
+- The change has tests matching its behaviour (Principle I). New extraction
+  logic gets an integration test against a saved fixture; new config rules
+  get a unit test; new pipeline orchestration gets a Protocol-doubles test.
+- A newly *rejected* coverage decision (a consciously-accepted gap, a scope-/cost-skip)
+  is recorded in a coverage-gaps ledger (this project's own) so it isn't
+  silently re-litigated — there is no auto-generated coverage inventory to update.
+- The automated PR review workflow has commented on the PR (status sticky
+  comment present); a hard block on its verdict is not enforced, but
+  unaddressed concerns must be answered in PR comments before merge.
+- For PRs that touch external extraction or API contracts, an E2E smoke test
+  (real HTTP) has been run at least once on the branch.
+
+## Governance
+
+This document supersedes ad-hoc conventions in `CLAUDE.md` and the other
+`docs/architecture/*` notes; where they conflict, this document wins.
+`CLAUDE.md` and the other architecture docs remain as runtime guidance and
+implementation-detail references — kept short, kept linked, never the source
+of truth on principles.
+
+**Delegation of operational procedures.** This constitution retains the
+**goal function**, the **principles §I–VII**, the **Quality Gates**, and this
+**Governance** section as its canon. The *operational procedural rules* (the
+former §Development Workflow) are delegated to
+[the agent process](agent-process.md). Delegation does **not** weaken their
+authority: those rules bind equally and `agent-process.md` is their
+single source of truth (other mentions are links only). Amending them happens
+in that file; amending the *delegation itself* (what is canon vs. delegated) is
+a Governance change made here.
+
+Amendments are made via PR that modifies this file. Version policy:
+
+- **MAJOR** — a principle is removed, redefined, or a procedural rule is
+  reversed (e.g. Test-First downgraded to optional). Requires explicit human
+  approval in the PR description.
+- **MINOR** — a new principle or section is added, or a principle's scope
+  is materially expanded.
+- **PATCH** — clarifications, wording improvements, typo fixes, references
+  updated, no semantic shift in rules.
+
+Every PR description states which principles the change interacts with. The
+reviewer (human + automated review) checks that the change does not violate
+them; if it does, the violation MUST be recorded in the PR body with a
+justification.

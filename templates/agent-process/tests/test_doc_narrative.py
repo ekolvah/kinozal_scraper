@@ -1,0 +1,353 @@
+"""Guard for reference form in `.md`: `#N` is a pointer, not a sentence member.
+
+**What is guarded.** `project-map.md` §“What the documentation describes” requires documents to state current
+state, not chronicle. The rule lived only in prose, with one-way pressure: a paragraph with a task number looks
+authoritative, so numbers accumulate and nobody removes them. Measurement in
+[ADR-0001](../docs/adr/0001-record-architecture-decisions.md) showed exactly that. The deterministic half of
+the rule is **form**: `#N` is a parenthetical pointer (the sentence is complete without it) or a sentence member
+(without tracker navigation the phrase is incomplete). This is `principles.md` §Scripts over instructions: an
+exit code instead of a reviewer-checklist item.
+
+**Two branches, different reasons.** In body text, form is for readability. In a heading, `#N` is forbidden
+**even in parentheses**: GitHub generates an anchor from heading text, so `## Eval harness
+` makes the section address `#eval-harness-139`, an address tied to the number of the task that created
+the section. `tests/test_doc_links.py` catches the **effect** (a dangling anchor after rename); this branch
+catches the **cause**, before the anchor is created.
+
+**Fail closed on an unpaired delimiter.** The allowed zone is only a **closed**
+`()` pair. An unclosed parenthesis does not open a zone: otherwise one typo silently turns a paragraph tail
+into an allowlist, and the guard turns green without reporting anything (§IV—the exact defect it prevents).
+For the same reason `table` is enabled: without it a table joins into one `inline` token, and a parenthesis
+from one cell closes with a parenthesis from another five lines later.
+
+**Backtick pairing and link boundaries are delegated to the parser.** `code_inline` and a link label are
+legal places for `#N`, and parentheses inside them do not participate in pairing (`` `f(x)` ``).
+Counting this with a regexp would mean rewriting `markdown-it-py`, which is why it was chosen
+. The parser filters the contents of ``` blocks for free: they are a `fence` token, not `inline`.
+
+**The `#` sigil is reserved for issue/PR references.** A rule number is written as `workflow.md §7`,
+a board as `Project 1`. The convention (whose canon is `project-map.md`) replaces an exception branch in
+the predicate: without it, an open dictionary of left context would have to grow with
+every new form of notation. It is itself the **third guard branch** and the only repository-wide one:
+`#N` alongside `workflow`/`Project` occurs in both `.py` and `.toml`, and prose was insufficient for this
+half—reducing it in took three commits, two of them after review.
+What makes the branch gateable is the **closedness** of its dictionary: it is closed by *token* (`workflow`,
+`Project`) in ordinary Markdown wrapping—backtick, `**`, a closing link parenthesis—
+rather than by a list of spellings. A link is matched by the end of its URL, not its label:
+`[`workflow.md`](…/workflow.md) #N` is caught because the path ends with the same
+token; a link to another file would pass. This is precisely the condition under which the date branch was rejected as open
+(ledger **AC** in `coverage-gaps.md`).
+
+**Scope.** The branches concerning pointer form are `.md` from the git index minus `docs/adr/`; the sigil branch is
+**all** tracked files. `git ls-files`, not a filesystem traversal: `.claude/worktrees/` is gitignored
+and holds repository copies with old docs (the same argument as in `tests/test_doc_links.py`).
+MADR records are excluded **by genre**: a record is the home of rationale, it is dated by design
+and immutable after acceptance, so a guard going red on it would have no legal
+fix—only an exception list would remain.
+
+**Guard boundaries, honestly.** What is gated is **form**, not genre: `Closed by .` → `Completed
+.` will pass without becoming better. Measurement when the guard was introduced: of 266 `#N` mentions
+in scope, 23 fell under it; the rest are allowed—and there is real narrative among the allowed cases
+(`.claude/commands/implement.md` has two in parentheses). The guard makes recurrence **visible
+in review** in the form where it is cheapest; it does not make it impossible. The semantic question
+“normative or archaeology” remains for a person, the same class as the detector of semantic
+duplicates (`project-map.md`).
+
+Two more limits are named explicitly. **A link label is transparent in full**, not only when it
+is the number itself: the guard will permit `[Closed by — details](url)`. It could be narrowed, but the cost is
+a branch for label form for a case absent from the repository (§VII). **The line number in the message
+can lag behind** if a token above it in the same paragraph has `content` shorter than the source
+fragment it occupies: a code span that crosses a line (CommonMark replaces the line break
+inside `` ` `` with a space), `![](url)` (only alt is in `content`), or escaped `\\`.
+It is a message defect, not a verdict defect; fixing it would require its own source map.
+"""
+
+from __future__ import annotations
+
+import re
+import subprocess
+from collections.abc import Callable
+from functools import lru_cache
+from pathlib import Path
+
+import pytest
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# `table` is not decorative—see §Fail-closed in the docstring.
+_MD = MarkdownIt("commonmark").enable("table")
+
+# `#` immediately after a letter/digit is not a link (`C#1`); after a hyphen it is (`pre-`,
+# and that is precisely prohibited). An anchor (`#doc-guards`) does not match: `#` is not followed by a digit.
+_ISSUE_REF = re.compile(r"(?<!\w)#\d+\b")
+
+# Opaque-zone placeholder: retains length so offsets remain accurate.
+_OPAQUE = "\x00"
+
+_EXPECTED_SCOPE_DIRS = ("docs/architecture", ".claude/rules", ".claude/commands")
+
+# Non-issue uses of the sigil: rule number and board number. The dictionary is **closed**—the exact
+# condition for rejecting the date branch (ledger **AC**) and selecting this one. It does not live only in
+# `.md` scope: three commits in this PR were needed to clean `.py` and `.toml`; prose was insufficient.
+#
+# Formatting suffix (`.md`, backtick, closing link parenthesis, `**`) sits outside the alternative deliberately:
+# both tokens need it—`workflow #N`, `` `workflow.md` #N ``, `[`workflow.md`](path) #N`, `Project #N`,
+# `` `Project` #N ``, `**Project** #N`. Closing the dictionary by *spellings* instead of *tokens* would leave
+# most `.md` locations to prose. `IGNORECASE` supports `Workflow` at sentence start.
+#
+# The negative example uses metavariable `#N`, not a digit: this branch is a line regexp over the raw file,
+# and a code span is no escape hatch (unlike the two Markdown branches). No digit follows `#`, so the predicate
+# remains silent and the rule can be demonstrated.
+_NON_ISSUE_SIGIL = re.compile(r"(?:workflow(?:\.md)?|project)[`)\]*_]*\s+#\d", re.IGNORECASE)
+
+# MADR records directory is outside scope by genre (docstring §Scope). Pinned by
+# `test_adr_records_are_out_of_scope`, so the carve-out remains conscious.
+_EXCLUDED_DIR = "docs/adr/"
+
+def readable_stream(inline: Token) -> str:
+    """`inline` token text with zones opaque to the rule filled by placeholders.
+
+    `code_inline` and link-label content become placeholders: `#N` is legal there,
+    and internal parentheses must not take part in pairing. `softbreak` maps to a newline,
+    otherwise a finding offset cannot convert to a line number.
+    """
+    parts: list[str] = []
+    link_depth = 0
+    for child in inline.children or []:
+        if child.type == "link_open":
+            link_depth += 1
+        elif child.type == "link_close":
+            link_depth -= 1
+        elif child.type in {"softbreak", "hardbreak"}:
+            parts.append("\n")
+        elif link_depth or child.type != "text":
+            parts.append(_OPAQUE * len(child.content))
+        else:
+            parts.append(child.content)
+    return "".join(parts)
+
+def paired_spans(text: str) -> list[tuple[int, int]]:
+    """Ranges of **closed** `()` pairs. An unclosed `(` does not open a zone."""
+    spans: list[tuple[int, int]] = []
+    stack: list[int] = []
+    for i, char in enumerate(text):
+        if char == "(":
+            stack.append(i)
+        elif char == ")" and stack:
+            spans.append((stack.pop(), i))
+    return spans
+
+def narrative_refs(markdown: str) -> list[tuple[int, str]]:
+    """`(line, fragment)` for every `#N` not used as a parenthetical pointer."""
+    found: list[tuple[int, str]] = []
+    for token in _MD.parse(markdown):
+        if token.type != "inline":
+            continue
+        # `map or [0]`, not `map is None → skip`: skipping silently removes token content
+        # from checking—the exact §IV vacuum this guard prevents. This branch is unreachable today
+        # (table cells have `.map`, proved by `test_table_cell_paren_does_not_leak`), but honest reporting costs zero.
+        start_line = (token.map or [0])[0]
+        stream = readable_stream(token)
+        spans = paired_spans(stream)
+        for match in _ISSUE_REF.finditer(stream):
+            if any(start < match.start() < end for start, end in spans):
+                continue
+            line = start_line + stream[: match.start()].count("\n") + 1
+            around = stream[max(0, match.start() - 60) : match.start() + 60]
+            found.append((line, around.replace(_OPAQUE, "·").replace("\n", " ").strip()))
+    return found
+
+def heading_issue_refs(markdown: str) -> list[tuple[int, str]]:
+    """`(line, heading text)` for every heading with `#N`, including parentheses."""
+    tokens = _MD.parse(markdown)
+    return [
+        ((token.map or [0])[0] + 1, tokens[i + 1].content)
+        for i, token in enumerate(tokens)
+        if token.type == "heading_open" and _ISSUE_REF.search(tokens[i + 1].content)
+    ]
+
+def sigil_misuses(text: str) -> list[tuple[int, str]]:
+    """`(line, fragment)` where `#N` names not an issue but a rule or board.
+
+    Line regexp rather than Markdown parsing: the branch runs over **all** tracked files,
+    including `.py` and `.toml`, which have no Markdown structure.
+    """
+    return [
+        (i, line.strip())
+        for i, line in enumerate(text.splitlines(), 1)
+        if _NON_ISSUE_SIGIL.search(line)
+    ]
+
+@lru_cache(maxsize=1)
+def _tracked_files() -> tuple[str, ...]:
+    """Existing tracked paths."""
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+    )
+    return tuple(name for name in result.stdout.split("\0") if name)
+
+def _tracked_docs() -> tuple[str, ...]:
+    """Tracked `.md` outside `docs/adr/`—scope of pointer-form branches."""
+    names = [name for name in _tracked_files() if name.endswith(".md")]
+    return tuple(name for name in names if not name.startswith(_EXCLUDED_DIR))
+
+def _report(finder: Callable[[str], list[tuple[int, str]]], docs: tuple[str, ...]) -> list[str]:
+    found: list[str] = []
+    for doc in docs:
+        text = (_REPO_ROOT / doc).read_text(encoding="utf-8")
+        found.extend(f"{doc}:{line}: {fragment}" for line, fragment in finder(text))
+    return found
+
+def _report_any(names: tuple[str, ...]) -> list[str]:
+    """`sigil_misuses` over **all** tracked files, including non-text files.
+
+    Decoding is permissive (`errors="replace"`): sought forms are ASCII-only, so corrupting
+    non-Latin text does not lose findings, while extension filtering would silently drop a new
+    file type from the invariant.
+    """
+    found: list[str] = []
+    for name in names:
+        text = (_REPO_ROOT / name).read_bytes().decode("utf-8", errors="replace")
+        found.extend(f"{name}:{line}: {fragment}" for line, fragment in sigil_misuses(text))
+    return found
+
+class TestDocsCarryNoNarrative:
+    @pytest.mark.parametrize("directory", _EXPECTED_SCOPE_DIRS)
+    def test_scope_covers_expected_dirs(self, directory: str) -> None:
+        assert any(name.startswith(f"{directory}/") for name in _tracked_docs()), (
+            f"в скоуп гарда не попал ни один `.md` из {directory} — либо каталог переехал, "
+            f"либо `git ls-files` вернул не то. Пустой скоуп зелёный, и это ровно тот "
+            f"вакуум, против которого гард написан (§IV)"
+        )
+
+    def test_adr_records_are_out_of_scope(self) -> None:
+        """The carve-out is conscious, not degenerate: MADR records exist and are outside scope."""
+        result = subprocess.run(
+            ["git", "ls-files", "-z", "docs/adr"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+        assert [name for name in result.stdout.split("\0") if name.endswith(".md")]
+        assert not [name for name in _tracked_docs() if name.startswith(_EXCLUDED_DIR)]
+
+    def test_no_issue_ref_in_heading(self) -> None:
+        problems = _report(heading_issue_refs, _tracked_docs())
+        assert not problems, (
+            "номер таски в заголовке секции: якорь GitHub генерится из текста заголовка, "
+            "поэтому адрес секции оказывается привязан к номеру породившей её таски и "
+            "рвётся при первом переименовании:\n " + "\n ".join(problems)
+        )
+
+    def test_non_md_files_are_in_sigil_scope(self) -> None:
+        """The sigil branch is repository-wide: `.py`/`.toml` must enter it (§IV)."""
+        assert [name for name in _tracked_files() if not name.endswith(".md")]
+
+    def test_sigil_names_only_issues(self) -> None:
+        problems = _report_any(_tracked_files())
+        assert not problems, (
+            "сигил `#` зарезервирован за ссылками на issue/PR (канон — `project-map.md` "
+            "§«Что описывает документация»): номер правила пишется `workflow.md §N`, "
+            "номер доски — `Project N`. Иначе адрес неотличим от номера задачи — а задача "
+            "с таким номером в этом репо, скорее всего, существует:\n " + "\n ".join(problems)
+        )
+
+    def test_no_narrative_issue_ref(self) -> None:
+        problems = _report(narrative_refs, _tracked_docs())
+        assert not problems, (
+            "`#N` членом предложения — без перехода в трекер фраза неполна. Указатель "
+            "ставится в скобки после законченного утверждения; номер правила — "
+            "`workflow.md §N`, доска — `Project N`:\n " + "\n ".join(problems)
+        )
+
+class TestNarrativePredicates:
+    """Predicates on synthetic input: without them the guard proves itself on a green repository."""
+
+    def test_pointer_in_parens_is_allowed(self) -> None:
+        assert narrative_refs("Дискриминатор сверяет точный литерал.") == []
+
+    def test_pointer_across_soft_wrap_is_allowed(self) -> None:
+        assert narrative_refs("Цена локализованной игры — два запроса\nвместо одного.") == []
+        assert narrative_refs("Цена локализованной игры (два\nзапроса вместо одного, ).") == []
+
+    def test_pointer_around_code_span_is_allowed(self) -> None:
+        assert narrative_refs("Плата видна в байтах (`test_always_load_budget.py`, ).") == []
+
+    def test_pointer_in_link_label_is_allowed(self) -> None:
+        assert narrative_refs("Гейт пришпилен .") == []
+
+    def test_pointer_in_code_span_is_allowed(self) -> None:
+        assert narrative_refs("Скрипт форсит `Closes ` в body PR.") == []
+
+    def test_sentence_member_is_reported(self) -> None:
+        assert len(narrative_refs("Closed by .")) == 1
+        assert len(narrative_refs("RCA установил, что исход решает одна величина.")) == 1
+
+    def test_unbalanced_paren_does_not_whitelist_tail(self) -> None:
+        """One unclosed parenthesis does not turn the paragraph tail into an allowlist (§IV)."""
+        assert len(narrative_refs("Вызов `f(x` сломан — подробности в .")) == 1
+
+    def test_stray_backtick_does_not_whitelist_tail(self) -> None:
+        assert len(narrative_refs("Одиночный ` в прозе, а дальше Closed by .")) == 1
+
+    def test_paren_inside_code_span_is_not_a_zone(self) -> None:
+        """Parentheses inside a code span do not participate in pairing—the parser permits them."""
+        assert len(narrative_refs("Функция `f(x)` сломана — Closed by .")) == 1
+
+    def test_table_cell_paren_does_not_leak(self) -> None:
+        table = "| a | b |\n|---|---|\n| x (foo | bar) Closed by |\n"
+        assert len(narrative_refs(table)) == 1
+
+    def test_ref_inside_fence_is_ignored(self) -> None:
+        assert narrative_refs("```\nClosed by \n```\n") == []
+
+    def test_issue_ref_in_heading_is_reported(self) -> None:
+        """In a heading, parentheses do not help: anchor is generated from all text."""
+        assert len(heading_issue_refs("## Eval harness")) == 1
+        assert heading_issue_refs("## Eval harness — trailer selection") == []
+        assert narrative_refs("## Eval harness") == []
+
+    def test_anchor_is_not_an_issue_ref(self) -> None:
+        assert narrative_refs("Секция `ci-workflow.md#doc-guards` описывает реестр.") == []
+        assert narrative_refs("Якорь #doc-guards-2 у второго одноимённого заголовка.") == []
+
+    def test_rule_and_board_numbers_are_reported(self) -> None:
+        # Offenders are built by interpolation: the sigil branch scans **all** tracked files,
+        # including this one, so a literal in the test would make the test itself red.
+        assert len(sigil_misuses(f"правило workflow #{7} и доска Project #{1}")) == 1
+        assert sigil_misuses("правило `workflow.md` §7 и доска Project 1") == []
+
+    def test_every_spelling_of_a_rule_number_is_reported(self) -> None:
+        """Dictionary is closed by *token*, not by a list of spellings.
+
+        Some forms occur in `.md` inside closed parentheses, so `narrative_refs` skips them
+        by construction—if the regexp required adjacency, a `§N` → `#N` regression would be
+        invisible to all three branches.
+        """
+        for spelling in (
+            f"workflow #{9}",
+            f"`workflow.md` #{9}",
+            f"[`workflow.md`](../rules/workflow.md) #{9}",
+            f"Workflow #{9}",
+            f"`Project` #{1}",
+            f"**Project** #{1}",
+        ):
+            assert sigil_misuses(spelling), spelling
+
+    def test_sigil_branch_reads_any_file_type(self) -> None:
+        """The line-oriented branch works even where Markdown structure is absent."""
+        line = f"# comment: pip-compile (workflow #{7})"
+        assert sigil_misuses(f'{line}\nname = "x"\n') == [(1, line)]
+
+    def test_line_number_points_at_the_offending_line(self) -> None:
+        markdown = "# Заголовок\n\nПервая строка абзаца,\nвторая: Closed by .\n"
+        assert [line for line, _ in narrative_refs(markdown)] == [4]

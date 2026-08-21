@@ -1,0 +1,117 @@
+_templates_suffix: ".jinja"
+_answers_file: ".copier-answers.yml"
+_exclude:
+  - "copier.yml"
+  - ".copier-answers.yml"
+  - "__pycache__"
+  - "*.pyc"
+_message_after_copy: |
+  Installed the Layer 0 + Codex Layer 2 agent-process payload.
+  If this project also adopts the Claude adapter, install its plugin only after
+  this copier payload: its hooks target scripts/hooks.py from Layer 0. See the
+  source manifest's “Install order across layers” section before doing so.
+
+repo_name:
+  type: str
+  help: Repository name used in process documentation and generated helpers.
+  default: "my-project"
+
+github_project_number:
+  type: str
+  help: GitHub Project number containing the issue board.
+  default: "1"
+
+github_project_owner:
+  type: str
+  help: GitHub user or organisation that owns the Project.
+  default: "my-org"
+
+github_project_id:
+  type: str
+  help: GitHub Project node ID.
+  default: "PVT_REPLACE_ME"
+
+priority_field_id:
+  type: str
+  help: Priority single-select field node ID.
+  default: "PVTSSF_PRIORITY_REPLACE_ME"
+
+priority_option_high:
+  type: str
+  help: Priority option ID for High.
+  default: "OPTION_HIGH_REPLACE_ME"
+
+priority_option_medium:
+  type: str
+  help: Priority option ID for Medium.
+  default: "OPTION_MEDIUM_REPLACE_ME"
+
+priority_option_low:
+  type: str
+  help: Priority option ID for Low.
+  default: "OPTION_LOW_REPLACE_ME"
+
+status_field_id:
+  type: str
+  help: Status single-select field node ID.
+  default: "PVTSSF_STATUS_REPLACE_ME"
+
+status_option_planned:
+  type: str
+  help: Status option ID for Planned.
+  default: "OPTION_PLANNED_REPLACE_ME"
+
+status_option_in_progress:
+  type: str
+  help: Status option ID for In Progress.
+  default: "OPTION_IN_PROGRESS_REPLACE_ME"
+
+required_status_contexts:
+  type: yaml
+  help: Required GitHub branch-protection check contexts, in order.
+  default: ["quality", "pr-link", "agent-review"]
+
+agent_review_context:
+  type: str
+  help: Required-context name produced by the automated PR review workflow.
+  default: "agent-review"
+
+not_required_contexts:
+  type: yaml
+  help: Mapping of deliberately non-required check contexts to their reasons.
+  default: {}
+
+ci_checks:
+  type: yaml
+  help: Ordered CHECKS registry entries, each with name and existing function.
+  default:
+    - {name: "format", function: "check_format"}
+    - {name: "lint", function: "check_lint"}
+    - {name: "language", function: "check_language"}
+    - {name: "secrets", function: "check_secrets"}
+    - {name: "pytest", function: "check_pytest"}
+    - {name: "pip-audit", function: "check_pip_audit"}
+    - {name: "pip-audit-dev", function: "check_pip_audit_dev"}
+    - {name: "requirements", function: "check_requirements"}
+    - {name: "mypy", function: "check_mypy"}
+    - {name: "imports", function: "check_imports"}
+
+fixture_routes:
+  type: yaml
+  help: Read-only external-fixture routes this project supports.
+  default: ["stdin", "github"]
+
+language_markdown_roots:
+  type: yaml
+  help: Top-level directories whose Markdown is checked for the language policy.
+  default: [".agents", ".github", "docs"]
+
+language_python_roots:
+  type: yaml
+  help: Top-level directories whose Python is checked for the language policy.
+  default: ["scripts", "src", "tests"]
+
+claude_adapter_installed:
+  type: bool
+  help: Include Layer 1 .claude directories in exported documentation-test scopes.
+  default: false

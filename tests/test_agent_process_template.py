@@ -81,6 +81,15 @@ def _manifest_layer0_and_layer2_entries() -> list[tuple[str, str]]:
     return entries
 
 
+def _exported_core_size_budget() -> int:
+    match = re.search(
+        r"cap the exported combined size of `agent-process\.md` \+ `principles\.md` at (\d+) KB",
+        _manifest_text(),
+    )
+    assert match is not None, "export manifest no longer declares its core-size budget"
+    return int(match.group(1)) * 1024
+
+
 def _template_counterpart_exists(path: str, status: str) -> bool:
     target = _TEMPLATE / path
     if status == "generic as-is":
@@ -139,6 +148,13 @@ class TestTemplateRenders:
         content = rendered.read_text(encoding="utf-8")
         assert "{{owner}}" in content
         assert "{{repo}}" in content
+
+    def test_architecture_docs_fit_the_manifest_size_budget(self, rendered_payload: Path) -> None:
+        rendered_size = sum(
+            (rendered_payload / "docs" / "architecture" / name).stat().st_size
+            for name in ("agent-process.md", "principles.md")
+        )
+        assert rendered_size <= _exported_core_size_budget()
 
     def test_no_citation_survives_in_rendered_payload(self, rendered_payload: Path) -> None:
         offenders = []
