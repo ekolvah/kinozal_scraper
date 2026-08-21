@@ -1,6 +1,6 @@
 """Single home of the "model is unpinned" deny-list for both guards (#374, #392).
 
-There is one policy (`docs/architecture/ci.md` §Model pinning) and two surfaces:
+There is one policy (`docs/architecture/ci-agent-review.md` §Model pinning) and two surfaces:
 the `--model` CLI flag inside `claude_args` in
 `.github/workflows/agent-review.yml`, and subagent frontmatter in
 `.claude/agents/*.md`.

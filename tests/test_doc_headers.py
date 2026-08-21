@@ -41,6 +41,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.navigation_policy import read_budget_hint
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Mapped Markdown directories; `project-map.md` defines the canonical boundary.
@@ -57,6 +59,29 @@ _SECTION_HEADING = re.compile(r"^#{2,6} ")
 
 # Require substantive text after the marker, paralleling Python's `D419`.
 _MIN_ANSWER_CHARS = 20
+
+# These entry points and focused documents replace the repeated whole-file reads from #557.
+_READ_BUDGET_DOCUMENTS = tuple(
+    _REPO_ROOT / path
+    for path in (
+        "docs/architecture/project-map.md",
+        "docs/architecture/information-architecture.md",
+        "docs/architecture/ci.md",
+        "docs/architecture/ci-local.md",
+        "docs/architecture/ci-workflow.md",
+        "docs/architecture/ci-branch-protection.md",
+        "docs/architecture/ci-agent-review.md",
+        "docs/architecture/ci-production.md",
+        "docs/architecture/ci-tooling-decisions.md",
+        "docs/architecture/coverage-gaps.md",
+        "docs/architecture/coverage-gaps-ingestion.md",
+        "docs/architecture/coverage-gaps-enrichment.md",
+        "docs/architecture/coverage-gaps-quality-gates.md",
+        "docs/architecture/coverage-gaps-runtime.md",
+        "docs/architecture/coverage-gaps-agent-tooling.md",
+        "docs/architecture/coverage-gaps-modules.md",
+    )
+)
 
 
 def _mapped_docs_in(directory: Path) -> list[Path]:
@@ -134,3 +159,10 @@ class TestMappedDocsCarryHeader:
             f"Пустой header — отсутствие канона с галочкой; тот же дефект, ради которого "
             f"для `.py` выбран `D419`, а не только `D100`"
         )
+
+
+@pytest.mark.parametrize("path", _READ_BUDGET_DOCUMENTS, ids=lambda path: path.name)
+def test_read_budget_documents_fit_as_whole_files(path: Path) -> None:
+    """Keep the #557 navigation documents readable through the policy's whole-file route."""
+    assert path.is_file(), f"planned documentation file is missing: {path.relative_to(_REPO_ROOT)}"
+    assert read_budget_hint(str(path)) is None

@@ -18,7 +18,7 @@ Windows + git-bash. Every pitfall below has recurred ≥2 times—do not reopen 
 - **PowerShell ≠ bash**: `$null` (not `/dev/null`), `$env:VAR` (not `$VAR`), and backtick for line continuation. Invoke the Bash tool explicitly for POSIX scripts.
 - **`subprocess.run` that captures output**: always use `encoding="utf-8"`, and **never use `or ""` for `stdout`/`stderr`**—`None` means broken capture (the stream reader died while decoding), while a default turns failure into emptiness. `tests/test_subprocess_encoding.py` enforces both rules (#364, #410). If the child is Python, it also needs `PYTHONUTF8=1`/`-X utf8`; this guard does not catch that.
 - **Sporadic file locks / AV scanning** during long `git`/`pytest` runs: retry once before root-cause investigation. If it reproduces, investigate.
-- **`ci_check.py` / `git push` with the pre-push hook take minutes** (timing is canonical in the [CI doc](docs/architecture/ci.md#local-pre-commit)): output pauses after `pytest` at `pip-audit`—that is a **network step, not a hang**. Do not kill the process or poll; make one foreground invocation with `timeout: 600000` ([mindset](.claude/rules/mindset.md)).
+- **`ci_check.py` / `git push` with the pre-push hook take minutes** (timing is canonical in the [CI doc](docs/architecture/ci-local.md#local-pre-commit)): output pauses after `pytest` at `pip-audit`—that is a **network step, not a hang**. Do not kill the process or poll; make one foreground invocation with `timeout: 600000` ([mindset](.claude/rules/mindset.md)).
 - **`tasklist` in the agent sandbox (the Bash tool on the maintainer’s Windows machine) returns empty output** (0 lines even without filtering); it works in a normal terminal. Do not infer “the process died” from it—this previously caused a second `ci_check` instance to be launched by mistake.
 
 ## Debugging
@@ -49,5 +49,5 @@ in `.txt`.
 ## Architecture decisions
 
 - **[Principles](docs/architecture/principles.md)** — source of truth: principles §I–VII + quality gates + governance. If it conflicts with this file, `principles.md` prevails.
-- [Project map](docs/architecture/project-map.md) — the **complete navigation index** (which file answers which question) + IA policy (tier model, canonical home). Do **not** duplicate individual documents here—navigate through this index.
+- [Project map](docs/architecture/project-map.md) — complete navigation index; its [IA policy](docs/architecture/information-architecture.md) holds tiers and canonical homes. Do not duplicate individual documents here.
 - [Mindset](.claude/rules/mindset.md) — Claude harness token tactics + pointers to the goal function/principles/process, always-load

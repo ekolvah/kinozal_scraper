@@ -241,13 +241,13 @@ good trailers for one film” (dub #1 vs #2, exactly what golden-set accept sets
 production such ties are common but harmless. A confidence threshold cuts hits and does **not** affect
 the sole observed class of foreign picks: it arrives as a unique top rank with high confidence.
 Selection by `confidence` is orthogonal to the actual error class. The measurements supporting this
-(including the set with negative pole `trap`) are [gap-ledger N](coverage-gaps.md) and
+(including the set with negative pole `trap`) are [gap-ledger N](coverage-gaps-enrichment.md) and
 [testing.md § Eval harness](testing.md#eval-harness--trailer-selection); every selection-logic change
 must pass through `scripts/eval_trailers.py` before merge.
 **Gemini is NOT in the hot path** — LLM(#142)/embeddings(#143)/
 TMDB(#329) remain eval strategies (deliberately outside production: equal Hit at zero runtime cost
 vs Gemini quota at 04:00; coverage consequence + open-world caveat —
-[gap-ledger N](coverage-gaps.md)). Cast is not pulled into the production profile
+[gap-ledger N](coverage-gaps-enrichment.md)). Cast is not pulled into the production profile
 (RU priority follows title language; no per-item details fetch for a cast tie-break — the ties cast
 would break are harmless, #377 — wontfix).
 
