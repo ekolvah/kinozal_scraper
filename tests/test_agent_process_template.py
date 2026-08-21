@@ -21,6 +21,7 @@ _TEMPLATE = _REPO / "templates" / "agent-process"
 _CITATION = re.compile(r"#\d{2,4}\b")
 _LINKED_CITATION = re.compile(r"\[#\d{2,4}\]\([^)]*\)")
 _ABS_ISSUE_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper/issues/\d+")
+_SOURCE_REPOSITORY_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper(?:/|\b)")
 
 # Cells whose secondary backtick token is relative to the primary path's own directory,
 # not repo-root-relative (the manifest's skill "metadata sidecar" rows, e.g.
@@ -157,6 +158,11 @@ class TestTemplateRenders:
         )
         assert rendered_size <= _exported_core_size_budget()
 
+    def test_copier_records_answers_for_a_future_update(self, rendered_payload: Path) -> None:
+        answers = rendered_payload / ".copier-answers.yml"
+        assert answers.is_file(), "Copier output must retain its update metadata"
+        assert "_src_path:" in answers.read_text(encoding="utf-8")
+
     def test_no_citation_survives_in_rendered_payload(self, rendered_payload: Path) -> None:
         offenders = []
         for path in rendered_payload.rglob("*"):
@@ -170,9 +176,20 @@ class TestTemplateRenders:
                 _CITATION.search(content)
                 or _LINKED_CITATION.search(content)
                 or _ABS_ISSUE_URL.search(content)
+                or _SOURCE_REPOSITORY_URL.search(content)
             ):
                 offenders.append(str(path.relative_to(rendered_payload)))
         assert not offenders, f"citation survived export in: {offenders}"
+
+    def test_exported_adrs_do_not_contain_stripped_citation_holes(
+        self, rendered_payload: Path
+    ) -> None:
+        malformed = []
+        for path in (rendered_payload / "docs" / "adr").glob("*.md"):
+            content = path.read_text(encoding="utf-8")
+            if "Issue: []." in content or "on PR ." in content or " in ." in content:
+                malformed.append(path.name)
+        assert not malformed, f"citation stripping left malformed ADR prose: {malformed}"
 
     def test_no_relative_markdown_link_dangles_in_rendered_payload(
         self, rendered_payload: Path

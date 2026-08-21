@@ -154,12 +154,11 @@ record has unverified execution
 
 ## More Information
 
-* Issue: [].
 * Gate mechanics and step order belong in the target project's branch-protection
   documentation; the `carrier_selection` field in the role catalog —
   [`agent-process.md`](../architecture/agent-process.md#roles-and-hand-offs).
-* Provider-neutral names (`check_agent_review_outcome.py`, `agent-review` context) —
-  []; renaming a required context requires a PATCH
+* Provider-neutral names (`check_agent_review_outcome.py`, `agent-review` context)
+  are process vocabulary; renaming a required context requires a PATCH
   migration of branch protection and is therefore outside this record.
 * Codex code review’s subscription basis was checked against OpenAI documentation, not inferred from a trial:
   [pricing](https://learn.chatgpt.com/docs/pricing) (“ChatGPT Work and Codex are included in your ChatGPT … plan”; code review is billed only when Codex reviews through GitHub) and

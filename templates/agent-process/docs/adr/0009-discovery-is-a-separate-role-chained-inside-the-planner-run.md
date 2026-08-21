@@ -140,9 +140,7 @@ fabrication limit above, and it is not testable from inside the repository.
 
 ## More Information
 
-* Issue: [].
-* The `## Evidence` contract itself: [];
-  the runbook, the field set, and the capture table are in
+* The `## Evidence` contract's runbook, field set, and capture table are in
   [`agent-process.md`](../architecture/agent-process.md#issue-contract).
 * Precedent for a second carrier of a required artifact and for the `carrier_selection` field:
   [ADR-0003](0003-second-carrier-for-the-required-review-gate.md).

@@ -18,8 +18,8 @@ Codex and needs the same contract. Re-deriving it from scratch discards a
 working design; copying files by hand loses versioning and any way to tell
 "in sync" from "silently drifted".
 
-`open_pr.py`/`check_red.py` in this repository verify a closing PR inside
-`kinozal_scraper`; they cannot verify work that creates and populates a
+`open_pr.py`/`check_red.py` verify a closing PR inside this repository; they
+cannot verify work that creates and populates a
 different repository. This record therefore answers only the mechanism
 question — how a future export would move the contract and stay in sync —
 so the actual export ('s own follow-up) does not reopen it.
@@ -162,13 +162,12 @@ scope of the follow-up issue that builds it, not of this record.
 
 ## More Information
 
-* Issue: [].
-* Overlaps with (audit replacing bespoke repository scripts with
+* Overlaps with a future audit replacing bespoke repository scripts with
   market tools) on domain, not on question: decides whether a given
   script should exist; this record decides how an existing contract is
-  distributed. Not blocked by — a later replacement flows to the
+  distributed. A later replacement flows to the
   vendored copy through the same `copier update` as any other change.
-* Conflicts with (an MCP server over the dev scripts — one install
+* Conflicts with an MCP server over the dev scripts — one install
   instead of a per-project copy) on distribution mechanism. Not resolved
   here: must reconcile with this choice when it is implemented, not
   the other way around, because this record is accepted first.

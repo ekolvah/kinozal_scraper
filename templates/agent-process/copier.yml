@@ -2,7 +2,6 @@ _templates_suffix: ".jinja"
 _answers_file: ".copier-answers.yml"
 _exclude:
   - "copier.yml"
-  - ".copier-answers.yml"
   - "__pycache__"
   - "*.pyc"
 _message_after_copy: |

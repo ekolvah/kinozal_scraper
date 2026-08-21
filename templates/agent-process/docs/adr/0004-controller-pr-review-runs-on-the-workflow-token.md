@@ -124,14 +124,13 @@ add the missing scope in the same PR.
 
 ## More Information
 
-* Issue: []. Repeals the controller-PR manual
-  IDE-review policy introduced in .
+* This record repeals the controller-PR manual IDE-review policy.
 * The mechanism was checked against `anthropics/claude-code-action@v1` source, not inferred from a trial:
   `action.yml` passes the `github_token` input to the environment as `OVERRIDE_GITHUB_TOKEN`;
   `src/github/token.ts` has `setupGitHubToken()` return the supplied token before OIDC exchange, while
   `isWorkflowValidationError()` recognizes exchange failure and converts it to `WorkflowValidationSkipError`,
   meaning successful completion without work.
-* Defect observation: run [31242341386](https://github.com/ekolvah/kinozal_scraper/actions/runs/31242341386) on PR .
+* Defect observation is recorded in the source repository's issue history.
 * State-document consequences: the target project's branch-protection documentation
   and [`agent-process.md`](../architecture/agent-process.md#review-outcome-enforcement).
 * Revisit the record if the repository gains a second maintainer or external contributors with permission to push

@@ -86,7 +86,13 @@ _ISSUE_REF = re.compile(r"(?<!\w)#\d+\b")
 # Opaque-zone placeholder: retains length so offsets remain accurate.
 _OPAQUE = "\x00"
 
-_EXPECTED_SCOPE_DIRS = ("docs/architecture", ".claude/rules", ".claude/commands")
+_EXPECTED_SCOPE_DIRS = (
+    "docs/architecture",
+{% if claude_adapter_installed %}
+    ".claude/rules",
+    ".claude/commands",
+{% endif %}
+)
 
 # Non-issue uses of the sigil: rule number and board number. The dictionary is **closed**—the exact
 # condition for rejecting the date branch (ledger **AC**) and selecting this one. It does not live only in

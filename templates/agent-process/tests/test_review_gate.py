@@ -39,7 +39,7 @@ _ROUND_2 = "a54549ac1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e"  # pragma: allowlist secre
 _ROUND_3 = "38a03bfc2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f"  # pragma: allowlist secret
 _ROUND_4 = "58f1c071012eac15bb122ffdcbbaa19de4d08942"  # pragma: allowlist secret
 _PR_URL = ""
-_RUN_URL = "https://github.com/ekolvah/kinozal_scraper/actions/runs/31105364746"
+_RUN_URL = "https://github.com/example-org/example-repo/actions/runs/31105364746"
 
 
 def _checks(overrides: dict[str, tuple[str, str]] | None = None) -> tuple[CheckRun, ...]:
