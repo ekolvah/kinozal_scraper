@@ -248,9 +248,7 @@ def health_anomalies(
         )
     unknown = sorted({r.model or "(пусто)" for r in records if not is_expected_model(r.model)})
     if unknown:
-        anomalies.append(
-            Anomaly("unknown_model", f"unexpected model field: {', '.join(unknown)}")
-        )
+        anomalies.append(Anomaly("unknown_model", f"unexpected model field: {', '.join(unknown)}"))
     return anomalies
 
 
@@ -362,9 +360,7 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
             continue
         if not isinstance(payload, dict):
             anomalies.append(
-                Anomaly(
-                    "ledger_schema", f"ledger line {index + 1}: expected JSON object"
-                )
+                Anomaly("ledger_schema", f"ledger line {index + 1}: expected JSON object")
             )
             continue
         try:

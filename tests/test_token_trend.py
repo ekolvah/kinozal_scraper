@@ -389,14 +389,15 @@ class TestDetect:
         floor = token_trend.DEFAULT_ABS_FLOOR
         old = [_stats(f"issue-o{i}", per_turn=floor, first=f"2026-07-0{i + 1}") for i in range(5)]
         new = [
-            _stats(f"issue-n{i}", per_turn=floor * 3, first=f"2026-08-0{i + 1}")
-            for i in range(5)
+            _stats(f"issue-n{i}", per_turn=floor * 3, first=f"2026-08-0{i + 1}") for i in range(5)
         ]
         assert detect_growth(old + new).status == "grown"
 
     def test_growth_below_threshold_is_silent(self) -> None:
         floor = token_trend.DEFAULT_ABS_FLOOR
-        old = [_stats(f"issue-o{i}", per_turn=floor * 3, first=f"2026-07-0{i + 1}") for i in range(5)]
+        old = [
+            _stats(f"issue-o{i}", per_turn=floor * 3, first=f"2026-07-0{i + 1}") for i in range(5)
+        ]
         new = [
             _stats(f"issue-n{i}", per_turn=floor * 3 + floor / 10, first=f"2026-08-0{i + 1}")
             for i in range(5)
@@ -413,8 +414,12 @@ class TestDetect:
     def test_relative_growth_below_absolute_floor_is_silent(self) -> None:
         """Doubling tiny branches is not degradation, but small-sample noise."""
         floor = token_trend.DEFAULT_ABS_FLOOR
-        old = [_stats(f"issue-o{i}", per_turn=floor / 100, first=f"2026-07-0{i + 1}") for i in range(5)]
-        new = [_stats(f"issue-n{i}", per_turn=floor / 10, first=f"2026-08-0{i + 1}") for i in range(5)]
+        old = [
+            _stats(f"issue-o{i}", per_turn=floor / 100, first=f"2026-07-0{i + 1}") for i in range(5)
+        ]
+        new = [
+            _stats(f"issue-n{i}", per_turn=floor / 10, first=f"2026-08-0{i + 1}") for i in range(5)
+        ]
         assert detect_growth(old + new).status == "steady"
 
     def test_insufficient_window_is_not_growth(self) -> None:
