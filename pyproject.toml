@@ -23,6 +23,7 @@ extend-exclude = [
     ".idea",
     ".ruff_cache",
     ".claude",
+    "templates",
     ".venv",
     "__pycache__",
     "pytest-cache-files-*",

@@ -80,6 +80,18 @@ class TestFindModules:
         modules = {name.replace("\\", "/") for name in _find_modules()}
         assert "evidence/planning_probe.py" not in modules
 
+    def test_copier_payload_is_out_of_scope(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._repository_with_mypy_candidates(tmp_path)
+        payload = tmp_path / "templates" / "agent-process"
+        payload.mkdir(parents=True)
+        (payload / "copied_test.py").write_text("payload = True\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        modules = {name.replace("\\", "/") for name in _find_modules()}
+        assert "templates/agent-process/copied_test.py" not in modules
+
     def test_tracked_python_files_remain_in_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

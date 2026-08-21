@@ -17,7 +17,7 @@ import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 
-_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
+_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude", "templates"}
 
 
 def _run(cmd: list[str]) -> None:
