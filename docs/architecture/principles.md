@@ -210,7 +210,7 @@ dependencies / packages / build steps are not added without asking first — pre
 and existing repo packages.
 
 Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
-deliberately declines to script (see [`project-map.md`](project-map.md)). It is enforced at
+deliberately declines to script (see [`information-architecture.md`](information-architecture.md)). It is enforced at
 **plan stage** by the [architect review contract](agent-process.md#architect-review-contract),
 whose reviewer reads the [goal function](#goal-function) above; the cloud `Claude code review`
 workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
@@ -229,7 +229,7 @@ The procedural workflow rules (branch creation, PR discipline, labels,
 plan→implement flow, pre-commit gate, dependency consistency, architect-review
 gate) are an **operational procedure**, delegated to their canonical home
 [the agent process](agent-process.md) (an agent-neutral
-operational tier — see [`project-map.md`](project-map.md) IA-policy). They
+operational tier — see [`information-architecture.md`](information-architecture.md) IA policy). They
 supplement the principles above and are **equally binding**. This file does not
 restate them — edit them there.
 
@@ -265,7 +265,7 @@ of truth on principles.
 **Governance** section as its canon. The *operational procedural rules* (the
 former §Development Workflow) are delegated to
 [the agent process](agent-process.md) — the agent-neutral
-operational tier (see [`project-map.md`](project-map.md)). Delegation does **not** weaken their
+operational tier (see [`information-architecture.md`](information-architecture.md)). Delegation does **not** weaken their
 authority: those rules bind equally and `agent-process.md` is their
 single source of truth (other mentions are links only). Amending them happens
 in that file; amending the *delegation itself* (what is canon vs. delegated) is

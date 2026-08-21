@@ -49,5 +49,5 @@ in `.txt`.
 ## Architecture decisions
 
 - **[Principles](docs/architecture/principles.md)** — source of truth: principles §I–VII + quality gates + governance. If it conflicts with this file, `principles.md` prevails.
-- [Project map](docs/architecture/project-map.md) — the **complete navigation index** (which file answers which question) + IA policy (tier model, canonical home). Do **not** duplicate individual documents here—navigate through this index.
+- [Project map](docs/architecture/project-map.md) — complete navigation index; its [IA policy](docs/architecture/information-architecture.md) holds tiers and canonical homes. Do not duplicate individual documents here.
 - [Mindset](.claude/rules/mindset.md) — Claude harness token tactics + pointers to the goal function/principles/process, always-load

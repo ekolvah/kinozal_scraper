@@ -1,10 +1,15 @@
-# Project map ? which file answers which question
+# Project map — which file answers which question
 
 **Question this document answers:** Which project file answers which question.
 
-This is the complete navigation index. The policy that decides where knowledge belongs is
+This is the complete navigation index. Do not add content that does not answer that navigation
+question. The policy that decides where knowledge belongs is
 [Information architecture](information-architecture.md); this file links to it instead of
 repeating it.
+
+This is an index, not content: keep one line per file and do not copy a file's contents here. The
+only exception is `docs/adr/`, which is indexed by directory because it grows one record per
+decision; a per-record map would diverge on the next record.
 
 ## File map
 
@@ -31,26 +36,26 @@ repeating it.
 | File | Question answered | Single-responsibility? |
 |---|---|---|
 | `principles.md` | Mix: §I–VII principles (partly RUNTIME: §III Delivery, §IV Visibility) + Quality Gates + Governance (workflow delegated to `agent-process.md`) | ❌ runtime principles + development process together |
-| `information-architecture.md` | Where repository knowledge belongs and how documentation navigation is organized | ? |
-| `project-map.md` (this file) | Which project file answers which question | ? |
+| `information-architecture.md` | Where repository knowledge belongs and how documentation navigation is organized | ✅ |
+| `project-map.md` (this file) | Which project file answers which question | ✅ |
 | `runtime.md` | What exists at runtime and how it connects: available pipelines, Protocol boundaries, generic data flow, and modules that consciously bypass the generic pattern (Telethon-direct). Breadth, not depth | ✅ |
 | `pipeline.md` | How **one** run is structured and behaves: extraction layers, `extract_from_*` → `NormalizedItem` contracts, "a new source = configuration, not code", error policy, notification templates, macros, trailers, **and fetch behaviour** (HTML source configuration, Kinozal mirror fallback — #418) | ✅ |
 | `storage.md` | Storage Protocol + implementations, DI, EAFP sheet creation and schema validation, dedupe-key lookup, row schema, column invariants, write order | ✅ |
 | `testing.md` | How quality is guaranteed: test levels, bug taxonomy, what to mock (links to `principles.md §II`, does not duplicate it). Strategy, not exceptions | ✅ |
-| `coverage-gaps.md` | Stable-ID router for consciously accepted test gaps | ? |
-| `coverage-gaps-ingestion.md` | Accepted gaps in source ingestion, retrieval, and transport | ? |
-| `coverage-gaps-enrichment.md` | Accepted gaps in enrichment and content selection | ? |
-| `coverage-gaps-quality-gates.md` | Accepted gaps in repository quality gates | ? |
-| `coverage-gaps-runtime.md` | Accepted gaps in runtime behavior | ? |
-| `coverage-gaps-agent-tooling.md` | Accepted gaps in agent tooling and observability | ? |
-| `coverage-gaps-modules.md` | Modules without dedicated tests and their accepted rationale | ? |
-| `ci.md` | Router for CI and quality-gate documentation | ? |
-| `ci-local.md` | Local pre-commit quality gate | ? |
-| `ci-workflow.md` | `ci.yml` checks, lint ratchets, and document guards | ? |
-| `ci-branch-protection.md` | Required GitHub status checks | ? |
-| `ci-agent-review.md` | Agent-review workflow and model-pin policy | ? |
-| `ci-production.md` | Scheduled production workflow | ? |
-| `ci-tooling-decisions.md` | Consciously rejected CI tooling | ? |
+| `coverage-gaps.md` | Stable-ID router for consciously accepted test gaps | ✅ |
+| `coverage-gaps-ingestion.md` | Accepted gaps in source ingestion, retrieval, and transport | ✅ |
+| `coverage-gaps-enrichment.md` | Accepted gaps in enrichment and content selection | ✅ |
+| `coverage-gaps-quality-gates.md` | Accepted gaps in repository quality gates | ✅ |
+| `coverage-gaps-runtime.md` | Accepted gaps in runtime behavior | ✅ |
+| `coverage-gaps-agent-tooling.md` | Accepted gaps in agent tooling and observability | ✅ |
+| `coverage-gaps-modules.md` | Modules without dedicated tests and their accepted rationale | ✅ |
+| `ci.md` | Router for CI and quality-gate documentation | ✅ |
+| `ci-local.md` | Local pre-commit quality gate | ✅ |
+| `ci-workflow.md` | `ci.yml` checks, lint ratchets, and document guards | ✅ |
+| `ci-branch-protection.md` | Required GitHub status checks | ✅ |
+| `ci-agent-review.md` | Agent-review workflow and model-pin policy | ✅ |
+| `ci-production.md` | Scheduled production workflow | ✅ |
+| `ci-tooling-decisions.md` | Consciously rejected CI tooling | ✅ |
 | `operations.md` | How the production run and maintainer-operated services are run: schedule and step order, environment variables and secrets, failure isolation (#245) and alerting (#310), operator runbooks (`TELETHON_SESSION` rotation), patient Soldout retries, Claude Code direct OTel, and the Codex → Alloy → Grafana setup, verification, rollback, and baseline review (#471, #472). Took the runtime half of `ci.md` (#418) | ✅ |
 | `gemini.md` | Gemini: model rotation / quota / retry / prompts / call observability (token+latency `llm_call` log + Phoenix development recipe, #145) | ✅ |
 | `llm-security.md` | Enricher LLM threats (OWASP LLM Top 10 → safeguards/residual) plus Claude/Codex development-telemetry trust boundaries: prompt-injection fence, output escaping, honest blast radius, content-logging deny flags, loopback Alloy, and external metadata exposure (#308, #471, #472) | ✅ |

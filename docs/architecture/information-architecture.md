@@ -10,9 +10,10 @@ The repository IA is **not** a star and **not** a single tree, but two deliberat
 layers; merging them into one picture creates the false impression of a star:
 
 - **Containment (navigation)** — the table of contents through which to descend: `CLAUDE.md` →
-  `project-map.md` (this file, the complete "file → question" index) → specific documentation or
-  source. The layer is **tree-shaped and single-parented**: the complete file list lives only here;
-  `CLAUDE.md` **links to it rather than duplicating it**.
+  `project-map.md` (the complete "file → question" index) → specific documentation or source.
+  `CLAUDE.md` also names this IA-policy document. The layer is **tree-shaped and single-parented**:
+  the complete file list lives only in `project-map.md`, which `CLAUDE.md` links to rather than
+  duplicating.
 - **Reference (canonical-home links)** — which consumer links to which canonical fact (`§II`,
   `#bug-taxonomy`, `permissions.deny`). This layer is **deliberately not a tree**: one fact is needed
   in multiple contexts (e.g. `principles.md §II` from `testing.md`, `.claude/rules/testing.md`,
@@ -20,8 +21,9 @@ layers; merging them into one picture creates the false impression of a star:
   made a tree without either duplicating the fact in each branch (paraphrase drift; a canonical-home
   violation) or denying a consumer its pointer to the canon.
 
-The `principles.md ↔ project-map.md` edge is **intentionally bidirectional** (`principles` delegates
-the IA policy here; this file describes the tier for principles); it is not a cycle error.
+The `principles.md ↔ information-architecture.md` edge is **intentionally bidirectional**:
+`principles` delegates the IA policy here, and this file describes the tier for principles. It is
+not a cycle error.
 
 ### Knowledge-carrier tier model (official, Claude Code)
 
