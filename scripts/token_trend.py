@@ -62,11 +62,11 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CLAUDE_PROJECTS = Path.home() / ".claude" / "projects"
 
 # Threshold and window came from implementation-stage data (numbers in PR body). On 2026-08-21,
-# two five-branch windows measured 120,241.9 then 103,680.3 raw tokens/turn (a 16,561.6 decline).
-# The 40k floor rejects that observed variation while an alert still needs 40% relative growth.
+# two five-branch windows measured 120,241.9 then 103,680.3 raw tokens/turn. The 100k floor is
+# on the observed baseline's order, so it remains a distinct gate beyond 40% relative growth.
 DEFAULT_WINDOW = 5
 DEFAULT_REL_THRESHOLD = 0.4
-DEFAULT_ABS_FLOOR = 40_000.0
+DEFAULT_ABS_FLOOR = 100_000.0
 
 # Transcript-reading window exceeds Claude Code retention (30 days): older data is already in
 # ledger, so rereading it on every start is unnecessary.

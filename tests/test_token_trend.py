@@ -385,6 +385,20 @@ class TestLedgerMigration:
 
 
 class TestDetect:
+    def test_absolute_floor_remains_a_gate_near_measured_baseline(self) -> None:
+        """A 40% rise around the observed 100k baseline alone is still too noisy to alert."""
+        old = [_stats(f"issue-o{i}", per_turn=100_000, first=f"2026-07-0{i + 1}") for i in range(5)]
+        relative_only = [
+            _stats(f"issue-r{i}", per_turn=140_000, first=f"2026-08-0{i + 1}")
+            for i in range(5)
+        ]
+        enough_raw_growth = [
+            _stats(f"issue-n{i}", per_turn=200_000, first=f"2026-08-0{i + 1}")
+            for i in range(5)
+        ]
+        assert detect_growth(old + relative_only).status == "steady"
+        assert detect_growth(old + enough_raw_growth).status == "grown"
+
     def test_growth_above_threshold_reports_verdict(self) -> None:
         floor = token_trend.DEFAULT_ABS_FLOOR
         old = [_stats(f"issue-o{i}", per_turn=floor, first=f"2026-07-0{i + 1}") for i in range(5)]
