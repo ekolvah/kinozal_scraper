@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Enforce the repository language policy for documentation text."""
+
+from __future__ import annotations
+
+import ast
+import io
+import re
+import subprocess
+import sys
+import tokenize
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
+
+
+class LanguageCheckError(RuntimeError):
+    """The language check could not obtain trustworthy evidence."""
+
+
+@dataclass(frozen=True)
+class Violation:
+    """One Cyrillic fragment found in documentation text."""
+
+    path: str
+    line: int
+    kind: str
+    text: str
+
+
+MIGRATION_ALLOWLIST: frozenset[str] = frozenset()
+
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+_DOCSTRING_OWNERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
+_EXPECTED_AREAS = {
+    "root Markdown": lambda path: path.suffix == ".md" and len(path.parts) == 1,
+{% for root in language_markdown_roots %}    {{ (root + " Markdown") | tojson }}: lambda path: path.suffix == ".md" and path.parts[0] == {{ root | tojson }},
+{% endfor %}{% for root in language_python_roots %}    {{ (root + " Python") | tojson }}: lambda path: path.suffix == ".py" and path.parts[0] == {{ root | tojson }},
+{% endfor -%}
+}
+
+
+def _mask_inline_code(text: str) -> str:
+    """Mask matched CommonMark backtick spans while preserving line numbers.
+
+    Two known divergences from CommonMark, both named rather than fixed because
+    neither bites at the current corpus:
+
+    - a span is matched across arbitrary distance, including blank lines, which
+      CommonMark forbids. A stray backtick plus another one paragraphs later
+      therefore masks the text between them — a missed violation, not a false
+      alarm. `tests/test_language_policy.py` pins only the unpaired-at-EOF case
+      (`test_unmatched_backticks_do_not_hide_following_prose`), not this one.
+      Fixing it means matching *less*: stop a span at a blank line.
+    - 4-space-indented code blocks are not recognised as code, so their content is
+      reported as prose — a false alarm, and the opposite direction: fixing it
+      means recognising *more* text as code.
+
+    Neither bites at the current corpus, so both are named rather than fixed.
+    """
+    masked = list(text)
+    cursor = 0
+    while cursor < len(text):
+        if text[cursor] != "`":
+            cursor += 1
+            continue
+        opening_end = cursor + 1
+        while opening_end < len(text) and text[opening_end] == "`":
+            opening_end += 1
+        marker = text[cursor:opening_end]
+        closing = opening_end
+        while True:
+            closing = text.find(marker, closing)
+            if closing < 0:
+                cursor = opening_end
+                break
+            before_is_tick = closing > 0 and text[closing - 1] == "`"
+            after = closing + len(marker)
+            after_is_tick = after < len(text) and text[after] == "`"
+            if before_is_tick or after_is_tick:
+                closing = after
+                continue
+            for index in range(cursor, after):
+                if masked[index] not in {"\r", "\n"}:
+                    masked[index] = " "
+            cursor = after
+            break
+    return "".join(masked)
+
+
+def markdown_violations(text: str, *, path: str = "sample.md") -> list[Violation]:
+    """Return language-policy violations in Markdown prose."""
+    prose_lines: list[str] = []
+    fence: tuple[str, int] | None = None
+    for line in text.splitlines(keepends=True):
+        match = _FENCE.match(line)
+        if match:
+            marker = match.group(1)
+            if fence is None:
+                fence = (marker[0], len(marker))
+            elif marker[0] == fence[0] and len(marker) >= fence[1]:
+                fence = None
+            prose_lines.append("\n" if line.endswith(("\n", "\r")) else "")
+            continue
+        if fence is not None:
+            prose_lines.append("\n" if line.endswith(("\n", "\r")) else "")
+            continue
+        prose_lines.append(line)
+    if fence is not None:
+        raise LanguageCheckError(f"{path}: unterminated Markdown code fence")
+
+    prose_text = _mask_inline_code("".join(prose_lines))
+    violations: list[Violation] = []
+    for line_number, prose in enumerate(prose_text.splitlines(), start=1):
+        if _CYRILLIC.search(prose):
+            violations.append(Violation(path, line_number, "Markdown prose", prose.strip()))
+    return violations
+
+
+def python_violations(text: str, *, path: str = "sample.py") -> list[Violation]:
+    """Return violations in Python comments and docstrings."""
+    try:
+        tree = ast.parse(text, filename=path)
+        tokens = tokenize.generate_tokens(io.StringIO(text).readline)
+        comments = [token for token in tokens if token.type == tokenize.COMMENT]
+    except (SyntaxError, tokenize.TokenError) as exc:
+        raise LanguageCheckError(f"{path}: Python parse failed: {exc}") from exc
+
+    violations = [
+        Violation(path, token.start[0], "Python comment", token.string.strip())
+        for token in comments
+        if _CYRILLIC.search(token.string)
+    ]
+    for owner in ast.walk(tree):
+        if not isinstance(owner, _DOCSTRING_OWNERS) or not owner.body:
+            continue
+        first = owner.body[0]
+        if (
+            isinstance(first, ast.Expr)
+            and isinstance(first.value, ast.Constant)
+            and isinstance(first.value.value, str)
+            and _CYRILLIC.search(first.value.value)
+        ):
+            excerpt = next(
+                (line.strip() for line in first.value.value.splitlines() if _CYRILLIC.search(line)),
+                "",
+            )
+            violations.append(Violation(path, first.lineno, "Python docstring", excerpt))
+    return sorted(violations, key=lambda item: (item.line, item.kind))
+
+
+def tracked_files(repo: Path) -> list[Path]:
+    """Return tracked paths reported by Git."""
+    proc = subprocess.run(
+        ["git", "-C", str(repo), "ls-files", "-z"],
+        capture_output=True,
+    )
+    if proc.returncode != 0:
+        raise LanguageCheckError("git ls-files failed; the language-policy scope is unknown")
+    if proc.stdout is None:
+        raise LanguageCheckError(
+            "git ls-files produced no captured output; the language-policy scope is unknown"
+        )
+    listing = proc.stdout.decode("utf-8", "surrogateescape")
+    return [Path(name) for name in listing.split("\0") if name]
+
+
+def scoped_files(paths: Iterable[Path]) -> list[Path]:
+    """Return tracked Markdown and Python files in policy scope."""
+    return sorted(path for path in paths if path.suffix.lower() in {".md", ".py"})
+
+
+def missing_expected_areas(paths: Iterable[Path]) -> list[str]:
+    """Return expected repository areas absent from the scoped paths."""
+    materialized = list(paths)
+    return [
+        name
+        for name, contributes in _EXPECTED_AREAS.items()
+        if not any(contributes(path) for path in materialized)
+    ]
+
+
+def check_repository(repo: Path = Path(".")) -> list[Violation]:
+    """Check all tracked documentation text and return its violations."""
+    paths = scoped_files(tracked_files(repo))
+    missing = missing_expected_areas(paths)
+    if missing:
+        raise LanguageCheckError(f"language-policy scope is missing expected areas: {missing}")
+
+    violations: list[Violation] = []
+    for relative in paths:
+        name = relative.as_posix()
+        if name in MIGRATION_ALLOWLIST:
+            continue
+        target = repo / relative
+        try:
+            text = target.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as exc:
+            raise LanguageCheckError(f"{name}: cannot read trusted UTF-8 text: {exc}") from exc
+        if relative.suffix.lower() == ".md":
+            violations.extend(markdown_violations(text, path=name))
+        else:
+            violations.extend(python_violations(text, path=name))
+    return violations
+
+
+def _console_text(value: str, *, encoding: str | None) -> str:
+    """Escape characters the active Windows console cannot represent."""
+    codec = encoding or "utf-8"
+    return value.encode(codec, errors="backslashreplace").decode(codec)
+
+
+def main() -> int:
+    """Run the gate with distinct policy and evidence-failure exit codes."""
+    try:
+        violations = check_repository()
+    except LanguageCheckError as exc:
+        print(f"language check unavailable: {exc}", file=sys.stderr)
+        return 2
+    if violations:
+        print("English-only documentation policy violations:")
+        for item in violations:
+            message = f"  {item.path}:{item.line}: {item.kind}: {item.text}"
+            print(_console_text(message, encoding=sys.stdout.encoding))
+        return 1
+    print("ok: tracked Markdown prose and Python commentary are English-only")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

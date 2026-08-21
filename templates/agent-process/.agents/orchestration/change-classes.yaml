@@ -1,0 +1,53 @@
+# Per-change-class issue requirements, keyed on the type label of governance
+# convention 3 (`docs/architecture/agent-process.md`). Its single consumer is
+# `scripts/validate_issue_sections.py`, which resolves the required section set
+# from the issue's one type label; this file is the machine-readable matrix.
+#
+# `adds` and `omits` are deltas relative to `REQUIRED_SECTIONS` in the validator,
+# which stays the single carrier of the base set — a row never restates it. Both
+# keys are always written, even when empty, so no class is resolved by an
+# implicit default. The architect-review and RED obligations have no field of
+# their own: they are derived from `Architect review` and `Test plan` being part
+# of the resolved set, so no two fields can contradict each other.
+#
+# Every class adds exactly one discovery section, explained once here rather than
+# on eight rows: `bug` records a completed observation of the external
+# system in `Evidence`, and every other class records the search outside the
+# repository in `Prior art`. The split is on `bug` rather than on `enhancement`
+# because the motivating case is `refactor` work: a flat layout was chosen and
+# then had to be reversed once it cut the project off from `import-linter`.
+# Adding a change class requires both a row here and a matching `TYPE_LABELS` entry.
+classes:
+  bug:
+    # The observation record the planner owes before a fix is designed.
+    adds: ["Evidence"]
+    omits: []
+  chore:
+    adds: ["Prior art"]
+    omits: []
+  ci:
+    adds: ["Prior art"]
+    omits: []
+  documentation:
+    # Omits nothing on purpose: in this repository the documentation *is* the
+    # product, guarded by test_doc_links / test_doc_narrative / test_doc_headers /
+    # test_agent_process, so such an issue routinely carries a real test node and
+    # can hold a real architecture decision. The trivial case keeps its existing
+    # escape — a one-line `skipped:` in `Architect review`.
+    adds: ["Prior art"]
+    omits: []
+  enhancement:
+    adds: ["Prior art"]
+    omits: []
+  perf:
+    adds: ["Prior art"]
+    omits: []
+  refactor:
+    adds: ["Prior art"]
+    omits: []
+  security:
+    adds: ["Prior art"]
+    omits: []
+  testing:
+    adds: ["Prior art"]
+    omits: []

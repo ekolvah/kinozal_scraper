@@ -1,4 +1,5 @@
 detect-secrets
+copier
 import-linter
 # CommonMark parsing of issue bodies / ADR records in scripts/validate_issue_sections.py.
 # Was a transitive of rich; declared explicitly because we call its API directly (#426).

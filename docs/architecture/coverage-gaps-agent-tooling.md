@@ -127,6 +127,20 @@
   guard before that consumer exists would gate a file no automation reads today — deferred, not
   rejected; revisit when the follow-up issue starts.
 
+- **AQ. Copier rendering is representative, not an exhaustive answer matrix.**
+  `tests/test_agent_process_template.py` renders the default answers and representative alternate
+  combinations,
+  then checks the generated Python and Markdown rather than feeding raw Jinja templates to the
+  repository's source checks. That covers both sides of every current conditional, citation and
+  prose-hole guards, Markdown parenthesis balance, missing referenced tests, Python compilation,
+  and Ruff formatting/linting. It deliberately does not enumerate the full Cartesian product of
+  independent answers: those combinations do not introduce different template branches. The
+  generated default also omits target-specific mypy, dependency-audit, requirements, and import
+  contracts because the portable payload ships no application package, lockfile, or target import
+  graph to check. A target should enable those checks after adding their prerequisites. Revisit
+  when a new conditional creates an unrendered branch, or when the payload gains application code
+  or dependency files that make one of those checks meaningful.
+
 **Scope-skip (can't run without live credentials) — see [What does NOT get tested](testing.md#what-does-not-get-tested-in-this-repo):**
 
 - **J. Concurrent state — true *parallel* execution is a non-target** (serial daily cron, no

@@ -1,16 +1,15 @@
-"""Guard against broken internal `.md` links and anchors (#427).
+"""Guard against broken internal `.md` links and anchors.
 
 **What it guards.** Docs refer to one another by section anchors
 (`pipeline.md#trailer-retrieval-and-selection`), while GitHub generates an anchor **from the
-heading text** — so renaming a section silently breaks every incoming reference. This is exactly
-what #427 does: it removes task numbers from 12 headings in 6 files with 17 incoming occurrences
-in 7 files. The deterministic “ensure no link dangles” step is an instance of `principles.md`
-§Scripts over instructions: an exit code, not a reviewer checklist item.
+heading text** — so renaming a section silently breaks every incoming reference. The
+deterministic "ensure no link dangles" step is an instance of "scripts over instructions": an
+exit code, not a reviewer checklist item.
 
 **Why `markdown-it-py`, not regex.** Regex gets two things wrong. A link inside a ``` block is not
 a link but an example; and heading text must be *rendered* (`` `X` `` → `X`), otherwise the slug
-will not match GitHub's. The parser is already a direct development dependency (#426), so there is
-no §VII cost for it.
+will not match GitHub's. The parser is a direct development dependency, so there is no added
+cost for it.
 
 **A code span counts as a reference just like a link.** `project-map.md` keeps some deep-dive
 references in backticks (`` `testing.md#eval-harness--trailer-selection` ``) — they are not
@@ -29,10 +28,10 @@ locally only to fail in CI on Linux: the same local-green/CI-red split for which
 chosen.
 
 **Guard boundaries, honestly.** It catches *unresolvable* links, but not *wrong-but-resolvable*
-ones: a reference to an existing file that ceased to be a topic’s home (the pre-#427
-`principles.md` “coverage gaps → `testing.md`” case) is indistinguishable from a correct one to the
-guard. This is the same “presence ≠ correctness” as in `test_doc_headers.py` and
-`test_adr_records.py`; a human catches the discrepancy in review. The second boundary is **form**:
+ones: a reference to an existing file that ceased to be a topic's home is indistinguishable from
+a correct one to the guard. This is the same "presence != correctness" as in
+`test_doc_headers.py` and `test_adr_records.py`; a human catches the discrepancy in review. The
+second boundary is **form**:
 it checks Markdown links and code spans, but neither `![](x.png)` (`image` token) nor raw
 `<a href>`/`<img src>` (`html_inline`); there are none of either in tracked `.md` files today.
 """
@@ -77,12 +76,19 @@ def _is_external(href: str) -> bool:
 _CODE_SPAN_REF = re.compile(r"^[\w./-]+\.md#\S+$", re.UNICODE)
 
 # Directories that must be included in scope. Each is checked separately rather than for a
-# non-empty union: moving one directory would remain green due to the others — “nothing to
-# check” would become indistinguishable from “everything is fine” (§IV, as in
-# `test_doc_headers.py::test_every_scoped_directory_contributes`).
-_EXPECTED_SCOPE_DIRS = ("docs/architecture", "docs/adr", ".claude/rules", ".claude/commands")
-_TEMPLATE_PREFIX = "templates/"
-
+# non-empty union: moving one directory would remain green due to the others — "nothing to
+# check" would become indistinguishable from "everything is fine" (§IV, as in
+# `test_doc_headers.py::test_every_scoped_directory_contributes`). `.claude/rules` and
+# `.claude/commands` are Layer 1 (Claude adapter) directories: they only exist, and are only
+# in scope, when that adapter is installed.
+{% if claude_adapter_installed %}_EXPECTED_SCOPE_DIRS = (
+    "docs/architecture",
+    "docs/adr",
+    ".claude/rules",
+    ".claude/commands",
+)
+{% else %}_EXPECTED_SCOPE_DIRS = ("docs/architecture", "docs/adr")
+{% endif %}
 
 def slugify(heading_text: str) -> str:
     """GitHub anchor from heading text (github-slugger rules)."""
@@ -192,11 +198,7 @@ def _tracked_paths() -> frozenset[str]:
 
 
 def _tracked_docs() -> list[str]:
-    return [
-        name
-        for name in _tracked_files()
-        if name.endswith(".md") and not name.startswith(_TEMPLATE_PREFIX)
-    ]
+    return [name for name in _tracked_files() if name.endswith(".md")]
 
 
 @cache
@@ -216,9 +218,6 @@ def _problems(docs: Iterable[str]) -> list[str]:
 
 
 class TestDocLinks:
-    def test_copier_payload_docs_are_checked_after_rendering(self) -> None:
-        assert not [name for name in _tracked_docs() if name.startswith(_TEMPLATE_PREFIX)]
-
     @pytest.mark.parametrize("directory", _EXPECTED_SCOPE_DIRS)
     def test_scope_covers_expected_dirs(self, directory: str) -> None:
         assert any(name.startswith(f"{directory}/") for name in _tracked_docs()), (
@@ -245,7 +244,7 @@ class TestLinkPredicates:
             ("Eval harness — trailer selection", "eval-harness--trailer-selection"),
             ("`kinozal_pipeline`", "kinozal_pipeline"),
             ("Operations — как прогон исполняется", "operations--как-прогон-исполняется"),
-            ("Secret scan (`secrets`, #389)", "secret-scan-secrets-389"),
+            ("Secret scan (`secrets`)", "secret-scan-secrets"),
         ],
     )
     def test_slug_matches_github_rules(self, heading: str, expected: str) -> None:

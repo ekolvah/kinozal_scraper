@@ -1,0 +1,355 @@
+#!/usr/bin/env python3
+"""Detect drift between declared and GitHub-required status checks.
+
+    python scripts/check_branch_protection.py
+
+Always prints actual `main` contexts, regardless of exit: this is the reproducible
+way to inspect them without opening settings. Exit 0 means match, 1 drift, and 2
+tool failure (unavailable/unauthorized `gh`, malformed JSON, or broken output capture).
+Tool failure must never look like a "no drift" verdict.
+
+Declaration belongs here, not documentation: its composition is mechanically checked
+against GitHub by this script and repository workflows by a matching guard test, so
+docs reference rather than repeat `REQUIRED_CONTEXTS`, as in `scripts/set_issue_priority.py`.
+
+This is a `.githooks/pre-push` developer script, not CI. `GITHUB_TOKEN` lacks
+`administration`, while reading `branches/*/protection` needs admin rights. CI would
+need a separate long-lived admin secret; its rotation burden and stale-token false reds
+would teach operators to ignore the detector. The ordinary repo-read ruleset endpoint is
+irrelevant here because enforcement uses classic branch protection. Reconsider on
+migration to rulesets or a second contributor.
+
+This is local enforcement, not mere surfacing. Optional `core.hooksPath` means the
+server's branch protection remains the only authoritative `main` barrier, but this hook
+is invoked through `|| exit $?` and deliberately blocks push. A printing-only detector
+would vanish in push output and leave drift silently unaddressed. Intentional temporary
+drift uses `--allow-drift "<reason>"`, not `--no-verify` (which also silences `ci_check`);
+the reason is printed in push output.
+
+There is no branch-specific trigger: checking only pushes to `main` sounds sensible,
+but repository policy prohibits direct pushes to `main` (always PR), so it would mean
+never checking. This rejected option is recorded to prevent reopening it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import subprocess
+import sys
+from collections.abc import Iterable, Mapping
+from pathlib import Path
+from typing import Any, NamedTuple
+
+import yaml
+
+# Canonical required-context composition for the `main` branch.
+REVIEW_CONTEXT = {{ agent_review_context | tojson }}
+REQUIRED_CONTEXTS: tuple[str, ...] = (
+{% for context in required_status_contexts %}    {{ context | tojson }},
+{% endfor %})
+
+# PR jobs deliberately NOT required, with reasons. An empty reason is a forgotten decision,
+# not an accepted one, so the guard rejects it.
+{% if not_required_contexts %}NOT_REQUIRED: dict[str, str] = {
+{% for context, reason in not_required_contexts.items() %}    {{ context | tojson }}: {{ reason | tojson }},
+{% endfor %}}
+{% else %}NOT_REQUIRED: dict[str, str] = {}
+{% endif %}
+
+BRANCH = "main"
+# `gh` substitutes `{owner}`/`{repo}` placeholders; no leading slash, or Windows MSYS
+# rewrites the path.
+_ENDPOINT = f"repos/{{ '{{' }}owner{{ '}}' }}/{{ '{{' }}repo{{ '}}' }}/branches/{BRANCH}/protection"
+# One GitHub API GET: generous but finite, as this check precedes the long-running local
+# CI gate and must not hang silently.
+_GH_TIMEOUT_S = 30
+
+
+def protection_drift(
+    actual: Iterable[str], expected: Iterable[str] = REQUIRED_CONTEXTS
+) -> tuple[list[str], list[str]]:
+    """`(missing, unexpected)`: divergence in both directions.
+
+    Set comparison: GitHub does not guarantee `checks` order. An undeclared context is
+    divergence just like a missing one: composition canon lives in the repository, and a
+    manual addition must reach the operator rather than become normal.
+    """
+    actual_set, expected_set = set(actual), set(expected)
+    return sorted(expected_set - actual_set), sorted(actual_set - expected_set)
+
+
+def contexts_from_protection(payload: Mapping[str, Any]) -> tuple[str, ...]:
+    """Actual contexts from the branch-protection API response.
+
+    Reads `required_status_checks.checks[*].context`, the non-deprecated form also used
+    for updates. A missing key yields an empty tuple: **drift**, not failure. Removed
+    protection is the likeliest real scenario and must not be silent.
+    """
+    # Use `or {}` at each step, not only as `.get` default: explicit JSON null is not a
+    # missing key; otherwise `.get` on None raises AttributeError and tool failure escapes
+    # as code 1 ("drift"), the exact substitution that `fetch_protection` prevents.
+    checks = (payload.get("required_status_checks") or {}).get("checks") or []
+    return tuple(check["context"] for check in checks)
+
+
+def load_workflows(directory: Path) -> dict[str, Mapping[Any, Any]]:
+    """Parse directory workflows: filename → document.
+
+    Both extensions matter because GitHub Actions accepts `.yml` and `.yaml`: a guard that
+    saw only the former would silently miss a new PR job in `.yaml`. `safe_load` returns
+    None for an empty file; normalize to `{}` or the guard raises instead of ruling.
+    """
+    paths = sorted([*directory.glob("*.yml"), *directory.glob("*.yaml")])
+    return {path.name: yaml.safe_load(path.read_text(encoding="utf-8")) or {} for path in paths}
+
+
+def _triggers(doc: Mapping[Any, Any]) -> Any:
+    """Workflow `on:` section. YAML 1.1 reads bare `on` as boolean `True`, so use both keys.
+
+    Hence `Mapping[Any, Any]`: workflow keys are not only strings, and narrowing to `str`
+    would not describe the object the parser actually returns.
+    """
+    return doc.get("on", doc.get(True, {}))
+
+
+def _runs_on_pull_request(triggers: Any) -> bool:
+    """Whether workflow triggers on `pull_request` (dict / list / string)."""
+    events = {"pull_request", "pull_request_target"}
+    if isinstance(triggers, Mapping):
+        return bool(events.intersection(triggers))
+    if isinstance(triggers, str):
+        return triggers in events
+    if isinstance(triggers, Iterable):
+        return bool(events.intersection(triggers))
+    return False
+
+
+# Filters on `pull_request` make a job report on only some PRs, while a required context
+# must report on every PR or remain "Expected" forever.
+_TRIGGER_FILTERS = ("paths", "paths-ignore", "branches", "branches-ignore")
+
+
+class _Job(NamedTuple):
+    """Job definition together with filters of the workflow that carries it."""
+
+    definition: Mapping[str, Any]
+    filters: tuple[str, ...]
+
+
+def _pull_request_filters(triggers: Any) -> tuple[str, ...]:
+    """`pull_request` trigger filters that stop a job reporting on every PR."""
+    if not isinstance(triggers, Mapping):
+        return ()
+    filters: set[str] = set()
+    for event in ("pull_request", "pull_request_target"):
+        config = triggers.get(event)
+        if isinstance(config, Mapping):
+            filters.update(key for key in _TRIGGER_FILTERS if key in config)
+    return tuple(sorted(filters))
+
+
+def _pull_request_jobs(
+    workflows: Mapping[str, Mapping[Any, Any]],
+) -> tuple[dict[str, _Job], list[str]]:
+    """Effective check-run name → job, plus names found twice.
+
+    Context is job `name:` when set, otherwise job key. Key comparison would silently break
+    when `name:` is added, leaving a required context "Expected" forever and locking merges
+    under `enforce_admins: true`. Return name collisions separately: which job reports is
+    uncertainty, not a detail.
+    """
+    jobs: dict[str, _Job] = {}
+    duplicates: list[str] = []
+    for doc in workflows.values():
+        triggers = _triggers(doc)
+        if not _runs_on_pull_request(triggers):
+            continue
+        filters = _pull_request_filters(triggers)
+        for job_key, job in (doc.get("jobs") or {}).items():
+            context = (job or {}).get("name") or job_key
+            if context in jobs:
+                duplicates.append(context)
+            jobs[context] = _Job(job or {}, filters)
+    return jobs, duplicates
+
+
+def _declared_problems(declared: tuple[str, ...], jobs: Mapping[str, _Job]) -> list[str]:
+    """Declared-context problems: missing job, matrix, or trigger filter."""
+    problems: list[str] = []
+    for context in declared:
+        job = jobs.get(context)
+        if job is None:
+            problems.append(
+                f"объявлен required-контекст {context!r}, но PR-джоба с таким именем check-run'а "
+                f"нет — он навсегда останется в статусе «Expected» и запрёт мёрдж"
+            )
+            continue
+        if "matrix" in (job.definition.get("strategy") or {}):
+            problems.append(
+                f"{context!r} объявлен голым именем, но джоб использует matrix — реальные "
+                f"контексты будут вида '{context} (value)'"
+            )
+        if job.filters:
+            problems.append(
+                f"{context!r} объявлен required, но его воркфлоу фильтрует `pull_request` по "
+                f"{', '.join(job.filters)} — на PR, не прошедшем фильтр, контекст не отчитается "
+                f"вовсе и запрёт мёрдж, включая PR со снятием фильтра"
+            )
+    return problems
+
+
+def _undeclared_problems(
+    declared: tuple[str, ...], jobs: Mapping[str, _Job], excluded: Mapping[str, str]
+) -> list[str]:
+    """Other problems: no decision, unexplained exclusion, or stale exclusion."""
+    problems: list[str] = []
+    for context in sorted(jobs):
+        if context in declared:
+            continue
+        if context not in excluded:
+            problems.append(
+                f"PR-джоб {context!r} не объявлен required и не внесён в NOT_REQUIRED — "
+                f"решение не принято, а забыто"
+            )
+        elif not excluded[context].strip():
+            problems.append(f"{context!r} исключён из required без причины")
+    for context in sorted(excluded):
+        if context not in jobs:
+            problems.append(
+                f"{context!r} числится в NOT_REQUIRED, но PR-джоба с таким именем больше нет — "
+                f"протухшее исключение переживает свой джоб и молча ничего не значит"
+            )
+        elif context in declared:
+            problems.append(f"{context!r} одновременно в REQUIRED_CONTEXTS и NOT_REQUIRED")
+    return problems
+
+
+def declaration_problems(
+    workflows: Mapping[str, Mapping[Any, Any]],
+    declared: Iterable[str] = REQUIRED_CONTEXTS,
+    excluded: Mapping[str, str] = NOT_REQUIRED,
+) -> list[str]:
+    """Declaration/workflow divergence: the guard's offline half.
+
+    Catches what network checking cannot: context without job (permanent "Expected"), matrix
+    or trigger-filtered job (context does not always report), a new undecided PR job, and
+    stale or contradictory exclusion.
+    """
+    jobs, duplicates = _pull_request_jobs(workflows)
+    declared = tuple(declared)
+    return [
+        *(
+            f"имя check-run'а {context!r} принадлежит более чем одному PR-джобу — какой из них "
+            f"отчитается под этим контекстом, неопределено"
+            for context in sorted(set(duplicates))
+        ),
+        *_declared_problems(declared, jobs),
+        *_undeclared_problems(declared, jobs, excluded),
+    ]
+
+
+def fetch_protection() -> Mapping[str, Any]:
+    """Read branch protection through `gh api`; tool failure → exit 2.
+
+    Code 2 rather than an empty dictionary is deliberate: transient gh failure (auth,
+    rate limit, network) must not mean "no required contexts," i.e. drift — a false diagnosis
+    with the opposite remedy.
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "api", _ENDPOINT],
+            text=True,
+            capture_output=True,
+            encoding="utf-8",
+            timeout=_GH_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        # Without a timeout, hanging gh (proxy or DNS black hole) blocks pre-push silently.
+        print(
+            f"error: `gh api {_ENDPOINT}` не ответил за {_GH_TIMEOUT_S} с — проверка не выполнена.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if result.stdout is None or result.stderr is None:
+        print(
+            f"error: capture failed for `gh api {_ENDPOINT}` (rc={result.returncode}): "
+            f"stdout={result.stdout!r} stderr={result.stderr!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    if result.returncode != 0:
+        print(
+            f"error: `gh api {_ENDPOINT}` failed (rc={result.returncode}): "
+            f"{result.stderr.strip()} — нужен `gh auth` с admin-правами на репозиторий.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    try:
+        payload: Mapping[str, Any] = json.loads(result.stdout)
+    except json.JSONDecodeError as exc:
+        print(
+            f"error: `gh api {_ENDPOINT}` вернул неразбираемый ответ ({exc}): "
+            f"{result.stdout[:200]!r}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return payload
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Print actual context composition and return the verdict through exit code."""
+    parser = argparse.ArgumentParser(
+        description=f"Сверить required status checks ветки `{BRANCH}` с объявлением в этом файле."
+    )
+    parser.add_argument(
+        "--allow-drift",
+        metavar="ПРИЧИНА",
+        help=(
+            "Принять дрейф как намеренный и временный: exit 0, причина печатается. "
+            "Для случая «чек снят руками на время мержа» — чтобы намеренное состояние "
+            "выражалось, а не обходилось через --no-verify."
+        ),
+    )
+    options = parser.parse_args(argv)
+
+    actual = contexts_from_protection(fetch_protection())
+    print(f"required status checks on `{BRANCH}`: {', '.join(actual) or '(none)'}")
+    print(f"declared in {Path(__file__).name}: {', '.join(REQUIRED_CONTEXTS)}")
+
+    missing, unexpected = protection_drift(actual)
+    if not missing and not unexpected:
+        return
+
+    if options.allow_drift:
+        # Without this exit, push after intentionally removing a check requires
+        # `--no-verify`, which also suppresses ci_check. A gate that regularly needs
+        # bypass teaches bypass, which next hides a real red result. Drift is accepted
+        # but NOT invisible: its reason is printed in push output.
+        print(f"accepted: дрейф принят намеренно — {options.allow_drift}")
+        return
+
+    if missing:
+        body = json.dumps(
+            {"strict": True, "checks": [{"context": c} for c in REQUIRED_CONTEXTS]},
+            ensure_ascii=False,
+        )
+        print(
+            f"error: объявлены, но НЕ являются required: {', '.join(missing)} — гейт краснеет "
+            f"в UI и ничего не блокирует.\n"
+            f"  починка: echo '{body}' | gh api --method PATCH "
+            f"{_ENDPOINT}/required_status_checks --input -",
+            file=sys.stderr,
+        )
+    if unexpected:
+        print(
+            f"error: required в GitHub, но не объявлены здесь: {', '.join(unexpected)} — если "
+            f"контекст добавлен намеренно, легальный путь один: внести его в REQUIRED_CONTEXTS "
+            f"тем же PR.",
+            file=sys.stderr,
+        )
+    sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

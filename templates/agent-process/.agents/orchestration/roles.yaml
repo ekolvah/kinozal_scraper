@@ -1,0 +1,162 @@
+# `contract` points at the canonical section a role owes; `adapters` lists the
+# known entry points that satisfy it and `adapter` is the currently selected
+# default. Naming a provider is therefore a default, not a restriction.
+# `adapter_files` declares the carrier of every entry point, keyed identically to
+# `adapters`: a repository path, or an explicit `null` where the carrier is not a
+# file (a GitHub Action, a person). A missing key is invalid catalogue data, not a skip.
+# `carrier_selection` declares HOW this role's carrier is chosen: `run_route`
+# (the human's chat picks it), `ci_failover` (a workflow picks it at run time),
+# or `sole` (one carrier). It is declared rather than derived from the
+# adapter count, because two alternatives do not imply two providers to choose
+# between per run.
+# `adapter_routes` maps a run route onto the entry point that runs it, so the
+# control plane can name the agent of *this* run instead of the file constant.
+# Matching is literal and case-sensitive. A `run_route` role maps every
+# adapter to exactly one route, which makes `adapters` derivable from it — kept
+# anyway, because `adapter_files` is keyed on it. The other two modes declare an
+# explicit `null`: their carrier is route-independent, and a missing key stays a
+# failure, exactly as for `adapter_files`.
+# `adapter_independence` says whether a carrier reviews a plan it did not write.
+# Only `architect_reviewer` declares it, because it is the one role where that
+# answer changes what the artifact means: `scripts/validate_issue_sections.py`
+# reads this map to resolve the `reviewer:` marker in `## Architect review`, so
+# self-review passes the gate while staying visible. Declaring the kind
+# here rather than letting the issue author write it makes the contradiction
+# ("independent" claimed for a self-review carrier) impossible to state.
+roles:
+  # First in the file because it is first in the route: a `bug` issue observes the live
+  # system before a plan describes it. Before this entry the `## Evidence` block
+  # was a contract obligation with no role behind it — every declared authority stopped
+  # short of running a capture, so the section was filled by whoever happened to run.
+  discovery:
+    contract: "docs/architecture/agent-process.md#discovery-runbook"
+    adapters:
+      - "Claude discovery subagent"
+      - "Codex $plan-issue #N self-discovery"
+    adapter_files:
+      "Claude discovery subagent": ".claude/agents/discovery.md"
+      "Codex $plan-issue #N self-discovery": ".agents/skills/plan-issue/SKILL.md"
+    adapter_routes:
+      claude: "Claude discovery subagent"
+      codex: "Codex $plan-issue #N self-discovery"
+    carrier_selection: "run_route"
+    adapter: "Claude discovery subagent"
+    authority: "May run the read-only capture routes listed in the issue contract and write the captured fixture into the working tree; may not edit the issue body, write plan sections, create an implementation branch, or change production code."
+    entry_evidence: "A bug issue whose Evidence block is not yet accepted, plus access to the capture route its source needs."
+    completion_evidence: "A returned Evidence block that `validate_issue_sections.py <N> --evidence-only --body-file <path>` accepts."
+    activation: "A bug issue whose Evidence block is not yet accepted."
+    # Two, not one: the contract's `status: failed` branch expects capture-fail → fix
+    # access → capture again. A cap of one would escalate that routine retry to a human.
+    max_runs: 2
+  planner:
+    contract: "docs/architecture/agent-process.md#planner-runbook"
+    adapters:
+      - "Claude /plan #N"
+      - "Codex $plan-issue #N"
+    adapter_files:
+      "Claude /plan #N": ".claude/commands/plan.md"
+      "Codex $plan-issue #N": ".agents/skills/plan-issue/SKILL.md"
+    adapter_routes:
+      claude: "Claude /plan #N"
+      codex: "Codex $plan-issue #N"
+    carrier_selection: "run_route"
+    adapter: "Claude /plan #N"
+    authority: "May edit the issue body; may not create an implementation branch or change production code."
+    entry_evidence: "Open issue and repository context."
+    completion_evidence: "Passing issue validation for the change class and ready handoff."
+    activation: "The issue has no validated plan."
+    max_runs: 1
+  architect_reviewer:
+    contract: "docs/architecture/agent-process.md#architect-review-contract"
+    adapters:
+      - "Claude architect-reviewer subagent"
+      - "Codex $plan-issue #N self-review"
+    adapter_files:
+      "Claude architect-reviewer subagent": ".claude/agents/architect-reviewer.md"
+      "Codex $plan-issue #N self-review": ".agents/skills/plan-issue/SKILL.md"
+    adapter_independence:
+      "Claude architect-reviewer subagent": "independent"
+      "Codex $plan-issue #N self-review": "self"
+    adapter_routes:
+      claude: "Claude architect-reviewer subagent"
+      codex: "Codex $plan-issue #N self-review"
+    carrier_selection: "run_route"
+    adapter: "Claude architect-reviewer subagent"
+    authority: "Read-only plan review."
+    entry_evidence: "Completed plan for a nontrivial change."
+    completion_evidence: "Recorded findings, or an explicit trivial-change skip reason."
+    activation: "Nontrivial issue after planning."
+    max_runs: 1
+  implementer:
+    contract: "docs/architecture/agent-process.md#deterministic-delivery-flow"
+    adapters:
+      - "Codex $implement-issue #N"
+      - "Claude /implement #N"
+    adapter_files:
+      "Codex $implement-issue #N": ".agents/skills/implement-issue/SKILL.md"
+      "Claude /implement #N": ".claude/commands/implement.md"
+    adapter_routes:
+      claude: "Claude /implement #N"
+      codex: "Codex $implement-issue #N"
+    carrier_selection: "run_route"
+    adapter: "Codex $implement-issue #N"
+    authority: "May create the issue branch, commit, push, and open a PR."
+    entry_evidence: "Validated plan and architect-review evidence."
+    completion_evidence: "Implementation committed and local CI evidence available."
+    activation: "Plan and architecture gate are complete."
+    max_runs: 1
+  pr_reviewer:
+    contract: "docs/architecture/agent-process.md#roles-and-hand-offs"
+    # Ordered failover: the workflow asks the first carrier and reaches the second
+    # only when the first returned no usable verdict. `adapter` names the
+    # carrier asked first, which is why it must stay the head of this list.
+    adapters:
+      - "Claude code-review GitHub Action"
+      - "Codex code review (GitHub integration)"
+    adapter_files:
+      "Claude code-review GitHub Action": null
+      "Codex code review (GitHub integration)": null
+    adapter_routes: null
+    carrier_selection: "ci_failover"
+    adapter: "Claude code-review GitHub Action"
+    authority: "May publish review evidence; may not merge."
+    entry_evidence: "Passing deterministic CI and a PR head SHA."
+    completion_evidence: "Current-head clean, rework, or blocking outcome marker."
+    activation: "One review is required for every new PR head SHA."
+    # The router enforces this per-head cap through reviewed_heads; this value
+    # describes that contract rather than a repository-wide invocation counter.
+    max_runs: 1
+  fixer:
+    contract: "docs/architecture/agent-process.md#review-gate-verdicts"
+    adapters:
+      - "Codex $implement-issue #N review/fix loop"
+      - "Claude /implement #N review/fix loop"
+    adapter_files:
+      "Codex $implement-issue #N review/fix loop": ".agents/skills/implement-issue/SKILL.md"
+      "Claude /implement #N review/fix loop": ".claude/commands/implement.md"
+    adapter_routes:
+      claude: "Claude /implement #N review/fix loop"
+      codex: "Codex $implement-issue #N review/fix loop"
+    carrier_selection: "run_route"
+    adapter: "Codex $implement-issue #N review/fix loop"
+    authority: "May make the minimal correction and push a fixer commit."
+    entry_evidence: "Current-head rework or blocking review outcome."
+    completion_evidence: "A new head SHA for a fresh PR review."
+    activation: "Only after actionable PR-review feedback."
+    max_runs: 3
+  human_merge:
+    contract: "docs/architecture/agent-process.md#review-gate-verdicts"
+    adapters:
+      - "Human reviewer"
+    adapter_files:
+      "Human reviewer": null
+    adapter_routes: null
+    carrier_selection: "sole"
+    adapter: "Human reviewer"
+    authority: "May approve and merge after all required gates pass."
+    entry_evidence: "Current-head clean review and passing required checks."
+    completion_evidence: "Human merge decision."
+    activation: "Clean delivery, or a visible budget escalation."
+    # This terminal hand-off has no automated retry; keep max_runs only for the
+    # uniform catalogue contract, not as a router-enforced counter.
+    max_runs: 1

@@ -1,0 +1,141 @@
+"""Presence guard for headers in mapped `.md` files.
+
+**What is guarded.** A project's own file-map document should declare that every mapped file
+carries a header with the single question it answers, and that header is the **canon**
+("when they drift, header wins"), while any "File Map" is a derived index. Presence of this
+canon can already be gated for `.py` by ruff `D100`/`D104`/`D419` in `check_lint`. There is no
+equivalent for `.md` by default — a rule that lives only in prose is followed less than half the
+time. This is exactly the "scripts over instructions" case — the deterministic step "ensure that a
+header exists" becomes an exit code.
+
+**Why a test, not an entry in `CHECKS`.** `tests/test_ci_check.py::TestStepParity` requires
+`_ci_yml_check_names() == set(CHECKS)`, so a new registry entry would also require an
+`--only` step in `ci.yml` — an extra parity element for a static check already run by
+`check_pytest`.
+
+**Scope is the glob itself, with no second filter over it.** A filter that admits files "by
+property rather than by directory" (e.g. by frontmatter `description:`) risks a silent
+opt-out: adding that property to a document's preamble would drop it out of parameterization
+without failing a test — the exact defect a guard exists to prevent. Keep scope derived purely
+from directory + glob.
+
+**Guard boundaries, honestly.** Presence != correctness: whether a header *exists* and is
+non-empty is deterministic, whether it is *current* is not. A person catches divergence between
+the header and the actual purpose in review.
+
+**Scope is derived from the glob, not from a list** so the next architecture document enters the
+rule automatically, rather than through a manual enumeration someone will forget to extend.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+from scripts.navigation_policy import read_budget_hint
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# Mapped Markdown directories; this project's own file-map document defines the canonical
+# boundary. `.claude/rules` is a Layer 1 (Claude adapter) directory: it only exists, and is
+# only scanned, when that adapter is installed.
+{% if claude_adapter_installed %}_SCOPED_DIRS = (
+    _REPO_ROOT / "docs" / "architecture",
+    _REPO_ROOT / ".claude" / "rules",
+)
+{% else %}_SCOPED_DIRS = (_REPO_ROOT / "docs" / "architecture",)
+{% endif -%}
+
+# English is the repository documentation language; the marker set is closed.
+_MARKERS = ("**Question this document answers:**",)
+
+# Stop at any section heading; otherwise a later prose mention could count as a header.
+_SECTION_HEADING = re.compile(r"^#{2,6} ")
+
+# Require substantive text after the marker, paralleling Python's `D419`.
+_MIN_ANSWER_CHARS = 20
+
+# Large reference documents this project wants readable through the read-budget policy's
+# whole-file route without hitting the byte-budget hook. Starts empty — populate with this
+# project's own long-lived architecture/reference documents as they accrue.
+_READ_BUDGET_DOCUMENTS: tuple[Path, ...] = ()
+
+
+def _mapped_docs_in(directory: Path) -> list[Path]:
+    """Use `rglob`, not `glob`: the specification says ".md" **under** the directory.
+
+    A flat `glob` would silently leave a future subdirectory's `.md` files outside the
+    invariant — the same form of silent vacuum as moving the directory itself.
+    """
+    return sorted(directory.rglob("*.md"))
+
+
+def _mapped_docs() -> list[Path]:
+    return [path for directory in _SCOPED_DIRS for path in _mapped_docs_in(directory)]
+
+
+def _header_region(path: Path) -> list[str]:
+    """Return lines before the first section heading, where the header belongs.
+
+    The boundary is semantic rather than a fixed number of lines, which would
+    fail for documents with multi-line introductory blocks.
+    """
+    lines: list[str] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if _SECTION_HEADING.match(line):
+            break
+        lines.append(line)
+    return lines
+
+
+def _header_answer(lines: list[str]) -> str | None:
+    """Return text after a marker **at the start** of a line, otherwise `None`.
+
+    Anchored at the start of the line rather than `marker in text`: otherwise a document that
+    merely mentions the marker in prose would count as carrying a header. The leading `> ` is
+    removed — a header may legitimately live in a blockquote.
+    """
+    for line in lines:
+        stripped = line.removeprefix("> ").strip()
+        for marker in _MARKERS:
+            if stripped.startswith(marker):
+                return stripped.removeprefix(marker).strip()
+    return None
+
+
+class TestMappedDocsCarryHeader:
+    @pytest.mark.parametrize("directory", _SCOPED_DIRS, ids=lambda d: d.name)
+    def test_every_scoped_directory_contributes(self, directory: Path) -> None:
+        """Guard each directory against an empty scope, not only their union.
+
+        Checking the union for non-emptiness is insufficient: moving one of two directories
+        would leave the test green thanks to the other — "nothing to check" would become
+        indistinguishable from "everything is fine". The assertion is about the **same** list
+        that parameterizes the checks below: a guard that looks at a wider set than is
+        actually scanned would itself be a vacuum.
+        """
+        assert _mapped_docs_in(directory), f"no .md found under {directory}"
+
+    @pytest.mark.parametrize("path", _mapped_docs(), ids=lambda p: p.name)
+    def test_mapped_doc_carries_header(self, path: Path) -> None:
+        answer = _header_answer(_header_region(path))
+        assert answer is not None, (
+            f"{path.name}: нет header'а до первого заголовка секции. Header — канон того, "
+            f"на какой вопрос отвечает файл ('при дрейфе header wins'), и без него спор о "
+            f"том, какому файлу принадлежит секция, **нечем разрешить**. Ожидалась строка, "
+            f"начинающаяся одним из маркеров: {' | '.join(_MARKERS)}"
+        )
+        assert len(answer) >= _MIN_ANSWER_CHARS, (
+            f"{path.name}: header есть, но пуст ({len(answer)} симв. после маркера). "
+            f"Пустой header — отсутствие канона с галочкой; тот же дефект, ради которого "
+            f"для `.py` выбран `D419`, а не только `D100`"
+        )
+
+
+@pytest.mark.parametrize("path", _READ_BUDGET_DOCUMENTS, ids=lambda path: path.name)
+def test_read_budget_documents_fit_as_whole_files(path: Path) -> None:
+    """Keep this project's own navigation documents readable through the policy's whole-file route."""
+    assert path.is_file(), f"planned documentation file is missing: {path.relative_to(_REPO_ROOT)}"
+    assert read_budget_hint(str(path)) is None

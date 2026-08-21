@@ -17,7 +17,7 @@ import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 
-_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude", "templates"}
+_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
 
 
 def _run(cmd: list[str]) -> None:
@@ -60,33 +60,32 @@ def check_language() -> None:
 # hashes in someone else's markup read as high-entropy strings, i.e. false positives
 # by construction. Excluded as *files* rather than whitelisted as secret hashes — a
 # baseline would hand the gate a "make it green" button and, being written in the
-# host OS's path separators, would redden CI when regenerated on Windows (#389).
+# host OS's path separators, would redden CI when regenerated on Windows.
 # `git ls-files` always emits POSIX separators, so this pattern is platform-stable.
 _CAPTURED_HTML_FIXTURES = re.compile(r"^tests/fixtures/.*\.html$")
 
 
 def check_secrets() -> None:
-    """Block a secret from reaching a commit (#389).
+    """Block a secret from reaching a commit.
 
-    The pre-commit hook config that used to declare this gate was never on any
-    execution path (`core.hooksPath` points at `.githooks`, which has only
-    `pre-push`), and the baseline it carried had an empty `plugins_used`, so the
-    hook exited 0 on a planted key. Both layers were silent; the gate now runs
-    here, in the one registry that `pre-push` and `ci.yml` both execute.
+    Run this gate from the one registry that `pre-push` and `ci.yml` both
+    execute — a hook config that lives outside that registry, or a baseline
+    with an empty `plugins_used`, can look wired up while never actually
+    running or matching anything.
     """
     print("==> detect-secrets")
     targets = _secrets_targets(_tracked_files())
     if not targets:
         # `detect_secrets.pre_commit_hook` returns 0 for an empty file list, so a
-        # vacuous scan would look exactly like a clean one (§IV).
+        # vacuous scan would look exactly like a clean one.
         print("no files to scan — refusing to report a vacuous pass")
         sys.exit(1)
     _run(_secrets_cmd(targets))
 
 
 def _git_files(*options: str) -> list[str]:
-    # Binary mode on purpose (#364): `-z` exists to make the stream newline-safe,
-    # and text mode would undo that by translating universal newlines inside a path.
+    # Binary mode on purpose: `-z` exists to make the stream newline-safe, and
+    # text mode would undo that by translating universal newlines inside a path.
     # Decoding here also keeps a non-UTF-8 path from killing the reader thread —
     # that would empty the list and make the secret gate exit with "no files to
     # scan", pointing the operator at the wrong cause.
@@ -97,7 +96,7 @@ def _git_files(*options: str) -> list[str]:
     if proc.stdout is None:
         # An empty list is especially dangerous: `_secrets_targets` would return zero
         # files, and the secret scan would report "no files to scan" — pointing to
-        # capture failure as the cause (#410).
+        # capture failure as the cause.
         print("git ls-files produced no captured output — the file set is unknown")
         sys.exit(2)
     # -z: git otherwise quotes paths with spaces/non-ASCII, yielding names that
@@ -117,12 +116,12 @@ def _secrets_targets(files: Iterable[str]) -> list[str]:
 
 def _secrets_cmd(files: list[str]) -> list[str]:
     # `-X utf8`: detect-secrets opens files with the *platform default* encoding
-    # (`core/scan.py:261`) and silently skips a UnicodeDecodeError, so on Windows
-    # (cp1252) every file with a Russian comment — most of this repo — went
-    # unscanned while the same commit was scanned in full on Linux CI. UTF-8 mode
-    # makes the two agree; without it "green locally" means nothing (§IV, #153).
-    # The module, not the `detect-secrets-hook` console script: unreliable-on-PATH on
-    # Windows, same reason as check_imports. No `--baseline` — see check_secrets.
+    # and silently skips a UnicodeDecodeError, so on Windows (cp1252) every file
+    # with a non-ASCII comment can go unscanned while the same commit is scanned
+    # in full on Linux CI. UTF-8 mode makes the two agree; without it "green
+    # locally" means nothing. The module, not the `detect-secrets-hook` console
+    # script: unreliable-on-PATH on Windows, same reason as check_imports. No
+    # `--baseline` — see check_secrets.
     return [sys.executable, "-X", "utf8", "-m", "detect_secrets.pre_commit_hook", *files]
 
 
@@ -136,18 +135,11 @@ def check_pip_audit() -> None:
     _run([sys.executable, "-m", "pip_audit", "-r", "requirements.txt"])
 
 
-# Dev-only CVEs in the RAGAS eval tree (#347) that are unreachable in our offline
-# text-summarization eval and cannot be cleared by a bump today. Suppressed here (not
-# in prod audit) with a tracked follow-up (#360) to remove each ID once upstream ships
-# a fix that the ragas 0.4.x tree accepts:
-#   PYSEC-2026-2447  diskcache  unsafe pickle deserialization — local, needs an
-#       attacker-controlled cache file; our cache is self-produced. No fix released.
-#   PYSEC-2026-3046  ragas      SSRF in the Multi-Modal Faithfulness module — we run
-#       text-only faithfulness/answer_relevancy, never the multimodal path. No fix released.
-#   PYSEC-2026-76    langchain-openai  fixed in 1.1.14, but 1.1.14 requires openai>=2.26
-#       while ragas 0.4.3's `instructor` pins openai<2.0 → uninstallable together. Low-sev
-#       (image-URL sizing in a multimodal helper we don't call).
-_DEV_AUDIT_IGNORES = ("PYSEC-2026-2447", "PYSEC-2026-3046", "PYSEC-2026-76")
+# Dev-only CVEs that are unreachable in this project and cannot be cleared by a
+# bump today go here, each with a tracked follow-up to remove the ID once
+# upstream ships a fix. Starts empty — add entries only with a reason and a
+# follow-up issue, never to silence an audit failure.
+_DEV_AUDIT_IGNORES: tuple[str, ...] = ()
 
 
 def check_pip_audit_dev() -> None:
@@ -215,16 +207,16 @@ def check_mypy() -> None:
 
 
 def check_imports() -> None:
-    """§II protocol-boundaries as a machine gate (#234).
+    """Protocol-boundaries as a machine gate.
 
     Runs the import-linter contracts in `.importlinter` via its Python API — not
-    the `lint-imports` console script (unreliable-on-PATH on Windows + the #109
-    subprocess-stdout pitfall). grimp is static/AST, so nothing in the package
+    the `lint-imports` console script (unreliable-on-PATH on Windows, same as
+    check_secrets/check_imports). grimp is static/AST, so nothing in the package
     actually executes. `src` is put on sys.path to mirror pytest's
-    pythonpath=["src"], so the gate resolves `kinozal_scraper` even without the
+    pythonpath=["src"], so the gate resolves the package even without the
     editable install present.
     """
-    print("==> import-linter (§II boundaries)")
+    print("==> import-linter (protocol boundaries)")
     src = str(Path("src").resolve())
     if src not in sys.path:
         sys.path.insert(0, src)
@@ -237,18 +229,8 @@ def check_imports() -> None:
 # Registry — the single source of truth for the quality check set. Order is the
 # run order for a full pre-commit pass. ci.yml references these names via --only.
 CHECKS: dict[str, Callable[[], None]] = {
-    "format": check_format,
-    "lint": check_lint,
-    "language": check_language,
-    # Before the slow gates on purpose: a leaked key must redden the run in seconds,
-    # not after ~3 minutes of pytest + pip-audit.
-    "secrets": check_secrets,
-    "pytest": check_pytest,
-    "pip-audit": check_pip_audit,
-    "pip-audit-dev": check_pip_audit_dev,
-    "requirements": check_requirements,
-    "mypy": check_mypy,
-    "imports": check_imports,
+{% for check in ci_checks %}    {{ check.name | tojson }}: {{ check.function }},
+{% endfor -%}
 }
 
 

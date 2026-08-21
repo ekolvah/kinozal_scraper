@@ -1,0 +1,102 @@
+#!/usr/bin/env python3
+"""Capture repository-safe evidence through read-only external-system routes."""
+
+from __future__ import annotations
+
+import argparse
+import logging
+import subprocess
+import sys
+from collections.abc import Callable, Sequence
+from pathlib import Path
+from typing import BinaryIO
+
+ApiGet = Callable[[str], bytes]
+
+
+def _write_bytes(path: Path, payload: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+
+
+def capture_stdin(path: Path, *, stream: BinaryIO | None = None) -> None:
+    """Persist bytes emitted by an existing read-only source command."""
+    active_stream = stream if stream is not None else sys.stdin.buffer
+    _write_bytes(path, active_stream.read())
+
+
+def _gh_api_get(endpoint: str) -> bytes:
+    completed = subprocess.run(
+        ["gh", "api", endpoint],
+        capture_output=True,
+        encoding="utf-8",
+        timeout=60,
+        check=False,
+    )
+    if completed.stdout is None or completed.stderr is None:
+        raise RuntimeError(
+            f"gh api output capture failed: stdout={completed.stdout!r} stderr={completed.stderr!r}"
+        )
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"gh api {endpoint} failed with exit {completed.returncode}: {completed.stderr.strip()}"
+        )
+    return completed.stdout.encode("utf-8")
+
+
+def capture_github(endpoint: str, path: Path, *, api_get: ApiGet | None = None) -> None:
+    """Capture one GitHub REST GET without accepting arbitrary subprocess arguments."""
+    active_get = api_get if api_get is not None else _gh_api_get
+    _write_bytes(path, active_get(endpoint))
+
+
+# Extension point: add one `capture_<system>` function plus a matching subparser
+# per external, read-only system this project's discovery/evidence work needs
+# (each following the `stdin`/`github` shape above — a `--confirm-repository-safe`
+# flag and no argument that lets the caller construct an arbitrary side-effecting
+# command). Keep every route read-only; a route that can mutate the external
+# system does not belong in this script.
+
+
+def _add_safety_confirmation(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--confirm-repository-safe",
+        action="store_true",
+        help="confirm that captured content contains no secrets or private data",
+    )
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description=__doc__)
+    routes = parser.add_subparsers(dest="source", required=True)
+
+{% if "stdin" in fixture_routes %}    stdin = routes.add_parser("stdin", help="persist stdout from another read-only tool")
+    stdin.add_argument("path", type=Path)
+    _add_safety_confirmation(stdin)
+
+{% endif -%}
+{% if "github" in fixture_routes %}    github = routes.add_parser("github", help="capture one GitHub REST GET through gh api")
+    github.add_argument("endpoint")
+    github.add_argument("path", type=Path)
+    _add_safety_confirmation(github)
+
+{% endif %}    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> None:
+    parser = _parser()
+    args = parser.parse_args(argv)
+    if not args.confirm_repository_safe:
+        parser.error("--confirm-repository-safe is required before writing external data")
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+{% if "stdin" in fixture_routes %}    if args.source == "stdin":
+        capture_stdin(args.path)
+{% endif %}{% if "github" in fixture_routes %}    {% if "stdin" in fixture_routes %}elif{% else %}if{% endif %} args.source == "github":
+        capture_github(args.endpoint, args.path)
+{% endif %}
+    print(f"captured {args.source} evidence -> {args.path}")
+
+
+if __name__ == "__main__":
+    main()

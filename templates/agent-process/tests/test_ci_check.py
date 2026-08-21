@@ -31,8 +31,12 @@ def _ci_yml_check_names() -> set[str]:
     return names
 
 
+@pytest.mark.skipif(
+    not _CI_YML.is_file(),
+    reason="the generated project does not include a repository-specific CI workflow",
+)
 class TestStepParity:
-    """The core defect (#153): ci.yml duplicated the check list by hand and drifted —
+    """The core defect: ci.yml duplicated the check list by hand and drifted —
     some registry checks were silently missing in CI. After the registry refactor,
     ci.yml references check *names* only, so parity is enforceable."""
 
@@ -79,18 +83,6 @@ class TestFindModules:
 
         modules = {name.replace("\\", "/") for name in _find_modules()}
         assert "evidence/planning_probe.py" not in modules
-
-    def test_copier_payload_is_out_of_scope(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._repository_with_mypy_candidates(tmp_path)
-        payload = tmp_path / "templates" / "agent-process"
-        payload.mkdir(parents=True)
-        (payload / "copied_test.py").write_text("payload = True\n", encoding="utf-8")
-        monkeypatch.chdir(tmp_path)
-
-        modules = {name.replace("\\", "/") for name in _find_modules()}
-        assert "templates/agent-process/copied_test.py" not in modules
 
     def test_tracked_python_files_remain_in_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -150,7 +142,7 @@ class TestRunner:
 
 
 class TestTrackedFilesCaptureFailure:
-    """Broken `git ls-files` capture means unknown scope, not an empty list (#410).
+    """Broken `git ls-files` capture means unknown scope, not an empty list.
 
     This pins the **distinguishing** decision rather than mere validation: an
     empty list quietly reaches the secret gate, which prints "no files to scan —

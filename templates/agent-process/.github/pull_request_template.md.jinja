@@ -1,0 +1,68 @@
+<!--
+PR template for {{ repo_name }}. All sections are required.
+
+The PR is a REPORT on the issue plan (what was actually done + evidence), not a copy of the
+issue. `Test plan` and `Docs touched` mirror the identically named issue sections as PLAN→FACT
+(checks = executed). `Risk & Rollback` is delivery-only: it has no and cannot have an issue counterpart
+(blast radius is known only from the resulting diff).
+
+If there is no issue (a trivial fix), still complete every section.
+-->
+
+## Summary
+
+<!--
+2–3 sentences: what was done and why. The linker `Closes #N` (or `Refs #N`) is required.
+Divergence: did it match issue `## Implementation outline`? State deviations/surprises in one line
+(or “matched the plan”).
+-->
+
+Closes #
+
+## Agent record
+
+<!--
+Brief provenance record, without prompts or chain-of-thought.
+- Implementer: <agent / model or version if known>
+- Reviewer / fixer: <agent or none>
+- CI evidence: <local ci_check result and PR checks URL/status>
+- Route: <roles selected by the control plane>
+- Model invocations: <role=count; completed run-count proxy at the time this record is written, not invented token totals; exclude a review triggered by a later push>
+- Fixer revisions: <count>
+- Review gate verdict: <`python -m scripts.review_gate <PR>` verdict on the head being merged; a missing one means the loop ended on an agent's opinion>
+- Conditional skips / escalations: <reason or none>
+-->
+
+- Implementer:
+- Reviewer / fixer:
+- CI evidence:
+- Route:
+- Model invocations:
+- Fixer revisions:
+- Review gate verdict:
+- Conditional skips / escalations:
+
+## Test plan
+
+<!--
+Markdown checklist. It must mirror the issue `## Test plan`, checking items that were run.
+Also list the local commands you actually ran.
+-->
+
+- [ ] `python scripts/ci_check.py` — green locally
+- [ ] PR CI — green
+
+## Risk & Rollback
+
+<!--
+Verifiable in 30 seconds. For a trivial change, use the single line “low risk, revert-safe”.
+- Blast radius: is the change isolated, or does it affect unrelated functionality?
+- Rollback: a clean `git revert` PR, or are there irreversible effects?
+- Monitoring: what should be monitored after merge?
+-->
+
+## Docs touched
+
+<!--
+List changed `.md` files (docs/architecture/*, CLAUDE.md, MEMORY.md, …), or explicitly state "none — behaviour unchanged". It must mirror the issue `## Docs to update`.
+-->
