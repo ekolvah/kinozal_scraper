@@ -88,7 +88,7 @@ return, where a role with two carriers silently attributed a run to the wrong ag
 * Bad, because carriers respond in different formats and to different bars: carrier 1 writes inline comments
   and a structured outcome; carrier 2 leaves a normal GitHub review and GitHub publicly documents it as
   surfacing P0/P1 findings, narrower than this coverage-first contract. Therefore a green check from carrier 2
-  is weaker than the same check from carrier 1; this is recorded in [`coverage-gaps.md`](../architecture/coverage-gaps.md) **AK**.
+  is weaker than the same check from carrier 1; this is recorded in [`coverage-gaps-agent-tooling.md`](../architecture/coverage-gaps-agent-tooling.md) **AK**.
 * Bad, because carrier 2’s verdict arrives asynchronously: the job waits in a bounded loop
   (`--timeout-seconds`), so `agent-review` takes minutes rather than seconds on the failover branch. The cost
   is accepted: that branch is reachable only when carrier 1 already did not reply.
@@ -108,7 +108,7 @@ script, visible timeout),
 What the guards do not prove: that Codex responds to `@codex review` from the bot and sets the review state
 as `AGENTS.md` requests. Both sides of that contract are external, verified by one live run; until then the
 record has unverified execution
-([`coverage-gaps.md`](../architecture/coverage-gaps.md) **AK**).
+([`coverage-gaps-agent-tooling.md`](../architecture/coverage-gaps-agent-tooling.md) **AK**).
 
 ## Pros and Cons of the Options
 
@@ -155,7 +155,7 @@ record has unverified execution
 
 * Issue: [#478](https://github.com/ekolvah/kinozal_scraper/issues/478).
 * Gate mechanics and step order —
-  [`ci.md`](../architecture/ci.md#required-status-checks-branch-protection);
+  [`ci-branch-protection.md`](../architecture/ci-branch-protection.md#required-status-checks-branch-protection);
   the `carrier_selection` field in the role catalog —
   [`agent-process.md`](../architecture/agent-process.md#roles-and-hand-offs).
 * Provider-neutral names (`check_agent_review_outcome.py`, `agent-review` context) —

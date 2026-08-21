@@ -19,7 +19,7 @@ thresholds". Nothing in the repository authenticates to the stack.
 That boundary had a blind spot. In #542 event delivery was broken from the first day and nobody
 noticed for months: every offline test passed, and an empty Loki panel is indistinguishable from
 "there was no spend". The accepted coverage boundary for delivery
-([`coverage-gaps.md`](../architecture/coverage-gaps.md) §AN) was a manual live check in
+([`coverage-gaps-agent-tooling.md`](../architecture/coverage-gaps-agent-tooling.md) §AN) was a manual live check in
 `operations.md`, and a manual check that nobody runs is an intention, not a gate. So: may a
 committed script authenticate to Grafana with live credentials and return a non-zero exit code?
 
@@ -69,7 +69,7 @@ would move the logic into unversioned stack configuration, where a review cannot
   credentials exist — a class of script it did not have before.
 * Bad, because the raw Prometheus/Loki response shape the wrapper normalizes is not covered by any
   fixture, and a change in that shape would be caught only by running the check. Recorded in
-  `coverage-gaps.md` §AN rather than left implicit.
+  `coverage-gaps-agent-tooling.md` §AN rather than left implicit.
 * Neutral: an operator who never runs the check is no worse off than before, but the failure is
   now one command away rather than four manual steps away.
 

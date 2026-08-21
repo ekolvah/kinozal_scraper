@@ -64,7 +64,7 @@ The executable gate derives its Markdown and Python scope from
 files, and distinguishes policy violations from unavailable evidence. The
 current operational rule and scope live in
 [`project-map.md`](../architecture/project-map.md); gate mechanics live in
-[`ci.md`](../architecture/ci.md).
+[`ci-workflow.md`](../architecture/ci-workflow.md).
 
 ADR-0001 through ADR-0004 are translated once as a representation-only part of
 this migration. Their statuses, decisions, alternatives, and consequences do

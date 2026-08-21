@@ -35,7 +35,7 @@ they must not be “unified”.
 
 Only HTTP **responses** are retried. Network errors (`Timeout`/`ConnectionError`) do not reach
 `raise_for_status`, so the predicate excludes them by construction — an accepted boundary,
-recorded as gap **M** in `coverage-gaps.md` (§V: do not retry what was not observed).
+recorded as gap **M** in `coverage-gaps-ingestion.md` (§V: do not retry what was not observed).
 """
 
 from __future__ import annotations

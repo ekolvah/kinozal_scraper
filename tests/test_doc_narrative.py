@@ -328,7 +328,7 @@ class TestNarrativePredicates:
         assert narrative_refs("## Eval harness (#139)") == []
 
     def test_anchor_is_not_an_issue_ref(self) -> None:
-        assert narrative_refs("Секция `ci.md#doc-guards` описывает реестр.") == []
+        assert narrative_refs("Секция `ci-workflow.md#doc-guards` описывает реестр.") == []
         assert narrative_refs("Якорь #doc-guards-2 у второго одноимённого заголовка.") == []
 
     def test_rule_and_board_numbers_are_reported(self) -> None:

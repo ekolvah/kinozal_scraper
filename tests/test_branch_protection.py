@@ -9,7 +9,7 @@ There are three independent layers here:
 * `TestDriftDetection` / `TestProtectionFetch`—the pure half of `scripts/check_branch_protection.py`
   (compare “declared ↔ actual” and distinguish “drift” from “tool failure,” §IV). A CI network run is
   unavailable: `GITHUB_TOKEN` lacks `administration` scope, and classic branch protection is invisible
-  through the ruleset endpoint—coverage-gaps.md entry AD.
+  through the ruleset endpoint—coverage-gaps-quality-gates.md entry AD.
 * `TestDeclarationMatchesWorkflows`—the offline half: script declaration is compared with real workflows.
   It compares the **effective check-run name** (`name:` of the job, otherwise its key): renaming a job would
   otherwise leave a required context permanently “Expected,” and `enforce_admins: true` would lock merging,

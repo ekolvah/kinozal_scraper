@@ -49,7 +49,7 @@ Three boundaries isolate external services from business logic:
 These boundaries — the three adapters plus the auth-isolation rule "adapters take
 ready clients, not credentials" — are now machine-enforced by `import-linter`
 (the `imports` gate in `ci_check.py`, contracts in `.importlinter`). See
-[ci.md](ci.md) for the two contracts (`adapter-no-auth`, `pipeline-layers`) (#234).
+[ci-workflow.md](ci-workflow.md) for the two contracts (`adapter-no-auth`, `pipeline-layers`) (#234).
 
 Both live-Gemini call sites (`GeminiEnricher._generate`, `GeminiSummarizer.summarize`)
 emit a structured `llm_call` breadcrumb with token usage (`usage_metadata`) and
