@@ -19,10 +19,9 @@ working design; copying files by hand loses versioning and any way to tell
 "in sync" from "silently drifted".
 
 `open_pr.py`/`check_red.py` verify a closing PR inside this repository; they
-cannot verify work that creates and populates a
-different repository. This record therefore answers only the mechanism
-question — how a future export would move the contract and stay in sync —
-so the actual export ('s own follow-up) does not reopen it.
+cannot verify work that creates and populates a different repository. This
+record answers only the mechanism question — how a future export moves the
+contract and stays in sync — so a separate export follow-up does not reopen it.
 
 ## Decision Drivers
 
@@ -163,13 +162,13 @@ scope of the follow-up issue that builds it, not of this record.
 ## More Information
 
 * Overlaps with a future audit replacing bespoke repository scripts with
-  market tools) on domain, not on question: decides whether a given
-  script should exist; this record decides how an existing contract is
+  market tools on domain, not question: that audit decides whether a script
+  should exist; this record decides how an existing contract is
   distributed. A later replacement flows to the
   vendored copy through the same `copier update` as any other change.
 * Conflicts with an MCP server over the dev scripts — one install
-  instead of a per-project copy) on distribution mechanism. Not resolved
-  here: must reconcile with this choice when it is implemented, not
+  instead of a per-project copy — on distribution mechanism. It must reconcile
+  with this choice when implemented, not
   the other way around, because this record is accepted first.
 * Revisit this record if a target project's parameterization needs outgrow
   what a single `copier.yml` answer set can express, or if the Claude Code

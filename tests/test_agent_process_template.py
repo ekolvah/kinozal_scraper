@@ -22,6 +22,7 @@ _CITATION = re.compile(r"#\d{2,4}\b")
 _LINKED_CITATION = re.compile(r"\[#\d{2,4}\]\([^)]*\)")
 _ABS_ISSUE_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper/issues/\d+")
 _SOURCE_REPOSITORY_URL = re.compile(r"https://github\.com/ekolvah/kinozal_scraper(?:/|\b)")
+_STRIPPED_PROSE_HOLE = re.compile(r"(?:,\s*\)|\(\s*'s\b|\b(?:in|on|by|from|with|after)\s+\.)")
 
 # Cells whose secondary backtick token is relative to the primary path's own directory,
 # not repo-root-relative (the manifest's skill "metadata sidecar" rows, e.g.
@@ -181,14 +182,20 @@ class TestTemplateRenders:
                 offenders.append(str(path.relative_to(rendered_payload)))
         assert not offenders, f"citation survived export in: {offenders}"
 
-    def test_exported_adrs_do_not_contain_stripped_citation_holes(
-        self, rendered_payload: Path
-    ) -> None:
+    def test_citation_strip_leaves_no_malformed_prose(self, rendered_payload: Path) -> None:
         malformed = []
         for path in (rendered_payload / "docs" / "adr").glob("*.md"):
             content = path.read_text(encoding="utf-8")
-            if "Issue: []." in content or "on PR ." in content or " in ." in content:
+            if "Issue: []." in content or _STRIPPED_PROSE_HOLE.search(content):
+                malformed.append(str(path.relative_to(rendered_payload)))
+            if content.count("(") != content.count(")"):
                 malformed.append(path.name)
+        for relative, fragment in (
+            ("scripts/navigation_policy.py", ", )"),
+            ("tests/test_agent_frontmatter.py", "moved in ."),
+        ):
+            if fragment in (rendered_payload / relative).read_text(encoding="utf-8"):
+                malformed.append(relative)
         assert not malformed, f"citation stripping left malformed ADR prose: {malformed}"
 
     def test_no_relative_markdown_link_dangles_in_rendered_payload(

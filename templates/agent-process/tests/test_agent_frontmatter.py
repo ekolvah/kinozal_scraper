@@ -90,7 +90,7 @@ def _suppression_scope() -> list[Path]:
     """Apply the suppression denylist to every prompt plus the canonical home.
 
     The broader scope is conservative and prevents wording from returning to an
-    executable prompt after the contract itself moved in .
+    executable prompt after the contract itself moved.
     """
     return [*_agent_files(), _CANONICAL_FINDINGS_HOME]
 

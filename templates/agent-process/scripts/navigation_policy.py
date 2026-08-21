@@ -1,8 +1,8 @@
 """Navigation policy: routes into the filesystem whose cost a cheaper call avoids.
 
 Two routes, one policy. A shell command that reads a file has a tool that replaces it
-(`navigation_hint`, ); a `Read` that pulls a whole large file into context has a cheaper
-form of itself — a `Grep` or a slice (`read_budget_hint`, ). Both refusals name the
+(`navigation_hint`); a `Read` that pulls a whole large file into context has a cheaper
+form of itself — a `Grep` or a slice (`read_budget_hint`). Both refusals name the
 replacement, and both are advisory about cost, never about safety.
 
 Deliberately separate from `scripts/agent_policy.py`. That module is the *security*
