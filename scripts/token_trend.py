@@ -30,7 +30,7 @@ import statistics
 import sys
 import time
 from collections.abc import Iterable, Iterator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Protocol
 
@@ -47,7 +47,7 @@ MAIN_BUCKET = "main"
 NO_BRANCH_BUCKET = "(no-branch)"
 
 LEDGER_NAME = "token_ledger.jsonl"
-LEDGER_SCHEMA = 2
+LEDGER_SCHEMA = 3
 
 # Deliberately no ledger pruning: a branch line is ~200 B, so 72 current-history buckets are
 # under 15 KB and the file grows by a few branches weekly. Parsing cost is years away; an
@@ -92,6 +92,17 @@ class UsageRecord:
     cache_read: int
     cache_write_5m: int
     cache_write_1h: int
+    tool_uses: tuple[ToolUse, ...] = ()
+
+
+@dataclass(frozen=True)
+class ToolUse:
+    """One distinct tool-use block attached to an assistant request."""
+
+    name: str
+    file_path: str | None
+    offset: int | None
+    limit: int | None
 
 
 @dataclass(frozen=True)
@@ -115,6 +126,12 @@ class BranchStats:
     cache_read: int
     cache_write: int
     sidechain_tokens: int | None
+    tool_messages: int | None = None
+    tool_calls: int | None = None
+    read_calls: int | None = None
+    repeated_reads: int | None = None
+    same_window_reads: int | None = None
+    other_window_reads: int | None = None
 
     @property
     def total_tokens(self) -> int:
@@ -158,11 +175,55 @@ def _dedup_key(entry: dict, fallback: int) -> object:
     return ("pos", fallback)
 
 
+def _window_value(tool_input: dict, key: str) -> int | None:
+    """Read windows are numeric when present; unknown syntax stays unavailable."""
+    value = tool_input.get(key)
+    return value if type(value) is int else None
+
+
+def _tool_uses(message: dict) -> list[tuple[object, ToolUse]]:
+    """Extract tool blocks and their stable per-request deduplication keys."""
+    content = message.get("content")
+    if not isinstance(content, list):
+        return []
+    tool_uses: list[tuple[object, ToolUse]] = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        name = block.get("name")
+        if not isinstance(name, str):
+            continue
+        tool_input = block.get("input")
+        input_dict = tool_input if isinstance(tool_input, dict) else {}
+        raw_path = input_dict.get("file_path")
+        file_path = raw_path.strip() if isinstance(raw_path, str) and raw_path.strip() else None
+        block_id = block.get("id")
+        identity = (
+            ("id", block_id)
+            if isinstance(block_id, str) and block_id
+            else ("block", json.dumps(block, ensure_ascii=False, sort_keys=True))
+        )
+        tool_uses.append(
+            (
+                identity,
+                ToolUse(
+                    name=name,
+                    file_path=file_path if name == "Read" else None,
+                    offset=_window_value(input_dict, "offset") if name == "Read" else None,
+                    limit=_window_value(input_dict, "limit") if name == "Read" else None,
+                ),
+            )
+        )
+    return tool_uses
+
+
 def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]:
     """Parse transcript lines into records and anomalies, deduplicating by `requestId`."""
     records: list[UsageRecord] = []
     anomalies: list[Anomaly] = []
     seen: set[object] = set()
+    record_keys: list[object] = []
+    tools_by_request: dict[object, dict[object, ToolUse]] = {}
     for index, raw in enumerate(lines):
         text = raw.strip()
         if not text:
@@ -183,6 +244,15 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]
             # catches that because silence here does not mean “no growth.”
             continue
         key = _dedup_key(entry, index)
+        request_tools = tools_by_request.setdefault(key, {})
+        for tool_key, tool_use in _tool_uses(message):
+            if tool_key in request_tools:
+                continue
+            request_tools[tool_key] = tool_use
+            if tool_use.name == "Read" and tool_use.file_path is None:
+                anomalies.append(
+                    Anomaly("read_without_path", f"line {index + 1}: Read has no file_path")
+                )
         if key in seen:
             continue
         seen.add(key)
@@ -209,7 +279,11 @@ def parse_lines(lines: Iterable[str]) -> tuple[list[UsageRecord], list[Anomaly]]
                 cache_write_1h=write_1h,
             )
         )
-    return records, anomalies
+        record_keys.append(key)
+    return [
+        replace(record, tool_uses=tuple(tools_by_request[key].values()))
+        for record, key in zip(records, record_keys, strict=True)
+    ], anomalies
 
 
 def is_expected_model(model: str) -> bool:
@@ -269,9 +343,44 @@ def _earliest(current: str, candidate: str) -> str:
     return min(known) if known else ""
 
 
+def _interaction_counts(
+    record: UsageRecord,
+    read_windows: dict[tuple[str, str], set[tuple[int | None, int | None]]],
+) -> tuple[int, int, int, int, int, int]:
+    """Count request tools and classify repeated reads without opening their paths."""
+    tool_calls = len(record.tool_uses)
+    tool_messages = int(bool(tool_calls))
+    read_calls = repeated_reads = same_window_reads = other_window_reads = 0
+    for tool_use in record.tool_uses:
+        if tool_use.name != "Read":
+            continue
+        read_calls += 1
+        if tool_use.file_path is None:
+            continue
+        file_key = (record.session_id, os.path.normcase(os.path.normpath(tool_use.file_path)))
+        window = (tool_use.offset, tool_use.limit)
+        previous_windows = read_windows.setdefault(file_key, set())
+        if previous_windows:
+            repeated_reads += 1
+            if window in previous_windows:
+                same_window_reads += 1
+            else:
+                other_window_reads += 1
+        previous_windows.add(window)
+    return (
+        tool_messages,
+        tool_calls,
+        read_calls,
+        repeated_reads,
+        same_window_reads,
+        other_window_reads,
+    )
+
+
 def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats]:
     """Fold records into branch aggregate; no-branch records get a bucket, not discard."""
     stats: dict[str, BranchStats] = {}
+    read_windows: dict[tuple[str, str], set[tuple[int | None, int | None]]] = {}
     for record in records:
         raw_tokens = (
             record.input_tokens
@@ -280,6 +389,14 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
             + record.cache_write_5m
             + record.cache_write_1h
         )
+        (
+            tool_messages,
+            tool_calls,
+            read_calls,
+            repeated_reads,
+            same_window_reads,
+            other_window_reads,
+        ) = _interaction_counts(record, read_windows)
         current = stats.get(record.branch)
         if current is None:
             stats[record.branch] = BranchStats(
@@ -292,6 +409,12 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
                 cache_read=record.cache_read,
                 cache_write=record.cache_write_5m + record.cache_write_1h,
                 sidechain_tokens=raw_tokens if record.is_sidechain else 0,
+                tool_messages=tool_messages,
+                tool_calls=tool_calls,
+                read_calls=read_calls,
+                repeated_reads=repeated_reads,
+                same_window_reads=same_window_reads,
+                other_window_reads=other_window_reads,
             )
             continue
         stats[record.branch] = BranchStats(
@@ -305,6 +428,12 @@ def aggregate_by_branch(records: Iterable[UsageRecord]) -> dict[str, BranchStats
             cache_write=current.cache_write + record.cache_write_5m + record.cache_write_1h,
             sidechain_tokens=(current.sidechain_tokens or 0)
             + (raw_tokens if record.is_sidechain else 0),
+            tool_messages=(current.tool_messages or 0) + tool_messages,
+            tool_calls=(current.tool_calls or 0) + tool_calls,
+            read_calls=(current.read_calls or 0) + read_calls,
+            repeated_reads=(current.repeated_reads or 0) + repeated_reads,
+            same_window_reads=(current.same_window_reads or 0) + same_window_reads,
+            other_window_reads=(current.other_window_reads or 0) + other_window_reads,
         )
     return stats
 
@@ -383,8 +512,20 @@ def parse_ledger(lines: Iterable[str]) -> tuple[dict[str, BranchStats], list[Ano
 
 
 def _migrate_ledger_entry(schema: object, payload: dict) -> BranchStats:
-    """Read the raw portion of schema 1 without inventing its priced sidechain breakdown."""
+    """Preserve legacy token fields without inventing unavailable interaction counters."""
     if schema == LEDGER_SCHEMA:
+        interaction_fields = (
+            "tool_messages",
+            "tool_calls",
+            "read_calls",
+            "repeated_reads",
+            "same_window_reads",
+            "other_window_reads",
+        )
+        if any(field not in payload for field in interaction_fields):
+            raise KeyError("missing interaction metrics")
+        return BranchStats(**payload)
+    if schema == 2:
         return BranchStats(**payload)
     if schema == 1:
         return BranchStats(
@@ -413,6 +554,17 @@ def _fields_well_typed(entry: BranchStats) -> bool:
         and isinstance(entry.cache_read, int)
         and isinstance(entry.cache_write, int)
         and (entry.sidechain_tokens is None or isinstance(entry.sidechain_tokens, int))
+        and all(
+            value is None or isinstance(value, int)
+            for value in (
+                entry.tool_messages,
+                entry.tool_calls,
+                entry.read_calls,
+                entry.repeated_reads,
+                entry.same_window_reads,
+                entry.other_window_reads,
+            )
+        )
     )
 
 
@@ -466,17 +618,33 @@ def format_report(stats: Iterable[BranchStats], verdict: Verdict, anomalies: lis
     rows = sorted(stats, key=lambda s: (s.first_seen, s.branch))
     lines = [
         f"{'branch':<48} {'turns':>6} {'tokens':>12} {'per-turn':>10} "
-        f"{'cache_read':>12} {'sidechain':>11}"
+        f"{'cache_read':>12} {'sidechain':>11} {'tools/msg':>10} {'repeat-Read':>12} "
+        f"{'same-win':>9} {'other-win':>10}"
     ]
     for entry in rows:
         # Dash, not `0.0k`: a bucket without main turns has no denominator, and zero beside
         # nonempty token total would read as “branch is free.”
         per_turn = _k(entry.per_turn) if entry.turns else "—"
         sidechain = _k(entry.sidechain_tokens) if entry.sidechain_tokens is not None else "—"
+        tools_per_message = (
+            f"{entry.tool_calls / entry.tool_messages:.3f}"
+            if entry.tool_calls is not None and entry.tool_messages
+            else "—"
+        )
+        repeated_read_share = (
+            f"{entry.repeated_reads / entry.read_calls:.1%}"
+            if entry.repeated_reads is not None and entry.read_calls
+            else "—"
+        )
+        same_window = str(entry.same_window_reads) if entry.same_window_reads is not None else "—"
+        other_window = (
+            str(entry.other_window_reads) if entry.other_window_reads is not None else "—"
+        )
         lines.append(
             f"{entry.branch[:48]:<48} {entry.turns:>6} {_k(entry.total_tokens):>12} "
             f"{per_turn:>10} {_k(entry.cache_read):>12} "
-            f"{sidechain:>11}"
+            f"{sidechain:>11} {tools_per_message:>10} {repeated_read_share:>12} "
+            f"{same_window:>9} {other_window:>10}"
         )
     lines.append("")
     if verdict.status == "insufficient_data":

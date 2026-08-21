@@ -297,8 +297,8 @@ class TestAggregate:
 class TestInteractionMetrics:
     def test_multiple_jsonl_lines_of_one_request_count_tool_blocks_once(self) -> None:
         blocks: list[dict[str, object]] = [
-            {"type": "tool_use", "id": "tool-read", "name": "Read", "input": {"file_path": "a.py"}},
-            {"type": "tool_use", "id": "tool-rg", "name": "Grep", "input": {}},
+            {"type": "tool_use", "name": "Read", "input": {"file_path": "a.py"}},
+            {"type": "tool_use", "name": "Grep", "input": {}},
         ]
         records, anomalies = parse_lines(
             [
@@ -341,13 +341,20 @@ class TestInteractionMetrics:
         stats = aggregate_by_branch(records)["issue-1-a"]
 
         assert anomalies == []
-        assert (stats.read_calls, stats.repeated_reads, stats.same_window_reads, stats.other_window_reads) == (4, 2, 1, 1)
+        assert (
+            stats.read_calls,
+            stats.repeated_reads,
+            stats.same_window_reads,
+            stats.other_window_reads,
+        ) == (4, 2, 1, 1)
 
     def test_read_without_file_path_is_an_anomaly_and_keeps_denominator(self) -> None:
         records, anomalies = parse_lines(
             [
                 _tool_line(
-                    tool_blocks=[{"type": "tool_use", "id": "tool-read", "name": "Read", "input": {}}]
+                    tool_blocks=[
+                        {"type": "tool_use", "id": "tool-read", "name": "Read", "input": {}}
+                    ]
                 )
             ]
         )

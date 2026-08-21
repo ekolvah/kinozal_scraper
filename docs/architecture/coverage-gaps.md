@@ -403,10 +403,13 @@ decision goes to" route — and the rule itself — live in
   `SessionStart` hook takes the gate role: it runs itself every session and prints **only** an anomaly;
   `tests/test_token_trend.py::TestHookRegistration` guards against losing hook registration (without
   it, the script would repeat eval's fate from #361 — a metric that nobody runs). Tests cover pure
-  logic (parsing, aggregation, schema-1 ledger migration, detector), **both output formats**, and `main()` in both modes
+  logic (parsing, aggregation, schema-1/2 ledger migration, interaction counters, detector), **both output formats**, and `main()` in both modes
   on a substitute directory; only `transcript_dir()` remains uncovered — an upstream slug rule
   testable only by actual run. Its failure is not silent: if `~/.claude/projects` exists but lacks
-  our directory, the hook prints `transcripts_not_found` rather than remaining silent. Revisit if a
+  our directory, the hook prints `transcripts_not_found` rather than remaining silent. The tests use
+  inline JSONL, so they cannot establish that an installed Claude Code version still emits the
+  request/tool-block shape; malformed `Read` input is visible as an anomaly and schemas 1/2
+  deliberately render interaction metrics unavailable. Revisit if a
   shared development-telemetry carrier appears that CI can read.
 
 - **AK. The second review-gate carrier has not been verified by a live run (#478).** Carrier 2 —
