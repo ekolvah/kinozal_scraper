@@ -131,6 +131,7 @@ _SHARED_GATE_DEFINITIONS = (
     ("a script with an exit code and unit tests", "docs/architecture/principles.md"),
 )
 
+
 def _provider_files() -> list[Path]:
     """Files whose path already names a provider: adapters, not canon.
 
@@ -146,8 +147,10 @@ def _provider_files() -> list[Path]:
         _REPO / "AGENTS.md",
     ]
 
+
 def _codex_skills() -> list[Path]:
     return sorted(path for path in (_REPO / ".agents" / "skills").glob("*") if path.is_dir())
+
 
 def _documented_change_class_matrix() -> dict[str, dict[str, tuple[str, ...]]]:
     """Parse the `| label | adds | omits |` table from `agent-process.md` §Issue contract."""
@@ -167,6 +170,7 @@ def _documented_change_class_matrix() -> dict[str, dict[str, tuple[str, ...]]]:
             for key, cell in (("adds", cells[1]), ("omits", cells[2]))
         }
     return matrix
+
 
 class TestIssueContract:
     """The change-class matrix has one machine-readable home."""
@@ -197,6 +201,7 @@ class TestIssueContract:
                 "adds": tuple(row["adds"]),
                 "omits": tuple(row["omits"]),
             }, f"documented row for {label!r} disagrees with the catalogue"
+
 
 class TestAgentProcess:
     def test_issue_contract_has_nine_sections_and_handoff_last(self) -> None:

@@ -55,7 +55,7 @@ REQUIRED_SECTIONS: tuple[str, ...] = (
     "Out of scope",
     # Architect-review findings (or an explicit `skipped: <reason>`). Enforced as
     # a gate so the review is a consciously-decided step, never silently skipped
-    #. Persona lives in `.claude/agents/architect-reviewer.md`; criteria in
+    # . Persona lives in `.claude/agents/architect-reviewer.md`; criteria in
     # `docs/architecture/principles.md`.
     "Architect review",
     # Link to the MADR record this issue's decision lands in, or an explicit
@@ -127,8 +127,10 @@ REVIEWER_PREFIX = "reviewer:"
 DISCOVERY_PREFIX = "discovery:"
 SELF_REVIEW = "self"
 
+
 class CatalogueError(RuntimeError):
     """The role catalogue could not be read as the source of carrier names."""
+
 
 def _declared_role_field(role: str, field: str) -> object:
     """One reader for the catalogue, shared by both provenance gates.
@@ -146,6 +148,7 @@ def _declared_role_field(role: str, field: str) -> object:
     except (KeyError, TypeError) as exc:
         raise CatalogueError(f"{_ROLE_CATALOGUE} declares no {role}.{field}") from exc
 
+
 def reviewer_independence() -> dict[str, str]:
     """Map every `architect_reviewer` carrier onto `independent` or `self`.
 
@@ -160,6 +163,7 @@ def reviewer_independence() -> dict[str, str]:
         raise CatalogueError(f"{_REVIEWER_ROLE}.adapter_independence is not a non-empty mapping")
     return declared
 
+
 def discovery_carriers() -> tuple[str, ...]:
     """The carriers permitted to sign a `## Evidence` block.
 
@@ -173,6 +177,7 @@ def discovery_carriers() -> tuple[str, ...]:
     if not declared:
         raise CatalogueError(f"{_DISCOVERY_ROLE}.adapters is not a non-empty list of carriers")
     return tuple(declared)
+
 
 def change_class_requirements() -> dict[str, dict[str, tuple[str, ...]]]:
     """Per-type-label section deltas, relative to `REQUIRED_SECTIONS`.
@@ -222,16 +227,19 @@ def change_class_requirements() -> dict[str, dict[str, tuple[str, ...]]]:
         resolved[label] = {"adds": tuple(row["adds"]), "omits": tuple(row["omits"])}
     return resolved
 
+
 def required_sections(label: str) -> tuple[str, ...]:
     """The resolved, ordered section set a `label` issue must carry."""
     row = change_class_requirements()[label]
     omitted = set(row["omits"])
     return (*(name for name in REQUIRED_SECTIONS if name not in omitted), *row["adds"])
 
+
 def _resolve_class(labels: Sequence[str]) -> str | None:
     """The one type label routing this issue, or `None` when it is not exactly one."""
     present = sorted({label.casefold() for label in labels} & set(change_class_requirements()))
     return present[0] if len(present) == 1 else None
+
 
 def type_label_gaps(labels: Sequence[str], issue_number: int) -> list[str]:
     """Return the routing gap when an issue carries zero or several type labels.
@@ -250,6 +258,7 @@ def type_label_gaps(labels: Sequence[str], issue_number: int) -> list[str]:
         f"`gh issue edit {issue_number} --add-label <type>`)"
     ]
 
+
 def architect_review_provenance(content: str) -> str | None:
     """Classify the section's **first non-empty line**.
 
@@ -266,6 +275,7 @@ def architect_review_provenance(content: str) -> str | None:
     adapter = first[len(REVIEWER_PREFIX) :].strip()
     return reviewer_independence().get(adapter)
 
+
 def architect_review_gaps(content: str) -> list[str]:
     """Return what the section's provenance line is missing, mirroring `handoff_gaps`."""
     first = next((line.strip() for line in content.splitlines() if line.strip()), "")
@@ -280,6 +290,7 @@ def architect_review_gaps(content: str) -> list[str]:
             else ["declared reviewer adapter"]
         )
     return []
+
 
 def _split_by_h2(body: str) -> dict[str, str]:
     """Sections headed by `## `, parsed by CommonMark.
@@ -310,6 +321,7 @@ def _split_by_h2(body: str) -> dict[str, str]:
         sections[title.lower()] = "\n".join(lines[content_start:content_end]).strip()
     return sections
 
+
 def handoff_gaps(content: str) -> list[str]:
     """Return the missing provenance fields in an otherwise present hand-off."""
     normalized = "\n".join(line.strip().lower() for line in content.splitlines())
@@ -322,6 +334,7 @@ def handoff_gaps(content: str) -> list[str]:
         "handoff status": "handoff: ready",
     }
     return [name for name, marker in required.items() if marker not in normalized]
+
 
 def _section_field(content: str, name: str) -> str | None:
     """The value of a `<name>:` line, or `None` when it is absent or empty.
@@ -338,6 +351,7 @@ def _section_field(content: str, name: str) -> str | None:
                 value = value[1:-1].strip()
             return value or None
     return None
+
 
 def _failed_capture_has_output(content: str) -> bool:
     if (_section_field(content, "status") or "").lower() != "failed":
@@ -358,6 +372,7 @@ def _failed_capture_has_output(content: str) -> bool:
     output = output[first_newline + 1 : -3].strip()
     return bool(output)
 
+
 def evidence_provenance_gaps(content: str) -> list[str]:
     """Return what the section's `discovery:` line is missing, mirroring `architect_review_gaps`.
 
@@ -373,11 +388,13 @@ def evidence_provenance_gaps(content: str) -> list[str]:
         return ["declared discovery adapter"]
     return []
 
+
 def _after_provenance(content: str) -> str:
     """The section body below its provenance line."""
     lines = content.splitlines()
     first = next((index for index, line in enumerate(lines) if line.strip()), len(lines))
     return "\n".join(lines[first + 1 :])
+
 
 def evidence_gaps(content: str) -> list[str]:
     """Return mechanical gaps in a bug issue's observation and decision record."""
@@ -421,6 +438,7 @@ def evidence_gaps(content: str) -> list[str]:
         label for field, label in EVIDENCE_DECISION_FIELDS if not _section_field(content, field)
     ]
 
+
 def prior_art_gaps(content: str) -> list[str]:
     """Return mechanical gaps in a non-bug issue's search outside the repository.
 
@@ -451,12 +469,14 @@ def prior_art_gaps(content: str) -> list[str]:
         return ["reuse/build verdict"]
     return []
 
+
 _SECTION_CHECKS = {
     "Agent handoff": handoff_gaps,
     "Architect review": architect_review_gaps,
     EVIDENCE_SECTION: evidence_gaps,
     PRIOR_ART_SECTION: prior_art_gaps,
 }
+
 
 def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[str]:
     """Empty or missing sections from `required`.
@@ -490,6 +510,7 @@ def find_gaps(body: str, required: Sequence[str] = REQUIRED_SECTIONS) -> list[st
         if missing_fields:
             gaps.append(f"{name} (missing: {', '.join(missing_fields)})")
     return gaps
+
 
 def _fetch_issue(issue_number: int) -> tuple[str, tuple[str, ...]]:
     result = subprocess.run(
@@ -532,13 +553,16 @@ def _fetch_issue(issue_number: int) -> tuple[str, tuple[str, ...]]:
     )
     return data.get("body") or "", labels
 
+
 def _fetch_body(issue_number: int) -> str:
     """Compatibility helper for consumers that need only the issue body."""
     return _fetch_issue(issue_number)[0]
 
+
 MARK_PLANNED_FLAG = "--mark-planned"
 EVIDENCE_ONLY_FLAG = "--evidence-only"
 BODY_FILE_FLAG = "--body-file"
+
 
 def _evidence_only(issue_number: int, body: str, source: str) -> None:
     """Judge the `## Evidence` block alone, for the role that finishes before a plan.
@@ -561,6 +585,7 @@ def _evidence_only(issue_number: int, body: str, source: str) -> None:
         print(f" - {gap}", file=sys.stderr)
     sys.exit(1)
 
+
 def _take_option(argv: list[str], flag: str) -> tuple[list[str], str | None]:
     """Pull `--flag <value>` out of `argv`, returning the remainder and the value."""
     if flag not in argv:
@@ -571,6 +596,7 @@ def _take_option(argv: list[str], flag: str) -> tuple[list[str], str | None]:
         sys.exit(2)
     return argv[:index] + argv[index + 2 :], argv[index + 1]
 
+
 def _read_candidate(path: str) -> str:
     """Read a candidate block from disk; an unreadable source is not a verdict (§IV)."""
     try:
@@ -578,6 +604,7 @@ def _read_candidate(path: str) -> str:
     except OSError as exc:
         print(f"error: cannot read {path}: {exc}", file=sys.stderr)
         sys.exit(2)
+
 
 def _mark_planned(issue_number: int) -> None:
     """Move the issue's board card to `Planned`; never change this script's verdict.
@@ -591,6 +618,7 @@ def _mark_planned(issue_number: int) -> None:
         set_issue_status.set_status(issue_number, "planned")
     except (RuntimeError, ValueError) as exc:
         print(f"warning: board status not updated: {exc}", file=sys.stderr)
+
 
 def _parse_argv(raw: list[str]) -> tuple[int, bool, bool, str | None]:
     """Resolve `<issue-number>` and the three flags, or exit 2.
@@ -624,6 +652,7 @@ def _parse_argv(raw: list[str]) -> tuple[int, bool, bool, str | None]:
     except ValueError:
         print(f"error: issue number must be int (got {positional[0]!r})", file=sys.stderr)
         sys.exit(2)
+
 
 def main() -> None:
     n, mark_planned, evidence_only, body_file = _parse_argv(sys.argv[1:])
@@ -692,6 +721,7 @@ def main() -> None:
         )
         print("run `/plan #" + str(n) + "` to fill them", file=sys.stderr)
     sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

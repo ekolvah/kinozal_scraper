@@ -47,10 +47,12 @@ ISSUE_BRANCH_RE = re.compile(r"^issue-(\d+)-")
 LINKAGE_ATTEMPTS = 12
 LINKAGE_DELAY_S = 4.0
 
+
 def issue_number_from_branch(branch: str) -> int | None:
     """Extract N from an `issue-N-slug` branch; None for any other branch."""
     match = ISSUE_BRANCH_RE.match(branch.strip())
     return int(match.group(1)) if match else None
+
 
 def ensure_closes_line(body: str, n: int) -> str:
     """Return `body` guaranteed to carry a `Closes #n` line (idempotent).
@@ -65,6 +67,7 @@ def ensure_closes_line(body: str, n: int) -> str:
         return body
     return f"{target}\n\n{body}" if body else f"{target}\n"
 
+
 def has_closing_reference(view_json: str) -> bool:
     """True iff `closingIssuesReferences` reports ≥1 link.
 
@@ -75,9 +78,10 @@ def has_closing_reference(view_json: str) -> bool:
     this check and the CI gate at once."""
     data: dict[str, Any] = json.loads(view_json)
     refs: Any = data.get("closingIssuesReferences")
-    if isinstance(refs, dict): # GraphQL-style `.nodes` wrapper
+    if isinstance(refs, dict):  # GraphQL-style `.nodes` wrapper
         return bool(cast("dict[str, Any]", refs).get("nodes"))
     return bool(refs)
+
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
@@ -97,9 +101,11 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         sys.exit(2)
     return result
 
+
 def _current_branch() -> str:
     result = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
     return result.stdout.strip()
+
 
 def _existing_pr(branch: str) -> dict[str, Any] | None:
     """The OPEN PR for `branch` (url+body), or None if there is none yet.
@@ -116,6 +122,7 @@ def _existing_pr(branch: str) -> dict[str, Any] | None:
     loaded: list[dict[str, Any]] = json.loads(result.stdout)
     return loaded[0] if loaded else None
 
+
 def _create_pr(title: str, body: str) -> str:
     result = _run(["gh", "pr", "create", "--base", "main", "--title", title, "--body", body])
     if result.returncode != 0:
@@ -126,8 +133,10 @@ def _create_pr(title: str, body: str) -> str:
     lines = [ln for ln in result.stdout.splitlines() if ln.strip()]
     return lines[-1] if lines else ""
 
+
 def _edit_pr_body(url: str, body: str) -> None:
     _run(["gh", "pr", "edit", url, "--body", body])
+
 
 def _closing_refs_json(url: str) -> str | None:
     """JSON with closing references, or `None` when it could not be read.
@@ -146,6 +155,7 @@ def _closing_refs_json(url: str) -> str | None:
         )
         return None
     return result.stdout
+
 
 def _linkage_confirmed(url: str) -> bool:
     """Poll `closingIssuesReferences` until it reports a link (or attempts run out).
@@ -170,6 +180,7 @@ def _linkage_confirmed(url: str) -> bool:
         )
         sys.exit(2)
     return False
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Open a PR that auto-closes its issue.")
@@ -211,6 +222,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
     print(url)
+
 
 if __name__ == "__main__":
     main()

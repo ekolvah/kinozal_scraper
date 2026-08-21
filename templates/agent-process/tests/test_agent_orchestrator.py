@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 import yaml
-from test_doc_links import slugify # the repo's single GitHub-anchor implementation
+from test_doc_links import slugify  # the repo's single GitHub-anchor implementation
 
 from scripts.agent_orchestrator import (
     WorkflowState,
@@ -18,6 +18,7 @@ from scripts.agent_orchestrator import (
     load_catalog,
     main,
 )
+
 
 def _state(**overrides: object) -> WorkflowState:
     values: dict[str, Any] = {
@@ -35,8 +36,10 @@ def _state(**overrides: object) -> WorkflowState:
     values.update(overrides)
     return WorkflowState(**values)
 
+
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _EXAMPLE_STATE = _REPO_ROOT / ".agents" / "orchestration" / "state.example.json"
+
 
 class TestRoleCatalogue:
     def test_example_workflow_state_is_a_valid_starting_point(self) -> None:
@@ -159,6 +162,7 @@ class TestRoleCatalogue:
         with pytest.raises(ValueError, match="positive max_runs"):
             load_catalog(zero_budget_catalogue)
 
+
 _READY_FOR_REVIEW: dict[str, Any] = {
     "architect_completed": True,
     "implementation_completed": True,
@@ -166,6 +170,7 @@ _READY_FOR_REVIEW: dict[str, Any] = {
     "head_sha": "d" * 40,
     "reviewed_heads": ("d" * 40,),
 }
+
 
 class TestRunRoute:
     """`route` picks the adapter per run; the catalogue default stays the fallback."""
@@ -333,6 +338,7 @@ class TestRunRoute:
         assert result["adapter"] == "Codex $plan-issue #N self-review"
         assert result["next_action"] == result["adapter"]
 
+
 class TestCarrierSelection:
     """Not every alternative carrier is a run-route variant.
 
@@ -420,6 +426,7 @@ class TestCarrierSelection:
         with pytest.raises(ValueError, match="incomplete contract"):
             load_catalog(without_mode)
 
+
 class TestRouteResolution:
     def test_nontrivial_issue_routes_through_architect_then_implementer(self) -> None:
         catalogue = load_catalog()
@@ -473,6 +480,7 @@ class TestRouteResolution:
         assert (
             decide(_state(review_outcome="clean", **shared), catalogue).next_role == "human_merge"
         )
+
 
 class TestBudgetLimits:
     @pytest.mark.parametrize(
@@ -567,6 +575,7 @@ class TestBudgetLimits:
         assert decision.status == "escalate"
         assert "fixer" not in decision.completed_roles
 
+
 class TestEvidenceTruthfulness:
     def test_selected_role_is_not_reported_as_completed_without_its_evidence(self) -> None:
         decision = decide(_state(), load_catalog())
@@ -627,6 +636,7 @@ class TestEvidenceTruthfulness:
         assert "implementer" not in blocked_ci.completed_roles
         assert "fixer" not in fixer_in_progress.completed_roles
         assert "fixer" in fixer_handed_off.completed_roles
+
 
 class TestBlockedRoutes:
     @pytest.mark.parametrize(
@@ -736,6 +746,7 @@ class TestBlockedRoutes:
     def test_missing_required_state_evidence_is_visible(self) -> None:
         with pytest.raises(ValueError, match="plan_completed"):
             _state_from_json({"issue_kind": "nontrivial"})
+
 
 class TestCli:
     def test_cli_reads_state_and_emits_structured_next_action(

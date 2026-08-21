@@ -38,6 +38,7 @@ from scripts.open_pr import (
     issue_number_from_branch,
 )
 
+
 def link_required_but_missing(branch: str, refs_json: str) -> bool:
     """True iff `branch` is an `issue-N` branch but its PR closes no issue.
 
@@ -46,6 +47,7 @@ def link_required_but_missing(branch: str, refs_json: str) -> bool:
     if issue_number_from_branch(branch) is None:
         return False
     return not has_closing_reference(refs_json)
+
 
 def _refs_json(pr: str) -> str:
     """Fetch `closingIssuesReferences` JSON for the PR, or exit 2 on a `gh` failure.
@@ -79,6 +81,7 @@ def _refs_json(pr: str) -> str:
         sys.exit(2)
     return result.stdout
 
+
 def _link_missing_after_poll(branch: str, pr: str) -> bool:
     """True iff `branch` is an issue-N branch whose PR still shows no link after
     polling. A non-issue branch is N/A → no `gh` call, no poll. Wraps the pure
@@ -92,6 +95,7 @@ def _link_missing_after_poll(branch: str, pr: str) -> bool:
         if attempt < LINKAGE_ATTEMPTS - 1:
             time.sleep(LINKAGE_DELAY_S)
     return True
+
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="CI gate: PR from issue-N branch must close it.")
@@ -109,6 +113,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
     print(f"ok: PR link check passed for branch {ns.branch!r}")
+
 
 if __name__ == "__main__":
     main()

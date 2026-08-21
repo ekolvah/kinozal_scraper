@@ -50,6 +50,7 @@ _NAME_LIMIT = 12
 _TAIL_NOT_RED = 800
 _TAIL_UNEVALUATED = 4000
 
+
 def _sample(names: list[str], *, full: bool) -> str:
     """Name the tests, capped: the count is the verdict, the names are the example.
 
@@ -65,6 +66,7 @@ def _sample(names: list[str], *, full: bool) -> str:
         "new tests, or add --full for the whole list)"
     )
 
+
 def _tail(text: str, max_chars: int, *, full: bool) -> str:
     """Keep the end of the pytest output, announcing the cut before what survived.
 
@@ -75,6 +77,7 @@ def _tail(text: str, max_chars: int, *, full: bool) -> str:
     if full or len(text) <= max_chars:
         return text
     return f"[cut {len(text) - max_chars} chars of pytest output; re-run with --full]\n{text[-max_chars:]}"
+
 
 def evaluate_report(xml_text: str, *, full: bool = False) -> tuple[bool, str]:
     """RED-step verdict from a junit report. Pure function: no I/O or exit.
@@ -127,6 +130,7 @@ def evaluate_report(xml_text: str, *, full: bool = False) -> tuple[bool, str]:
     skipped = sum(1 for t in tags_by_test.values() if "skipped" in t)
     return False, f"not RED: 0 green, but nothing failed either ({skipped} skipped of {total})"
 
+
 def main() -> None:
     # argparse rather than hand-parsed `sys.argv`: `--full` must not reach pytest as a
     # path, and a missing path must stay exit 2 ("usage error"), which `parser.error`
@@ -145,7 +149,7 @@ def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         report = Path(tmp) / "red.xml"
         # No `-q` here: the verbosity of this run has one home, `addopts` in pyproject.toml
-        #. `-q` is `action="count"`, so a second one would silently push this
+        # . `-q` is `action="count"`, so a second one would silently push this
         # subprocess to verbosity −2.
         cmd = [sys.executable, "-m", "pytest", "--tb=no", f"--junitxml={report}", *paths]
         completed = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
@@ -175,6 +179,7 @@ def main() -> None:
         print("--- pytest output ---", file=sys.stderr)
         print(_tail(stdout, _TAIL_NOT_RED, full=args.full), file=sys.stderr)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

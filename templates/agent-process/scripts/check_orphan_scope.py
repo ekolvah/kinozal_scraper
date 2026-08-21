@@ -20,6 +20,7 @@ _FOLLOW_UP_RE = re.compile(
 _ISSUE_REFERENCE_RE = re.compile(r"#\d+\b")
 _REJECTION_RE = re.compile(r"\bwontfix\b|\bwon['’]?t\s+fix\b|\byagni\b", re.IGNORECASE)
 
+
 def _out_of_scope_token_range(body: str) -> list:
     """Return tokens after the Out of scope h2 and before the next h2."""
     tokens = _MD.parse(body)
@@ -34,6 +35,7 @@ def _out_of_scope_token_range(body: str) -> list:
             continue
         return tokens[start:index]
     return [] if start is None else tokens[start:]
+
 
 def _top_level_bullets(body: str) -> list[str]:
     """Extract direct prose from top-level list items in Out of scope."""
@@ -53,6 +55,7 @@ def _top_level_bullets(body: str) -> list[str]:
             current.append(token.content)
     return bullets
 
+
 def find_orphan_scope_reminders(body: str) -> list[str]:
     """Return actionable reminders for orphaned top-level scope bullets."""
     return [
@@ -63,12 +66,14 @@ def find_orphan_scope_reminders(body: str) -> list[str]:
         and not _REJECTION_RE.search(bullet)
     ]
 
+
 def format_reminders(issue_number: int, body: str) -> list[str]:
     """Format reminder findings for a hand-off transcript."""
     return [
         f"reminder: issue #{issue_number} Out of scope follow-up has no #N/wontfix/YAGNI: {bullet}"
         for bullet in find_orphan_scope_reminders(body)
     ]
+
 
 def _fetch_body(issue_number: int) -> str:
     """Read one open issue body through ``gh``."""
@@ -88,6 +93,7 @@ def _fetch_body(issue_number: int) -> str:
     if data.get("state") != "OPEN":
         raise RuntimeError(f"issue #{issue_number} is not OPEN (state={data.get('state')})")
     return data.get("body") or ""
+
 
 def main(argv: list[str] | None = None) -> int:
     """Run the non-blocking reminder for one issue number."""
@@ -111,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         print(f"ok: issue #{issue_number} has no orphaned scope reminders")
     return 0
+
 
 if __name__ == "__main__":
     raise SystemExit(main())

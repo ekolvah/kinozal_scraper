@@ -13,9 +13,11 @@ from scripts.codex_hooks import edited_paths, pre_tool_response, read_payload, r
 
 _REPO = Path(__file__).resolve().parents[1]
 
+
 def _patch(*paths: str) -> dict:
     command = "*** Begin Patch\n" + "".join(f"*** Update File: {path}\n" for path in paths)
     return {"tool_input": {"command": command}}
+
 
 class TestPreToolUse:
     def test_forbidden_git_operation_uses_codex_denial_schema(self) -> None:
@@ -59,6 +61,7 @@ class TestPreToolUse:
         )
         assert result.returncode == 0, result.stderr
         assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
 
 class TestPostToolUse:
     def test_apply_patch_paths_are_deduplicated_and_ignore_deletes(self) -> None:

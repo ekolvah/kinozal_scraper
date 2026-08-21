@@ -106,6 +106,7 @@ _NON_ISSUE_SIGIL = re.compile(r"(?:workflow(?:\.md)?|project)[`)\]*_]*\s+#\d", r
 # `test_adr_records_are_out_of_scope`, so the carve-out remains conscious.
 _EXCLUDED_DIR = "docs/adr/"
 
+
 def readable_stream(inline: Token) -> str:
     """`inline` token text with zones opaque to the rule filled by placeholders.
 
@@ -128,6 +129,7 @@ def readable_stream(inline: Token) -> str:
             parts.append(child.content)
     return "".join(parts)
 
+
 def paired_spans(text: str) -> list[tuple[int, int]]:
     """Ranges of **closed** `()` pairs. An unclosed `(` does not open a zone."""
     spans: list[tuple[int, int]] = []
@@ -138,6 +140,7 @@ def paired_spans(text: str) -> list[tuple[int, int]]:
         elif char == ")" and stack:
             spans.append((stack.pop(), i))
     return spans
+
 
 def narrative_refs(markdown: str) -> list[tuple[int, str]]:
     """`(line, fragment)` for every `#N` not used as a parenthetical pointer."""
@@ -159,6 +162,7 @@ def narrative_refs(markdown: str) -> list[tuple[int, str]]:
             found.append((line, around.replace(_OPAQUE, "·").replace("\n", " ").strip()))
     return found
 
+
 def heading_issue_refs(markdown: str) -> list[tuple[int, str]]:
     """`(line, heading text)` for every heading with `#N`, including parentheses."""
     tokens = _MD.parse(markdown)
@@ -167,6 +171,7 @@ def heading_issue_refs(markdown: str) -> list[tuple[int, str]]:
         for i, token in enumerate(tokens)
         if token.type == "heading_open" and _ISSUE_REF.search(tokens[i + 1].content)
     ]
+
 
 def sigil_misuses(text: str) -> list[tuple[int, str]]:
     """`(line, fragment)` where `#N` names not an issue but a rule or board.
@@ -179,6 +184,7 @@ def sigil_misuses(text: str) -> list[tuple[int, str]]:
         for i, line in enumerate(text.splitlines(), 1)
         if _NON_ISSUE_SIGIL.search(line)
     ]
+
 
 @lru_cache(maxsize=1)
 def _tracked_files() -> tuple[str, ...]:
@@ -193,10 +199,12 @@ def _tracked_files() -> tuple[str, ...]:
     )
     return tuple(name for name in result.stdout.split("\0") if name)
 
+
 def _tracked_docs() -> tuple[str, ...]:
     """Tracked `.md` outside `docs/adr/`—scope of pointer-form branches."""
     names = [name for name in _tracked_files() if name.endswith(".md")]
     return tuple(name for name in names if not name.startswith(_EXCLUDED_DIR))
+
 
 def _report(finder: Callable[[str], list[tuple[int, str]]], docs: tuple[str, ...]) -> list[str]:
     found: list[str] = []
@@ -204,6 +212,7 @@ def _report(finder: Callable[[str], list[tuple[int, str]]], docs: tuple[str, ...
         text = (_REPO_ROOT / doc).read_text(encoding="utf-8")
         found.extend(f"{doc}:{line}: {fragment}" for line, fragment in finder(text))
     return found
+
 
 def _report_any(names: tuple[str, ...]) -> list[str]:
     """`sigil_misuses` over **all** tracked files, including non-text files.
@@ -217,6 +226,7 @@ def _report_any(names: tuple[str, ...]) -> list[str]:
         text = (_REPO_ROOT / name).read_bytes().decode("utf-8", errors="replace")
         found.extend(f"{name}:{line}: {fragment}" for line, fragment in sigil_misuses(text))
     return found
+
 
 class TestDocsCarryNoNarrative:
     @pytest.mark.parametrize("directory", _EXPECTED_SCOPE_DIRS)
@@ -268,6 +278,7 @@ class TestDocsCarryNoNarrative:
             "ставится в скобки после законченного утверждения; номер правила — "
             "`workflow.md §N`, доска — `Project N`:\n " + "\n ".join(problems)
         )
+
 
 class TestNarrativePredicates:
     """Predicates on synthetic input: without them the guard proves itself on a green repository."""

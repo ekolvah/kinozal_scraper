@@ -59,18 +59,21 @@ from scripts.navigation_policy import navigation_hint, read_budget_hint
 # ruff exit codes: 0 = clean, 1 = lint findings, >=2 = ruff itself errored.
 _RUFF_EXEC_ERROR = 2
 
+
 @dataclass(frozen=True)
 class Signal:
     """A message to surface to the agent. `kind` distinguishes the cause so a
     broken-setup marker is never mistaken for a lint finding (§IV)."""
 
-    kind: str # "lint" | "setup_broken" | "pipcompile" | "memory_write"
+    kind: str  # "lint" | "setup_broken" | "pipcompile" | "memory_write"
     message: str
+
 
 # A write under the agent's out-of-repo auto-memory dir: `.claude/projects/<slug>/memory/`.
 # Anchored at `(^|/)` so repo-`.claude/rules/*` (no `projects/<x>/memory/` segment) and a
 # stray `foo.claude/...` never match; `[^/]+` is the single repo-slug dir component.
 _MEMORY_DIR_RE = re.compile(r"(^|/)\.claude/projects/[^/]+/memory/")
+
 
 def read_payload(stdin_text: str) -> dict:
     """Parse the PostToolUse JSON; tolerant to empty/broken input → {}."""
@@ -83,6 +86,7 @@ def read_payload(stdin_text: str) -> dict:
         return {}
     return data if isinstance(data, dict) else {}
 
+
 def edited_path(payload: dict) -> str | None:
     """The `tool_input.file_path` of an Edit/Write payload, or None."""
     tool_input = payload.get("tool_input")
@@ -91,13 +95,16 @@ def edited_path(payload: dict) -> str | None:
     path = tool_input.get("file_path")
     return path if isinstance(path, str) and path else None
 
+
 def _is_python(path: str) -> bool:
     return path.endswith(".py")
+
 
 def _is_requirements_in(path: str) -> bool:
     """A pip-compile *source* file: requirements*.in (NOT the generated .txt)."""
     name = path.replace("\\", "/").rsplit("/", 1)[-1]
     return name.startswith("requirements") and name.endswith(".in")
+
 
 def _is_memory_write(path: str) -> bool:
     """A write into the agent's out-of-repo auto-memory dir.
@@ -106,6 +113,7 @@ def _is_memory_write(path: str) -> bool:
     backslashes, then match the `.claude/projects/<slug>/memory/` segment. Matches
     any file under it, including `memory/MEMORY.md` at the root."""
     return _MEMORY_DIR_RE.search(path.replace("\\", "/")) is not None
+
 
 def plan_checks(payload: dict) -> list[str]:
     """Which checks apply to this edit (pure dispatch by file path)."""
@@ -122,6 +130,7 @@ def plan_checks(payload: dict) -> list[str]:
         return ["pipcompile"]
     return []
 
+
 def classify_ruff_result(returncode: int, output: str) -> Signal | None:
     """Map a ruff run to a Signal: 0 → None (clean); 1 → lint; >=2 → setup_broken."""
     if returncode == 0:
@@ -137,6 +146,7 @@ def classify_ruff_result(returncode: int, output: str) -> Signal | None:
         )
     return Signal(kind="lint", message=f"ruff found issues (fix before commit):\n{output.strip()}")
 
+
 def pipcompile_signal(path: str) -> Signal:
     """Reminder to regenerate the lockfile after editing a requirements*.in."""
     return Signal(
@@ -146,6 +156,7 @@ def pipcompile_signal(path: str) -> Signal:
             "(see `docs/architecture/agent-process.md`) or CI will red on lockfile drift."
         ),
     )
+
 
 def memory_write_signal(path: str) -> Signal:
     """Memory↔repo checkpoint after a write into the agent's auto-memory dir.
@@ -164,9 +175,11 @@ def memory_write_signal(path: str) -> Signal:
         ),
     )
 
+
 def exit_code(signals: list[Signal]) -> int:
     """PostToolUse: exit 2 surfaces stderr to the agent; 0 = nothing to say."""
     return 2 if signals else 0
+
 
 def _run_ruff(file_path: str) -> tuple[int, str]:
     """Thin I/O wrapper: run ruff check-only on one file. FileNotFoundError
@@ -191,7 +204,7 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
             completed = subprocess.run(
                 cmd, text=True, capture_output=True, encoding="utf-8", errors="replace"
             )
-        except FileNotFoundError as exc: # ruff/python missing → visible, not silent
+        except FileNotFoundError as exc:  # ruff/python missing → visible, not silent
             return _RUFF_EXEC_ERROR, str(exc)
         if completed.stdout is None or completed.stderr is None:
             # Failed capture means “setup broken,” the same class as missing ruff above,
@@ -208,6 +221,7 @@ def _run_ruff(file_path: str) -> tuple[int, str]:
         combined_out += completed.stdout + completed.stderr
         worst_rc = max(worst_rc, completed.returncode)
     return worst_rc, combined_out
+
 
 def run_on_paths(
     paths: list[str],
@@ -234,6 +248,7 @@ def run_on_paths(
     stderr = "\n".join(s.message for s in signals)
     return exit_code(signals), stderr
 
+
 def run_on_edit(
     payload: dict,
     ruff_runner: Callable[[str], tuple[int, str]] = _run_ruff,
@@ -241,6 +256,7 @@ def run_on_edit(
     """Execute the shared checks for the Claude post-edit payload."""
     path = edited_path(payload)
     return run_on_paths([] if path is None else [path], ruff_runner=ruff_runner)
+
 
 def pre_bash_response(payload: dict) -> dict | None:
     """Return Claude's PreToolUse denial shape when a Bash command reads the filesystem.
@@ -263,6 +279,7 @@ def pre_bash_response(payload: dict) -> dict | None:
             "permissionDecisionReason": hint,
         }
     }
+
 
 def pre_read_response(payload: dict) -> dict | None:
     """Return Claude's PreToolUse denial shape when a `Read` slice busts the budget.
@@ -287,7 +304,9 @@ def pre_read_response(payload: dict) -> dict | None:
         }
     }
 
+
 _PRE_TOOL_USE = {"pre-bash": pre_bash_response, "pre-read": pre_read_response}
+
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in {"on-edit", *_PRE_TOOL_USE}:
@@ -309,6 +328,7 @@ def main() -> None:
     if stderr:
         print(stderr, file=sys.stderr)
     sys.exit(code)
+
 
 if __name__ == "__main__":
     main()

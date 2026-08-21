@@ -19,6 +19,7 @@ from scripts.check_language import (
 )
 from scripts.ci_check import CHECKS
 
+
 class TestMarkdownPolicy:
     def test_cyrillic_prose_is_reported(self) -> None:
         violations = markdown_violations("# Title\n\nРусская проза.\n", path="guide.md")
@@ -59,6 +60,7 @@ Russian prose outside code.
 
         assert [(item.line, item.kind) for item in violations] == [(2, "Markdown prose")]
 
+
 class TestPythonPolicy:
     def test_cyrillic_comments_and_docstrings_are_reported(self) -> None:
         text = '''"""Русский module docstring."""
@@ -91,6 +93,7 @@ def prompt() -> str:
 
         assert [(item.line, item.kind) for item in violations] == [(8, "Python comment")]
 
+
 class TestTrackedScope:
     def test_scope_comes_from_git_ls_files(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def git_listing(*args: object, **kwargs: object) -> subprocess.CompletedProcess[bytes]:
@@ -118,13 +121,16 @@ class TestTrackedScope:
         with pytest.raises(LanguageCheckError, match="captured output"):
             tracked_files(Path("."))
 
+
 def test_migration_allowlist_is_empty() -> None:
     assert frozenset() == check_language.MIGRATION_ALLOWLIST
+
 
 def test_console_output_survives_a_windows_ansi_encoding() -> None:
     assert _console_text("Русская проза", encoding="cp1252") == (
         r"\u0420\u0443\u0441\u0441\u043a\u0430\u044f \u043f\u0440\u043e\u0437\u0430"
     )
+
 
 def test_ci_registry_includes_language_check() -> None:
     assert "language" in CHECKS

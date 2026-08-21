@@ -63,13 +63,16 @@ _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 # A findings-format section enrolls a file in the grading contract by property.
 _FINDINGS_SECTIONS = ("### Findings format",)
 
+
 def declares_findings_contract(body: str) -> bool:
     """Whether a file declares, and is bound by, the findings contract."""
     return any(section in body for section in _FINDINGS_SECTIONS)
 
+
 def _agent_files() -> list[Path]:
     # Claude Code scans recursively, so the invariant must use `rglob` as well.
     return sorted(_AGENTS_DIR.rglob("*.md"))
+
 
 def _body(path: Path) -> str:
     """Return prompt content without frontmatter, or the full file if absent.
@@ -82,6 +85,7 @@ def _body(path: Path) -> str:
         return text
     return text.partition("---")[2].partition("\n---")[2]
 
+
 def _suppression_scope() -> list[Path]:
     """Apply the suppression denylist to every prompt plus the canonical home.
 
@@ -90,9 +94,11 @@ def _suppression_scope() -> list[Path]:
     """
     return [*_agent_files(), _CANONICAL_FINDINGS_HOME]
 
+
 def _findings_agents() -> list[Path]:
     """Return the subset of files bound by the findings contract."""
     return [path for path in _suppression_scope() if declares_findings_contract(_body(path))]
+
 
 def _frontmatter(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8")
@@ -103,6 +109,7 @@ def _frontmatter(path: Path) -> dict[str, Any]:
     if not sep:
         raise AssertionError(f"{path.name}: unterminated YAML frontmatter block")
     return cast("dict[str, Any]", yaml.safe_load(block) or {})
+
 
 class TestAgentModelPinned:
     def test_agent_files_are_actually_scanned(self) -> None:
@@ -138,6 +145,7 @@ class TestAgentModelPinned:
             "check the Claude Code docs and update the set here — do not relax the test"
         )
 
+
 class TestFindingsContractScope:
     """Enroll files under the prompt contract by file property, not filename.
 
@@ -154,6 +162,7 @@ class TestFindingsContractScope:
     def test_body_with_findings_section_is_enrolled(self) -> None:
         body = "You review a plan.\n\n### Findings format\n\n- **BLOCKING** — ...\n"
         assert declares_findings_contract(body)
+
 
 class TestCoverageFirstPrompt:
     """Prompt body: the “grade rather than filter” contract (, acceptance #4).

@@ -52,12 +52,14 @@ _SUPERSEDED_BY = re.compile(r"^superseded by ADR-(\d{4})$")
 # subsections of `Decision Outcome`, so the h2 parser must not require them.
 _REQUIRED_SECTIONS = ("Context and Problem Statement", "Considered Options", "Decision Outcome")
 
+
 def _record_files() -> list[Path]:
     """Return every catalogue Markdown file except the template.
 
     Do not prefilter by `_RECORD_NAME`; malformed names must reach the test.
     """
     return sorted(p for p in _ADR_DIR.glob("*.md") if p.name != _TEMPLATE.name)
+
 
 def _frontmatter_status(text: str) -> str | None:
     """Return the record's YAML-frontmatter `status`, or `None`.
@@ -75,10 +77,12 @@ def _frontmatter_status(text: str) -> str | None:
     status = data.get("status")
     return status if isinstance(status, str) else None
 
+
 def _record_number(name: str) -> str | None:
     """Return the record number from a conventional filename, otherwise `None`."""
     match = _RECORD_NAME.match(name)
     return match.group(1) if match else None
+
 
 def _filename_problem(name: str) -> str | None:
     """Return a filename-convention problem, otherwise `None`."""
@@ -88,6 +92,7 @@ def _filename_problem(name: str) -> str | None:
         f"имя '{name}' не по конвенции MADR `NNNN-slug-in-kebab-case.md`: номер — это адрес "
         f"записи, по нему на неё ссылаются state-доки"
     )
+
 
 def _status_problem(status: str | None) -> str | None:
     """Return a status-shape problem; target resolution is handled separately."""
@@ -103,12 +108,14 @@ def _status_problem(status: str | None) -> str | None:
         f"`superseded by ADR-NNNN` (канон набора — `project-map.md` §Canonical-home)"
     )
 
+
 def _superseded_target(status: str | None) -> str | None:
     """Return the record number named by `superseded by`, otherwise `None`."""
     if status is None:
         return None
     match = _SUPERSEDED_BY.match(status)
     return match.group(1) if match else None
+
 
 def _dangling_superseded(status: str | None, known_numbers: frozenset[str]) -> str | None:
     """Return a `superseded by` target number absent from the records, otherwise `None`.
@@ -122,14 +129,17 @@ def _dangling_superseded(status: str | None, known_numbers: frozenset[str]) -> s
         return None
     return target
 
+
 def _missing_sections(text: str) -> list[str]:
     """Return required MADR sections that are absent or empty."""
     return find_gaps(text, required=_REQUIRED_SECTIONS)
+
 
 def _duplicate_numbers(names: Sequence[str]) -> list[str]:
     """Return record numbers that appear more than once."""
     numbers = [number for name in names if (number := _record_number(name))]
     return sorted(number for number, count in Counter(numbers).items() if count > 1)
+
 
 class TestAdrCatalogue:
     def test_catalogue_is_not_empty(self) -> None:
@@ -166,6 +176,7 @@ class TestAdrCatalogue:
             f"перестала быть адресом — а на адресуемости держится весь механизм"
         )
 
+
 class TestAdrRecord:
     @pytest.mark.parametrize("path", _record_files(), ids=lambda p: p.name)
     def test_filename_matches_convention(self, path: Path) -> None:
@@ -193,6 +204,7 @@ class TestAdrRecord:
     def test_required_madr_sections_present(self, path: Path) -> None:
         missing = _missing_sections(path.read_text(encoding="utf-8"))
         assert not missing, f"{path.name}: нет обязательных секций MADR: {missing}"
+
 
 class TestRecordPredicates:
     """Negative branches use synthetic data: the real catalogue is valid by construction,

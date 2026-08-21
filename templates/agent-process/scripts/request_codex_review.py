@@ -40,6 +40,7 @@ STATE_OUTCOMES = {
 DEFAULT_TIMEOUT_SECONDS = 900
 DEFAULT_POLL_SECONDS = 20
 
+
 def find_verdict(reviews: object, head_sha: str, reviewer: str) -> str | None:
     """Return the outcome carried by `reviewer`'s review of `head_sha`, if any.
 
@@ -57,8 +58,10 @@ def find_verdict(reviews: object, head_sha: str, reviewer: str) -> str | None:
             verdict = outcome
     return verdict
 
+
 def _fetch_reviews(repository: str, pr_number: str) -> object:
     return slurp_records(f"repos/{repository}/pulls/{pr_number}/reviews?per_page=100")
+
 
 def poll_for_verdict(
     repository: str,
@@ -95,6 +98,7 @@ def poll_for_verdict(
             return verdict
     return None
 
+
 def _parse_options(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", dest="repository", required=True, metavar="OWNER/REPO")
@@ -104,6 +108,7 @@ def _parse_options(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--timeout-seconds", type=int, default=DEFAULT_TIMEOUT_SECONDS)
     parser.add_argument("--poll-seconds", type=int, default=DEFAULT_POLL_SECONDS)
     return parser.parse_args(argv)
+
 
 def main(argv: Sequence[str] | None = None) -> None:
     """Publish carrier 2's verdict as the payload the enforcement step reads.
@@ -132,9 +137,10 @@ def main(argv: Sequence[str] | None = None) -> None:
         )
         publish_step_output("payload=")
         return
-    if verdict not in VALID_OUTCOMES: # pragma: no cover - guarded by the mapping test
+    if verdict not in VALID_OUTCOMES:  # pragma: no cover - guarded by the mapping test
         raise RuntimeError(f"carrier 2 produced an outcome the gate does not know: {verdict!r}")
     publish_step_output(f"payload={json.dumps({'outcome': verdict})}")
+
 
 if __name__ == "__main__":
     main()

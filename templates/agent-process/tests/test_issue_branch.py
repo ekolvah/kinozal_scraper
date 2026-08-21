@@ -18,6 +18,7 @@ import pytest
 import scripts.issue_branch as issue_branch
 from scripts.issue_branch import _fetch_title, build_branch_name, slugify
 
+
 class TestSlugify:
     def test_ascii_title_lowercased_and_dashed(self) -> None:
         assert slugify("Fix Telegram Notifier Bug") == "fix-telegram-notifier-bug"
@@ -36,6 +37,7 @@ class TestSlugify:
 
     def test_special_chars_dropped(self) -> None:
         assert slugify("Add /plan + /implement commands!") == "add-plan-implement-commands"
+
 
 class TestBuildBranchName:
     def test_concatenates_with_issue_number(self) -> None:
@@ -60,6 +62,7 @@ class TestBuildBranchName:
         spec.loader.exec_module(mod)
         assert build_branch_name(1, "x").startswith(mod.BRANCH_PREFIX)
 
+
 class TestFetchTitleEncoding:
     def test_cyrillic_title_decodes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cyrillic_title = "/plan и /implement не работают после PR "
@@ -73,6 +76,7 @@ class TestFetchTitleEncoding:
 
         monkeypatch.setattr(subprocess, "run", fake_run)
         assert _fetch_title(122) == cyrillic_title
+
 
 class TestFetchTitleFailures:
     @pytest.mark.parametrize(
@@ -136,6 +140,7 @@ class TestFetchTitleFailures:
         assert exc.value.code == 2
         assert "invalid JSON" in capsys.readouterr().err
 
+
 class TestDirectDelegation:
     """`issue_branch.main()` must build the branch in-process via
     `new_branch.create_branch`, not by re-spawning a second interpreter
@@ -173,6 +178,7 @@ class TestDirectDelegation:
         issue_branch.main()
 
         assert calls == ["issue-254-add-commands"]
+
 
 class _Recorder:
     """Doubles for both sibling modules, sharing one dispatch seam."""
@@ -214,6 +220,7 @@ class _Recorder:
         )
         monkeypatch.setattr(sys, "argv", ["issue_branch.py", "519"])
 
+
 class TestStatusTransition:
     """The branch is what «in progress» means, so the card moves after the checkout.
 
@@ -243,6 +250,7 @@ class TestStatusTransition:
         error = capsys.readouterr().err
         assert "warning: board status not updated" in error
         assert "revoked project access" in error
+
 
 class TestCli:
     def test_documented_cli_runs_from_a_clean_sys_path(self) -> None:

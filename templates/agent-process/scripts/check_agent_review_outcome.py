@@ -33,6 +33,7 @@ from scripts.gh_io import publish_step_output
 VALID_OUTCOMES = frozenset({"clean", "rework", "blocking"})
 _DEFAULT_PRODUCER = "Claude review"
 
+
 class _Options:
     """Parsed CLI options; the payload itself is positional."""
 
@@ -40,6 +41,7 @@ class _Options:
         self.live_pr_context_status: str | None = None
         self.producer: str = _DEFAULT_PRODUCER
         self.classify: bool = False
+
 
 def _parse_options(args: list[str]) -> _Options:
     options = _Options()
@@ -62,6 +64,7 @@ def _parse_options(args: list[str]) -> _Options:
 
     return options
 
+
 def _require_live_pr_context(status: str | None) -> None:
     if status is not None and status != "success":
         print(
@@ -71,6 +74,7 @@ def _require_live_pr_context(status: str | None) -> None:
         )
         raise SystemExit(2)
 
+
 def _report_validity(outcome: object) -> None:
     """Publish «did this carrier produce a usable verdict» and exit 0 either way.
 
@@ -79,6 +83,7 @@ def _report_validity(outcome: object) -> None:
     it as invalid would let the failover overrule the carrier that found it.
     """
     publish_step_output(f"valid={'true' if outcome in VALID_OUTCOMES else 'false'}")
+
 
 def main(argv: Sequence[str] | None = None) -> None:
     """Exit non-zero unless the carrier's validated outcome is ``clean`` or ``rework``."""
@@ -128,6 +133,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     # identically leave the operator unable to tell which one came back empty (§IV).
     print(f"error: {producer} unavailable: no valid structured outcome.", file=sys.stderr)
     raise SystemExit(2)
+
 
 if __name__ == "__main__":
     main()

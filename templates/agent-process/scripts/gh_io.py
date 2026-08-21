@@ -19,6 +19,7 @@ import subprocess
 import sys
 from collections.abc import Mapping
 
+
 def run_gh(args: list[str]) -> str:
     """Return `gh`'s stdout, or raise loudly if it cannot be read (§IV)."""
     result = subprocess.run(
@@ -35,6 +36,7 @@ def run_gh(args: list[str]) -> str:
         raise RuntimeError(f"gh {' '.join(args)}: no stdout captured (broken decoding)")
     return result.stdout
 
+
 def flatten_pages(payload: object) -> list[Mapping[str, object]]:
     """Flatten a `--slurp` result into records, refusing any other shape.
 
@@ -50,6 +52,7 @@ def flatten_pages(payload: object) -> list[Mapping[str, object]]:
         raise RuntimeError("unexpected payload shape from --slurp: a record is not an object")
     return records
 
+
 def slurp_records(endpoint: str) -> list[Mapping[str, object]]:
     """Read a paginated REST collection whole, so nothing hides behind pagination."""
     raw = run_gh(["api", endpoint, "--paginate", "--slurp"])
@@ -58,6 +61,7 @@ def slurp_records(endpoint: str) -> list[Mapping[str, object]]:
     except json.JSONDecodeError as exc:
         raise RuntimeError(f"gh api {endpoint} returned invalid JSON: {exc}") from exc
     return flatten_pages(payload)
+
 
 def publish_step_output(line: str) -> None:
     """Print `key=value` and append it to `$GITHUB_OUTPUT` when running in Actions.

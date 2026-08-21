@@ -34,12 +34,13 @@ from scripts.review_gate import (
 # green — the run the gate would have stopped two rounds earlier. Only the
 # short prefixes are the real ones; the tails are padding to 40 hex chars,
 # because nothing here depends on a SHA resolving.
-_ROUND_1 = "3312ff63a4b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5" # pragma: allowlist secret
-_ROUND_2 = "a54549ac1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e" # pragma: allowlist secret
-_ROUND_3 = "38a03bfc2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f" # pragma: allowlist secret
-_ROUND_4 = "58f1c071012eac15bb122ffdcbbaa19de4d08942" # pragma: allowlist secret
+_ROUND_1 = "3312ff63a4b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5"  # pragma: allowlist secret
+_ROUND_2 = "a54549ac1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e"  # pragma: allowlist secret
+_ROUND_3 = "38a03bfc2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f"  # pragma: allowlist secret
+_ROUND_4 = "58f1c071012eac15bb122ffdcbbaa19de4d08942"  # pragma: allowlist secret
 _PR_URL = ""
 _RUN_URL = "https://github.com/ekolvah/kinozal_scraper/actions/runs/31105364746"
+
 
 def _checks(overrides: dict[str, tuple[str, str]] | None = None) -> tuple[CheckRun, ...]:
     """Every required context COMPLETED/SUCCESS unless overridden."""
@@ -47,6 +48,7 @@ def _checks(overrides: dict[str, tuple[str, str]] | None = None) -> tuple[CheckR
     return tuple(
         CheckRun(name, *graded.get(name, ("COMPLETED", "SUCCESS"))) for name in REQUIRED_CONTEXTS
     )
+
 
 def _evidence(**overrides: Any) -> ReviewEvidence:
     values: dict[str, Any] = {
@@ -58,6 +60,7 @@ def _evidence(**overrides: Any) -> ReviewEvidence:
     }
     values.update(overrides)
     return ReviewEvidence(**values)
+
 
 class TestVerdict:
     def test_green_required_checks_are_ready_for_human(self) -> None:
@@ -132,6 +135,7 @@ class TestVerdict:
         assert evaluate(evidence, fixer_budget=1).name == "escalate"
         assert evaluate(evidence, fixer_budget=2).name == "fix-blocking"
 
+
 class TestContracts:
     """Structural guards: they hold by construction, so they stay out of the RED set."""
 
@@ -147,6 +151,7 @@ class TestContracts:
 
         assert fixer_budget(catalogue) == catalogue["roles"]["fixer"]["max_runs"]
 
+
 def _gh_double(pr_payload: dict[str, Any], runs_payload: dict[str, Any]) -> Any:
     """A `subprocess.run` double answering the gate's two `gh` reads."""
 
@@ -157,6 +162,7 @@ def _gh_double(pr_payload: dict[str, Any], runs_payload: dict[str, Any]) -> Any:
         )
 
     return run
+
 
 def _pr_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
@@ -173,6 +179,7 @@ def _pr_payload(**overrides: Any) -> dict[str, Any]:
     payload.update(overrides)
     return payload
 
+
 def _runs_payload(*head_shas: str) -> dict[str, Any]:
     return {
         "workflow_runs": [
@@ -180,6 +187,7 @@ def _runs_payload(*head_shas: str) -> dict[str, Any]:
             for head_sha in head_shas
         ]
     }
+
 
 class TestEvidence:
     def test_fixer_revisions_count_distinct_reviewed_heads(
@@ -267,6 +275,7 @@ class TestEvidence:
             collect_evidence("465")
 
         assert excinfo.value.code == 2
+
 
 class TestCli:
     def test_verdict_name_and_exit_code_reach_the_operator(

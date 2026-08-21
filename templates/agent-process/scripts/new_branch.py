@@ -19,9 +19,11 @@ PROTECTED_BRANCHES = frozenset({"main", "master"})
 
 BRANCH_PREFIX = "issue-"
 
+
 def is_valid_branch_name(name: str) -> bool:
     """A new branch must carry the project prefix (canon: `agent-process.md`)."""
     return name.startswith(BRANCH_PREFIX)
+
 
 def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, check=True, text=True, capture_output=capture, encoding="utf-8")
@@ -36,6 +38,7 @@ def _run(cmd: list[str], capture: bool = False) -> subprocess.CompletedProcess[s
         raise RuntimeError(f"capture failed for `{' '.join(cmd)}` (rc={result.returncode})")
     return result
 
+
 def _prune_gone_branches() -> None:
     """Delete local branches whose remote-tracking ref is gone (merged & deleted)."""
     _run(["git", "fetch", "--prune"])
@@ -47,7 +50,7 @@ def _prune_gone_branches() -> None:
             continue
         line = raw.lstrip()
         if line.startswith("* "):
-            continue # current branch — never delete
+            continue  # current branch — never delete
         parts = line.split()
         if parts:
             gone.append(parts[0])
@@ -74,6 +77,7 @@ def _prune_gone_branches() -> None:
             skipped += 1
             print(f"warn: kept {branch} ({detail})", file=sys.stderr)
     print(f"pruned: {pruned} merged branches (skipped {skipped} unmerged)")
+
 
 def create_branch(name: str) -> None:
     """Create branch `name` from a fresh origin/main HEAD.
@@ -108,11 +112,13 @@ def create_branch(name: str) -> None:
     _run(["git", "checkout", "-b", name])
     print(f"ready: on {name}, branched from origin/main HEAD")
 
+
 def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: python scripts/new_branch.py <branch-name>", file=sys.stderr)
         sys.exit(2)
     create_branch(sys.argv[1])
+
 
 if __name__ == "__main__":
     main()

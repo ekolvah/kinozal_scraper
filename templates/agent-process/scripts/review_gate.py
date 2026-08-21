@@ -72,6 +72,7 @@ _NEXT_ACTIONS: dict[str, str] = {
 }
 _PR_FIELDS = "state,url,headRefOid,headRefName,statusCheckRollup"
 
+
 @dataclass(frozen=True)
 class CheckRun:
     """One check-run on the PR head."""
@@ -79,6 +80,7 @@ class CheckRun:
     name: str
     status: str
     conclusion: str
+
 
 @dataclass(frozen=True)
 class ReviewEvidence:
@@ -90,6 +92,7 @@ class ReviewEvidence:
     pr_url: str
     review_run_url: str | None
 
+
 @dataclass(frozen=True)
 class Verdict:
     """The loop decision plus the exit code that carries it."""
@@ -99,9 +102,11 @@ class Verdict:
     reason: str
     next_action: str
 
+
 def fixer_budget(catalogue: dict[str, Any]) -> int:
     """Return the fixer revision cap from the role catalogue, never a literal."""
     return int(catalogue["roles"]["fixer"]["max_runs"])
+
 
 def fixer_revisions(evidence: ReviewEvidence) -> int:
     """Rounds already spent: distinct heads reviewed, minus the first one.
@@ -112,6 +117,7 @@ def fixer_revisions(evidence: ReviewEvidence) -> int:
     """
     return max(0, len(evidence.reviewed_heads) - 1)
 
+
 def _verdict(name: str, reason: str) -> Verdict:
     return Verdict(
         name=name,
@@ -119,6 +125,7 @@ def _verdict(name: str, reason: str) -> Verdict:
         reason=reason,
         next_action=_NEXT_ACTIONS[name],
     )
+
 
 def _red_reason(red: Sequence[str]) -> str:
     reason = f"red required checks on the current head: {', '.join(red)}"
@@ -133,6 +140,7 @@ def _red_reason(red: Sequence[str]) -> str:
             "read the run before changing anything"
         )
     return reason
+
 
 def evaluate(evidence: ReviewEvidence, fixer_budget: int) -> Verdict:
     """Return the loop verdict for the current PR head."""
@@ -162,6 +170,7 @@ def evaluate(evidence: ReviewEvidence, fixer_budget: int) -> Verdict:
         f"every required check is green on {evidence.head_sha[:8]}; no blocking finding",
     )
 
+
 def _gh_json(args: list[str], description: str) -> Any:
     """Run a read-only `gh` command and parse its JSON, or exit 2.
 
@@ -186,11 +195,13 @@ def _gh_json(args: list[str], description: str) -> Any:
         print(f"error: `{description}` returned invalid JSON: {exc}", file=sys.stderr)
         raise SystemExit(2) from exc
 
+
 def _require(payload: Any, field: str, description: str) -> Any:
     if not isinstance(payload, dict) or field not in payload:
         print(f"error: `{description}` returned no {field}", file=sys.stderr)
         raise SystemExit(2)
     return payload[field]
+
 
 def collect_evidence(pr: str) -> ReviewEvidence:
     """Read the live PR evidence the verdict needs; two read-only `gh` calls."""
@@ -237,6 +248,7 @@ def collect_evidence(pr: str) -> ReviewEvidence:
         review_run_url=review_run_url,
     )
 
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Print the verdict and exit with its code."""
     parser = argparse.ArgumentParser(description="Verdict on the PR review/fix loop.")
@@ -258,6 +270,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     print(f"PR: {evidence.pr_url}")
     print(f"review run: {evidence.review_run_url or 'not published for the current head'}")
     raise SystemExit(verdict.exit_code)
+
 
 if __name__ == "__main__":
     main()

@@ -23,12 +23,14 @@ from types import ModuleType
 MAX_SLUG_WORDS = 4
 FALLBACK_SLUG = "task"
 
+
 def slugify(title: str) -> str:
     ascii_only = re.sub(r"[^a-zA-Z0-9\s-]", " ", title).lower()
     words = [w for w in re.split(r"[\s-]+", ascii_only) if w]
     if not words:
         return FALLBACK_SLUG
     return "-".join(words[:MAX_SLUG_WORDS])
+
 
 def _sibling_module(name: str) -> ModuleType:
     """Load a sibling `scripts/<name>.py` by absolute path and return the module.
@@ -52,8 +54,10 @@ def _sibling_module(name: str) -> ModuleType:
     spec.loader.exec_module(module)
     return module
 
+
 def _new_branch_module() -> ModuleType:
     return _sibling_module("new_branch")
+
 
 def _mark_in_progress(issue_number: int) -> None:
     """Move the issue's board card to `In Progress`; never fail the branch over it.
@@ -68,8 +72,10 @@ def _mark_in_progress(issue_number: int) -> None:
     except (RuntimeError, ValueError, OSError) as exc:
         print(f"warning: board status not updated: {exc}", file=sys.stderr)
 
+
 def build_branch_name(issue_number: int, title: str) -> str:
     return f"{_new_branch_module().BRANCH_PREFIX}{issue_number}-{slugify(title)}"
+
 
 def _fetch_title(issue_number: int) -> str:
     result = subprocess.run(
@@ -107,6 +113,7 @@ def _fetch_title(issue_number: int) -> str:
         sys.exit(2)
     return data.get("title") or ""
 
+
 def main() -> None:
     if len(sys.argv) != 2:
         print("Usage: python scripts/issue_branch.py <issue-number>", file=sys.stderr)
@@ -120,6 +127,7 @@ def main() -> None:
     branch = build_branch_name(n, title)
     _new_branch_module().create_branch(branch)
     _mark_in_progress(n)
+
 
 if __name__ == "__main__":
     main()

@@ -14,6 +14,7 @@ from scripts.hooks import run_on_paths
 _PATCH_PATH = re.compile(r"^\*\*\* (?:Add|Update) File: (.+)$", re.MULTILINE)
 _MOVE_TO_PATH = re.compile(r"^\*\*\* Move to: (.+)$", re.MULTILINE)
 
+
 def read_payload(stdin_text: str) -> dict[str, Any]:
     """Parse a Codex hook payload, treating malformed input as no-op."""
     try:
@@ -22,12 +23,14 @@ def read_payload(stdin_text: str) -> dict[str, Any]:
         return {}
     return payload if isinstance(payload, dict) else {}
 
+
 def payload_is_valid(stdin_text: str) -> bool:
     """Report whether a hook payload has the documented object shape."""
     try:
         return isinstance(json.loads(stdin_text), dict)
     except json.JSONDecodeError:
         return False
+
 
 def edited_paths(payload: dict[str, Any]) -> list[str]:
     """Extract added and updated paths from Codex's apply-patch command text."""
@@ -37,6 +40,7 @@ def edited_paths(payload: dict[str, Any]) -> list[str]:
         return []
     paths = [*_PATCH_PATH.findall(command), *_MOVE_TO_PATH.findall(command)]
     return list(dict.fromkeys(path.strip() for path in paths if path.strip()))
+
 
 def pre_tool_response(payload: dict[str, Any]) -> dict[str, Any] | None:
     """Return Codex's documented PreToolUse denial shape when needed."""
@@ -55,9 +59,11 @@ def pre_tool_response(payload: dict[str, Any]) -> dict[str, Any] | None:
         }
     }
 
+
 def run_on_edit(payload: dict[str, Any]) -> tuple[int, str]:
     """Run the transport-neutral checks for every path changed by one patch."""
     return run_on_paths(edited_paths(payload))
+
 
 def main(argv: Sequence[str] | None = None) -> None:
     args = list(sys.argv[1:] if argv is None else argv)
@@ -92,6 +98,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     if stderr:
         print(stderr, file=sys.stderr)
     raise SystemExit(code)
+
 
 if __name__ == "__main__":
     main()

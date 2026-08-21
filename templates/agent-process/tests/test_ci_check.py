@@ -19,6 +19,7 @@ from scripts.ci_check import CHECKS, _find_modules, _run, _tracked_files, run_se
 _CI_YML = Path(".github/workflows/ci.yml")
 _ONLY_RE = re.compile(r"scripts/ci_check\.py\s+--only\s+(\S+)")
 
+
 def _ci_yml_check_names() -> set[str]:
     """Names passed to `ci_check.py --only X` in the ci.yml quality job."""
     spec = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
@@ -28,6 +29,7 @@ def _ci_yml_check_names() -> set[str]:
         run = step.get("run", "")
         names.update(_ONLY_RE.findall(run))
     return names
+
 
 class TestStepParity:
     """The core defect: ci.yml duplicated the check list by hand and drifted —
@@ -39,6 +41,7 @@ class TestStepParity:
             "ci.yml --only steps must cover exactly the ci_check registry — "
             "any divergence is the drift this issue fixes"
         )
+
 
 class TestFindModules:
     @staticmethod
@@ -94,6 +97,7 @@ class TestFindModules:
 
         assert "tracked.py" not in _find_modules()
 
+
 class TestMypyManifest:
     def test_requests_cached_and_untracked_excluding_standard_ignores(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -114,6 +118,7 @@ class TestMypyManifest:
         assert _find_modules() == ["tracked.py", "new_module.py"]
         assert calls == [["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"]]
 
+
 class TestRunner:
     def test_unknown_check_name_exits_nonzero(self) -> None:
         # Fail-fast on a typo'd --only name (so a bad ci.yml reference is loud, not silent).
@@ -130,6 +135,7 @@ class TestRunner:
         with pytest.raises(SystemExit) as exc:
             _run(["any-command"])
         assert exc.value.code != 0
+
 
 class TestTrackedFilesCaptureFailure:
     """Broken `git ls-files` capture means unknown scope, not an empty list.

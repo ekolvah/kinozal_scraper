@@ -46,6 +46,7 @@ _REQUIRED_INITIAL_ROLES = frozenset(
 )
 _NON_CATALOGUE_STEPS = frozenset({"deterministic_ci"})
 
+
 @dataclass(frozen=True)
 class WorkflowState:
     plan_completed: bool
@@ -70,6 +71,7 @@ class WorkflowState:
     implementer_runs: int = 0
     route: str | None = None
 
+
 @dataclass(frozen=True)
 class RouteDecision:
     """The next route step and a snapshot of roles with satisfied current evidence.
@@ -89,6 +91,7 @@ class RouteDecision:
     contract: str
     next_action: str
     route: str | None
+
 
 def load_catalog(path: Path | None = None) -> dict[str, Any]:
     """Load and validate the single, repository-owned role catalogue."""
@@ -113,6 +116,7 @@ def load_catalog(path: Path | None = None) -> dict[str, Any]:
             raise ValueError(f"role {name!r} selects an adapter outside its declared entry points")
         _validate_carrier_selection(name, role, adapters)
     return payload
+
 
 def _validate_carrier_selection(name: str, role: Mapping[str, Any], adapters: list[Any]) -> None:
     """How a role's carrier is chosen, declared rather than inferred from a count.
@@ -158,6 +162,7 @@ def _validate_carrier_selection(name: str, role: Mapping[str, Any], adapters: li
             f"role {name!r} adapter_routes must cover every declared adapter exactly once"
         )
 
+
 def _catalogue_routes(catalogue: Mapping[str, Any]) -> list[str]:
     known: set[str] = set()
     for role in catalogue["roles"].values():
@@ -165,6 +170,7 @@ def _catalogue_routes(catalogue: Mapping[str, Any]) -> list[str]:
         if isinstance(routes, dict):
             known.update(routes)
     return sorted(known)
+
 
 def _role_adapter(name: str, role: Mapping[str, Any], route: str | None) -> str:
     """The entry point this run reaches the role through.
@@ -183,6 +189,7 @@ def _role_adapter(name: str, role: Mapping[str, Any], route: str | None) -> str:
             f"its declared routes are {sorted(routes)}"
         )
     return str(routes[route])
+
 
 def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
     completed: list[str] = []
@@ -203,6 +210,7 @@ def _completed_roles(state: WorkflowState) -> tuple[str, ...]:
     if state.fixer_revisions and state.head_sha and state.head_sha not in state.reviewed_heads:
         completed.append("fixer")
     return tuple(completed)
+
 
 def _decision(
     role: str,
@@ -242,6 +250,7 @@ def _decision(
         route=state.route,
     )
 
+
 def _discovery_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision | None:
     """The observation a bug plan needs as input, routed before the plan.
 
@@ -256,6 +265,7 @@ def _discovery_decision(state: WorkflowState, catalogue: dict[str, Any]) -> Rout
             "human_merge", catalogue, state, status="escalate", action="human observation decision"
         )
     return _decision("discovery", catalogue, state)
+
 
 def _planning_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision | None:
     roles = catalogue["roles"]
@@ -296,6 +306,7 @@ def _planning_decision(state: WorkflowState, catalogue: dict[str, Any]) -> Route
         return _decision("architect_reviewer", catalogue, state)
     return None
 
+
 def _implementation_decision(
     state: WorkflowState, catalogue: dict[str, Any]
 ) -> RouteDecision | None:
@@ -320,6 +331,7 @@ def _implementation_decision(
             missing=("ci_passed",),
         )
     return None
+
 
 def _review_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision:
     roles = catalogue["roles"]
@@ -364,6 +376,7 @@ def _review_decision(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDe
         action="record clean, rework, or blocking outcome",
     )
 
+
 def decide(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision:
     """Return the next bounded route step without performing it."""
     if state.route is not None:
@@ -378,6 +391,7 @@ def decide(state: WorkflowState, catalogue: dict[str, Any]) -> RouteDecision:
         or _implementation_decision(state, catalogue)
         or _review_decision(state, catalogue)
     )
+
 
 def _state_from_json(payload: Mapping[str, Any]) -> WorkflowState:
     try:
@@ -428,6 +442,7 @@ def _state_from_json(payload: Mapping[str, Any]) -> WorkflowState:
     except (KeyError, TypeError, ValueError) as exc:
         raise ValueError(f"invalid workflow state: {exc}") from exc
 
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("state_file", type=Path, help="JSON workflow-state input; it is read only")
@@ -441,6 +456,7 @@ def main(argv: list[str] | None = None) -> None:
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         parser.error(str(exc))
     print(json.dumps(asdict(decision), ensure_ascii=False, sort_keys=True))
+
 
 if __name__ == "__main__":
     main()

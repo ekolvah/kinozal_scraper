@@ -52,10 +52,12 @@ _VALUE_FLAGS: dict[str, frozenset[str]] = {
 
 _BOUNDARY = "Trimming another command's output stays allowed (`cmd | head -40`)."
 
+
 def _basename(token: str) -> str:
     """`/usr/bin/grep` and `grep.exe` both classify as `grep`."""
     name = token.replace("\\", "/").rsplit("/", 1)[-1]
     return name[:-4] if name.endswith(".exe") else name
+
 
 def _strip_wrappers(tokens: list[str]) -> list[str]:
     while tokens and _basename(tokens[0]) in _WRAPPERS:
@@ -63,6 +65,7 @@ def _strip_wrappers(tokens: list[str]) -> list[str]:
         while tokens and (tokens[0].startswith("-") or tokens[0].isdigit()):
             tokens = tokens[1:]
     return tokens
+
 
 @dataclass(frozen=True)
 class Stage:
@@ -77,6 +80,7 @@ class Stage:
     def short_chars(self) -> set[str]:
         """Letters of the clustered short flags, so `-rn` and `-n -r` read the same."""
         return {char for flag in self.flags if not flag.startswith("--") for char in flag[1:]}
+
 
 def _split_arguments(name: str, rest: list[str]) -> Stage:
     """Partition a stage's arguments into flags, operands, and a heredoc marker.
@@ -107,6 +111,7 @@ def _split_arguments(name: str, rest: list[str]) -> Stage:
         index += 1
     return Stage(name=name, flags=flags, operands=operands, heredoc=heredoc)
 
+
 def _stage_hint(tokens: list[str], depth: int) -> str | None:
     tokens = _strip_wrappers(tokens)
     if not tokens:
@@ -124,24 +129,27 @@ def _stage_hint(tokens: list[str], depth: int) -> str | None:
         return None
     return _RULES[name](_split_arguments(name, tokens[1:]))
 
+
 def _hint_ls(stage: Stage) -> str | None:
     target = (stage.operands[0] if stage.operands else ".").rstrip("/")
     return f'`{stage.name}` lists the filesystem — use Glob (e.g. Glob("{target}/**/*.py")).'
+
 
 def _hint_cat(stage: Stage) -> str | None:
     if stage.heredoc:
         return "`cat > file <<EOF` writes a file — use Write, or Edit for a partial change."
     if not stage.operands:
-        return None # `cmd | cat` reads stdin, not the filesystem.
+        return None  # `cmd | cat` reads stdin, not the filesystem.
     return (
         f'`cat` reads the whole file into context — use Read("{stage.operands[0]}"), '
         f"with offset/limit when only a fragment is needed."
     )
 
+
 def _hint_grep(stage: Stage) -> str | None:
     recursive = bool({"r", "R"} & stage.short_chars) or "--recursive" in stage.flags
     if not recursive and len(stage.operands) < 2:
-        return None # a pipe stage: pattern only, no path to read.
+        return None  # a pipe stage: pattern only, no path to read.
     path = stage.operands[1] if len(stage.operands) > 1 else "."
     return (
         f'`grep` over the filesystem — use Grep(pattern=..., path="{path}"), which is '
@@ -149,20 +157,23 @@ def _hint_grep(stage: Stage) -> str | None:
         f"{_BOUNDARY}"
     )
 
+
 def _hint_sed(stage: Stage) -> str | None:
     if "n" not in stage.short_chars or len(stage.operands) < 2:
-        return None # `cmd | sed -n '1,20p'` trims a pipe; only a file operand is navigation.
+        return None  # `cmd | sed -n '1,20p'` trims a pipe; only a file operand is navigation.
     return (
         f'`sed -n` prints a file range — use Read("{stage.operands[1]}") with offset/limit. '
         f"{_BOUNDARY}"
     )
 
+
 def _hint_head_tail(stage: Stage) -> str | None:
     if not stage.operands:
-        return None # the dominant role: trimming a pipe.
+        return None  # the dominant role: trimming a pipe.
     return (
         f'`{stage.name}` on a file — use Read("{stage.operands[0]}") with offset/limit. {_BOUNDARY}'
     )
+
 
 _RULES = {
     "ls": _hint_ls,
@@ -174,13 +185,14 @@ _RULES = {
     "tail": _hint_head_tail,
 }
 
+
 def _hint(command: str, depth: int) -> str | None:
     lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
     lexer.whitespace_split = True
     try:
         tokens = list(lexer)
     except ValueError:
-        return None # unbalanced quote: a lexer limit, not a violation.
+        return None  # unbalanced quote: a lexer limit, not a violation.
     stage: list[str] = []
     for token in [*tokens, "\n"]:
         if token in _SEPARATORS:
@@ -192,12 +204,14 @@ def _hint(command: str, depth: int) -> str | None:
         stage.append(token)
     return None
 
+
 def navigation_hint(command: str) -> str | None:
     """Return an actionable replacement message when a stage reads the filesystem."""
     if not isinstance(command, str) or not command.strip():
         return None
     hint = _hint(command, depth=0)
     return None if hint is None else f"{hint} Repository navigation goes through tools."
+
 
 # The budget, in bytes of the slice `Read` will actually return.
 #
@@ -217,6 +231,7 @@ _READ_BUDGET_BYTES = 28_000
 # policy names would not apply.
 _UNSLICEABLE = frozenset({".pdf", ".ipynb", ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"})
 
+
 def _lines_that_fit(lines: list[bytes], start: int) -> int:
     """How many lines from `start` stay inside the budget — at least one, so the message
     never hands back an empty slice."""
@@ -228,6 +243,7 @@ def _lines_that_fit(lines: list[bytes], start: int) -> int:
             break
         fits += 1
     return max(fits, 1)
+
 
 def read_budget_hint(file_path: object, offset: object = None, limit: object = None) -> str | None:
     """Return a replacement message when a `Read` slice exceeds the byte budget.

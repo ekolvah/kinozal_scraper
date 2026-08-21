@@ -43,6 +43,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent
 _WORKFLOWS = _REPO_ROOT / ".github" / "workflows"
 _HOOK = _REPO_ROOT / ".githooks" / "pre-push"
 
+
 class TestDriftDetection:
     def test_controller_gate_is_not_a_required_context(self) -> None:
         assert REQUIRED_CONTEXTS == ("quality", "pr-link", "agent-review")
@@ -68,6 +69,7 @@ class TestDriftDetection:
     def test_order_does_not_matter(self) -> None:
         """GitHub does not guarantee `checks` order; comparison uses a set."""
         assert protection_drift(("pr-link", "quality"), ("quality", "pr-link")) == ([], [])
+
 
 class TestAllowDrift:
     """: a gate that regularly demands bypassing teaches bypassing.
@@ -119,6 +121,7 @@ class TestAllowDrift:
 
         self._patch_actual(monkeypatch, list(REQUIRED_CONTEXTS))
         guard.main(["--allow-drift", "не нужен"])
+
 
 class TestProtectionFetch:
     """Network layer: tool failure (exit 2) is not masked as a verdict (exit 0/1)."""
@@ -202,6 +205,7 @@ class TestProtectionFetch:
         printed = capsys.readouterr().out
         for context in REQUIRED_CONTEXTS:
             assert context in printed
+
 
 class TestDeclarationMatchesWorkflows:
     """Offline half: the script declaration does not diverge from repository workflows."""
@@ -315,12 +319,8 @@ class TestDeclarationMatchesWorkflows:
 
     def test_yaml_extension_workflow_is_loaded(self, tmp_path: Path) -> None:
         """GitHub accepts `.yaml`; a guard blind to it would be vacuously green."""
-        (tmp_path / "a.yml").write_text(
-            "on:\n pull_request:\njobs:\n one: {}\n", encoding="utf-8"
-        )
-        (tmp_path / "b.yaml").write_text(
-            "on:\n pull_request:\njobs:\n two: {}\n", encoding="utf-8"
-        )
+        (tmp_path / "a.yml").write_text("on:\n pull_request:\njobs:\n one: {}\n", encoding="utf-8")
+        (tmp_path / "b.yaml").write_text("on:\n pull_request:\njobs:\n two: {}\n", encoding="utf-8")
         loaded = load_workflows(tmp_path)
         assert set(loaded) == {"a.yml", "b.yaml"}
         problems = declaration_problems(loaded, (), {})
@@ -336,6 +336,7 @@ class TestDeclarationMatchesWorkflows:
         """A cron job cannot be a required PR context, so it need not be declared."""
         workflows = {"cron.yml": {"on": {"schedule": [{"cron": "0 5 * * *"}]}, "jobs": {"run": {}}}}
         assert declaration_problems(workflows, (), {}) == []
+
 
 class TestPrePushHook:
     """The hook truly executes: stubs count calls, order, and stderr."""

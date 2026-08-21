@@ -22,6 +22,7 @@ from typing import Any
 
 from scripts.open_pr import _linkage_confirmed, ensure_closes_line, issue_number_from_branch
 
+
 def normalized_body(body: str, issue_number: int) -> str:
     """Return ``body`` with exactly one canonical issue-closing line."""
     target = f"Closes #{issue_number}"
@@ -38,6 +39,7 @@ def normalized_body(body: str, issue_number: int) -> str:
             found = True
     return ensure_closes_line("".join(result), issue_number)
 
+
 def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(cmd, text=True, capture_output=True, encoding="utf-8")
     if result.stdout is None or result.stderr is None:
@@ -47,12 +49,14 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess[str]:
         )
     return result
 
+
 def _checked(cmd: list[str]) -> str:
     result = _run(cmd)
     if result.returncode != 0:
         detail = result.stderr.strip() or "command returned no error text"
         raise RuntimeError(f"`{' '.join(cmd)}` failed (rc={result.returncode}): {detail}")
     return result.stdout
+
 
 def _pr_metadata(pr: str) -> tuple[str, str]:
     output = _checked(["gh", "pr", "view", pr, "--json", "headRefName,url"])
@@ -66,11 +70,13 @@ def _pr_metadata(pr: str) -> tuple[str, str]:
         raise ValueError(f"PR metadata is missing headRefName/url: {output!r}")
     return branch, url
 
+
 def _edit_body(url: str, body: str) -> None:
     with tempfile.TemporaryDirectory(prefix="update-pr-body-") as directory:
         body_file = Path(directory) / "body.md"
         body_file.write_text(body, encoding="utf-8")
         _checked(["gh", "pr", "edit", url, "--body-file", str(body_file)])
+
 
 def main(argv: list[str] | None = None) -> None:
     """Update one PR from a UTF-8 body file, then verify its issue linkage."""
@@ -104,6 +110,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         sys.exit(1)
     print(url)
+
 
 if __name__ == "__main__":
     main()

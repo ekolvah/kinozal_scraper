@@ -46,6 +46,7 @@ _FORBIDDEN_PATTERNS: tuple[tuple[str, re.Pattern[str], bool], ...] = (
     ("sleep polling", re.compile(r"(?:^|[;&|])\s*sleep(?:\s|$)"), False),
 )
 
+
 def denied_reason(command: str) -> str | None:
     """Return a user-visible reason when a command violates repository policy."""
     normalized = command.lower()

@@ -28,9 +28,11 @@ _CLAUDE_SETTINGS = _REPO / ".claude" / "settings.json"
 # would match first and swallow the message (a deny rule blocks before a hook runs).
 _OWNED = ("ls", "find", "cat", "sed", "grep", "head", "tail")
 
+
 def _settings() -> Any:
     """The parsed settings file; shape is asserted by the tests that read it."""
     return json.loads(_CLAUDE_SETTINGS.read_text(encoding="utf-8"))
+
 
 def _text_file(tmp_path: Path, name: str, size: int) -> Path:
     """A UTF-8 file of at least `size` bytes, in 40-byte lines so slices are addressable."""
@@ -39,22 +41,28 @@ def _text_file(tmp_path: Path, name: str, size: int) -> Path:
     path.write_text(line * (size // len(line) + 1), encoding="utf-8")
     return path
 
+
 def _over_budget(tmp_path: Path, name: str = "big.py") -> Path:
     return _text_file(tmp_path, name, _READ_BUDGET_BYTES * 2)
+
 
 def _not_a_string(_: Path) -> object:
     return 12
 
+
 def _missing(tmp_path: Path) -> str:
     return str(tmp_path / "gone.py")
 
+
 def _a_directory(tmp_path: Path) -> str:
     return str(tmp_path)
+
 
 def _undecodable(tmp_path: Path) -> str:
     path = tmp_path / "blob.bin"
     path.write_bytes(b"\xff\xfe\x00\x01" * _READ_BUDGET_BYTES)
     return str(path)
+
 
 def _asset(suffix: str) -> Callable[[Path], str]:
     """A file large enough to bust the budget, in a format where offset/limit make no sense."""
@@ -63,6 +71,7 @@ def _asset(suffix: str) -> Callable[[Path], str]:
         return str(_over_budget(tmp_path, f"asset{suffix}"))
 
     return make
+
 
 @pytest.mark.parametrize(
     ("command", "tool"),
@@ -90,6 +99,7 @@ def test_filesystem_reads_are_denied_with_the_replacement_named(command: str, to
     assert hint is not None, command
     assert tool in hint, hint
 
+
 @pytest.mark.parametrize(
     "command",
     (
@@ -113,6 +123,7 @@ def test_filesystem_reads_are_denied_with_the_replacement_named(command: str, to
 def test_pipe_stages_and_toolchain_stay_allowed(command: str) -> None:
     assert navigation_hint(command) is None, command
 
+
 @pytest.mark.parametrize(
     "command",
     (
@@ -128,14 +139,17 @@ def test_pipe_stages_and_toolchain_stay_allowed(command: str) -> None:
 def test_a_denied_stage_is_found_anywhere_in_a_compound_command(command: str) -> None:
     assert navigation_hint(command) is not None, command
 
+
 def test_heredoc_write_is_routed_to_the_edit_tools() -> None:
     hint = navigation_hint("cat > notes.md <<'EOF'")
     assert hint is not None
     assert "Write" in hint and "Edit" in hint
 
+
 def test_unparseable_command_fails_open() -> None:
     """An unbalanced quote is a lexer limit, not a violation: never block on it."""
     assert navigation_hint('grep "unterminated src/') is None
+
 
 class TestReadBudget:
     """`Read` is the other route into the filesystem, and the one left ungated."""
@@ -197,6 +211,7 @@ class TestReadBudget:
         path = _over_budget(tmp_path)
         assert read_budget_hint(str(path), offset="1", limit="50") is None
 
+
 class TestClaudeAdapter:
     def test_denial_uses_the_documented_pretooluse_shape(self) -> None:
         response = pre_bash_response({"tool_input": {"command": "cat README.md"}})
@@ -229,6 +244,7 @@ class TestClaudeAdapter:
         assert pre_read_response({"tool_input": {"file_path": str(small)}}) is None
         assert pre_read_response({}) is None
         assert pre_read_response({"tool_input": {"file_path": None}}) is None
+
 
 class TestClaudeHookWiring:
     def test_pretooluse_hook_is_wired_for_bash(self) -> None:

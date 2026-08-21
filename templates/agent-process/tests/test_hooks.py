@@ -34,10 +34,12 @@ from scripts.hooks import (
     run_on_paths,
 )
 
+
 def _payload(path: str | None) -> dict:
     if path is None:
         return {"tool_input": {}}
     return {"tool_input": {"file_path": path}}
+
 
 class TestOnEditDispatch:
     def test_python_file_plans_ruff_check(self) -> None:
@@ -65,8 +67,8 @@ class TestOnEditDispatch:
             return 1, f"{file_path}:1:1: F401 unused import"
 
         code, stderr = run_on_edit(_payload("src/x.py"), ruff_runner=_stub)
-        assert calls == ["src/x.py"] # dispatch reached the runner with the edited path
-        assert code == 2 # lint finding surfaces
+        assert calls == ["src/x.py"]  # dispatch reached the runner with the edited path
+        assert code == 2  # lint finding surfaces
         assert "F401" in stderr
 
     def test_run_on_edit_python_clean_is_silent(self) -> None:
@@ -83,6 +85,7 @@ class TestOnEditDispatch:
 
         assert run_on_paths(["src/x.py", "src/x.py"], ruff_runner=_stub) == (0, "")
         assert calls == ["src/x.py"]
+
 
 class TestRuffSignal:
     def test_lint_findings_surface_exit_2(self) -> None:
@@ -105,6 +108,7 @@ class TestRuffSignal:
         assert classify_ruff_result(0, "") is None
         assert exit_code([]) == 0
 
+
 class TestPipCompileGuard:
     def test_requirements_in_flagged(self) -> None:
         assert plan_checks(_payload("requirements.in")) == ["pipcompile"]
@@ -117,6 +121,7 @@ class TestPipCompileGuard:
         # .txt is the generated lockfile, not the source — no reminder.
         assert plan_checks(_payload("requirements.txt")) == []
         assert plan_checks(_payload("requirements-dev.txt")) == []
+
 
 class TestMemoryWriteGuard:
     """: writes to out-of-repo agent memory are a governance trigger.
@@ -165,8 +170,10 @@ class TestMemoryWriteGuard:
         assert plan_checks(_payload("docs/architecture/project-map.md")) == []
         assert plan_checks(_payload(".claude/rules/mindset.md")) == []
 
+
 def _never_called(_file: str) -> tuple[int, str]:
     raise AssertionError("ruff_runner must not run when nothing is planned")
+
 
 class TestCaptureFailureIsSetupBroken:
     """Broken ruff output capture means setup failure, not an exception.
@@ -185,6 +192,7 @@ class TestCaptureFailureIsSetupBroken:
         returncode, output = _run_ruff("some_file.py")
         assert returncode == _RUFF_EXEC_ERROR
         assert "capture failed" in output
+
 
 def test_pre_read_is_an_accepted_subcommand() -> None:
     """`main()` is fail-CLOSED on an unknown argv (exit 2). Behind a `Read` matcher that
