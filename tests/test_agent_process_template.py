@@ -278,6 +278,33 @@ class TestTemplateRenders:
                     dangling.append(f"{path.relative_to(rendered_payload)} -> {target}")
         assert not dangling, f"dangling relative links in rendered payload: {dangling}"
 
+    def test_default_render_omits_claude_adapter_files(self, rendered_payload: Path) -> None:
+        assert not (rendered_payload / ".claude").exists()
+        assert not [
+            path for path in rendered_payload.iterdir() if "claude_adapter_installed" in path.name
+        ]
+
+    def test_claude_adapter_rendered_markdown_is_export_safe(self, tmp_path: Path) -> None:
+        data_file = tmp_path / "answers.yml"
+        data_file.write_text("claude_adapter_installed: true\n", encoding="utf-8")
+        rendered = tmp_path / "claude-adapter"
+        copied = _run_copier_copy(rendered, data_file=data_file)
+        assert copied.returncode == 0, copied.stderr
+
+        link_re = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+        dangling = []
+        for path in (rendered / ".claude").rglob("*.md"):
+            content = path.read_text(encoding="utf-8")
+            assert not _CITATION.search(content)
+            assert content.count("(") == content.count(")")
+            for target in link_re.findall(content):
+                if target.startswith(("http://", "https://")):
+                    continue
+                target_path = target.split("#", 1)[0]
+                if target_path and not (path.parent / target_path).resolve().is_file():
+                    dangling.append(f"{path.relative_to(rendered)} -> {target}")
+        assert not dangling, f"dangling relative links in Claude-adapter payload: {dangling}"
+
     def test_exported_text_does_not_claim_missing_test_guards(self, rendered_payload: Path) -> None:
         missing = []
         test_path_re = re.compile(r"`(tests/test_[\w_]+\.py)(?::[^`]*)?`")
