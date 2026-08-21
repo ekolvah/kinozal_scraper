@@ -128,6 +128,7 @@ def _run_copier_copy(dest: Path) -> subprocess.CompletedProcess[str]:
         cwd=_REPO,
         capture_output=True,
         encoding="utf-8",
+        errors="replace",
     )
 
 
