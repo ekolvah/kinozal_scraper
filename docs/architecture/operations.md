@@ -398,6 +398,13 @@ cost proxy. The 100,000 raw-token/turn floor was calibrated on 2026-08-21 from
 two five-branch medians of 120,241.9 and 103,680.3; it is on that baseline's
 order and stays a distinct gate beyond the existing 40% growth condition. A legacy
 schema-1 sidechain figure is unavailable, not zero, because it was price-weighted.
+The report also shows tool calls per tool-bearing assistant request and the share
+of `Read` calls that repeat a file in the same session. Same-window repeats use
+the identical `(file_path, offset, limit)` tuple; other-window repeats use the
+same file at a different window. Inspect that split before changing navigation:
+the former often follows compaction recovery, whereas the latter can indicate
+slice scanning. Interaction metrics are unavailable, not zero, for ledger
+schemas 1 and 2 because those rows never retained request or `Read` details.
 
 ### Rollback and rotation
 

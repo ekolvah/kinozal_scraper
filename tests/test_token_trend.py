@@ -59,13 +59,14 @@ def _entry(
     cache_read: int = 0,
     cache_5m: int = 0,
     cache_1h: int = 0,
+    session_id: str = "s-1",
     uuid: str = "u-1",
 ) -> dict:
     """One `assistant` transcript line in the form written by Claude Code."""
     entry = {
         "type": "assistant",
         "timestamp": timestamp,
-        "sessionId": "s-1",
+        "sessionId": session_id,
         "isSidechain": sidechain,
         "uuid": uuid,
         "message": {
@@ -91,6 +92,15 @@ def _entry(
 
 def _line(**kwargs: object) -> str:
     return json.dumps(_entry(**kwargs))  # type: ignore[arg-type]
+
+
+def _tool_line(*, tool_blocks: list[dict[str, object]], **kwargs: object) -> str:
+    """One assistant JSONL line carrying tool-use blocks."""
+    entry = _entry(**kwargs)  # type: ignore[arg-type]
+    message = entry["message"]
+    assert isinstance(message, dict)
+    message["content"] = tool_blocks
+    return json.dumps(entry)
 
 
 def _stats(
@@ -284,6 +294,81 @@ class TestAggregate:
         assert stats.sidechain_tokens < stats.total_tokens
 
 
+class TestInteractionMetrics:
+    def test_multiple_jsonl_lines_of_one_request_count_tool_blocks_once(self) -> None:
+        blocks: list[dict[str, object]] = [
+            {"type": "tool_use", "name": "Read", "input": {"file_path": "a.py"}},
+            {"type": "tool_use", "name": "Grep", "input": {}},
+        ]
+        records, anomalies = parse_lines(
+            [
+                _tool_line(request_id="request-1", tool_blocks=blocks),
+                _tool_line(request_id="request-1", tool_blocks=blocks),
+            ]
+        )
+
+        stats = aggregate_by_branch(records)["issue-1-a"]
+
+        assert anomalies == []
+        assert stats.tool_messages == 1
+        assert stats.tool_calls == 2
+        assert stats.read_calls == 1
+
+    def test_repeated_read_is_scoped_to_session_file_and_window(self) -> None:
+        def read(request_id: str, session_id: str, offset: int) -> str:
+            return _tool_line(
+                request_id=request_id,
+                session_id=session_id,
+                tool_blocks=[
+                    {
+                        "type": "tool_use",
+                        "id": f"tool-{request_id}",
+                        "name": "Read",
+                        "input": {"file_path": "src/app.py", "offset": offset, "limit": 20},
+                    }
+                ],
+            )
+
+        records, anomalies = parse_lines(
+            [
+                read("one", "session-1", 1),
+                read("two", "session-1", 1),
+                read("three", "session-1", 21),
+                read("four", "session-2", 1),
+            ]
+        )
+
+        stats = aggregate_by_branch(records)["issue-1-a"]
+
+        assert anomalies == []
+        assert (
+            stats.read_calls,
+            stats.repeated_reads,
+            stats.same_window_reads,
+            stats.other_window_reads,
+        ) == (4, 2, 1, 1)
+
+    def test_read_without_file_path_is_an_anomaly_and_keeps_denominator(self) -> None:
+        records, anomalies = parse_lines(
+            [
+                _tool_line(
+                    tool_blocks=[
+                        {"type": "tool_use", "id": "tool-read", "name": "Read", "input": {}}
+                    ]
+                )
+            ]
+        )
+
+        stats = aggregate_by_branch(records)["issue-1-a"]
+        health = health_anomalies(records, anomalies, files_seen=1)
+
+        assert [anomaly.kind for anomaly in anomalies] == ["read_without_path"]
+        assert (stats.read_calls, stats.repeated_reads) == (1, 0)
+        assert [anomaly.kind for anomaly in health] == ["read_without_path"]
+        assert "read_without_path" in format_report([stats], detect_growth([stats]), health)
+        assert "read_without_path" in format_alert(detect_growth([stats]), health)
+
+
 class TestHealth:
     def test_files_present_but_no_records_is_anomaly(self) -> None:
         anomalies = health_anomalies([], [], files_seen=5)
@@ -374,7 +459,7 @@ class TestLedgerMigration:
             50,
         )
         lines = ledger_lines(restored)
-        assert json.loads(lines[0])["schema"] == 2
+        assert json.loads(lines[0])["schema"] == LEDGER_SCHEMA
         round_tripped, read_anomalies = parse_ledger(lines)
         assert read_anomalies == []
         assert round_tripped == restored
@@ -382,6 +467,64 @@ class TestLedgerMigration:
     def test_legacy_sidechain_is_unavailable_not_zero(self) -> None:
         restored, _ = parse_ledger([self._schema_1_line()])
         assert restored["issue-legacy"].sidechain_tokens is None
+
+    def test_schema_2_interaction_metrics_are_unavailable(self) -> None:
+        line = json.dumps(
+            {
+                "schema": 2,
+                "branch": "issue-legacy",
+                "turns": 2,
+                "first_seen": "2026-07-01",
+                "last_seen": "2026-07-02",
+                "input_tokens": 7,
+                "output_tokens": 3,
+                "cache_read": 100,
+                "cache_write": 50,
+                "sidechain_tokens": 0,
+            }
+        )
+
+        restored, anomalies = parse_ledger([line])
+
+        assert anomalies == []
+        assert restored["issue-legacy"].tool_calls is None
+        assert restored["issue-legacy"].read_calls is None
+        migrated, read_anomalies = parse_ledger(ledger_lines(restored))
+        assert read_anomalies == []
+        assert migrated["issue-legacy"].tool_calls is None
+
+    def test_schema_3_missing_interaction_metric_is_dropped(self) -> None:
+        line = json.loads(ledger_lines({"issue-current": _stats("issue-current")})[0])
+        line.pop("tool_calls")
+
+        restored, anomalies = parse_ledger([json.dumps(line)])
+
+        assert restored == {}
+        assert [anomaly.kind for anomaly in anomalies] == ["ledger_schema"]
+
+    def test_current_interaction_metrics_round_trip(self) -> None:
+        records, _ = parse_lines(
+            [
+                _tool_line(
+                    tool_blocks=[
+                        {
+                            "type": "tool_use",
+                            "id": "tool-read",
+                            "name": "Read",
+                            "input": {"file_path": "a.py"},
+                        }
+                    ]
+                )
+            ]
+        )
+        stats = aggregate_by_branch(records)
+
+        restored, anomalies = parse_ledger(ledger_lines(stats))
+
+        assert anomalies == []
+        assert restored["issue-1-a"].tool_calls == 1
+        assert restored["issue-1-a"].read_calls == 1
+        assert restored == stats
 
 
 class TestDetect:
@@ -825,6 +968,50 @@ class TestFormatReport:
         assert "effective" not in header
         assert row[header.index("per-turn")] == "—"
         assert row[header.index("sidechain")] == "—"
+
+    def test_interaction_columns_show_ratios_buckets_and_unavailable_dash(self) -> None:
+        stats = [
+            BranchStats(
+                branch="issue-measured",
+                turns=1,
+                first_seen="2026-08-01",
+                last_seen="2026-08-01",
+                input_tokens=1,
+                output_tokens=0,
+                cache_read=0,
+                cache_write=0,
+                sidechain_tokens=0,
+                tool_messages=2,
+                tool_calls=3,
+                read_calls=4,
+                repeated_reads=2,
+                same_window_reads=1,
+                other_window_reads=1,
+            ),
+            BranchStats(
+                branch="issue-legacy",
+                turns=1,
+                first_seen="2026-08-02",
+                last_seen="2026-08-02",
+                input_tokens=1,
+                output_tokens=0,
+                cache_read=0,
+                cache_write=0,
+                sidechain_tokens=0,
+            ),
+        ]
+
+        lines = format_report(stats, detect_growth(stats), []).splitlines()
+        header = lines[0].split()
+        measured = next(line for line in lines if "issue-measured" in line).split()
+        legacy = next(line for line in lines if "issue-legacy" in line).split()
+
+        assert measured[header.index("tools/msg")] == "1.500"
+        assert measured[header.index("repeat-Read")] == "50.0%"
+        assert measured[header.index("same-win")] == "1"
+        assert measured[header.index("other-win")] == "1"
+        assert legacy[header.index("tools/msg")] == "—"
+        assert legacy[header.index("repeat-Read")] == "—"
 
     def test_anomalies_reach_the_report(self) -> None:
         text = format_report([], detect_growth([]), [Anomaly("no_usage_records", "0 файлов")])
