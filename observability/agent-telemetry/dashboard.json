@@ -169,21 +169,21 @@
             {
               "refId": "A",
               "queryType": "range",
-              "expr": "quantile_over_time(0.50, {service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval])",
+              "expr": "quantile_over_time(0.50, {service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval]) by (session_id)",
               "legendFormat": "p50 context tokens",
               "catalogueRef": "events:api_request"
             },
             {
               "refId": "B",
               "queryType": "range",
-              "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval])",
+              "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval]) by (session_id)",
               "legendFormat": "p95 context tokens",
               "catalogueRef": "events:api_request"
             },
             {
               "refId": "C",
               "queryType": "range",
-              "expr": "max_over_time({service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval])",
+              "expr": "max_over_time({service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval]) by (session_id)",
               "legendFormat": "max context tokens",
               "catalogueRef": "events:api_request"
             }
@@ -288,7 +288,7 @@
             {
               "refId": "B",
               "queryType": "range",
-              "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} | event_name=\"tool_result\" | session_id=~\"$session\" | unwrap tool_result_size_bytes [$__interval])",
+              "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} | event_name=\"tool_result\" | session_id=~\"$session\" | unwrap tool_result_size_bytes [$__interval]) by (tool_name)",
               "legendFormat": "p95 bytes",
               "catalogueRef": "events:tool_result"
             }

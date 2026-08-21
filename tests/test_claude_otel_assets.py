@@ -242,6 +242,18 @@ class TestGrafanaDashboard:
             for target in targets
         )
 
+    def test_unwrapped_range_aggregations_group_by_operator_dimension(self) -> None:
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        context_row = _decision_row(dashboard, "context-compaction")
+        context_panel = next(panel for panel in context_row["panels"] if panel["id"] == 7)
+        tool_row = _decision_row(dashboard, "tool-health")
+        size_panel = next(panel for panel in tool_row["panels"] if panel["id"] == 21)
+
+        assert all("by (session_id)" in target["expr"] for target in context_panel["targets"])
+        assert "by (tool_name)" in next(
+            target["expr"] for target in size_panel["targets"] if target["refId"] == "B"
+        )
+
     def test_compaction_panel_queries_the_compact_query_source(self) -> None:
         catalogue = _load_json(SIGNAL_CATALOGUE)
         dashboard = _load_json(GRAFANA_DASHBOARD)
