@@ -290,10 +290,10 @@ class TestNarrativePredicates:
     """Predicates on synthetic input: without them the guard proves itself on a green repository."""
 
     def test_pointer_in_parens_is_allowed(self) -> None:
-        assert narrative_refs("Дискриминатор сверяет точный литерал.") == []
+        assert narrative_refs(f"Дискриминатор сверяет точный литерал (#{385}).") == []
 
     def test_pointer_across_soft_wrap_is_allowed(self) -> None:
-        assert narrative_refs("Цена локализованной игры — два запроса\nвместо одного.") == []
+        assert narrative_refs(f"Цена локализованной игры — два запроса\nвместо одного (#{384}).") == []
         assert narrative_refs(f"Цена локализованной игры (два\nзапроса вместо одного, #{384}).") == []
 
     def test_pointer_around_code_span_is_allowed(self) -> None:
@@ -331,7 +331,7 @@ class TestNarrativePredicates:
         """In a heading, parentheses do not help: anchor is generated from all text."""
         assert len(heading_issue_refs(f"## Eval harness (#{139})")) == 1
         assert heading_issue_refs("## Eval harness — trailer selection") == []
-        assert narrative_refs("## Eval harness") == []
+        assert narrative_refs(f"## Eval harness (#{139})") == []
 
     def test_anchor_is_not_an_issue_ref(self) -> None:
         assert narrative_refs("Секция `ci-workflow.md#doc-guards` описывает реестр.") == []
