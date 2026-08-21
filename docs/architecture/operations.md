@@ -383,10 +383,11 @@ structural: it proves the form, never that a query returns data. Open panels 5,
 
 Grafana Cloud Free remains usable after the trial, but metrics and logs have a
 rolling 14-day retention window. At the end of the first complete window,
-review session cost, cost per API request, cache-read tokens per request, the
-context-size proxy, compaction availability, tool failure rate, and active/wall
-duration. Also record active-series/cardinality and ingested log volume in the
-Grafana usage view.
+review session cost, cost per API request, cache-read tokens per request,
+context-token distribution per API request, API-request round trips, compacted
+API requests, tool result size, tool failure rate, and active/wall duration.
+Also record active-series/cardinality and ingested log volume in the Grafana
+usage view.
 
 Create a separate threshold/notification issue only when a measured boundary
 has both a named operator action and a tolerable observed false-positive rate.

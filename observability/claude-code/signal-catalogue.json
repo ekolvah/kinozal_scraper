@@ -29,8 +29,7 @@
     "content_logging": "disabled",
     "missing_dimensions": [
       "agent_id",
-      "skill_name",
-      "compaction"
+      "skill_name"
     ],
     "log_index_labels": {
       "observed": "2026-08-15",

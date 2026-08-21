@@ -196,7 +196,11 @@ class TestGrafanaDashboard:
             attributes = _stream_selector_labels(expr) | set(
                 re.findall(r"\bunwrap\s+([A-Za-z_][A-Za-z0-9_]*)", expr)
             )
-            attributes -= {"service_name", "event_name", "type"}
+            attributes.update(re.findall(r"\|\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:=~|!~|!=|=)", expr))
+            generated_labels = set(
+                re.findall(r"\|\s*label_format\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", expr)
+            )
+            attributes -= {"service_name", "event_name", "type"} | generated_labels
             assert attributes <= attributes_by_ref[target["catalogueRef"]]
             used_attributes.update(attributes)
 
@@ -213,8 +217,7 @@ class TestGrafanaDashboard:
             for target in targets
         )
         assert not any(
-            "increase(claude_code_token_usage_tokens_total" in target["expr"]
-            for target in targets
+            "increase(claude_code_token_usage_tokens_total" in target["expr"] for target in targets
         )
 
     def test_round_trip_counter_is_present(self) -> None:
@@ -235,8 +238,7 @@ class TestGrafanaDashboard:
         targets = [target for panel in tool_row["panels"] for target in panel.get("targets", [])]
 
         assert any(
-            "unwrap tool_result_size_bytes" in target["expr"]
-            and "by (tool_name)" in target["expr"]
+            "unwrap tool_result_size_bytes" in target["expr"] and "by (tool_name)" in target["expr"]
             for target in targets
         )
 
