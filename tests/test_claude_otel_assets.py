@@ -58,6 +58,10 @@ def _dashboard_targets(dashboard: dict[str, Any]) -> list[dict[str, Any]]:
     return [target for target, _ in _targets_with_datasource(dashboard)]
 
 
+def _decision_row(dashboard: dict[str, Any], decision: str) -> dict[str, Any]:
+    return next(row for row in dashboard["panels"] if row.get("decision") == decision)
+
+
 def _stream_selector_labels(expr: str) -> set[str]:
     """Label names inside the ``{...}`` stream selectors of a LogQL expression."""
     selectors = re.findall(r"\{([^{}]*)\}", expr)
@@ -174,6 +178,94 @@ class TestGrafanaDashboard:
         assert targets
         assert all(target["catalogueRef"] in known_refs for target in targets)
         assert all(target.get("expr") or target.get("query") for target in targets)
+
+    def test_queries_use_only_captured_attributes(self) -> None:
+        catalogue = _load_json(SIGNAL_CATALOGUE)
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        attributes_by_ref = {
+            f"{signal_kind}:{signal['name']}": set(signal["attributes"])
+            for signal_kind in ("metrics", "events")
+            for signal in catalogue["signals"][signal_kind]
+        }
+        used_attributes: set[str] = set()
+
+        for target in _dashboard_targets(dashboard):
+            if target.get("source") == "codex" or "expr" not in target:
+                continue
+            expr = target["expr"]
+            attributes = _stream_selector_labels(expr) | set(
+                re.findall(r"\bunwrap\s+([A-Za-z_][A-Za-z0-9_]*)", expr)
+            )
+            attributes.update(re.findall(r"\|\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:=~|!~|!=|=)", expr))
+            generated_labels = set(
+                re.findall(r"\|\s*label_format\s+([A-Za-z_][A-Za-z0-9_]*)\s*=", expr)
+            )
+            attributes -= {"service_name", "event_name", "type"} | generated_labels
+            assert attributes <= attributes_by_ref[target["catalogueRef"]]
+            used_attributes.update(attributes)
+
+        assert "tool_result_size_bytes" in used_attributes
+
+    def test_context_panel_measures_a_single_request(self) -> None:
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        context_row = _decision_row(dashboard, "context-compaction")
+        targets = [target for panel in context_row["panels"] for target in panel.get("targets", [])]
+
+        assert any(
+            target["catalogueRef"] == "events:api_request"
+            and "quantile_over_time" in target["expr"]
+            for target in targets
+        )
+        assert not any(
+            "increase(claude_code_token_usage_tokens_total" in target["expr"] for target in targets
+        )
+
+    def test_round_trip_counter_is_present(self) -> None:
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        api_row = _decision_row(dashboard, "api-token-mix")
+        targets = [target for panel in api_row["panels"] for target in panel.get("targets", [])]
+
+        assert any(
+            target["catalogueRef"] == "events:api_request"
+            and "count_over_time" in target["expr"]
+            and "by (session_id)" in target["expr"]
+            for target in targets
+        )
+
+    def test_tool_size_panel_unwraps_result_size(self) -> None:
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        tool_row = _decision_row(dashboard, "tool-health")
+        targets = [target for panel in tool_row["panels"] for target in panel.get("targets", [])]
+
+        assert any(
+            "unwrap tool_result_size_bytes" in target["expr"] and "by (tool_name)" in target["expr"]
+            for target in targets
+        )
+
+    def test_unwrapped_range_aggregations_group_by_operator_dimension(self) -> None:
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        context_row = _decision_row(dashboard, "context-compaction")
+        context_panel = next(panel for panel in context_row["panels"] if panel["id"] == 7)
+        tool_row = _decision_row(dashboard, "tool-health")
+        size_panel = next(panel for panel in tool_row["panels"] if panel["id"] == 21)
+
+        assert all("by (session_id)" in target["expr"] for target in context_panel["targets"])
+        assert "by (tool_name)" in next(
+            target["expr"] for target in size_panel["targets"] if target["refId"] == "B"
+        )
+
+    def test_compaction_panel_queries_the_compact_query_source(self) -> None:
+        catalogue = _load_json(SIGNAL_CATALOGUE)
+        dashboard = _load_json(GRAFANA_DASHBOARD)
+        context_row = _decision_row(dashboard, "context-compaction")
+        targets = [target for panel in context_row["panels"] for target in panel.get("targets", [])]
+
+        assert any(
+            target["catalogueRef"] == "events:api_request"
+            and 'query_source="compact"' in target["expr"]
+            for target in targets
+        )
+        assert "compaction" not in catalogue["capture"]["missing_dimensions"]
 
     def test_loki_selectors_contain_only_index_labels(self) -> None:
         """Structured metadata inside ``{...}`` matches nothing and fails silently (#543)."""

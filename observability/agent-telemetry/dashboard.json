@@ -101,7 +101,7 @@
           "type": "timeseries",
           "title": "Input, output, cache-read, and cache-creation tokens per request",
           "datasource": {"type": "loki", "uid": "${logs}"},
-          "gridPos": {"h": 9, "w": 24, "x": 0, "y": 10},
+          "gridPos": {"h": 9, "w": 16, "x": 0, "y": 10},
           "targets": [
             {
               "refId": "A",
@@ -132,6 +132,22 @@
               "catalogueRef": "events:api_request"
             }
           ]
+        },
+        {
+          "id": 20,
+          "type": "timeseries",
+          "title": "API request round trips by session",
+          "datasource": {"type": "loki", "uid": "${logs}"},
+          "gridPos": {"h": 9, "w": 8, "x": 16, "y": 10},
+          "targets": [
+            {
+              "refId": "A",
+              "queryType": "range",
+              "expr": "sum by (session_id) (count_over_time({service_name=\"claude-code\"} | event_name=\"api_request\" [${__interval}]))",
+              "legendFormat": "{{session_id}} requests",
+              "catalogueRef": "events:api_request"
+            }
+          ]
         }
       ]
     },
@@ -146,27 +162,48 @@
         {
           "id": 7,
           "type": "timeseries",
-          "title": "Context-size proxy: input plus cache tokens per request",
-          "datasource": {"type": "prometheus", "uid": "${metrics}"},
+          "title": "Context tokens per API request (p50, p95, max)",
+          "datasource": {"type": "loki", "uid": "${logs}"},
           "gridPos": {"h": 8, "w": 16, "x": 0, "y": 20},
           "targets": [
             {
               "refId": "A",
-              "expr": "sum by (session_id) (increase(claude_code_token_usage_tokens_total{session_id=~\"$session\", type=~\"input|cacheRead|cacheCreation\"}[$__rate_interval]))",
-              "legendFormat": "{{session_id}} context proxy",
-              "catalogueRef": "metrics:claude_code.token.usage"
+              "queryType": "range",
+              "expr": "quantile_over_time(0.50, {service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval]) by (session_id)",
+              "legendFormat": "p50 context tokens",
+              "catalogueRef": "events:api_request"
+            },
+            {
+              "refId": "B",
+              "queryType": "range",
+              "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval]) by (session_id)",
+              "legendFormat": "p95 context tokens",
+              "catalogueRef": "events:api_request"
+            },
+            {
+              "refId": "C",
+              "queryType": "range",
+              "expr": "max_over_time({service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | label_format context_tokens=\"{{ add .input_tokens .cache_read_tokens .cache_creation_tokens }}\" | unwrap context_tokens [$__interval]) by (session_id)",
+              "legendFormat": "max context tokens",
+              "catalogueRef": "events:api_request"
             }
           ]
         },
         {
           "id": 8,
-          "type": "text",
-          "title": "Compaction availability",
+          "type": "timeseries",
+          "title": "Compacted API requests by session",
+          "datasource": {"type": "loki", "uid": "${logs}"},
           "gridPos": {"h": 8, "w": 8, "x": 16, "y": 20},
-          "options": {
-            "mode": "markdown",
-            "content": "Compaction was not observed in the bounded live capture. It is unavailable, not zero. Re-capture the catalogue after the first compacted session before adding a query."
-          }
+          "targets": [
+            {
+              "refId": "A",
+              "queryType": "range",
+              "expr": "sum by (session_id) (count_over_time({service_name=\"claude-code\"} | event_name=\"api_request\" | session_id=~\"$session\" | query_source=\"compact\" [$__interval]))",
+              "legendFormat": "{{session_id}} compacted requests",
+              "catalogueRef": "events:api_request"
+            }
+          ]
         }
       ]
     },
@@ -183,7 +220,7 @@
           "type": "timeseries",
           "title": "Tool volume and failures",
           "datasource": {"type": "loki", "uid": "${logs}"},
-          "gridPos": {"h": 8, "w": 12, "x": 0, "y": 29},
+          "gridPos": {"h": 8, "w": 8, "x": 0, "y": 29},
           "targets": [
             {
               "refId": "A",
@@ -206,7 +243,7 @@
           "type": "timeseries",
           "title": "Tool active and wall duration",
           "datasource": {"type": "loki", "uid": "${logs}"},
-          "gridPos": {"h": 8, "w": 12, "x": 12, "y": 29},
+          "gridPos": {"h": 8, "w": 8, "x": 8, "y": 29},
           "targets": [
             {
               "refId": "A",
@@ -221,6 +258,39 @@
               "legendFormat": "{{type}} active seconds",
               "datasource": {"type": "prometheus", "uid": "${metrics}"},
               "catalogueRef": "metrics:claude_code.active_time.total"
+            }
+          ]
+        },
+        {
+          "id": 21,
+          "type": "timeseries",
+          "title": "Tool result size by tool",
+          "description": "The p95 series uses the right axis so it remains readable next to total bytes.",
+          "datasource": {"type": "loki", "uid": "${logs}"},
+          "gridPos": {"h": 8, "w": 8, "x": 16, "y": 29},
+          "fieldConfig": {
+            "defaults": {},
+            "overrides": [
+              {
+                "matcher": {"id": "byName", "options": "p95 bytes"},
+                "properties": [{"id": "custom.axisPlacement", "value": "right"}]
+              }
+            ]
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "queryType": "range",
+              "expr": "sum by (tool_name) (sum_over_time({service_name=\"claude-code\"} | event_name=\"tool_result\" | session_id=~\"$session\" | unwrap tool_result_size_bytes [$__interval]))",
+              "legendFormat": "{{tool_name}} total bytes",
+              "catalogueRef": "events:tool_result"
+            },
+            {
+              "refId": "B",
+              "queryType": "range",
+              "expr": "quantile_over_time(0.95, {service_name=\"claude-code\"} | event_name=\"tool_result\" | session_id=~\"$session\" | unwrap tool_result_size_bytes [$__interval]) by (tool_name)",
+              "legendFormat": "p95 bytes",
+              "catalogueRef": "events:tool_result"
             }
           ]
         }
