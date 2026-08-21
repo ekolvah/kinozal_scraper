@@ -489,6 +489,18 @@ class TestLedgerMigration:
         assert anomalies == []
         assert restored["issue-legacy"].tool_calls is None
         assert restored["issue-legacy"].read_calls is None
+        migrated, read_anomalies = parse_ledger(ledger_lines(restored))
+        assert read_anomalies == []
+        assert migrated["issue-legacy"].tool_calls is None
+
+    def test_schema_3_missing_interaction_metric_is_dropped(self) -> None:
+        line = json.loads(ledger_lines({"issue-current": _stats("issue-current")})[0])
+        line.pop("tool_calls")
+
+        restored, anomalies = parse_ledger([json.dumps(line)])
+
+        assert restored == {}
+        assert [anomaly.kind for anomaly in anomalies] == ["ledger_schema"]
 
     def test_current_interaction_metrics_round_trip(self) -> None:
         records, _ = parse_lines(
