@@ -42,6 +42,7 @@ def transform_payload(source: str) -> str:
     payload = _CITATION.sub("", payload)
     payload = _LINK.sub(_drop_relative_link, payload)
     payload = _PERSONA.sub(r"persona: \1", payload)
+    payload = payload.replace("Read the contract at the link above", "Read the contract named above")
     payload = payload.replace("# /plan N", "# /agent-process:plan N")
     payload = payload.replace("# /implement N", "# /agent-process:implement N")
     return payload.replace("/implement $ARGUMENTS", "/agent-process:implement $ARGUMENTS")

@@ -90,3 +90,7 @@ def test_plugin_specific_rewrites_preserve_claude_builtins() -> None:
     assert "Agent development process §Planner Runbook" in plan
     assert "# /agent-process:implement N" in implement
     assert "/compact" in implement
+    for agent in ("discovery.md", "architect-reviewer.md"):
+        content = (_PLUGIN / "agents" / agent).read_text(encoding="utf-8")
+        assert "Read the contract at the link above" not in content
+        assert "Read the contract named above" in content

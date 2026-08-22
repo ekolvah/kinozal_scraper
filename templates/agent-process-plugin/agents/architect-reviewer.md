@@ -17,7 +17,7 @@ load always-load rules, so **read the canonical source yourself** rather than wo
 
 Procedure:
 
-1. Read the contract at the link above, including the goal function and
+1. Read the contract named above, including the goal function and
    Principles
    in full (§I–§VII, not from memory).
 2. Read the plan or issue body under review in full.

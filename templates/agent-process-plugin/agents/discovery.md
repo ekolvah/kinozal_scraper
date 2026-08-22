@@ -17,7 +17,7 @@ source yourself** rather than working from a copy (a copy is duplicate content t
 
 Procedure:
 
-1. Read the contract at the link above, plus the `## Evidence` shape and the capture table in
+1. Read the contract named above, plus the `## Evidence` shape and the capture table in
    the same document's §Issue contract.
 2. Read the issue body under discovery in full.
 3. Run the capture the contract selects, and write the `## Evidence` block in the shape defined
