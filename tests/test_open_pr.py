@@ -23,8 +23,8 @@ from scripts.open_pr import (
     LINKAGE_ATTEMPTS,
     LINKAGE_DELAY_S,
     ensure_closes_line,
-    has_substantive_body,
     has_closing_reference,
+    has_substantive_body,
     issue_number_from_branch,
     main,
 )
