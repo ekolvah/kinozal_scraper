@@ -291,11 +291,11 @@ class TestTemplateRenders:
             path for path in rendered_payload.iterdir() if "claude_adapter_installed" in path.name
         ]
 
-    def test_default_render_omits_target_wide_language_policy(
-        self, rendered_payload: Path
-    ) -> None:
+    def test_default_render_omits_target_wide_language_policy(self, rendered_payload: Path) -> None:
         present = [
-            path for path in _TARGET_WIDE_LANGUAGE_POLICY_ARTIFACTS if (rendered_payload / path).exists()
+            path
+            for path in _TARGET_WIDE_LANGUAGE_POLICY_ARTIFACTS
+            if (rendered_payload / path).exists()
         ]
         assert not present, f"target-wide language-policy artifacts were exported: {present}"
 
