@@ -70,9 +70,11 @@ Every external service is hidden behind a `typing.Protocol` and injected into
 callers. Production wires real clients in `if __name__ == "__main__":` blocks;
 tests wire in-memory doubles via the same constructor signature.
 
-Each external dependency gets its own Protocol boundary. Implementations receive
-ready clients, never credentials; tests use in-memory doubles, not mocks of
-internal functions.
+Each external dependency gets its own Protocol boundary, documented with the
+project's current boundary names in a project-local runtime document.
+Implementations receive ready clients, never credentials; tests use in-memory
+doubles, not mocks of internal functions. Production entry points wire concrete
+clients, while the pipeline and extraction helpers are called directly in tests.
 
 **Rationale:** mocking internal logic lets production drift undetected; Protocol
 doubles exercise the real code path with deterministic external state.
@@ -88,6 +90,9 @@ delivery transport itself.
 
 Persisted dedupe state MUST reflect confirmed delivery. If the delivery channel
 is unavailable, the run is red with enough logs to identify missed items.
+Pipelines that can partition send results must store only successfully delivered
+items. Persisting before notification is allowed only when a delivery failure is
+still an explicit operational failure.
 
 **Rationale:** users must be able to distinguish "there was no news" from "the
 system failed to deliver news" — a silent green run that does neither destroys
@@ -108,9 +113,11 @@ The same rule applies after extraction: failed notification delivery,
 summarization failures, and failed technical alerts MUST NOT be collapsed into
 "no new items/messages."
 
-Forbid swallowed parse errors and fail-open branches. CI enforces no blind
-`except` and `logger.exception` in handlers; an already-visible broad catch
-needs an inline rationale, and configuration may not disable the rule.
+Forbid swallowed parse errors and fail-open branches. CI enforces ruff `BLE001`
+(no blind `except`) and `TRY400` (`logger.exception` in handlers); an
+already-visible broad catch needs an inline `# noqa: BLE001` rationale.
+Configuration-level disabling through `select`, `ignore`, or
+`per-file-ignores` is blocked by `tests/test_ruff_silence_rules.py`.
 
 **Rationale:** silent degradation is the worst kind of bug — a visible gap or a
 red CI badge is a forcing function for someone to look.
@@ -136,6 +143,8 @@ is data loss, not preservation), the fix boundaries compared, and the
 production call path traced before claiming a narrow fix needs another fetch.
 Captured bytes become a committed regression fixture only when a
 production-behaviour test reads them in the same commit.
+The regression test exercises both the valid and invalid records through one
+same-input regression test, so preservation is proven rather than inferred.
 
 No workarounds, shims, retries, broader try/except, or CI-bypass flags are
 accepted as fixes when the underlying mechanism is not understood. If the
@@ -154,7 +163,9 @@ placeholders, non-positive limits, missing required fields, mismatched
 schemas.
 
 A central validator function is the gate. When a new class of config error
-becomes possible, the validator MUST grow a check for it in the same PR.
+becomes possible, the validator MUST grow a check for it in the same PR; it
+must run at load time rather than defer a known invalid configuration to a
+scheduled production run.
 
 **Rationale:** a config-validation gap otherwise surfaces in the next
 scheduled run, days after the typo was introduced.

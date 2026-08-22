@@ -50,6 +50,7 @@ file a test module happens to also read.
 | `docs/adr/template.md` | generic as-is | None — the stock MADR template; `tests/test_adr_records.py:160` hard-asserts it exists, so it is a required input of an exported test, not optional narrative |
 | `.github/pull_request_template.md` | generic templated | Repository name in the header comment (line 2); the section structure (`## Summary`, `## Agent record`, `## Test plan`, `## Risk & Rollback`, `## Docs touched`) mirrors the issue contract, which is process vocabulary |
 | `pyproject.toml` | generic templated | Supplies the portable default's `ruff` line length and pytest discovery paths. It deliberately excludes the source package name and import contracts; a target owns those product-specific settings |
+| `tests/test_ruff_silence_rules.py` | generic as-is | Pins the portable `ruff` guard: `BLE` and `TRY400` stay selected and cannot be silently disabled through `ignore` or `per-file-ignores` |
 | `tests/test_hooks.py`, `tests/test_navigation_policy.py`, `tests/test_codex_hooks.py`, `tests/test_review_gate.py`, `tests/test_adr_records.py`, `tests/test_agent_orchestrator.py`, `tests/test_issue_branch.py`, `tests/test_branch_protection.py`, `tests/test_ci_check.py` | generic as-is | None as a set — each test gates the row above with the matching name where that input is exported. Integration classes skip when their optional workflow, hook, or Claude-adapter input is absent; their pure script checks remain active. A row marked "generic templated" above (`check_branch_protection.py`, `ci_check.py`) still exports its test as-is, because the test itself asserts the templated *mechanism*, not the templated *value*. Scope note: this row and the file-gate rows around it are the process contract's docs/scripts/adapters core and the tests that directly gate them — it is not a claim that every fixture, `conftest.py`, or CLI-flag test in `tests/` has a row; §Manifest scope (top of file) states that boundary explicitly |
 | `tests/test_doc_links.py`, `tests/test_doc_headers.py`, `tests/test_doc_narrative.py` | generic templated | Each hard-codes documentation directories that include the Copier-delivered Layer 1 `.claude/rules` path. A target without the Claude adapter must drop it; a Claude-adapter target includes that rules directory. The templated field is therefore the directory list, selected by the explicit adapter answer. |
 
@@ -153,7 +154,7 @@ resulting payload contains no malformed citation-strip prose.
 
 ## Size budget for the exported core
 
-**Decision: cap the exported combined size of `agent-process.md` + `principles.md` at 30 KB.**
+**Decision: cap the exported combined size of `agent-process.md` + `principles.md` at 32 KB.**
 Today the two are 40,800 B (`agent-process.md`) + 15,821 B (`principles.md`) ≈ 55 KB combined,
 sized for this repository's own history — precedent narrative like "twice ignored as prose (#458,
 #465)" earns its place here because it explains why a rule is an exit code and not a checklist item,
@@ -161,5 +162,8 @@ for readers who already share that history, but a new project's readers do not. 
 same operative-rule-plus-one-sentence-rationale split the Canonical-home rule already uses for
 internal moves (`project-map.md` §Canonical-home rule), not a blanket trim of rules. The qualitative
 form is already gated where it is authored (`tests/test_doc_narrative.py`); the copier-template render
-guard now verifies the concrete 30 KB payload. The export keeps operative rules plus one rationale
-sentence rather than repository-history narrative.
+guard now verifies the concrete 32 KB payload. The additional 2 KB restores
+operational rules that the earlier compression had cut: delivery-state
+preservation, the machine-enforced visibility guard, same-input evidence tests,
+and the discovery/PR-report contracts. The export keeps operative rules plus one
+rationale sentence rather than repository-history narrative.

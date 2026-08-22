@@ -52,6 +52,15 @@ Exactly one type label is a gate: zero or several is a gap the **maintainer**
 fixes with `gh issue edit <N> --add-label <type>` — a planner may not change
 labels (§Planner runbook).
 
+| Type label | Adds |
+| --- | --- |
+| `bug` | `Evidence` |
+| `chore`, `ci`, `documentation`, `enhancement`, `perf`, `refactor`, `security`, `testing` | `Prior art` |
+
+The validator derives the required set from that single type label. A change
+class is catalogue data rather than a branch an agent has to remember, and a
+passing issue reports whether RED and architect review are required.
+
 **`## Evidence`** (added by `bug`) records a completed observation of the
 external system, used when the plan describes how to read, parse, or classify
 external data:
@@ -91,6 +100,12 @@ collect evidence:
 The safety flag is a claim, not a sanitizer — inspect the payload and never
 commit credentials or private data; each route reads without a write, a
 send, or a full pipeline run.
+
+The paired test must send the same captured input through one pipeline run and
+prove that the valid record remains while the invalid record changes. Before
+claiming that a narrow boundary needs a new fetch, trace the current production
+path. The validator checks the command, safe path, record fields, and failed
+capture output; it does not prove the source fact itself.
 
 If no safe read-only route exists, do not improvise with a side-effecting
 production entry point. A failed capture records `status: failed` with a
@@ -137,14 +152,17 @@ a planner rather than guessing.
 
 ## Discovery runbook
 
-Discovery runs before planning for a bug whose Evidence is unaccepted. It may
+Discovery runs before planning for a bug whose Evidence is unaccepted. It
+returns the Evidence block to the planner, who records it in the issue, so the
+producer of an observation does not also publish it. It may
 use only the read-only routes above and write a working-tree fixture; it may
 not edit the issue, branch, or production code. Observe the live system and
 fill the Evidence fields (or record `n/a: <reason>`); retry one failed capture,
 then escalate. Validate the block with
 `python scripts/validate_issue_sections.py <N> --evidence-only --body-file <path>`.
 The fixture stays untracked unless the RED test reads it. `discovery: <carrier>`
-is attribution, not proof.
+is attribution, not proof: a declared carrier can be questioned, but the gate
+cannot distinguish a fabricated observation from an honest one.
 
 ## Planner runbook
 
@@ -174,8 +192,8 @@ only its own interface.
 update` lists documents or states behaviour does not change. `## ADR`
 follows this project's own cost-of-change filter for where a decision's
 rationale should live; `none: <reason>` is a routine answer, and a created
-record also joins `## Docs to update`. A planner does not write
-implementation code, create the branch, or change labels.
+record also joins `## Docs to update`. A planner does not write implementation
+code, create the branch, or change labels.
 
 ## Architect review contract
 
@@ -243,8 +261,9 @@ medium, or low — wherever the reviewer is unsure of the finding itself:
    `In Progress`). It writes and proves failing tests, commits RED before
    production logic, implements the agreed outline, updates docs/ADRs, and
    runs the local CI gate once in the foreground.
-4. Create the PR only with `python scripts/open_pr.py`, which verifies the
-   issue closing reference; replace an existing PR body only with
+4. Create the PR only with `python scripts/open_pr.py --body-file <report>`;
+   a substantive UTF-8 report verifies the issue closing reference. Replace an
+   existing PR body only with
    `python -m scripts.update_pr_body <PR> --body-file <path>`. Fix CI
    findings for up to three iterations, then loop: after every push run
    `gh pr checks <PR> --watch`, inspect a failed run with
@@ -315,7 +334,7 @@ the required context or treat the PR body as merge authority.
 The PR template records implementer/reviewer, CI evidence, route, invocation
 counts, fixer revisions, and skips/escalations. `roles.yaml` is the catalogue;
 `python scripts/agent_orchestrator.py <state.json>` is read-only advice, never
-authorization. Its default route is discovery → planner → architect review →
+authorization: it does not replace deterministic CI or branch protection. Its default route is discovery → planner → architect review →
 implementer → CI → PR review → fixer → human merge; an exhausted cap escalates.
 Copy `.agents/orchestration/state.example.json` for a local decision.
 

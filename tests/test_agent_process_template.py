@@ -245,7 +245,8 @@ class TestTemplateRenders:
         self, rendered_payload: Path, path: str, markers: tuple[str, ...]
     ) -> None:
         content = (rendered_payload / path).read_text(encoding="utf-8")
-        missing = [marker for marker in markers if marker not in content]
+        normalized = re.sub(r"\s+", " ", content)
+        missing = [marker for marker in markers if marker not in normalized]
         assert not missing, f"{path} lost operative export rules: {missing}"
 
     def test_rendered_mindset_retains_red_green_recovery_recipe(self, tmp_path: Path) -> None:
