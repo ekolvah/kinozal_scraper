@@ -217,6 +217,55 @@ class TestTemplateRenders:
         )
         assert rendered_size <= _exported_core_size_budget()
 
+    @pytest.mark.parametrize(
+        ("path", "markers"),
+        [
+            (
+                "docs/architecture/principles.md",
+                (
+                    "project-local runtime document",
+                    "must store only successfully delivered items",
+                    "`tests/test_ruff_silence_rules.py`",
+                    "one same-input regression test",
+                    "must run at load time rather than defer a known invalid configuration",
+                ),
+            ),
+            (
+                "docs/architecture/agent-process.md",
+                (
+                    "catalogue data rather than a branch an agent has to remember",
+                    "The paired test must send the same captured input through one pipeline run",
+                    "returns the Evidence block to the planner",
+                    "`python scripts/open_pr.py --body-file <report>`",
+                ),
+            ),
+        ],
+    )
+    def test_rendered_architecture_docs_retain_operational_rules(
+        self, rendered_payload: Path, path: str, markers: tuple[str, ...]
+    ) -> None:
+        content = (rendered_payload / path).read_text(encoding="utf-8")
+        normalized = re.sub(r"\s+", " ", content)
+        missing = [marker for marker in markers if marker not in normalized]
+        assert not missing, f"{path} lost operative export rules: {missing}"
+
+    def test_rendered_mindset_retains_red_green_recovery_recipe(self, tmp_path: Path) -> None:
+        data_file = tmp_path / "answers.yml"
+        data_file.write_text("claude_adapter_installed: true\n", encoding="utf-8")
+        rendered = tmp_path / "claude-adapter"
+        copied = _run_copier_copy(rendered, data_file=data_file)
+        assert copied.returncode == 0, copied.stderr
+
+        content = (rendered / ".claude" / "rules" / "mindset.md").read_text(encoding="utf-8")
+        markers = (
+            "`/compact <focus>`",
+            "`git branch --show-current`",
+            "one `gh issue view <N>`",
+            "do not add a second remedy for the same phase",
+        )
+        missing = [marker for marker in markers if marker not in content]
+        assert not missing, f"mindset lost RED-to-GREEN recovery rules: {missing}"
+
     def test_copier_records_source_and_answers(self, rendered_payload: Path) -> None:
         answers = rendered_payload / ".copier-answers.yml"
         assert answers.is_file(), "Copier output must retain its source and selected answers"
