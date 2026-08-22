@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +23,7 @@ from scripts.open_pr import (
     LINKAGE_ATTEMPTS,
     LINKAGE_DELAY_S,
     ensure_closes_line,
+    has_substantive_body,
     has_closing_reference,
     issue_number_from_branch,
     main,
@@ -67,6 +69,15 @@ class TestEnsureClosesLine:
         body = "## Summary\n\nCloses #\n"
         result = ensure_closes_line(body, 320)
         assert "Closes #320" in result
+
+
+class TestHasSubstantiveBody:
+    def test_rejects_blank_and_closing_line_only_bodies(self) -> None:
+        assert has_substantive_body(" \n\t\n", 320) is False
+        assert has_substantive_body("\nCloses #320\n", 320) is False
+
+    def test_accepts_report_content_alongside_existing_closing_line(self) -> None:
+        assert has_substantive_body("Closes #320\n\n## Summary\n\nDid it.\n", 320) is True
 
 
 class TestHasClosingReference:
@@ -146,6 +157,50 @@ class _GhDispatcher:
 
 
 class TestMainVerification:
+    def test_rejects_new_pr_without_body_file_before_creating(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None)
+        monkeypatch.setattr(subprocess, "run", disp)
+
+        with pytest.raises(SystemExit) as exc:
+            main(["--title", "T"])
+
+        assert exc.value.code == 2
+        assert "--body-file" in capsys.readouterr().err
+        assert not any(call[:3] == ["gh", "pr", "create"] for call in disp.calls)
+
+    def test_rejects_link_only_body_before_creating(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+    ) -> None:
+        body_file = tmp_path / "body.md"
+        body_file.write_text("Closes #320\n", encoding="utf-8")
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None)
+        monkeypatch.setattr(subprocess, "run", disp)
+
+        with pytest.raises(SystemExit) as exc:
+            main(["--title", "T", "--body-file", str(body_file)])
+
+        assert exc.value.code == 2
+        assert "substantive" in capsys.readouterr().err
+        assert not any(call[:3] == ["gh", "pr", "create"] for call in disp.calls)
+
+    def test_creates_new_pr_from_substantive_body_file(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        body_file = tmp_path / "body.md"
+        body_file.write_text("## Summary\n\nDid it.\n", encoding="utf-8")
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None)
+        monkeypatch.setattr(subprocess, "run", disp)
+
+        main(["--title", "T", "--body-file", str(body_file)])
+
+        create = next(call for call in disp.calls if call[:3] == ["gh", "pr", "create"])
+        assert create[create.index("--body") + 1].count("Closes #320") == 1
+
     def test_exits_1_when_linkage_empty(
         self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:

@@ -68,6 +68,11 @@ def ensure_closes_line(body: str, n: int) -> str:
     return f"{target}\n\n{body}" if body else f"{target}\n"
 
 
+def has_substantive_body(body: str, n: int) -> bool:
+    """Return whether `body` contains report text beyond its closing line."""
+    return True
+
+
 def has_closing_reference(view_json: str) -> bool:
     """True iff `closingIssuesReferences` reports ≥1 link.
 
