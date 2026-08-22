@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """Create a PR that reliably auto-closes its issue, or fail visibly (#320).
 
-Usage: python scripts/open_pr.py --title "<title>" [--body-file <path>]
+Usage: python scripts/open_pr.py --title "<title>" --body-file <path>
+
+`--body-file` is required to create a new PR. It remains optional when a PR is
+already open for the branch: that idempotent path verifies or repairs only the
+issue-closing line and must not replace an existing report from a stale file.
 
 Root cause it fixes (precedent #319 → issue #140 stayed open after merge):
 PR→issue auto-linking hung on two fragile assumptions in the implementer prose:
@@ -66,6 +70,12 @@ def ensure_closes_line(body: str, n: int) -> str:
     if any(line.strip() == target for line in body.splitlines()):
         return body
     return f"{target}\n\n{body}" if body else f"{target}\n"
+
+
+def has_substantive_body(body: str, n: int) -> bool:
+    """Return whether `body` contains report text beyond its closing line."""
+    target = f"Closes #{n}"
+    return any(line.strip() and line.strip() != target for line in body.splitlines())
 
 
 def has_closing_reference(view_json: str) -> bool:
@@ -186,7 +196,8 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Open a PR that auto-closes its issue (#320).")
     parser.add_argument("--title", required=True)
     parser.add_argument(
-        "--body-file", help="path to PR body (Summary prose); Closes #N is forced in"
+        "--body-file",
+        help="UTF-8 PR report; required when this invocation creates a new PR",
     )
     ns = parser.parse_args(argv)
 
@@ -207,10 +218,25 @@ def main(argv: list[str] | None = None) -> None:
         if fixed != current_body:
             _edit_pr_body(url, fixed)
     else:
-        body = ""
-        if ns.body_file:
+        if ns.body_file is None:
+            print(
+                "error: --body-file is required to create a new PR report; "
+                "an existing PR may be re-run without it.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        try:
             with open(ns.body_file, encoding="utf-8") as handle:
                 body = handle.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"error: cannot read --body-file {ns.body_file!r}: {exc}", file=sys.stderr)
+            sys.exit(2)
+        if not has_substantive_body(body, n):
+            print(
+                f"error: --body-file must contain a substantive PR report beyond `Closes #{n}`.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
         url = _create_pr(ns.title, ensure_closes_line(body, n))
 
     if not _linkage_confirmed(url):
