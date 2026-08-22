@@ -233,8 +233,7 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit(2)
         if not has_substantive_body(body, n):
             print(
-                "error: --body-file must contain a substantive PR report beyond "
-                f"`Closes #{n}`.",
+                f"error: --body-file must contain a substantive PR report beyond `Closes #{n}`.",
                 file=sys.stderr,
             )
             sys.exit(2)
