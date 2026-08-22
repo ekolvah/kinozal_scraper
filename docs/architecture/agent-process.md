@@ -435,7 +435,8 @@ instruction to shorten its own output.
    failing tests, then commits RED before production logic. Implement the
    agreed outline, update required documentation and ADRs, and run the local CI
    gate once in the foreground.
-4. Create the PR only with `python scripts/open_pr.py`; it verifies the issue
+4. Create the PR only with `python scripts/open_pr.py --body-file <report>`;
+   a substantive UTF-8 report is required for a new PR and it verifies the issue
    closing reference. Replace an existing delivery PR report only with
    `python -m scripts.update_pr_body <PR> --body-file <path>`: it re-applies the
    branch-derived closing line and verifies the resulting linkage. A normal

@@ -30,6 +30,13 @@ from scripts.open_pr import (
 )
 
 
+@pytest.fixture
+def report_body_file(tmp_path: Path) -> str:
+    path = tmp_path / "report.md"
+    path.write_text("## Summary\n\nDid it.\n", encoding="utf-8")
+    return str(path)
+
+
 class TestIssueNumberFromBranch:
     def test_extracts_number_from_issue_branch(self) -> None:
         assert issue_number_from_branch("issue-320-slug") == 320
@@ -202,21 +209,27 @@ class TestMainVerification:
         assert create[create.index("--body") + 1].count("Closes #320") == 1
 
     def test_exits_1_when_linkage_empty(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        report_body_file: str,
     ) -> None:
         # Linkage never appeared (all reads are empty) → a visible failure (§IV) with the PR URL.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=99)
         monkeypatch.setattr(subprocess, "run", disp)
         monkeypatch.setattr("time.sleep", lambda *_: None)  # do not wait for real backoff
         with pytest.raises(SystemExit) as exc:
-            main(["--title", "T"])
+            main(["--title", "T", "--body-file", report_body_file])
         assert exc.value.code == 1
         err = capsys.readouterr().err
         assert "999" in err  # PR URL in the message
         assert "#320" in err  # remediation identifies the issue
 
     def test_failed_refs_read_is_visible_not_reported_as_missing_link(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        report_body_file: str,
     ) -> None:
         """A failed `gh pr view` means “linkage is unknown”, not “linkage is absent” (#410).
 
@@ -241,14 +254,17 @@ class TestMainVerification:
         monkeypatch.setattr(subprocess, "run", failing_refs_read)
         monkeypatch.setattr("time.sleep", lambda *_: None)
         with pytest.raises(SystemExit) as exc:
-            main(["--title", "T"])
+            main(["--title", "T", "--body-file", report_body_file])
         assert exc.value.code == 2, "infra failure must not share the code of a verdict"
         err = capsys.readouterr().err
         assert "rate limit" in err, "the real cause must reach the operator"
         assert "linkage is unknown, not absent" in err, "must not read as a missing link"
 
     def test_early_success_then_read_failures_is_unknown_not_absent(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        report_body_file: str,
     ) -> None:
         """Mixed case: one early successful read + a series of failures (#410).
 
@@ -273,20 +289,22 @@ class TestMainVerification:
         monkeypatch.setattr(subprocess, "run", flaky)
         monkeypatch.setattr("time.sleep", lambda *_: None)
         with pytest.raises(SystemExit) as exc:
-            main(["--title", "T"])
+            main(["--title", "T", "--body-file", report_body_file])
         assert exc.value.code == 2, "an unobserved final state is not a verdict"
         err = capsys.readouterr().err
         assert "linkage is unknown, not absent" in err
         assert "NOT linked" not in err
 
-    def test_retries_linkage_until_populated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_retries_linkage_until_populated(
+        self, monkeypatch: pytest.MonkeyPatch, report_body_file: str
+    ) -> None:
         # Regression from dogfooding PR #321: GitHub computes closingIssuesReferences
         # asynchronously after create—the first read is empty, but linkage is CORRECT.
         # main() must poll again rather than exit 1 on the first race.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=1)
         monkeypatch.setattr(subprocess, "run", disp)
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        main(["--title", "T"])  # must not raise SystemExit
+        main(["--title", "T", "--body-file", report_body_file])  # must not raise SystemExit
         refs_reads = sum(
             1
             for c in disp.calls
@@ -309,12 +327,14 @@ class TestMainVerification:
         edit_cmd = next(c for c in disp.calls if c[:3] == ["gh", "pr", "edit"])
         assert any("Closes #320" in part for part in edit_cmd)
 
-    def test_creates_new_pr_when_no_open_pr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_creates_new_pr_when_no_open_pr(
+        self, monkeypatch: pytest.MonkeyPatch, report_body_file: str
+    ) -> None:
         # Fix #4: `gh pr list --state open` does not see a CLOSED PR for the same branch →
         # an empty list → the script creates a new one rather than attaching to a dead PR.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, refs_empty_reads=0)
         monkeypatch.setattr(subprocess, "run", disp)
-        main(["--title", "T"])
+        main(["--title", "T", "--body-file", report_body_file])
         joined = disp.cmds()
         assert any(c.startswith("gh pr create") for c in joined), "должен создать новый PR"
         assert not any(c.startswith("gh pr edit") for c in joined), (
@@ -322,14 +342,17 @@ class TestMainVerification:
         )
 
     def test_exits_1_when_create_fails(
-        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        report_body_file: str,
     ) -> None:
         # `gh pr create` failed (no upstream / a PR already exists / network) → visible exit 1,
         # not a silent continuation to read linkage from an empty URL.
         disp = _GhDispatcher(branch="issue-320-x", existing_pr=None, create_fails=True)
         monkeypatch.setattr(subprocess, "run", disp)
         with pytest.raises(SystemExit) as exc:
-            main(["--title", "T"])
+            main(["--title", "T", "--body-file", report_body_file])
         assert exc.value.code == 1
         assert "create" in capsys.readouterr().err.lower()
 
@@ -348,7 +371,7 @@ class TestLinkageBudget:
     retry. The budget was expanded for the observed lag (~40s)."""
 
     def test_confirms_linkage_appearing_beyond_old_budget(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, report_body_file: str
     ) -> None:
         # Linkage appears on the ninth read (refs_empty_reads=8)—beyond the
         # old budget=5 (where main() would raise a false-positive SystemExit),
@@ -357,7 +380,7 @@ class TestLinkageBudget:
         disp = _GhDispatcher(branch="issue-352-x", existing_pr=None, refs_empty_reads=8)
         monkeypatch.setattr(subprocess, "run", disp)
         monkeypatch.setattr("time.sleep", lambda *_: None)
-        main(["--title", "T"])  # must not raise SystemExit
+        main(["--title", "T", "--body-file", report_body_file])  # must not raise SystemExit
         refs_reads = sum(
             1
             for c in disp.calls
