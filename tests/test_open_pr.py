@@ -195,6 +195,35 @@ class TestMainVerification:
         assert "substantive" in capsys.readouterr().err
         assert not any(call[:3] == ["gh", "pr", "create"] for call in disp.calls)
 
+    @pytest.mark.parametrize(
+        ("body_path", "contents", "expected_error"),
+        [
+            ("missing.md", None, "cannot read --body-file"),
+            ("invalid-utf8.md", b"\xff", "utf-8"),
+        ],
+    )
+    def test_rejects_unreadable_report_before_creating(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        tmp_path: Path,
+        body_path: str,
+        contents: bytes | None,
+        expected_error: str,
+    ) -> None:
+        report = tmp_path / body_path
+        if contents is not None:
+            report.write_bytes(contents)
+        disp = _GhDispatcher(branch="issue-320-x", existing_pr=None)
+        monkeypatch.setattr(subprocess, "run", disp)
+
+        with pytest.raises(SystemExit) as exc:
+            main(["--title", "T", "--body-file", str(report)])
+
+        assert exc.value.code == 2
+        assert expected_error in capsys.readouterr().err
+        assert not any(call[:3] == ["gh", "pr", "create"] for call in disp.calls)
+
     def test_creates_new_pr_from_substantive_body_file(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:

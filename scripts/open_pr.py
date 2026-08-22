@@ -228,7 +228,7 @@ def main(argv: list[str] | None = None) -> None:
         try:
             with open(ns.body_file, encoding="utf-8") as handle:
                 body = handle.read()
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             print(f"error: cannot read --body-file {ns.body_file!r}: {exc}", file=sys.stderr)
             sys.exit(2)
         if not has_substantive_body(body, n):
