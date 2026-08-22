@@ -1,0 +1,35 @@
+# Mindset — Claude harness operating mode
+
+**Question this document answers:** which token tactics are specific to the Claude
+harness in this project's main session. **Do not paraphrase a principle, goal
+function, or procedural rule here—link to it only.**
+
+Always-load (without `paths:`): the tactics are needed in every session, not
+only when working with tests.
+
+## Where things live
+
+- **Goal function** (three priorities) and “scripts > instructions” —
+  [`principles.md`](../../docs/architecture/principles.md#goal-function).
+- **Principles §I–VII** — [`principles.md`](../../docs/architecture/principles.md):
+  root cause → §V, visibility → §IV, test-first → §I, simplicity/minimal-diff → §VII.
+- **Procedure** (roles, branch, PR discipline, gates, planner runbook, and
+  architect-review contract) —
+  [`agent-process.md`](../../docs/architecture/agent-process.md).
+- **Tests**: consult [`testing.md`](testing.md) before choosing the test level;
+  it is path-scoped (`tests/**`) and may load only after the strategy is chosen.
+
+## Claude harness token tactics
+
+- **Reading files**: use the narrowest search or read before a whole-file read.
+  Follow the repository navigation policy when it denies a command; do not work
+  around it with another shell route.
+- **Spawning a subagent**: use one only for independent work or research that
+  genuinely needs several round trips.
+- **Be concise by default** in responses and files on disk; keep documentation
+  substantive and avoid duplicate summaries.
+- **Waiting for a long command**: make one foreground invocation with a suitable
+  timeout rather than repeatedly polling output.
+- **RED→GREEN boundary**: after the RED commit for `/implement`, recover state
+  from the issue, branch, and RED
+  commit rather than re-reading already-recorded work.

@@ -8,6 +8,7 @@ pattern for `change-classes.yaml`.
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import subprocess
@@ -93,6 +94,19 @@ def _manifest_layer0_and_layer2_entries() -> list[tuple[str, str]]:
     return entries
 
 
+def _manifest_layer1_copier_entries() -> list[tuple[str, str]]:
+    """Return (repo_relative_path, export_status) for Layer 1 copier files."""
+    text = _manifest_text()
+    entries: list[tuple[str, str]] = []
+    layer1 = _section(text, "## Layer 1", "### Install order")
+    for cells in _manifest_rows(layer1):
+        channel = cells[2] if len(cells) > 3 else ""
+        if channel == "copier":
+            for path in _expand_file_cell(cells[0]):
+                entries.append((path, cells[1]))
+    return entries
+
+
 def _exported_core_size_budget() -> int:
     match = re.search(
         r"cap the exported combined size of `agent-process\.md` \+ `principles\.md` at (\d+) KB",
@@ -102,8 +116,11 @@ def _exported_core_size_budget() -> int:
     return int(match.group(1)) * 1024
 
 
-def _template_counterpart_exists(path: str, status: str) -> bool:
+def _template_counterpart_exists(path: str, status: str, *, channel: str | None = None) -> bool:
     target = _TEMPLATE / path
+    if channel == "copier" and path.startswith(".claude/"):
+        conditional_claude_dir = "{% if claude_adapter_installed %}.claude{% endif %}"
+        target = _TEMPLATE / conditional_claude_dir / path.removeprefix(".claude/")
     if status == "generic as-is":
         return target.is_file()
     if status == "generic templated":
@@ -126,6 +143,18 @@ class TestTemplateManifestParity:
             if not _template_counterpart_exists(path, status)
         ]
         assert not missing, "missing template counterpart for:\n" + "\n".join(sorted(missing))
+
+    def test_layer1_copier_channel_files_have_template_counterparts(self) -> None:
+        entries = _manifest_layer1_copier_entries()
+        assert entries, "Layer 1 must declare at least one copier-channel file"
+        missing = [
+            f"{path} ({status})"
+            for path, status in entries
+            if not _template_counterpart_exists(path, status, channel="copier")
+        ]
+        assert not missing, "missing Layer 1 copier template counterpart for:\n" + "\n".join(
+            sorted(missing)
+        )
 
     def test_copier_yml_pins_templates_suffix(self) -> None:
         copier_yml = _TEMPLATE / "copier.yml"
@@ -249,6 +278,33 @@ class TestTemplateRenders:
                     dangling.append(f"{path.relative_to(rendered_payload)} -> {target}")
         assert not dangling, f"dangling relative links in rendered payload: {dangling}"
 
+    def test_default_render_omits_claude_adapter_files(self, rendered_payload: Path) -> None:
+        assert not (rendered_payload / ".claude").exists()
+        assert not [
+            path for path in rendered_payload.iterdir() if "claude_adapter_installed" in path.name
+        ]
+
+    def test_claude_adapter_rendered_markdown_is_export_safe(self, tmp_path: Path) -> None:
+        data_file = tmp_path / "answers.yml"
+        data_file.write_text("claude_adapter_installed: true\n", encoding="utf-8")
+        rendered = tmp_path / "claude-adapter"
+        copied = _run_copier_copy(rendered, data_file=data_file)
+        assert copied.returncode == 0, copied.stderr
+
+        link_re = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
+        dangling = []
+        for path in (rendered / ".claude").rglob("*.md"):
+            content = path.read_text(encoding="utf-8")
+            assert not _CITATION.search(content)
+            assert content.count("(") == content.count(")")
+            for target in link_re.findall(content):
+                if target.startswith(("http://", "https://")):
+                    continue
+                target_path = target.split("#", 1)[0]
+                if target_path and not (path.parent / target_path).resolve().is_file():
+                    dangling.append(f"{path.relative_to(rendered)} -> {target}")
+        assert not dangling, f"dangling relative links in Claude-adapter payload: {dangling}"
+
     def test_exported_text_does_not_claim_missing_test_guards(self, rendered_payload: Path) -> None:
         missing = []
         test_path_re = re.compile(r"`(tests/test_[\w_]+\.py)(?::[^`]*)?`")
@@ -288,6 +344,8 @@ class TestTemplateRenders:
         self, tmp_path: Path, fixture_routes: str, case_name: str
     ) -> None:
         """Exercise both sides of every current conditional Jinja branch."""
+        claude_files = _manifest_layer1_copier_entries()
+        assert claude_files, "Layer 1 must declare copier-channel files for this branch"
         data_file = tmp_path / "answers.yml"
         data_file.write_text(
             "claude_adapter_installed: true\n"
@@ -299,6 +357,11 @@ class TestTemplateRenders:
         rendered = tmp_path / case_name
         copied = _run_copier_copy(rendered, data_file=data_file)
         assert copied.returncode == 0, copied.stderr
+        missing = [path for path, _status in claude_files if not (rendered / path).is_file()]
+        assert not missing, f"Claude-adapter render is missing: {missing}"
+        settings = json.loads((rendered / ".claude" / "settings.json").read_text(encoding="utf-8"))
+        assert "SessionStart" not in settings["hooks"]
+        assert set(settings["hooks"]) == {"PreToolUse", "PostToolUse"}
 
         for command in (
             [sys.executable, "-m", "compileall", "-q", "scripts", "tests"],

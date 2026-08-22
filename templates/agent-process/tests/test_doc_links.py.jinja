@@ -78,14 +78,13 @@ _CODE_SPAN_REF = re.compile(r"^[\w./-]+\.md#\S+$", re.UNICODE)
 # Directories that must be included in scope. Each is checked separately rather than for a
 # non-empty union: moving one directory would remain green due to the others — "nothing to
 # check" would become indistinguishable from "everything is fine" (§IV, as in
-# `test_doc_headers.py::test_every_scoped_directory_contributes`). `.claude/rules` and
-# `.claude/commands` are Layer 1 (Claude adapter) directories: they only exist, and are only
-# in scope, when that adapter is installed.
+# `test_doc_headers.py::test_every_scoped_directory_contributes`). `.claude/rules` is a
+# Copier-delivered Layer 1 (Claude adapter) directory: it only exists, and is only in scope,
+# when that adapter is installed.
 {% if claude_adapter_installed %}_EXPECTED_SCOPE_DIRS = (
     "docs/architecture",
     "docs/adr",
     ".claude/rules",
-    ".claude/commands",
 )
 {% else %}_EXPECTED_SCOPE_DIRS = ("docs/architecture", "docs/adr")
 {% endif %}
