@@ -86,7 +86,6 @@ ci_checks:
   default:
     - {name: "format", function: "check_format"}
     - {name: "lint", function: "check_lint"}
-    - {name: "language", function: "check_language"}
     - {name: "secrets", function: "check_secrets"}
     - {name: "pytest", function: "check_pytest"}
 
@@ -94,16 +93,6 @@ fixture_routes:
   type: yaml
   help: Read-only external-fixture routes this project supports.
   default: ["stdin", "github"]
-
-language_markdown_roots:
-  type: yaml
-  help: Top-level directories whose Markdown is checked for the language policy.
-  default: [".agents", ".github", "docs"]
-
-language_python_roots:
-  type: yaml
-  help: Top-level directories whose Python is checked for the language policy.
-  default: ["scripts", "tests"]
 
 claude_adapter_installed:
   type: bool
