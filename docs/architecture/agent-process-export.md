@@ -59,8 +59,10 @@ file a test module happens to also read.
 
 | File | Export status | Channel | Notes |
 |---|---|---|---|
-| `.claude/commands/plan.md`, `.claude/commands/implement.md` | generic as-is | plugin marketplace | Link to Layer 0 sections by anchor; no repository-specific content of their own |
-| `.claude/agents/discovery.md`, `.claude/agents/architect-reviewer.md` | generic as-is | plugin marketplace | Personas reference the Layer 0 contract, not this repository's domain |
+| `.claude/commands/plan.md` | generic as-is | plugin marketplace | Payload path: `commands/plan.md`; invoke as `/agent-process:plan N`. Relative Layer 0 links are dropped for the isolated plugin payload. |
+| `.claude/commands/implement.md` | generic as-is | plugin marketplace | Payload path: `commands/implement.md`; invoke as `/agent-process:implement N`. Relative Layer 0 links are dropped for the isolated plugin payload. |
+| `.claude/agents/discovery.md` | generic as-is | plugin marketplace | Payload path: `agents/discovery.md`; relative Layer 0 links are dropped for the isolated plugin payload. |
+| `.claude/agents/architect-reviewer.md` | generic as-is | plugin marketplace | Payload path: `agents/architect-reviewer.md`; relative Layer 0 links are dropped for the isolated plugin payload. |
 | `.claude/rules/mindset.md` | generic templated | copier | Harness token tactics are generic; the source repository's measured timings and environment pointer are stripped or generalized |
 | `.claude/rules/workflow.md` | generic templated | copier | Structure is generic; the default-adapter statement is generalized for a target project's role catalogue |
 | `.claude/rules/testing.md` | generic as-is | copier | Path-scoped operational checklist; its links to Not-exported `docs/architecture/testing.md` and `coverage-gaps.md` are dropped under §Link policy |
@@ -88,6 +90,11 @@ of file a target project is expected to author its own copy of, per their Not-ex
 drop the sentence if no equivalent is expected to exist. Left unresolved, no per-file row is
 missing — the manifest already marks these targets Not exported — but the exported *payload* is
 broken by a link the manifest did not think to rewrite.
+
+The plugin-marketplace payload is copied into an isolated plugin directory, so it has no co-located
+Layer 0 tree to target. Its transform drops every relative Markdown link and leaves the link title
+as plain text; this applies to Layer 0 and Copier-channel Layer 1 targets alike. The payload test
+guards that declared drop outcome rather than treating an absence of dangling links as sufficient.
 
 ## Layer 2 — Codex adapter (copier)
 
@@ -118,7 +125,7 @@ broken by a link the manifest did not think to rewrite.
 
 ## Citation policy for `#N` references
 
-**Decision: strip `#N` issue citations from the Layer 0/2 exported copy, except where a test
+**Decision: strip `#N` issue citations from the Layer 0/2 exported copy and Layer 1 plugin payload, except where a test
 fixture constructs it as data under test.** A citation such as
 `(#458)` addresses this repository's own GitHub issue tracker; in a new project it resolves to an
 unrelated issue or nothing at all, which is worse than no citation. `project-map.md`'s own
