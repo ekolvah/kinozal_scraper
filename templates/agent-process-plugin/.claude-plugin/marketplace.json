@@ -1,0 +1,15 @@
+{
+  "name": "agent-process-marketplace",
+  "description": "Local marketplace for the Agent Process Claude Code plugin.",
+  "owner": {
+    "name": "kinozal_scraper maintainers"
+  },
+  "plugins": [
+    {
+      "name": "agent-process",
+      "source": ".",
+      "description": "Claude Code commands and agents for the repository agent-development process.",
+      "version": "0.1.0"
+    }
+  ]
+}

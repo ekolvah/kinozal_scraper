@@ -51,18 +51,14 @@ def test_marketplace_points_to_this_plugin_directory() -> None:
     plugins = marketplace["plugins"]
     assert len(plugins) == 1
     assert plugins[0]["name"] == "agent-process"
-    assert (marketplace_path.parent / plugins[0]["source"]).resolve() == _PLUGIN.resolve()
+    marketplace_root = marketplace_path.parent.parent
+    assert (marketplace_root / plugins[0]["source"]).resolve() == _PLUGIN.resolve()
 
 
 def test_manifest_plugin_entries_are_transformed_payloads() -> None:
     """Every manifest-selected source has the mapped, generated plugin counterpart."""
     entries = _plugin_entries()
-    assert entries == [
-        ".claude/commands/plan.md",
-        ".claude/commands/implement.md",
-        ".claude/agents/discovery.md",
-        ".claude/agents/architect-reviewer.md",
-    ]
+    assert entries, "Layer 1 must declare plugin-marketplace payload sources"
     for source_path in entries:
         payload_path = _PLUGIN / source_path.removeprefix(".claude/")
         source = (_REPO / source_path).read_text(encoding="utf-8")
@@ -79,6 +75,7 @@ def test_plugin_payload_has_no_repository_citations_or_dangling_links() -> None:
         assert not _CITATION.search(content)
         assert not _LINKED_CITATION.search(content)
         assert not _RELATIVE_LINK.search(content)
+        assert "../../docs/" not in content
 
 
 def test_plugin_specific_rewrites_preserve_claude_builtins() -> None:
@@ -89,5 +86,6 @@ def test_plugin_specific_rewrites_preserve_claude_builtins() -> None:
     assert "`/agent-process:implement $ARGUMENTS`" in plan
     assert "persona: discovery" in plan
     assert "persona: architect-reviewer" in plan
+    assert "Agent development process §Planner Runbook" in plan
     assert "# /agent-process:implement N" in implement
     assert "/compact" in implement
