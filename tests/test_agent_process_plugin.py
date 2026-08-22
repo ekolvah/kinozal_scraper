@@ -9,8 +9,6 @@ import json
 import re
 from pathlib import Path
 
-from scripts.agent_process_plugin import transform_payload
-
 from test_agent_process_template import (
     _CITATION,
     _LINKED_CITATION,
@@ -18,6 +16,8 @@ from test_agent_process_template import (
     _manifest_rows,
     _section,
 )
+
+from scripts.agent_process_plugin import transform_payload
 
 _REPO = Path(__file__).resolve().parent.parent
 _MANIFEST = _REPO / "docs" / "architecture" / "agent-process-export.md"
