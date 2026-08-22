@@ -17,6 +17,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.check_language import markdown_violations
+
 _REPO = Path(__file__).resolve().parent.parent
 _MANIFEST = _REPO / "docs" / "architecture" / "agent-process-export.md"
 _TEMPLATE = _REPO / "templates" / "agent-process"
@@ -39,6 +41,11 @@ _STRIPPED_PROSE_HOLE = re.compile(
 # not repo-root-relative (the manifest's skill "metadata sidecar" rows, e.g.
 # "`.agents/skills/plan-issue/SKILL.md` (+ `agents/openai.yaml` metadata sidecar)").
 _ROOTED_PREFIXES = ("docs/", "scripts/", ".agents/", ".github/", ".claude/", ".codex/", "tests/")
+_TARGET_WIDE_LANGUAGE_POLICY_ARTIFACTS = (
+    "scripts/check_language.py",
+    "tests/test_language_policy.py",
+    "docs/adr/0005-english-repository-documentation.md",
+)
 
 
 def _manifest_text() -> str:
@@ -284,12 +291,40 @@ class TestTemplateRenders:
             path for path in rendered_payload.iterdir() if "claude_adapter_installed" in path.name
         ]
 
+    def test_default_render_omits_target_wide_language_policy(self, rendered_payload: Path) -> None:
+        present = [
+            path
+            for path in _TARGET_WIDE_LANGUAGE_POLICY_ARTIFACTS
+            if (rendered_payload / path).exists()
+        ]
+        assert not present, f"target-wide language-policy artifacts were exported: {present}"
+
+        ci_check = (rendered_payload / "scripts" / "ci_check.py").read_text(encoding="utf-8")
+        assert "check_language" not in ci_check
+
+    def test_rendered_markdown_remains_english_only(self, rendered_payload: Path) -> None:
+        violations = [
+            violation
+            for path in rendered_payload.rglob("*.md")
+            for violation in markdown_violations(
+                path.read_text(encoding="utf-8"), path=str(path.relative_to(rendered_payload))
+            )
+        ]
+        assert not violations, f"exported Markdown is not English-only: {violations}"
+
     def test_claude_adapter_rendered_markdown_is_export_safe(self, tmp_path: Path) -> None:
         data_file = tmp_path / "answers.yml"
         data_file.write_text("claude_adapter_installed: true\n", encoding="utf-8")
         rendered = tmp_path / "claude-adapter"
         copied = _run_copier_copy(rendered, data_file=data_file)
         assert copied.returncode == 0, copied.stderr
+
+        present = [
+            path for path in _TARGET_WIDE_LANGUAGE_POLICY_ARTIFACTS if (rendered / path).exists()
+        ]
+        assert not present, f"target-wide language-policy artifacts were exported: {present}"
+        ci_check = (rendered / "scripts" / "ci_check.py").read_text(encoding="utf-8")
+        assert "check_language" not in ci_check
 
         link_re = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
         dangling = []
