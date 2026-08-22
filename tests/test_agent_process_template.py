@@ -300,7 +300,7 @@ class TestTemplateRenders:
         assert not present, f"target-wide language-policy artifacts were exported: {present}"
 
         ci_check = (rendered_payload / "scripts" / "ci_check.py").read_text(encoding="utf-8")
-        assert '"language": check_language,' not in ci_check
+        assert "check_language" not in ci_check
 
     def test_rendered_markdown_remains_english_only(self, rendered_payload: Path) -> None:
         violations = [
@@ -324,7 +324,7 @@ class TestTemplateRenders:
         ]
         assert not present, f"target-wide language-policy artifacts were exported: {present}"
         ci_check = (rendered / "scripts" / "ci_check.py").read_text(encoding="utf-8")
-        assert '"language": check_language,' not in ci_check
+        assert "check_language" not in ci_check
 
         link_re = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
         dangling = []
