@@ -54,6 +54,8 @@ jobs:
           URLS = [
               "https://kinozal.tv/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0",
               "https://kinozal.guru/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0",
+              "https://kinozal.jumpingcrab.com/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0",
+              "https://kinozal.jumpingcrab.com/details.php?id=2150877",
           ]
           SHOW = ("server", "cf-ray", "cf-mitigated", "cf-cache-status", "location", "content-type", "via")
           for attempt in range(1, 4):
