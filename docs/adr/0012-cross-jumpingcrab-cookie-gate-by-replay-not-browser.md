@@ -8,18 +8,17 @@ decision-makers: ekolvah
 
 ## Context and Problem Statement
 
-The kinozal primary host has moved twice. `kinozal.tv` stopped resolving; `kinozal.guru` / `kinozal.me` went
-behind a Cloudflare managed challenge around 2026-09-10 (the anonymous listing became unreachable from GitHub
-Actions and the mirror fallback of [`pipeline.md`](../architecture/pipeline.md#kinozal-mirror-fallback) is
-authenticated, so it could not replace the anonymous top list). `KINOZAL_URLS` was repointed to
-`kinozal.jumpingcrab.com` on 2026-09-11, and that host fronts every HTML page with its own JS cookie gate:
+The anonymous kinozal primary named by `KINOZAL_URLS` is `kinozal.jumpingcrab.com`: the other fronts
+(`kinozal.guru` / `kinozal.me`) sit behind a Cloudflare managed challenge, and the mirror fallback of
+[`pipeline.md`](../architecture/pipeline.md#kinozal-mirror-fallback) is authenticated, so it cannot replace the
+anonymous top list. jumpingcrab fronts every HTML page with its own JS cookie gate:
 `GET /top.php` → `302 /challenge-verification?next=/top.php` → `200` with a 741-byte page whose script runs
 `document.cookie = "challenge1=1; …"` and reloads `next`. The same gate fronts `details.php`; poster bytes under
 `/i/poster/` are not gated.
 
 `fetch_html` follows the redirect, `raise_for_status()` passes the `200`, and the gate page reaches the extractor
-as if it were the listing. The daily symptom was a bare `kinozal_movies: extraction produced zero items` Telegram
-alert (#583) — a false success of the class §IV forbids: the transport reported a page, the operator saw no
+as if it were the listing. The symptom is a bare `kinozal_movies: extraction produced zero items` Telegram
+alert — a false success of the class §IV forbids: the transport reported a page, the operator saw no
 host, no status, no title.
 
 ## Decision Drivers
@@ -46,17 +45,17 @@ dependencies, while B needs a 23 s browser install (656 MB) plus 10.3 s per cros
 `navigator.webdriver=True`, which the gate is free to start checking. A gives the same result at a fraction of
 the cost and leaves nothing to maintain beyond one regex.
 
-Implementation (`kinozal_pipeline._cross_gate`, #583): anonymous primary HTML is fetched through `fetch_page`
+Implementation (`kinozal_pipeline._cross_gate`): anonymous primary HTML is fetched through `fetch_page`
 (the `Response`-returning sibling of `fetch_html`), the gate is detected by the **final URL** containing
-`/challenge-verification` (not by body sniffing: a `200` with HTML in it is exactly what fooled the old path),
+`/challenge-verification` (not by body sniffing: a `200` with HTML in it is exactly what passes as a listing),
 the cookie is replayed **once**, and a second landing on the gate raises `ChallengeGateError` carrying
 `describe_block` evidence. That error is a primary failure like a timeout: `fetch_listing` falls through to
 the mirror, and the alert names both hosts.
 
 ### Consequences
 
-* Good, because the gate page can no longer reach the extractor; the pre-#583 symptom class (bare zero items)
-  is replaced by an error naming host, status, length and title.
+* Good, because the gate page cannot reach the extractor: a bare "zero items" is replaced by an error naming
+  host, status, length and title.
 * Good, because a healthy run pays no login — the mirror path is untouched.
 * Bad, because the cookie is not kept between calls (`fetch_page` builds a fresh session each time), so
   **every** primary HTML request — the listing and each `details.php` the genre filter opens — pays the
