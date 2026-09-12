@@ -157,10 +157,10 @@ _IMAGE_GET: dict[str, Any] = {
 
 def fetch_page(url: str, *, cookies: dict[str, str] | None = None) -> requests.Response:
     """The HTML GET handed back as a `Response`, for a caller that needs the
-    final URL after redirects and not only the body (#583): the jumpingcrab
-    challenge gate is a 302 whose target answers 200, so `.text` alone cannot
-    tell a listing from the gate page. `cookies` is forwarded only when given,
-    so the ungated request stays byte-identical to `fetch_html`'s."""
+    final URL after redirects and not only the body: the jumpingcrab challenge
+    gate is a 302 whose target answers 200, so `.text` alone cannot tell a
+    listing from the gate page (ADR-0012). `cookies` is forwarded only when
+    given, so the ungated request stays byte-identical to `fetch_html`'s."""
     extra: dict[str, Any] = {"cookies": cookies} if cookies else {}
     return _get(url, **_HTML_GET, **extra)
 

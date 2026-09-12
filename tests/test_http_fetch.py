@@ -434,7 +434,7 @@ class TestSharedRequestKwargs(unittest.TestCase):
         self.assertEqual(mget.call_args.kwargs, _HTML_GET)
 
     def test_fetch_page_uses_shared_kwargs(self) -> None:
-        # #583: `fetch_page` is the same request as `fetch_html`, handed back as a
+        # `fetch_page` is the same request as `fetch_html`, handed back as a
         # Response (final URL + evidence) instead of `.text` — one request body.
         with unittest.mock.patch(
             "kinozal_scraper.http_fetch.requests.get", return_value=_ok_html()

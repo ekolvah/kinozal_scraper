@@ -69,7 +69,7 @@ _KINOZAL_SOURCE: dict[str, Any] = {
 _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
 
 
-# ── `fetch_page` doubles (#583) ───────────────────────────────────────────────
+# ── `fetch_page` doubles ──────────────────────────────────────────────────────
 # The facade reads a curl_cffi Response at the `fetch_page` boundary: `.url` is
 # the FINAL url after redirects (how the jumpingcrab challenge gate is detected),
 # the rest is `describe_block` evidence. Same shape `tests/test_http_fetch.py` builds.
@@ -82,7 +82,7 @@ def _page(
 
 
 def _pages(fetch: Callable[[str], str]) -> Callable[..., unittest.mock.Mock]:
-    """Adapt a url→html dispatcher (the pre-#583 `fetch_html` double) to `fetch_page`."""
+    """Adapt a url→html dispatcher (a `fetch_html`-shaped double) to `fetch_page`."""
 
     def _side_effect(url: str, **_: Any) -> unittest.mock.Mock:
         return _page(fetch(url), url=url)
@@ -1155,10 +1155,9 @@ class TestPipelineAuth(unittest.TestCase):
         self.assertTrue(any(not r.ok for r in results))  # → exit 1
 
     def test_mirror_login_failure_keeps_primary_evidence(self) -> None:
-        # #583: `_ensure_login()` sat outside `_from_mirror`'s try, so a login
-        # failure replaced the primary failure instead of joining it — under the
-        # prod (credentialed) setup the operator saw `mirror login failed` and
-        # nothing about WHY the primary was tried in the first place (§IV).
+        # A login failure must join the primary failure, not replace it: with
+        # `_ensure_login()` outside `_from_mirror`'s try the operator sees only
+        # `mirror login failed` and nothing about WHY the mirror was tried (§IV).
         with (
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_page",
@@ -1255,9 +1254,9 @@ class TestFetchPoster(unittest.TestCase):
         self.assertIn("kinozal.guru", calls[1])
 
     def test_jumpingcrab_primary_failure_falls_back_to_mirror_host(self) -> None:
-        # The primary moved to kinozal.jumpingcrab.com (#583); listing posters are
-        # relative `/i/poster/…` resolved against that origin, so the #241 failover
-        # must recognise the configured primary, not only the historical `.tv`.
+        # Listing posters are relative `/i/poster/…` resolved against the primary
+        # origin (kinozal.jumpingcrab.com), so the #241 failover must recognise
+        # the configured primary, not a fixed host.
         calls: list[str] = []
 
         def _fetch(url: str) -> bytes:
@@ -2175,7 +2174,7 @@ class TestKinozalFacade(unittest.TestCase):
             html = Kinozal("u", "p").fetch_details(url)
         self.assertEqual(html, genre_html)
         auth_mock.assert_called_once_with(session, url)
-        # Authenticated path skips the anon GET — and with it the #583 gate
+        # Authenticated path skips the anon GET — and with it the gate
         # crossing: the mirror branch is untouched by `_cross_gate`.
         fetch_page_mock.assert_not_called()
 
@@ -2203,7 +2202,7 @@ class TestKinozalFacade(unittest.TestCase):
         auth_mock.assert_not_called()
 
 
-# ── jumpingcrab challenge gate (#583) ─────────────────────────────────────────
+# ── jumpingcrab challenge gate ────────────────────────────────────────────────
 
 _KINOZAL_FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "kinozal"
 _JC_ORIGIN = "https://kinozal.jumpingcrab.com"
@@ -2226,7 +2225,7 @@ def _jc_listing() -> str:
 class _GatedHost:
     """`fetch_page` double for a jumpingcrab-shaped host: a GET without `cookie`
     lands on the challenge page (final URL under /challenge-verification, HTTP
-    200 — the false success of #583); a GET carrying exactly `cookie` gets the
+    200 — a false success); a GET carrying exactly `cookie` gets the
     target page. `cookie=None` is a gate nothing clears. Records every call so
     tests can count GETs and read the `cookies` kwarg."""
 
@@ -2245,7 +2244,7 @@ class _GatedHost:
 
 
 class TestChallengeGate(unittest.TestCase):
-    """kinozal.jumpingcrab.com fronts HTML with a JS cookie gate (#583): the
+    """kinozal.jumpingcrab.com fronts HTML with a JS cookie gate (ADR-0012): the
     facade must replay the cookie the page sets, and must never hand the gate
     page on as a listing (it has zero rows → `extraction produced zero items`
     with no evidence why). Transport is faked at the `fetch_page` boundary,

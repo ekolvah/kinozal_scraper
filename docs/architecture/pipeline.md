@@ -321,21 +321,21 @@ Therefore fallback goes through `kinozal_auth.py` (`POST /takelogin.php`; an ord
 is sufficient — confirmed by a live run).
 
 **Enabling fallback:** set both `KINOZAL_USERNAME` + `KINOZAL_PASSWORD` secrets. Without them (or
-when partial), fallback is disabled and a `.tv` failure reaches a visible
+when partial), fallback is disabled and a primary failure reaches a visible
 `fetch failed ... (mirror fallback disabled)` + exit 1 (§IV). Login failure / both-failed are also
 visible: `mirror login failed` / `primary failed (...); mirror ... also failed (...)`.
-`sources.json` `base_url` remains `https://kinozal.tv` (the default origin when primary is healthy) —
+`sources.json` `base_url` is a static default that the per-fetch effective origin (below) overrides —
 do not configure the mirror there.
 
 **Links follow the effective origin (#247):** `Kinozal.fetch_listing` returns
-`(html, effective_base_url)` — `kinozal.tv` on primary success, `kinozal.guru` on mirror fallback.
-The pipeline resolves listing-relative `url`/`image_url` against this base host (a per-fetch override
-of static `base_url`), so a mirror run produces **`.guru` links** — live for the logged-in recipient,
-not dead `.tv` links. The canonical-origin approach (“`base_url` is always `.tv`”) is deliberately
-rejected here: the recipient is logged into `.guru`, so its login wall is irrelevant
-(#227, #241, #247). A mixed run (some tops from `.tv`, some from the mirror) gives each item the
-correct host; deduplication is stable (key is clean title, host is not included → no migration of
-old `.tv` rows in the Sheet is needed).
+`(html, effective_base_url)` — the requested primary origin on primary success, `kinozal.guru` on
+mirror fallback. The pipeline resolves listing-relative `url`/`image_url` against this base host (a
+per-fetch override of static `base_url`), so a mirror run produces **`.guru` links** — live for the
+logged-in recipient, not dead primary links. The canonical-origin approach (“`base_url` is always the
+primary”) is deliberately rejected here: the recipient is logged into `.guru`, so its login wall is
+irrelevant (#227, #241, #247). A mixed run (some tops from the primary, some from the mirror) gives
+each item the correct host; deduplication is stable (key is clean title, host is not included → rows
+in the Sheet never need a host migration).
 
 **Genre-filter details fetch on mirror runs (#317):** because links follow the effective origin, on
 mirror days `item.url` = `kinozal.guru/details.php?...`. `Kinozal.fetch_details` for a mirror-host
@@ -347,7 +347,7 @@ are notified). The mirror serves `/i/poster/` anonymously (verified), so `fetch_
 affected by this path.
 
 The sole consumer is production cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
-`tests/test_e2e_kinozal_titles.py` is unconditionally skipped while `kinozal.tv` returns 522 (#136).
+`tests/test_e2e_kinozal_titles.py` is unconditionally skipped while the live primary is unreachable (#136).
 
 ## Macro expansion
 

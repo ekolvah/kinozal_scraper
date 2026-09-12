@@ -36,8 +36,8 @@ class TestKinozalTitlesE2E(unittest.TestCase):
         fallback_url = kinozal_sources[0]["base_url"] + "/top.php"
         url = urls[0] if urls else fallback_url
         # On re-enabling: kinozal.jumpingcrab.com fronts every page with a cookie
-        # gate (#583), so a bare `fetch_html` returns the 741-byte gate page and
-        # no titles — go through `Kinozal.fetch_listing`, which crosses it.
+        # gate (ADR-0012), so a bare `fetch_html` returns the 741-byte gate page
+        # and no titles — go through `Kinozal.fetch_listing`, which crosses it.
         html = fetch_html(url)
         cls.items = _extract_kinozal_items(html, kinozal_sources[0]).items
 

@@ -8,16 +8,16 @@ decision-makers: ekolvah
 
 ## Context and Problem Statement
 
-The anonymous kinozal primary named by `KINOZAL_URLS` is `kinozal.jumpingcrab.com`: the other fronts
-(`kinozal.guru` / `kinozal.me`) sit behind a Cloudflare managed challenge, and the mirror fallback of
+The anonymous kinozal primary named by `KINOZAL_URLS` is `kinozal.jumpingcrab.com`: `kinozal.tv` no longer
+resolves, the other fronts (`kinozal.guru` / `kinozal.me`) sit behind a Cloudflare managed challenge, and the mirror fallback of
 [`pipeline.md`](../architecture/pipeline.md#kinozal-mirror-fallback) is authenticated, so it cannot replace the
 anonymous top list. jumpingcrab fronts every HTML page with its own JS cookie gate:
 `GET /top.php` → `302 /challenge-verification?next=/top.php` → `200` with a 741-byte page whose script runs
 `document.cookie = "challenge1=1; …"` and reloads `next`. The same gate fronts `details.php`; poster bytes under
 `/i/poster/` are not gated.
 
-`fetch_html` follows the redirect, `raise_for_status()` passes the `200`, and the gate page reaches the extractor
-as if it were the listing. The symptom is a bare `kinozal_movies: extraction produced zero items` Telegram
+`fetch_html` followed the redirect, `raise_for_status()` passed the `200`, and the gate page reached the extractor
+as if it were the listing. The symptom was a bare `kinozal_movies: extraction produced zero items` Telegram
 alert — a false success of the class §IV forbids: the transport reported a page, the operator saw no
 host, no status, no title.
 
@@ -59,7 +59,8 @@ the mirror, and the alert names both hosts.
 * Good, because a healthy run pays no login — the mirror path is untouched.
 * Bad, because the cookie is not kept between calls (`fetch_page` builds a fresh session each time), so
   **every** primary HTML request — the listing and each `details.php` the genre filter opens — pays the
-  302 → gate → replay round trip: `2 × (1 + N)` requests instead of `1 + N`. Accepted for now because `N` is
+  302 → gate → replay round trip: three wire requests per page (`GET` → `302`, `GET` gate, `GET` with cookie),
+  `3 × (1 + N)` instead of `1 + N`. Accepted for now because `N` is
   the handful of new items per run; caching the cookie for the run is the first lever if the host starts
   rate-limiting the gate.
 * Bad, because a gated run with a dead mirror still pays one doomed `login()` before the alert; the evidence
