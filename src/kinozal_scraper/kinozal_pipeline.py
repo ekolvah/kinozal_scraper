@@ -1,4 +1,4 @@
-"""kinozal.tv top extraction/normalization and trailer enrichment (run_kinozal_pipeline)."""
+"""kinozal top extraction/normalization and trailer enrichment (run_kinozal_pipeline)."""
 
 from __future__ import annotations
 
@@ -291,10 +291,17 @@ def _genre_excluded(genre_raw: str, excluded: set[str]) -> bool:
     return bool(genres & excluded)
 
 
-_ORIGIN_HOST = "kinozal.tv"
 _MIRROR_HOST = "kinozal.guru"
-_KINOZAL_HOSTS = frozenset({_ORIGIN_HOST, _MIRROR_HOST})
 _FASTPIC_HOST = "fastpic.org"
+
+
+def _is_kinozal_host(host: str) -> bool:
+    """True for any kinozal front — `kinozal.tv`, `kinozal.guru`, `kinozal.me`,
+    `kinozal.jumpingcrab.com`: the site keeps its first label across every move,
+    so the poster failover (#241) follows the primary named by `KINOZAL_URLS`
+    instead of a host list that went stale on the jumpingcrab move (#583).
+    Uploader hosts (fastpic, imageban) never match."""
+    return host.split(".", 1)[0] == "kinozal"
 
 
 def _is_fastpic(host: str) -> bool:
@@ -326,8 +333,8 @@ def _extract_direct_image_url(viewer_html: str, requested_url: str) -> str:
 
 
 def _mirror_url(url: str) -> str:
-    """Map a kinozal.tv page URL to its kinozal.guru mirror — host swap, the
-    path and query (top.php filters) preserved."""
+    """Map a primary kinozal page URL to its kinozal.guru mirror — host swap,
+    the path and query (top.php filters) preserved."""
     return urlunsplit(urlsplit(url)._replace(netloc=_MIRROR_HOST))
 
 
@@ -395,8 +402,10 @@ class Kinozal:
     Primary HTML goes through `_cross_gate`, which replays the jumpingcrab
     cookie gate (#583). HTML listings use the authenticated mirror (login at
     most once per run, on the first fallback) — so a healthy primary run pays
-    no login cost and needs no credentials. Posters use the mirror *anonymously* (kinozal.guru serves
-    /i/poster/ 200 without login, verified). When credentials are absent or
+    no login cost and needs no credentials. Posters use the mirror
+    *anonymously* (kinozal.guru serves /i/poster/ 200 without login, verified),
+    and the failover recognises any kinozal front via `_is_kinozal_host`, so it
+    followed the primary to jumpingcrab. When credentials are absent or
     partial the HTML mirror is disabled and the primary failure propagates,
     surfacing visibly (§IV)."""
 
@@ -498,7 +507,7 @@ class Kinozal:
             return fetch_bytes(direct)
         except Exception as primary_exc:  # noqa: BLE001 — mirror-retry for kinozal hosts, else propagate to §IV degrade
             host = urlsplit(url).netloc
-            if host not in _KINOZAL_HOSTS or host == _MIRROR_HOST:
+            if not _is_kinozal_host(host) or host == _MIRROR_HOST:
                 raise
             mirror_url = _mirror_url(url)
             logger.warning(
@@ -1153,9 +1162,10 @@ def run_kinozal_pipeline(
             results.append(result)
         return results
 
-    # Primary transport is anonymous kinozal.tv; the authenticated kinozal.guru
-    # mirror is a lazy fallback used only when a primary fetch fails (e.g. 522).
-    # A healthy .tv run needs no credentials and pays no login cost. Partial
+    # Primary transport is the anonymous host named by `KINOZAL_URLS`; the
+    # authenticated kinozal.guru mirror is a lazy fallback used only when a
+    # primary fetch fails (e.g. 522, or the challenge gate of #583). A healthy
+    # primary run needs no credentials and pays no login cost. Partial
     # credentials disable the fallback with a visible WARNING rather than redden
     # an otherwise-healthy run (§IV/§VI) — see `Kinozal.from_env`. `__main__`
     # injects the same object it wires into the notifier, so the listing and its

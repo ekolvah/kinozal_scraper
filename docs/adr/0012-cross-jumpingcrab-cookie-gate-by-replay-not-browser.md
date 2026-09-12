@@ -57,7 +57,12 @@ the mirror, and the alert names both hosts.
 
 * Good, because the gate page can no longer reach the extractor; the pre-#583 symptom class (bare zero items)
   is replaced by an error naming host, status, length and title.
-* Good, because a healthy run pays one extra GET and no login — the mirror path is untouched.
+* Good, because a healthy run pays no login — the mirror path is untouched.
+* Bad, because the cookie is not kept between calls (`fetch_page` builds a fresh session each time), so
+  **every** primary HTML request — the listing and each `details.php` the genre filter opens — pays the
+  302 → gate → replay round trip: `2 × (1 + N)` requests instead of `1 + N`. Accepted for now because `N` is
+  the handful of new items per run; caching the cookie for the run is the first lever if the host starts
+  rate-limiting the gate.
 * Bad, because a gated run with a dead mirror still pays one doomed `login()` before the alert; the evidence
   is kept (`primary failed (challenge gate …); mirror … also failed (mirror login failed: …)`), the cost is
   one request.
@@ -71,7 +76,10 @@ the mirror, and the alert names both hosts.
 `tests/test_kinozal_pipeline.py::TestChallengeGate` (crossing, no-cookie gate, gate after replay, final-URL
 detection against the recorded `tests/fixtures/kinozal/jumpingcrab_*.html`) and
 `tests/test_http_fetch.py::test_fetch_page_*` (shared request kwargs, cookies forwarded only when given).
-The live check is `scripts/capture_kinozal_fixture.py` against the top URL from the runner.
+The live check is `scripts/capture_kinozal_fixture.py` against the top URL from the runner — it goes
+through `Kinozal.fetch_details`, so it crosses the gate or fails with the same evidence. Note that it writes
+the decoded page re-encoded as UTF-8, while the committed listing fixture is the raw cp1251 bytes recorded by
+the probe run; re-recording the fixture through the script needs the test's decode changed to match.
 
 ## Pros and Cons of the Options
 

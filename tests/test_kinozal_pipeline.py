@@ -1254,6 +1254,27 @@ class TestFetchPoster(unittest.TestCase):
         self.assertEqual(len(calls), 2)
         self.assertIn("kinozal.guru", calls[1])
 
+    def test_jumpingcrab_primary_failure_falls_back_to_mirror_host(self) -> None:
+        # The primary moved to kinozal.jumpingcrab.com (#583); listing posters are
+        # relative `/i/poster/…` resolved against that origin, so the #241 failover
+        # must recognise the configured primary, not only the historical `.tv`.
+        calls: list[str] = []
+
+        def _fetch(url: str) -> bytes:
+            calls.append(url)
+            if "jumpingcrab" in url:
+                raise RuntimeError("HTTP Error 522")
+            return b"MIRROR"
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
+        ):
+            data = self._kinozal().fetch_poster(
+                "https://kinozal.jumpingcrab.com/i/poster/3/9/2142239.jpg"
+            )
+        self.assertEqual(data, b"MIRROR")
+        self.assertEqual(calls[1], "https://kinozal.guru/i/poster/3/9/2142239.jpg")
+
     def test_mirror_host_swap_preserves_path_and_query(self) -> None:
         calls: list[str] = []
 
