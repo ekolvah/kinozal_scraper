@@ -9,69 +9,105 @@ on:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      TOP: "https://kinozal.jumpingcrab.com/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0"
+      DETAILS: "https://kinozal.jumpingcrab.com/details.php?id=2150877"
     steps:
       - name: Runner egress identity
         run: |
           curl -sS --max-time 15 https://ipinfo.io/json || true
           echo
 
-      - name: DNS
-        run: |
-          for h in kinozal.tv kinozal.guru; do
-            echo "== $h"
-            getent ahosts "$h" || echo "(no resolution)"
-          done
-
-      - name: Plain curl (status / remote ip / connect time / headers / body head)
-        run: |
-          set +e
-          for h in kinozal.tv kinozal.guru; do
-            url="https://$h/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0"
-            echo "================ $url"
-            curl -sS --max-time 20 -o "/tmp/$h.body" -D "/tmp/$h.headers" \
-              -w 'http_code=%{http_code} remote_ip=%{remote_ip} time_connect=%{time_connect} time_total=%{time_total}\n' \
-              "$url" 2>&1
-            echo "---- headers"
-            cat "/tmp/$h.headers" 2>/dev/null
-            echo "---- body head"
-            head -c 800 "/tmp/$h.body" 2>/dev/null | tr '\n' ' '
-            echo
-          done
-
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: curl_cffi chrome-impersonate, 3 attempts 60 s apart (production transport)
+      - name: Install production transport
+        run: python -m pip install -q curl_cffi==0.15.0
+
+      # Candidate A: read the cookie the challenge page's JS would set, replay it.
+      - name: "Candidate A: cookie from challenge page (curl_cffi)"
         run: |
-          python -m pip install -q curl_cffi==0.15.0
           python - <<'PY'
-          import time
+          import os, re, time
           from curl_cffi import requests
 
-          URLS = [
-              "https://kinozal.tv/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0",
-              "https://kinozal.guru/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0",
-              "https://kinozal.jumpingcrab.com/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0",
-              "https://kinozal.jumpingcrab.com/details.php?id=2150877",
-          ]
-          SHOW = ("server", "cf-ray", "cf-mitigated", "cf-cache-status", "location", "content-type", "via")
-          for attempt in range(1, 4):
-              for url in URLS:
-                  t0 = time.monotonic()
-                  try:
-                      r = requests.get(url, impersonate="chrome", timeout=20, allow_redirects=False)
-                      ms = int((time.monotonic() - t0) * 1000)
-                      print(f"[{attempt}] {url} -> {r.status_code} ({ms} ms)")
-                      for k in SHOW:
-                          if k in r.headers:
-                              print(f"      {k}: {r.headers[k]}")
-                      print("      body:", r.text[:400].replace("\n", " "))
-                  except Exception as exc:  # noqa: BLE001 — probe prints everything
-                      ms = int((time.monotonic() - t0) * 1000)
-                      print(f"[{attempt}] {url} -> EXC {type(exc).__name__} ({ms} ms): {exc}")
-              if attempt < 3:
-                  time.sleep(60)
+          TOP, DETAILS = os.environ["TOP"], os.environ["DETAILS"]
+          KW = {"impersonate": "chrome", "timeout": 20, "allow_redirects": False}
+
+          def show(label, r):
+              print(f"{label}: {r.status_code} len={len(r.content)} "
+                    f"details={r.text.count('details.php')} genre={'Жанр' in r.text} "
+                    f"title={(re.search(r'<title>(.*?)</title>', r.text, re.S) or [None, ''])[1][:50]!r} "
+                    f"location={r.headers.get('location', '')[:70]!r}")
+
+          t0 = time.monotonic()
+          r1 = requests.get(TOP, **KW)
+          show("1 top.php anonymous", r1)
+          if not (300 <= r1.status_code < 400 and "challenge-verification" in r1.headers.get("location", "")):
+              raise SystemExit("gate not observed — nothing to verify")
+          chal = requests.get(r1.headers["location"], **KW)
+          show("2 challenge page", chal)
+          m = re.search(r'document\.cookie\s*=\s*"([^=]+)=([^;"]+)', chal.text)
+          if not m:
+              print("   challenge body:", " ".join(chal.text.split())[:600])
+              raise SystemExit("no document.cookie assignment found")
+          cookies = {m.group(1): m.group(2)}
+          print("   cookie parsed:", cookies)
+          r3 = requests.get(TOP, cookies=cookies, **KW)
+          show("3 top.php with cookie", r3)
+          r4 = requests.get(DETAILS, cookies=cookies, **KW)
+          show("4 details.php with cookie", r4)
+          poster = re.search(r'<img[^>]+src="([^"]*/i/poster/[^"]+)"', r3.text)
+          if poster:
+              url = poster.group(1)
+              if url.startswith("/"):
+                  url = "https://kinozal.jumpingcrab.com" + url
+              r5 = requests.get(url, **KW)
+              print(f"5 poster anonymous: {r5.status_code} {r5.headers.get('content-type', '')} len={len(r5.content)}")
+              r6 = requests.get(url, cookies=cookies, **KW)
+              print(f"6 poster with cookie: {r6.status_code} {r6.headers.get('content-type', '')} len={len(r6.content)}")
+          print(f"candidate A total: {int((time.monotonic() - t0) * 1000)} ms")
+          PY
+
+      # Candidate B: let headless Chromium run the gate's JS, hand its cookies to curl_cffi.
+      - name: "Candidate B: install Playwright + Chromium (timed)"
+        run: |
+          SECONDS=0
+          python -m pip install -q playwright
+          echo "pip install playwright: ${SECONDS}s"
+          SECONDS=0
+          python -m playwright install --with-deps chromium > /tmp/pw-install.log 2>&1 || { tail -20 /tmp/pw-install.log; exit 1; }
+          echo "playwright install --with-deps chromium: ${SECONDS}s"
+          python -c "import playwright; print('playwright', playwright.__version__)"
+          du -sh ~/.cache/ms-playwright 2>/dev/null || true
+
+      - name: "Candidate B: headless Chromium through the gate"
+        run: |
+          python - <<'PY'
+          import os, time
+          from curl_cffi import requests
+          from playwright.sync_api import sync_playwright
+
+          TOP, DETAILS = os.environ["TOP"], os.environ["DETAILS"]
+          t0 = time.monotonic()
+          with sync_playwright() as p:
+              browser = p.chromium.launch(headless=True)
+              ctx = browser.new_context()
+              page = ctx.new_page()
+              page.on("response", lambda r: print(f"   nav: {r.status} {r.url[:90]}") if r.request.is_navigation_request() else None)
+              page.goto(TOP, wait_until="domcontentloaded", timeout=30000)
+              page.wait_for_url(lambda u: "challenge-verification" not in u, timeout=15000)
+              print(f"1 final url: {page.url[:90]}")
+              print(f"   title={page.title()[:50]!r} details={page.locator('a[href^=\"/details.php\"]').count()} "
+                    f"webdriver={page.evaluate('navigator.webdriver')}")
+              cookies = {c["name"]: c["value"] for c in ctx.cookies()}
+              print("   cookies:", cookies)
+              browser.close()
+          t_browser = int((time.monotonic() - t0) * 1000)
+          r = requests.get(DETAILS, cookies=cookies, impersonate="chrome", timeout=20, allow_redirects=False)
+          print(f"2 details.php via curl_cffi with browser cookies: {r.status_code} genre={'Жанр' in r.text}")
+          print(f"candidate B browser part: {t_browser} ms")
           PY
