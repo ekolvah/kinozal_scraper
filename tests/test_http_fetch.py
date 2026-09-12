@@ -19,6 +19,7 @@ from kinozal_scraper.http_fetch import (
     fetch_bytes,
     fetch_html,
     fetch_html_patient,
+    fetch_page,
 )
 
 _FIXTURES = pathlib.Path(__file__).parent / "fixtures"
@@ -431,6 +432,26 @@ class TestSharedRequestKwargs(unittest.TestCase):
             fetch_html("https://example.com")
 
         self.assertEqual(mget.call_args.kwargs, _HTML_GET)
+
+    def test_fetch_page_uses_shared_kwargs(self) -> None:
+        # #583: `fetch_page` is the same request as `fetch_html`, handed back as a
+        # Response (final URL + evidence) instead of `.text` — one request body.
+        with unittest.mock.patch(
+            "kinozal_scraper.http_fetch.requests.get", return_value=_ok_html()
+        ) as mget:
+            fetch_page("https://example.com")
+
+        self.assertEqual(mget.call_args.kwargs, _HTML_GET)
+
+    def test_fetch_page_forwards_cookies_only_when_given(self) -> None:
+        # The cookie replay that crosses the jumpingcrab gate is the ONLY reason a
+        # `cookies` kwarg exists; an ungated request must stay byte-identical.
+        with unittest.mock.patch(
+            "kinozal_scraper.http_fetch.requests.get", return_value=_ok_html()
+        ) as mget:
+            fetch_page("https://example.com", cookies={"challenge1": "1"})
+
+        self.assertEqual(mget.call_args.kwargs, {**_HTML_GET, "cookies": {"challenge1": "1"}})
 
     def test_fetch_bytes_uses_shared_kwargs(self) -> None:
         with unittest.mock.patch(

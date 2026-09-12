@@ -1,0 +1,327 @@
+<!DOCTYPE HTML>
+<html lang="ru">
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta http-equiv="Content-Type" content="text/html; charset=windows-1251">
+<title>Топ раздач :: Кинозал.МЕ</title>
+<meta name="description" content="Топ раздач Автоматически обновляемый рейтинг лучших раздач, составляется по результатам подсчета количества раздающих">
+<meta name="Keywords" content="250 лучших фильмов, 100 лучших фильмов, лучшие комедии, лучшие фильмы ужасов, лучшие драмы, лучшие фильмы +всех времен, kinozal, скачать, торрент-трекер, торрент скачать бесплатно">
+<meta name="robots" content="index,follow">
+<link rel="shortcut icon" href="/pic/favicon.ico" type="image/x-icon">
+<link rel="stylesheet" href="/pic/0_kinozal.me.css?v=3.3" type="text/css">
+<script type="text/javascript" src="/pic/jquery-3.6.3.min.js?v=1"></script>
+<script type="text/javascript" src="/pic/use.js?v=3.7"></script>
+<style type='text/css'>
+	.stable a {float: left; margin: 0 5px 5px 0; text-align: center; }
+	.stable a img { border: 0; display: block;  width: 100px; height:150px; }
+</style>
+<script>window.addEventListener('load', o=>navigator.serviceWorker.register('/sw.js', {updateViaCache: 'all'}))</script>
+</head>
+<body>
+<div id="body_wrapper">
+<div id="header">
+	<div class="logo">
+		<a href="//kinozal.jumpingcrab.com" title="Кинозал.МЕ"><img src="/pic/logo_kinozal_me_1.png?v=3" alt="Кинозал.МЕ"></a>
+	</div>
+
+	<div class="menu_cont">
+		<div class="search">
+			<form action="/browse.php" method="get" id="srchform">
+				<input type="text" class="inp" id="s" name="s" size="15" value=""><input class="s_submit" type="submit" title="Поиск раздач">
+			</form>
+		</div>
+		<div class="menu">
+			<ul>
+				<li><a href="/" title="Главная">Главная</a></li>
+				<li><a href="https://forum-kinozal-tv.jumpingcrab.com" title="Форум">Форум</a></li>
+						<li><a href="/signup.php" title="Регистрация на трекере">Регистрация</a></li>
+				<li><a href="/browse.php" title="Каталог раздач">Раздачи</a></li>
+				<li><a href="/top.php" title="Топ раздач">Топ раздач</a></li>
+				<li><a href="/personsearch.php" title="Персоны">Персоны</a></li>
+				<li><a href="/novinki.php" title="Новинки кино">Новинки кино</a></li>
+				<li><a href="/groupexlist.php" title="Каталог групп">Группы</a></li>
+					</ul>
+		</div>
+	</div>
+	<div class="clr"></div>
+
+</div>
+<div class="clr"></div>
+
+<div id="main">
+ <div class="menu">
+
+<div class="bx2_0">
+<form method="post" action="/takelogin.php">
+<ul class="men">
+ <li class="tp2 center"><a href="/signup.php" class="sbab">Гость! ( Зарегистрируйтесь )</a></li>
+ <li class="right b">Логин: <input type="text" name="username" class="w90" value=""></li>
+ <li class="right b">Пароль: <input type="password" name="password" class="w90" value=""></li>
+ <li class="right b"><a href="/recover.php" class="sbab">Восстановление!</a> <input type="hidden" name="returnto" value=''><input class=buttonS type="submit" value="Вход">
+</ul>
+</form>
+</div>
+
+<div class="bx2_0">
+<ul class="men">
+ <li><span class='bulet'></span><a href='/browse.php'>Раздачи трекера</a></li> 
+ <li><span class='bulet'></span><a href='/top.php'>Топ раздач</a></li> 
+ <li><span class='bulet'></span><a href='/persons.php'>Персоны</a></li> 
+ <li><span class='bulet'></span><a href='/novinki.php'>Новинки кино</a></li>
+</ul>
+</div>
+
+<div class="bx2_0">
+<ul class="men">
+ <li class="tp2 center">Прочтите  рекомендации</li>
+ <li><span class='bulet'></span><a href='/doku.php'>Общие правила</a></li> 
+ <li><span class='bulet'></span><a href='/doku.php?type=1'>Правила пользователей</a></li> 
+ <li><span class='bulet'></span><a href='/doku.php?type=2'>Правила Кинооператоров</a></li> 
+ <li><span class='bulet'></span><a href='/doku.php?type=3'>Как скачать фильм</a></li>
+  <li><span class='bulet'></span><a href='/copyright.php'>Для правообладателей</a></li>
+</ul>
+</div>
+
+ </div>
+ <div class="content">
+<div class="bx2"><div style="padding:0 5px 7px 0;"><h1><span class=bulet></span><a href="/top.php" class=sbab title="Топ раздач">Топ раздач - Рейтинг лучших раздач трекера</a></h1></div><div class="mn1_menu"><form method='get' action='/top.php' name='br_top' id='br_top'>
+<ul class='men'>
+<li class='img'><a href='/top.php'><img src='/pic/bn/p_top.jpg' height=75 class='block w200'></a></li>
+<li class='tp'>Выбор топа по жанрам</li>
+<li class=img><span class=w100p><input type=text name=j value="" class=w100p>
+</span></li>
+<li class='tp'>Выбор топа по категориям</li>
+<li class=img><select class='w100p styled' name=t size=15>
+<option value=0 selected>Избранные раздачи</option>
+<option value=1 >Избранные фильмы</option>
+<option value=101 >|- Комедии</option>
+<option value=102 >|- Фантастика, фэнтези</option>
+<option value=103 >|- Ужас, мистика</option>
+<option value=104 >|- Боевик, военный</option>
+<option value=105 >|- Триллер, детектив</option>
+<option value=106 >|- Драма, мелодрама</option>
+<option value=107 >|- Наше кино</option>
+<option value=108 >|- Детский, семейный</option>
+<option value=110 >|- Приключения</option>
+<option value=111 >|- Исторический</option>
+<option value=112 >|- Документальный</option>
+<option value=113 >|- Классика, театр, опера, балет</option>
+<option value=115 >|- Концерты</option>
+<option value=116 >|- Спорт</option>
+<option value=2 >Избранные мультфильмы</option>
+<option value=21 >|- Русские</option>
+<option value=22 >|- Буржуйские</option>
+<option value=23 >|- Аниме</option>
+<option value=3 >Избранные сериалы</option>
+<option value=31 >|- Русские</option>
+<option value=32 >|- Буржуйские</option>
+<option value=4 >Топ Музыки</option>
+<option value=41 >|- Русская</option>
+<option value=42 >|- Буржуйская</option>
+<option value=44 >|- Сборники</option>
+<option value=43 >|- Классическая</option>
+<option value=5 >Библиотека</option>
+<option value=6 >Избранные аудиокниги</option>
+<option value=7 >Избранные игры</option>
+<option value=8 >Избранные программы</option>
+</select></li>
+<li class=img><dl><dt>Год выпуска</dt><dd><span class=sw100><select class='w100 styled' name='d'>
+<option value=0 >все года</option>
+<option value=14 selected>2024-2026</option>
+<option value=13 >2021-2023</option>
+<option value=11 >2018-2020</option>
+<option value=10 >2015-2017</option>
+<option value=1 >2012-2014</option>
+<option value=2 >2009-2011</option>
+<option value=3 >2006-2008</option>
+<option value=4 >2001-2005</option>
+<option value=5 >1996-2000</option>
+<option value=6 >1992-1995</option>
+<option value=7 >1982-1991</option>
+<option value=8 >1972-1981</option>
+<option value=9 >1951-1971</option>
+</select></span></dd></dl>
+<dl><dt>Страна</dt><dd><span class=sw100><select class='w100 styled' name='k'>
+<option value=0 selected>все страны</option>
+<option value=1 >Россия</option>
+<option value=2 >США</option>
+<option value=3 >СССР</option>
+<option value=4 >Франция</option>
+<option value=5 >Германия</option>
+<option value=6 >Италия</option>
+<option value=7 >Великобритания</option>
+</select></span></dd></dl>
+<dl><dt>Формат</dt><dd><span class=sw100><select class='w100 styled' name='f'>
+<option value=0 selected>все форматы</option>
+<option value=2 >HD</option>
+<option value=5 >4К</option>
+<option value=4 >3D</option>
+<option value=3 >LossLess</option>
+</select></span></dd></dl>
+<dl><dt>Залит</dt><dd><span class=sw100><select class='w100 styled' name='w'>
+<option value=0 selected>за все время</option>
+<option value=1 >за неделю</option>
+<option value=2 >за месяц</option>
+<option value=3 >за 3 месяца</option>
+</select></span></dd></dl>
+<dl><dt>Сортировать</dt><dd><span class=sw100><select class='w100 styled' name='s'>
+<option value=0 selected>по сидам</option>
+<option value=1 >по пирам</option>
+<option value=2 >по комм.</option>
+</select></span></dd></dl></li>
+<li class=img><input type=submit value='Перестроить топ' class='buttonS w200'></li>
+<li class='tp'>Подборки для Вас</li>
+<li class='justify lnks_tobrs'>Новогодний, Netflix, фильмы о спорте, лучший фильм Оскар, флора и фауна, мореокеан, ВОВ, Walt Disney Pictures, HBO, Marvel, Pixar, дорама, экранизация, студия Мельница, Ленфильм, Мосфильм, Союзмультфильм</li>
+<li class='tp'>Информация</li>
+<li class='justify'><p>Топ раздач - Автоматически обновляемый рейтинг лучших раздач. Надеемся, Вам будет интересна подборка популярных раздач.</p></li>
+</ul>
+</form>
+<script type="text/javascript">
+$(".lnks_tobrs").each(function(index) {
+	var str2_array = [];
+	var str_array = $(this).html().split(",");
+	for(i=0; i < str_array.length; i++) {
+		str_array[i] = str_array[i].trim();
+		var xm = str_array[i].split(" ");
+		if(xm.length > 0) {
+	  		str_array[i] = str_array[i].replace(/"/ig, '').trim();
+			str2_array[i] = '<a href="/top.php?j='+str_array[i]+'" class="sba">'+str_array[i]+'</a>';
+		} else str2_array[i] = str_array[i];
+	}
+	$(this).html(str2_array.join(", "));
+});
+</script>
+</div><div class='mn1_content'><div class=pad0x0x5x0><ul class=lis><li class=mn><a href="/top.php?t=0&d=14&f=0&c=0&k=0&j=&s=0" title="Топ раздач">Топ раздач</a></li><li><a href="/top.php?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=1" title="Топ раздач недели">Топ раздач недели</a></li><li><a href="/top.php?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=2" title="Топ раздач месяца">Топ раздач месяца</a></li><li><a href="/top.php?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=6" title="Топ раздач полгода">Топ раздач полгода</a></li></ul></div><div class='bx1 stable'><a href='/details.php?id=2152267' title='Холоп 3 / 2026 / РУ / WEB-DLRip'><img src='https://i128.fastpic.org/big/2026/0903/46/ee613f4333895483eb50010831a35846.jpg' alt=''></a>
+<a href='/details.php?id=2142272' title='Грязные деньги / In the Grey / 2026 / ДБ, ПМ / WEB-DLRip'><img src='/i/poster/3/9/2142239.jpg' alt=''></a>
+<a href='/details.php?id=2150877' title='Мятеж / Mutiny / 2026 / ПМ, СТ / WEB-DLRip'><img src='/i/poster/7/7/2150877.jpg' alt=''></a>
+<a href='/details.php?id=2124059' title='Лакомый кусок / The Rip / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/5/9/2124059.jpg' alt=''></a>
+<a href='/details.php?id=2128508' title='Казнить нельзя помиловать / Mercy / 2026 / ДБ / WEB-DLRip'><img src='/i/poster/3/3/2128433.jpg' alt=''></a>
+<a href='/details.php?id=2134372' title='Ограбление в Лос-Анджелесе / Crime 101 / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/0/9/2134309.jpg' alt=''></a>
+<a href='/details.php?id=2152483' title='Мэйдэй (Сигнал бедствия) / Mayday / 2026 / ПМ, СТ / WEB-DLRip'><img src='https://i128.fastpic.org/big/2026/0904/18/052703226e989a3202db4919a1e3cd18.jpg' alt=''></a>
+<a href='/details.php?id=2149472' title='Число зверя (1 сезон: 1-12 серии из 12) / 2024 / РУ, СТ / WEB-DLRip'><img src='/i/poster/4/0/2149440.jpg' alt=''></a>
+<a href='/details.php?id=2151605' title='Фальшивомонетчик (Человек, который рисовал деньги) / L&#039;affaire Bojarski (The Money Maker) / 2025 / ДБ, СТ / WEB-DLRip'><img src='https://i127.fastpic.org/big/2026/0519/5b/3c6ccff1cd5551732ed7ea3f365abe5b.jpg' alt=''></a>
+<a href='/details.php?id=2151095' title='Мятеж / Mutiny / 2026 / ПМ, СТ / 4K, SDR / WEB-DLRip (2160p)'><img src='/i/poster/7/7/2150877.jpg' alt=''></a>
+<a href='/details.php?id=2140514' title='Дьявол носит Prada 2 / The Devil Wears Prada 2 / 2026 / ДБ / WEB-DLRip'><img src='/i/poster/1/4/2140514.jpg' alt=''></a>
+<a href='/details.php?id=2151612' title='Капитан Туман (1 сезон: 1-10 серии из 10) / 2026 / РУ / WEB-DLRip'><img src='/i/poster/9/5/2151595.jpg' alt=''></a>
+<a href='/details.php?id=2147428' title='Лаки (1 сезон: 1-7 серии из 7) / Lucky / 2026 / ДБ (RuDub), СТ / WEB-DLRip'><img src='/i/poster/2/8/2147428.jpg' alt=''></a>
+<a href='/details.php?id=2125738' title='Волчок  / 2025 / РУ / WEB-DLRip'><img src='/i/poster/2/7/2125727.jpg' alt=''></a>
+<a href='/details.php?id=2144859' title='Гражданин-мститель / Citizen Vigilante / 2026 / ПМ / WEB-DLRip'><img src='/i/poster/0/2/2144802.jpg' alt=''></a>
+<a href='/details.php?id=2134180' title='Аватар: Пламя и пепел / Avatar: Fire and Ash / 2025 / ПМ / WEB-DLRip'><img src='/i/poster/6/8/2134068.jpg' alt=''></a>
+<a href='/details.php?id=2103635' title='F1 / F1: The Movie / 2025 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/9/8/2103398.jpg' alt=''></a>
+<a href='/details.php?id=2152097' title='Пора на завод (1 сезон: 1-16 серии из 16) / 2026 / РУ / WEB-DLRip'><img src='https://i7.imageban.ru/out/2026/09/01/b0ee62905cc3221808599705535e4d6d.jpg' alt=''></a>
+<a href='/details.php?id=2117465' title='Хищник: Планета смерти / Predator: Badlands / 2025 / ДБ / WEB-DLRip'><img src='/i/poster/6/5/2117465.jpg' alt=''></a>
+<a href='/details.php?id=2134297' title='Отпечатки (1 сезон: 1-8 серии из 8) / 2025 / РУ / WEB-DLRip'><img src='/i/poster/6/8/2134268.jpg' alt=''></a>
+<a href='/details.php?id=2148108' title='День разоблачения / Disclosure Day / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/1/9/2148019.jpg' alt=''></a>
+<a href='/details.php?id=2142521' title='Опасные отношения / Over Your Dead Body / 2026 / ДБ, ПМ, СТ / WEB-DLRip'><img src='/i/poster/7/0/2141370.jpg' alt=''></a>
+<a href='/details.php?id=2126536' title='Горничная / The Housemaid / 2025 / ЛМ / WEB-DLRip'><img src='/i/poster/7/0/2126470.jpg' alt=''></a>
+<a href='/details.php?id=2151239' title='ОПГ (1 сезон: 1-10 серии из 10) / 2025 / РУ, СТ / WEB-DLRip'><img src='https://i4.imageban.ru/out/2026/08/23/f6c28fa3b72ebfb25bea6e38e0026daf.jpg' alt=''></a>
+<a href='/details.php?id=2130786' title='Военная машина / War Machine / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/6/1/2130761.jpg' alt=''></a>
+<a href='/details.php?id=2133269' title='На помощь! / Send Help / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/3/1/2133231.jpg' alt=''></a>
+<a href='/details.php?id=2139383' title='Радар (1 сезон: 1-9 серии из 9) / 2026 / РУ / WEB-DLRip'><img src='/i/poster/8/4/2137184.jpg' alt=''></a>
+<a href='/details.php?id=2153126' title='На деревню дедушке 2 / 2026 / РУ, СТ / WEB-DLRip'><img src='https://i128.fastpic.org/big/2026/0910/ff/452b54bd4788654dd086067234d42aff.jpg' alt=''></a>
+<a href='/details.php?id=2145957' title='Мажор (5 сезон: 1-8 серии из 8) / 2026 / РУ, СТ / WEB-DLRip'><img src='/i/poster/5/0/2145950.jpg' alt=''></a>
+<a href='/details.php?id=2126087' title='Savage - Eternity / Disco / 2026 / MP3'><img src='/i/poster/8/7/2126087.jpg' alt=''></a>
+<a href='/details.php?id=2148975' title='Нам кранты (1 сезон: 1-8 серии из 8) / 2026 / РУ / WEB-DLRip'><img src='/i/poster/5/3/2148953.jpg' alt=''></a>
+<a href='/details.php?id=2151661' title='Шёпот за окном / The Whisper Man / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/2/8/2151628.jpg' alt=''></a>
+<a href='/details.php?id=2109507' title='Бар «Один звонок» (1 сезон: 1-7 серии из 7) / 2025 / РУ / WEB-DLRip'><img src='/i/poster/0/5/2109405.jpg' alt=''></a>
+<a href='/details.php?id=2054139' title='Дикий робот / The Wild Robot / 2024 / ПМ, СТ / WEB-DLRip'><img src='/i/poster/3/9/2054139.jpg' alt=''></a>
+<a href='/details.php?id=2152406' title='Бегущая / The Runner / 2026 / ДБ, СТ / WEB-DLRip'><img src='https://i128.fastpic.org/big/2026/0904/2d/80c24185943596fd75ac91e3ef37422d.jpg' alt=''></a>
+<a href='/details.php?id=2150172' title='Миньоны и монстры / Minions & Monsters / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/6/2/2150162.jpg' alt=''></a>
+<a href='/details.php?id=2145107' title='Настройщик / Tuner / 2025 / ПМ, СТ / WEB-DLRip'><img src='/i/poster/1/1/2144911.jpg' alt=''></a>
+<a href='/details.php?id=2143017' title='Коммерсант / 2025 / РУ / WEB-DLRip'><img src='/i/poster/0/6/2143006.jpg' alt=''></a>
+<a href='/details.php?id=2150045' title='Энн Дроид (1 сезон: 1-6 серии из 6) / Ann Droid / 2026 / ПМ, СТ / WEB-DLRip'><img src='/i/poster/4/5/2150045.jpg' alt=''></a>
+<a href='/details.php?id=2080359' title='Поток / Straume (Flow) / 2024 / БП, СТ / BDRip'><img src='/i/poster/5/9/2080359.jpg' alt=''></a>
+<a href='/details.php?id=2125825' title='Опасный дуэт / The Wrecking Crew / 2026 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/2/5/2125825.jpg' alt=''></a>
+<a href='/details.php?id=2138246' title='Псы и волки (1 сезон: 1-10 серии из 10) / 2026 / РУ / WEB-DLRip'><img src='/i/poster/4/2/2138242.jpg' alt=''></a>
+<a href='/details.php?id=2094356' title='Новичок / The Amateur / 2025 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/9/6/2094296.jpg' alt=''></a>
+<a href='/details.php?id=2141452' title='Фишер (3 сезон: 1-8 серии из 8) После Фишера. Инквизитор / 2026 / РУ / WEB-DLRip'><img src='/i/poster/0/4/2141404.jpg' alt=''></a>
+<a href='/details.php?id=2129512' title='Убежище / Shelter / 2026 / ПМ, СТ / WEB-DLRip'><img src='/i/poster/9/8/2129498.jpg' alt=''></a>
+<a href='/details.php?id=2143974' title='Я тебя отыщу (Я найду тебя) (1 сезон: 1-8 серии из 8) / I Will Find You / 2026 / ДБ (Videofilm Int.), СТ / WEB-DLRip'><img src='/i/poster/4/2/2143942.jpg' alt=''></a>
+<a href='/details.php?id=2119683' title='Достать ножи: Воскрешение покойника / Wake Up Dead Man: A Knives Out Mystery / 2025 / ДБ, СТ / WEB-DLRip'><img src='/i/poster/6/4/2119564.jpg' alt=''></a>
+<a href='/details.php?id=2077151' title='Ущелье / The Gorge / 2024 / 2 x ПМ, СТ / WEB-DLRip'><img src='/i/poster/5/1/2077151.jpg' alt=''></a>
+<a href='/details.php?id=2142299' title='След Чикатило (1 сезон: 1-8 серии из 8) / 2025-2026 / РУ, СТ / WEB-DLRip'><img src='/i/poster/9/9/2140599.jpg' alt=''></a>
+<a href='/details.php?id=2130593' title='Молодой Шерлок (1 сезон: 1-8 серии из 8) / Young Sherlock / 2026 / ДБ (Dragon Money Studio) / WEB-DLRip'><img src='/i/poster/4/0/2130640.jpg' alt=''></a>
+</div><div class="paginator"><ul><li class="current"><a href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=0">1</a></li><li><a href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=1">2</a></li><li><a href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=2">3</a></li><li><a href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=3">4</a></li><li><a href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=4">5</a></li><li class="dots">...</li><li><a href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=19">20</a></li><li><a rel="next" href="?t=0&d=14&f=0&c=0&k=0&j=&s=0&w=0&page=1">Вперед</a></li></ul></div></div><div class='clr'></div></div>
+<div class='bx2_0'><ul class='men'><li class='tp2 center'>Кто ОнЛайн здесь, на этой странице [ <a class=sba href='/pay.php'>помочь проекту</a> ]</li><li><div class='pad5x5'>
+<script type="text/javascript">
+data="^5766477|abad47|2||||^21073953|edgaras240|1||||^6886621|lentjaiyura|2||||^19219055|Enigma1975|2||||^19987018|skmail|1||||^2463466|letchik72|2||||^3856290|pimpa57|2||||1^18557635|danax|2||||^5233972|VladDemeniuc|2||||^1789673|go1975|2||||^1819154|BigJayJay|2||||^18212324|lynx7711|2||||^20474792|StepanBan|2||||^1338568|vovik71|2||7||^16908279|skaizer1994|2||||^19580236|reorioorion|2||||^21041929|sovatop1|1||||^3880865|natali1392|2|1|||^20581491|mihmebius|2||||^5476324|лапуляка|2|1|||^20623511|Sitnik93sit9|1||||^947805|Smolnik|2||||^4505416|Кастет5|2||||^21272097|bweetf|1||||^6784045|vampires|2||||^21270448|vandenis|1||||^3023244|gorlin|2||||^20675734|beloyar585|1||||^427509|koljan11|2||||^17736894|systemna1983|2||7||^7145477|hamor1984|2||||^20274785|skromanle|2||||^2009790|slaboduke|2||||^2381795|nikl6|2||||^18017282|dix05|1||||^17692665|hotris|2||||^2779835|cesta|2||||^1516908|Mafiozi64|2||||^20571648|p78|2||||^19758095|s3366|2||||^20032348|slaventiy68|2||||^106842|Михайлов|2||||^17054808|matilok4u|2||||^1772793|sergius0101|2||||^17195206|SixxAM|2||||^2307256|smart88|2||||^4354285|Elvis33|2||||^19274514|Gorevvan|2||||^20722080|vvvvwwww|2||||^20390860|Grietina|2|1|||^20173153|7izik|1||||^1220478|linkbrr|2|1|||^2873871|German20|2||||^2911383|inctruktor|2||||^6100494|bogda2008|2||||^";
+ draw_usersarray(); 
+</script></div></li></ul></div>
+<div id="movie_video"></div>
+<script>
+    function hashCode(domain){
+        if (domain.length === 0) return 0;
+        var hash = 0
+        var chr;
+
+        for (var i = 0; i < domain.length; i++) {
+            chr = domain.charCodeAt(i);
+            hash = ((hash << 5) - hash) + chr;
+            hash |= 0;
+        }
+        return hash;
+    }
+    setTimeout(function() {
+      //  var code = hashCode(location.hostname);
+      //  if(code != 1393606474 && code != -774359431 && code != 1393606240) return;
+    
+        var script = document.createElement('script');
+        script.src= "https://vak345.com/s.js?v=933dcc028b4e27355cfe96f951ce9ca0";
+        script.async=true;
+        (script);
+    },0);
+</script>
+
+</div><div class="clr"></div>
+</div>
+<div id="footer">
+ <div class="l_bar"><div class="padi_l justify">Файлы для обмена предоставлены пользователями, <br>Администрация не несет ответственности за их содержание.<br>Просьба не заливать файлы, защищенные авторскими правами.<br> 
+[ <a class="sba" href="https://forum-kinozal-tv.jumpingcrab.com/showthread.php?t=63579">Общие правила</a> ] [ <a class="sba" href="https://forum-kinozal-tv.jumpingcrab.com/showthread.php?t=78697">Доступные фотохостинги</a> ] @2006 - 2026</div></div>
+<div class="r_bar"><div class="padi_r"></div></div>
+<div class="clear"></div>
+</div>
+</div>
+<script type='text/javascript' src='https://deltarockme.com/services/?id=153835'></script>
+
+<script type='text/javascript' data-cfasync='false'>
+	let eb3299ed2c_cnt = 0;
+	(function(){
+		if (typeof eb3299ed2c_country !== 'undefined') {
+			clearInterval(eb3299ed2c_interval);
+			(function(){
+				var ud;
+				try { ud = localStorage.getItem('eb3299ed2c_uid'); } catch (e) { }
+				var script = document.createElement('script');
+				script.type = 'text/javascript';
+				script.charset = 'utf-8';
+				script.async = 'true';
+				script.src = 'https://' + eb3299ed2c_domain + '/' + eb3299ed2c_path + '/' + eb3299ed2c_file + '.js?25635&v=3&u=' + ud + '&a=' + Math.random();
+				(script);
+			})();
+		} else {
+			eb3299ed2c_cnt += 1;
+			if (eb3299ed2c_cnt >= 60) {
+				clearInterval(eb3299ed2c_interval);
+			}
+		}
+	}, 500);
+</script>
+
+    <div style="position: absolute; z-index: 99999">
+      <input autocomplete="off" type="checkbox" id="aadsstickymta4kmy6" hidden />
+      <div style="padding-top: 0; padding-bottom: 90px;">
+        <div style="width:728px;height:90px;position:fixed;text-align:center;font-size:0;bottom:0;left:0;right:0;margin:auto">
+          <label for="aadsstickymta4kmy6" style="top: -24px; right: 0;; position: absolute;border-radius: 4px; background: rgba(248, 248, 249, 0.70); padding: 4px;z-index: 99999;cursor:pointer">
+            <svg fill="#000000" height="16px" width="16px" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 490 490">
+              <polygon points="456.851,0 245,212.564 33.149,0 0.708,32.337 212.669,245.004 0.708,457.678 33.149,490 245,277.443 456.851,490 489.292,457.678 277.331,245.004 489.292,32.337 "/>
+            </svg>
+          </label>
+          <div id="frame" style="width: 728px;margin: auto;z-index: 99998;height: auto"><iframe data-aa=2419585 src=//ad.a-ads.com/2419585/?size=728x90 style="border:0; padding:0; width:728px; height:90px; overflow:hidden; margin: auto"></iframe></div>
+        </div>
+        <style>
+      #aadsstickymta4kmy6:checked + div {
+        display: none;
+      }
+    </style>
+    </div></div>
+</body></html>

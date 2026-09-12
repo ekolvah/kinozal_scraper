@@ -20,7 +20,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_html,
 )
-from kinozal_scraper.http_fetch import NotAnImageError, fetch_bytes, fetch_html
+from kinozal_scraper.http_fetch import NotAnImageError, fetch_bytes, fetch_html, fetch_page
 from kinozal_scraper.kinozal_auth import fetch_authenticated, login
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
@@ -337,6 +337,14 @@ def _origin(url: str) -> str:
     it follows origin→mirror failover instead of a hardcoded canonical host."""
     parts = urlsplit(url)
     return f"{parts.scheme}://{parts.netloc}"
+
+
+class ChallengeGateError(RuntimeError):
+    """#583 RED stub."""
+
+
+def _cross_gate(url: str) -> str:
+    raise NotImplementedError(fetch_page)  # #583 RED stub
 
 
 class Kinozal:

@@ -8,9 +8,11 @@ and the exit-code surface.
 
 import logging
 import os
+import pathlib
 import re
 import unittest
 import unittest.mock
+from collections.abc import Callable
 from typing import Any
 
 import kinozal_scraper.kinozal_pipeline as kp
@@ -65,6 +67,27 @@ _KINOZAL_SOURCE: dict[str, Any] = {
 }
 
 _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
+
+
+# ── `fetch_page` doubles (#583) ───────────────────────────────────────────────
+# The facade reads a curl_cffi Response at the `fetch_page` boundary: `.url` is
+# the FINAL url after redirects (how the jumpingcrab challenge gate is detected),
+# the rest is `describe_block` evidence. Same shape `tests/test_http_fetch.py` builds.
+
+
+def _page(
+    text: str, url: str = "https://kinozal.tv/top.php", status_code: int = 200
+) -> unittest.mock.Mock:
+    return unittest.mock.Mock(url=url, status_code=status_code, text=text, headers={})
+
+
+def _pages(fetch: Callable[[str], str]) -> Callable[..., unittest.mock.Mock]:
+    """Adapt a url→html dispatcher (the pre-#583 `fetch_html` double) to `fetch_page`."""
+
+    def _side_effect(url: str, **_: Any) -> unittest.mock.Mock:
+        return _page(fetch(url), url=url)
+
+    return _side_effect
 
 
 class _FakeYoutube:
@@ -1124,6 +1147,27 @@ class TestPipelineAuth(unittest.TestCase):
         self.assertTrue(any("login failed" in e.lower() for e in errs), errs)
         self.assertTrue(any(not r.ok for r in results))  # → exit 1
 
+    def test_mirror_login_failure_keeps_primary_evidence(self) -> None:
+        # #583: `_ensure_login()` sat outside `_from_mirror`'s try, so a login
+        # failure replaced the primary failure instead of joining it — under the
+        # prod (credentialed) setup the operator saw `mirror login failed` and
+        # nothing about WHY the primary was tried in the first place (§IV).
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
+                side_effect=RuntimeError("HTTP Error 522"),
+            ),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_authenticated") as mauth,
+        ):
+            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
+        mauth.assert_not_called()
+        (error,) = [e for r in results for e in r.errors]
+        self.assertIn("522", error)
+        self.assertIn("bad creds", error)
+
     def test_both_primary_and_mirror_fail_records_combined(self) -> None:
         sentinel = unittest.mock.Mock()
         with (
@@ -2123,6 +2167,165 @@ class TestKinozalFacade(unittest.TestCase):
         fetch_html_mock.assert_called_once()
         login_mock.assert_not_called()
         auth_mock.assert_not_called()
+
+
+# ── jumpingcrab challenge gate (#583) ─────────────────────────────────────────
+
+_KINOZAL_FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "kinozal"
+_JC_ORIGIN = "https://kinozal.jumpingcrab.com"
+_JC_TOP = f"{_JC_ORIGIN}/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0"
+_JC_DETAILS = f"{_JC_ORIGIN}/details.php?id=2152267"
+_JC_COOKIE = {"challenge1": "1"}
+
+
+def _jc_challenge() -> str:
+    """The 741-byte gate page captured from the live host (`evidence/issue-583`)."""
+    return (_KINOZAL_FIXTURES / "jumpingcrab_challenge.html").read_bytes().decode("utf-8")
+
+
+def _jc_listing() -> str:
+    # Captured bytes are windows-1251 (the site's charset) — decoded here the way
+    # curl_cffi decodes them into `Response.text`.
+    return (_KINOZAL_FIXTURES / "jumpingcrab_top_with_cookie.html").read_bytes().decode("cp1251")
+
+
+class _GatedHost:
+    """`fetch_page` double for a jumpingcrab-shaped host: a GET without `cookie`
+    lands on the challenge page (final URL under /challenge-verification, HTTP
+    200 — the false success of #583); a GET carrying exactly `cookie` gets the
+    target page. `cookie=None` is a gate nothing clears. Records every call so
+    tests can count GETs and read the `cookies` kwarg."""
+
+    def __init__(self, challenge: str, target: str, cookie: dict[str, str] | None) -> None:
+        self.challenge = challenge
+        self.target = target
+        self.cookie = cookie
+        self.calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def __call__(self, url: str, *, cookies: dict[str, str] | None = None) -> unittest.mock.Mock:
+        self.calls.append((url, cookies))
+        if self.cookie is not None and cookies == self.cookie:
+            return _page(self.target, url=url)
+        path = url.removeprefix(_JC_ORIGIN)
+        return _page(self.challenge, url=f"{_JC_ORIGIN}/challenge-verification?next={path}")
+
+
+class TestChallengeGate(unittest.TestCase):
+    """kinozal.jumpingcrab.com fronts HTML with a JS cookie gate (#583): the
+    facade must replay the cookie the page sets, and must never hand the gate
+    page on as a listing (it has zero rows → `extraction produced zero items`
+    with no evidence why). Transport is faked at the `fetch_page` boundary,
+    never the facade internals (§II); the production source config and the
+    captured pages drive the extractor for real."""
+
+    def setUp(self) -> None:
+        sources = load_sources_config()["sources"]
+        self.source = next(s for s in sources if s["id"] == "kinozal_movies")
+        self.challenge = _jc_challenge()
+        self.listing = _jc_listing()
+
+    def _fetch_and_extract(
+        self, kinozal: kp.Kinozal
+    ) -> tuple[list[NormalizedItem], list[PipelineResult]]:
+        return kp._fetch_and_extract([self.source], [_JC_TOP], kinozal)
+
+    def test_challenge_gate_replay_extracts_listing_and_rejects_bare_challenge(self) -> None:
+        with self.subTest("replay with the parsed cookie yields the listing"):
+            host = _GatedHost(self.challenge, self.listing, _JC_COOKIE)
+            with (
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host
+                ),
+                self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs,
+            ):
+                items, results = self._fetch_and_extract(kp.Kinozal("", ""))
+            self.assertEqual([r.errors for r in results], [[]])
+            self.assertIn(
+                ("Холоп 3 / 2026 / РУ / WEB-DLRip", _JC_DETAILS),
+                [(item.dedupe_key, item.url) for item in items],
+            )
+            self.assertEqual(host.calls, [(_JC_TOP, None), (_JC_TOP, _JC_COOKIE)])
+            self.assertTrue(
+                any(f"challenge gate crossed at {_JC_TOP}" in line for line in logs.output),
+                logs.output,
+            )
+
+        with self.subTest("a gate the replay does not clear is named, not zero items"):
+            # Prod shape: credentials set, kinozal.guru itself behind Cloudflare so
+            # the mirror login fails too — the error must still carry the gate.
+            host = _GatedHost(self.challenge, self.listing, cookie=None)
+            with (
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host
+                ),
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.login",
+                    side_effect=KinozalLoginError("cf managed challenge"),
+                ),
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.fetch_authenticated"
+                ) as mauth,
+            ):
+                items, results = self._fetch_and_extract(kp.Kinozal("u", "p"))
+            mauth.assert_not_called()
+            self.assertEqual(items, [])
+            (error,) = results[0].errors
+            for needle in (
+                f"{_JC_ORIGIN}/challenge-verification",
+                "200",
+                "len=741",
+                "title='Just a moment...'",
+                "cf managed challenge",
+            ):
+                self.assertIn(needle, error)
+            self.assertNotIn("extraction produced zero items", error)
+            self.assertEqual(len(host.calls), 2)  # one replay, no loop
+
+    def test_cookie_name_and_value_come_from_the_page(self) -> None:
+        challenge = self.challenge.replace("challenge1=1;", "gate=xyz;")
+        self.assertIn('document.cookie = "gate=xyz;', challenge)  # fixture edit took
+        host = _GatedHost(challenge, self.listing, {"gate": "xyz"})
+        with unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host):
+            html, base = kp.Kinozal("", "").fetch_listing(_JC_TOP)
+        self.assertEqual((html, base), (self.listing, _JC_ORIGIN))
+        self.assertEqual(host.calls[-1], (_JC_TOP, {"gate": "xyz"}))
+
+    def test_challenge_without_cookie_assignment_is_a_visible_error(self) -> None:
+        blank = (
+            "<html><head><title>Just a moment...</title></head>"
+            "<body><noscript>enable JavaScript</noscript></body></html>"
+        )
+        host = _GatedHost(blank, self.listing, _JC_COOKIE)
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host),
+            self.assertRaises(kp.ChallengeGateError) as ctx,
+        ):
+            kp._cross_gate(_JC_TOP)
+        self.assertIn(f"{_JC_ORIGIN}/challenge-verification", str(ctx.exception))
+        self.assertIn("title='Just a moment...'", str(ctx.exception))
+        self.assertEqual(len(host.calls), 1)  # nothing to replay with
+
+    def test_ungated_host_is_one_request_without_cookie(self) -> None:
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_page",
+            return_value=_page(self.listing, url=_JC_TOP),
+        ) as mfetch:
+            html, base = kp.Kinozal("", "").fetch_listing(_JC_TOP)
+        self.assertEqual((html, base), (self.listing, _JC_ORIGIN))
+        mfetch.assert_called_once_with(_JC_TOP)
+
+    def test_fetch_details_non_mirror_crosses_the_gate(self) -> None:
+        details = _details_html("боевик")
+        host = _GatedHost(self.challenge, details, _JC_COOKIE)
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
+        ):
+            html = kp.Kinozal("u", "p").fetch_details(_JC_DETAILS)
+        self.assertEqual(html, details)
+        self.assertIn("Жанр", html)
+        mlogin.assert_not_called()  # crossed anonymously, no mirror login
+        self.assertEqual(host.calls, [(_JC_DETAILS, None), (_JC_DETAILS, _JC_COOKIE)])
 
 
 if __name__ == "__main__":

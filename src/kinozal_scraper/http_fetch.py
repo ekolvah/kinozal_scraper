@@ -155,6 +155,10 @@ _IMAGE_GET: dict[str, Any] = {
 }
 
 
+def fetch_page(url: str, *, cookies: dict[str, str] | None = None) -> requests.Response:
+    raise NotImplementedError  # #583 RED stub
+
+
 def fetch_html(url: str) -> str:
     return _get(url, **_HTML_GET).text
 
