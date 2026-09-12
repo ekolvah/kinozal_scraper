@@ -81,7 +81,7 @@ jobs:
           SECONDS=0
           python -m playwright install --with-deps chromium > /tmp/pw-install.log 2>&1 || { tail -20 /tmp/pw-install.log; exit 1; }
           echo "playwright install --with-deps chromium: ${SECONDS}s"
-          python -c "import playwright; print('playwright', playwright.__version__)"
+          python -m pip show playwright | grep -i '^version'
           du -sh ~/.cache/ms-playwright 2>/dev/null || true
 
       - name: "Candidate B: headless Chromium through the gate"
