@@ -298,11 +298,24 @@ Field selectors use `css@attr` syntax to extract attributes.
 Enabled by the `KINOZAL_USERNAME` + `KINOZAL_PASSWORD` secret pair — described in
 [`operations.md` § kinozal_pipeline](operations.md#kinozal_pipeline).
 
-**Mirror fallback when `kinozal.tv` is unavailable (#227):** primary is anonymous
-`kinozal.tv` (`KINOZAL_URLS` remains `.tv`, **no switch is needed**). If a fetch for any URL fails
-(for example, 522), the pipeline automatically retries the same top on the **`kinozal.guru`** mirror
-through an authorized session. Login is **lazy** — performed at most once per run and only at the
-first fallback, so a healthy `.tv` run does not pay for login or require credentials.
+**Mirror fallback when the primary is unavailable (#227):** primary is the anonymous host named by
+`KINOZAL_URLS` (`kinozal.tv` originally; `kinozal.jumpingcrab.com` since 2026-09-11 — the `.tv`
+wording below is historical). If a fetch for any URL fails (for example, 522), the pipeline
+automatically retries the same top on the **`kinozal.guru`** mirror through an authorized session.
+Login is **lazy** — performed at most once per run and only at the first fallback, so a healthy
+primary run does not pay for login or require credentials.
+
+**Primary cookie gate (#583, [ADR-0012](../adr/0012-cross-jumpingcrab-cookie-gate-by-replay-not-browser.md)):**
+`kinozal.jumpingcrab.com` fronts every anonymous HTML request with a JS gate — `302 →
+/challenge-verification?next=…`, a 200 page that sets a cookie via `document.cookie` and reloads.
+`Kinozal.fetch_listing`/`fetch_details` go through `_cross_gate`: the final URL after redirects
+tells the gate apart from the page (the body alone cannot — both are `200`), the cookie name/value
+are read from the page and the request is replayed **once** with it. A gate that is still there
+after the replay, or one that sets no cookie, raises `ChallengeGateError` with `describe_block`
+evidence (`…/challenge-verification 200 len=741 title='Just a moment...'`) — it is a primary failure
+like a 522, so the mirror fallback fires and the alert names both hosts. The gate page is never handed
+to the extractor: it used to be, and the daily symptom was a bare `extraction produced zero
+items` (#583). Posters (`/i/poster/`) are not gated and keep using plain `fetch_bytes`.
 
 ⚠️ **An anonymous domain swap to `.guru` does not work** (verified 2026-06-30): `kinozal.guru`
 gates all content behind login — `/top.php`, `/browse.php`, even `/` → `302 .../login.php?m=5`.
