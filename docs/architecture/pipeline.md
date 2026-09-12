@@ -298,11 +298,22 @@ Field selectors use `css@attr` syntax to extract attributes.
 Enabled by the `KINOZAL_USERNAME` + `KINOZAL_PASSWORD` secret pair — described in
 [`operations.md` § kinozal_pipeline](operations.md#kinozal_pipeline).
 
-**Mirror fallback when `kinozal.tv` is unavailable (#227):** primary is anonymous
-`kinozal.tv` (`KINOZAL_URLS` remains `.tv`, **no switch is needed**). If a fetch for any URL fails
-(for example, 522), the pipeline automatically retries the same top on the **`kinozal.guru`** mirror
-through an authorized session. Login is **lazy** — performed at most once per run and only at the
-first fallback, so a healthy `.tv` run does not pay for login or require credentials.
+**Mirror fallback when the primary is unavailable (#227):** primary is the anonymous host named by
+`KINOZAL_URLS`. If a fetch for any URL fails (for example, 522), the pipeline
+automatically retries the same top on the **`kinozal.guru`** mirror through an authorized session.
+Login is **lazy** — performed at most once per run and only at the first fallback, so a healthy
+primary run does not pay for login or require credentials.
+
+**Primary cookie gate ([ADR-0012](../adr/0012-cross-jumpingcrab-cookie-gate-by-replay-not-browser.md)):**
+`kinozal.jumpingcrab.com` fronts every anonymous HTML request with a JS gate — `302 →
+/challenge-verification?next=…`, a 200 page that sets a cookie via `document.cookie` and reloads.
+`Kinozal.fetch_listing`/`fetch_details` go through `_cross_gate`: the final URL after redirects
+tells the gate apart from the page (the body alone cannot — both are `200`), the cookie name/value
+are read from the page and the request is replayed **once** with it. A gate that is still there
+after the replay, or one that sets no cookie, raises `ChallengeGateError` with `describe_block`
+evidence (`…/challenge-verification 200 len=741 title='Just a moment...'`) — it is a primary failure
+like a 522, so the mirror fallback fires and the alert names both hosts. The gate page is never handed
+to the extractor. Posters (`/i/poster/`) are not gated and keep using plain `fetch_bytes`.
 
 ⚠️ **An anonymous domain swap to `.guru` does not work** (verified 2026-06-30): `kinozal.guru`
 gates all content behind login — `/top.php`, `/browse.php`, even `/` → `302 .../login.php?m=5`.
@@ -310,21 +321,21 @@ Therefore fallback goes through `kinozal_auth.py` (`POST /takelogin.php`; an ord
 is sufficient — confirmed by a live run).
 
 **Enabling fallback:** set both `KINOZAL_USERNAME` + `KINOZAL_PASSWORD` secrets. Without them (or
-when partial), fallback is disabled and a `.tv` failure reaches a visible
+when partial), fallback is disabled and a primary failure reaches a visible
 `fetch failed ... (mirror fallback disabled)` + exit 1 (§IV). Login failure / both-failed are also
 visible: `mirror login failed` / `primary failed (...); mirror ... also failed (...)`.
-`sources.json` `base_url` remains `https://kinozal.tv` (the default origin when primary is healthy) —
+`sources.json` `base_url` is a static default that the per-fetch effective origin (below) overrides —
 do not configure the mirror there.
 
 **Links follow the effective origin (#247):** `Kinozal.fetch_listing` returns
-`(html, effective_base_url)` — `kinozal.tv` on primary success, `kinozal.guru` on mirror fallback.
-The pipeline resolves listing-relative `url`/`image_url` against this base host (a per-fetch override
-of static `base_url`), so a mirror run produces **`.guru` links** — live for the logged-in recipient,
-not dead `.tv` links. The canonical-origin approach (“`base_url` is always `.tv`”) is deliberately
-rejected here: the recipient is logged into `.guru`, so its login wall is irrelevant
-(#227, #241, #247). A mixed run (some tops from `.tv`, some from the mirror) gives each item the
-correct host; deduplication is stable (key is clean title, host is not included → no migration of
-old `.tv` rows in the Sheet is needed).
+`(html, effective_base_url)` — the requested primary origin on primary success, `kinozal.guru` on
+mirror fallback. The pipeline resolves listing-relative `url`/`image_url` against this base host (a
+per-fetch override of static `base_url`), so a mirror run produces **`.guru` links** — live for the
+logged-in recipient, not dead primary links. The canonical-origin approach (“`base_url` is always the
+primary”) is deliberately rejected here: the recipient is logged into `.guru`, so its login wall is
+irrelevant (#227, #241, #247). A mixed run (some tops from the primary, some from the mirror) gives
+each item the correct host; deduplication is stable (key is clean title, host is not included → rows
+in the Sheet never need a host migration).
 
 **Genre-filter details fetch on mirror runs (#317):** because links follow the effective origin, on
 mirror days `item.url` = `kinozal.guru/details.php?...`. `Kinozal.fetch_details` for a mirror-host
@@ -336,7 +347,7 @@ are notified). The mirror serves `/i/poster/` anonymously (verified), so `fetch_
 affected by this path.
 
 The sole consumer is production cron (`run-script.yml` / `kinozal_pipeline.py`). E2E
-`tests/test_e2e_kinozal_titles.py` is unconditionally skipped while `kinozal.tv` returns 522 (#136).
+`tests/test_e2e_kinozal_titles.py` is unconditionally skipped while the live primary is unreachable (#136).
 
 ## Macro expansion
 

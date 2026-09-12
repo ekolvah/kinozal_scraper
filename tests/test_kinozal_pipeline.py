@@ -8,9 +8,11 @@ and the exit-code surface.
 
 import logging
 import os
+import pathlib
 import re
 import unittest
 import unittest.mock
+from collections.abc import Callable
 from typing import Any
 
 import kinozal_scraper.kinozal_pipeline as kp
@@ -65,6 +67,27 @@ _KINOZAL_SOURCE: dict[str, Any] = {
 }
 
 _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
+
+
+# ── `fetch_page` doubles ──────────────────────────────────────────────────────
+# The facade reads a curl_cffi Response at the `fetch_page` boundary: `.url` is
+# the FINAL url after redirects (how the jumpingcrab challenge gate is detected),
+# the rest is `describe_block` evidence. Same shape `tests/test_http_fetch.py` builds.
+
+
+def _page(
+    text: str, url: str = "https://kinozal.tv/top.php", status_code: int = 200
+) -> unittest.mock.Mock:
+    return unittest.mock.Mock(url=url, status_code=status_code, text=text, headers={})
+
+
+def _pages(fetch: Callable[[str], str]) -> Callable[..., unittest.mock.Mock]:
+    """Adapt a url→html dispatcher (a `fetch_html`-shaped double) to `fetch_page`."""
+
+    def _side_effect(url: str, **_: Any) -> unittest.mock.Mock:
+        return _page(fetch(url), url=url)
+
+    return _side_effect
 
 
 class _FakeYoutube:
@@ -428,7 +451,9 @@ def _run(
     notifier = notifier if notifier is not None else InMemoryNotifier(fail_ids=fail_ids)
 
     with (
-        unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
+        unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(html)
+        ),
         unittest.mock.patch.dict(
             os.environ,
             {"KINOZAL_URLS": urls},
@@ -436,7 +461,7 @@ def _run(
         ),
     ):
         # Ambient KINOZAL_* creds are cleared globally by the autouse fixture in
-        # conftest.py, so a failed fetch_html here never triggers a real login().
+        # conftest.py, so a failed fetch_page here never triggers a real login().
         run_kinozal_pipeline(
             storage,
             notifier,
@@ -621,7 +646,8 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
+                return_value=_page(_KINOZAL_HTML),
             ),
             unittest.mock.patch.dict(os.environ, {}, clear=False),
         ):
@@ -632,12 +658,12 @@ class TestPipelineFailureIsolation(unittest.TestCase):
         self.assertEqual(notifier.sent, [])
 
     def test_fetch_failure_isolated_pipeline_continues(self) -> None:
-        """A failed fetch_html for one URL shouldn't crash the pipeline."""
+        """A failed fetch_page for one URL shouldn't crash the pipeline."""
         storage = InMemoryStorage()
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("boom")
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=RuntimeError("boom")
             ),
             unittest.mock.patch.dict(
                 os.environ,
@@ -662,7 +688,7 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("boom")
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=RuntimeError("boom")
             ),
             unittest.mock.patch.dict(
                 os.environ,
@@ -687,7 +713,8 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
         notifier2 = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
+                return_value=_page(_KINOZAL_HTML),
             ),
             unittest.mock.patch.dict(
                 os.environ,
@@ -707,7 +734,8 @@ class TestKinozalPipelineExitCodeSurface(unittest.TestCase):
         notifier = InMemoryNotifier()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value="<html></html>"
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
+                return_value=_page("<html></html>"),
             ),
             unittest.mock.patch.dict(
                 os.environ,
@@ -764,7 +792,9 @@ def _run_results(
         storage.seed_existing("movies", existing_keys)
     notifier = InMemoryNotifier(fail_ids=fail_ids)
     with (
-        unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", return_value=html),
+        unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(html)
+        ),
         unittest.mock.patch.dict(
             os.environ,
             {"KINOZAL_URLS": "top|https://test.example/top.php"},
@@ -1043,7 +1073,7 @@ class TestPipelineAuth(unittest.TestCase):
     def test_primary_success_skips_login_and_mirror(self) -> None:
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+                "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(_KINOZAL_HTML)
             ) as mfetch,
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_authenticated") as mauth,
@@ -1057,7 +1087,7 @@ class TestPipelineAuth(unittest.TestCase):
         sentinel = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
             unittest.mock.patch(
@@ -1078,7 +1108,7 @@ class TestPipelineAuth(unittest.TestCase):
         two_urls = "a|https://kinozal.tv/top.php?d=14;b|https://kinozal.tv/top.php?d=0"
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=RuntimeError("522")
             ),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.login", return_value=sentinel
@@ -1094,7 +1124,7 @@ class TestPipelineAuth(unittest.TestCase):
     def test_no_credentials_primary_failure_surfaces_without_mirror(self) -> None:
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
@@ -1111,7 +1141,7 @@ class TestPipelineAuth(unittest.TestCase):
     def test_mirror_login_failure_surfaces_visible_error(self) -> None:
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=RuntimeError("522")
             ),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
@@ -1124,11 +1154,31 @@ class TestPipelineAuth(unittest.TestCase):
         self.assertTrue(any("login failed" in e.lower() for e in errs), errs)
         self.assertTrue(any(not r.ok for r in results))  # → exit 1
 
+    def test_mirror_login_failure_keeps_primary_evidence(self) -> None:
+        # A login failure must join the primary failure, not replace it: with
+        # `_ensure_login()` outside `_from_mirror`'s try the operator sees only
+        # `mirror login failed` and nothing about WHY the mirror was tried (§IV).
+        with (
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
+                side_effect=RuntimeError("HTTP Error 522"),
+            ),
+            unittest.mock.patch(
+                "kinozal_scraper.kinozal_pipeline.login", side_effect=KinozalLoginError("bad creds")
+            ),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_authenticated") as mauth,
+        ):
+            results, _, _ = self._run_with_env({"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"})
+        mauth.assert_not_called()
+        (error,) = [e for r in results for e in r.errors]
+        self.assertIn("522", error)
+        self.assertIn("bad creds", error)
+
     def test_both_primary_and_mirror_fail_records_combined(self) -> None:
         sentinel = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=RuntimeError("522")
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
             unittest.mock.patch(
@@ -1144,7 +1194,7 @@ class TestPipelineAuth(unittest.TestCase):
     def test_partial_credentials_warn_and_disable_mirror(self) -> None:
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=RuntimeError("522")
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=RuntimeError("522")
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_authenticated") as mauth,
@@ -1202,6 +1252,27 @@ class TestFetchPoster(unittest.TestCase):
         self.assertEqual(data, b"MIRROR")
         self.assertEqual(len(calls), 2)
         self.assertIn("kinozal.guru", calls[1])
+
+    def test_jumpingcrab_primary_failure_falls_back_to_mirror_host(self) -> None:
+        # Listing posters are relative `/i/poster/…` resolved against the primary
+        # origin (kinozal.jumpingcrab.com), so the #241 failover must recognise
+        # the configured primary, not a fixed host.
+        calls: list[str] = []
+
+        def _fetch(url: str) -> bytes:
+            calls.append(url)
+            if "jumpingcrab" in url:
+                raise RuntimeError("HTTP Error 522")
+            return b"MIRROR"
+
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_bytes", side_effect=_fetch
+        ):
+            data = self._kinozal().fetch_poster(
+                "https://kinozal.jumpingcrab.com/i/poster/3/9/2142239.jpg"
+            )
+        self.assertEqual(data, b"MIRROR")
+        self.assertEqual(calls[1], "https://kinozal.guru/i/poster/3/9/2142239.jpg")
 
     def test_mirror_host_swap_preserves_path_and_query(self) -> None:
         calls: list[str] = []
@@ -1314,7 +1385,7 @@ class TestFetchListingOrigin(unittest.TestCase):
         from kinozal_scraper.kinozal_pipeline import Kinozal
 
         with unittest.mock.patch(
-            "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=_KINOZAL_HTML
+            "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(_KINOZAL_HTML)
         ):
             html, base = Kinozal("u", "p").fetch_listing("https://kinozal.tv/top.php?d=14")
         self.assertEqual(html, _KINOZAL_HTML)
@@ -1326,7 +1397,7 @@ class TestFetchListingOrigin(unittest.TestCase):
         sentinel = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
@@ -1341,7 +1412,7 @@ class TestFetchListingOrigin(unittest.TestCase):
 
 class TestLinkOriginFollowsHost(unittest.TestCase):
     """End-to-end (#247): notification links resolve against the host that served
-    the listing. Injection stays on the HTTP boundary (fetch_html / login /
+    the listing. Injection stays on the HTTP boundary (fetch_page / login /
     fetch_authenticated) — never mock Kinozal.fetch_listing/_from_mirror (§II)."""
 
     _CREDS = {"KINOZAL_USERNAME": "u", "KINOZAL_PASSWORD": "p"}
@@ -1358,7 +1429,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
         sentinel = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
@@ -1375,7 +1446,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
         sentinel = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
@@ -1397,7 +1468,7 @@ class TestLinkOriginFollowsHost(unittest.TestCase):
         sentinel = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fake_fetch
+                "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=_pages(_fake_fetch)
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
             unittest.mock.patch(
@@ -1712,7 +1783,9 @@ def _run_item_category_filter(
     notifier = InMemoryNotifier()
     youtube = _RecordingYoutube()
     with (
-        unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
+        unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=_pages(_fetch)
+        ),
         unittest.mock.patch.dict(os.environ, env, clear=False),
     ):
         os.environ.pop("KINOZAL_TOP_URL", None)
@@ -1871,8 +1944,8 @@ def _run_genre_filter(
     details_error: bool = False,
 ) -> tuple[InMemoryStorage, InMemoryNotifier, list[str]]:
     """Drive run_kinozal_pipeline with the genre filter, injecting at the HTTP
-    boundary (`fetch_html`) like the #247 origin tests — NOT by mocking the
-    Kinozal facade (§II). `fetch_html` dispatches by URL: a details.php URL
+    boundary (`fetch_page`) like the #247 origin tests — NOT by mocking the
+    Kinozal facade (§II). `fetch_page` dispatches by URL: a details.php URL
     returns that item's genre page (and is recorded), anything else the listing.
     Returns (storage, notifier, list-of-details-URLs-fetched).
     """
@@ -1895,7 +1968,9 @@ def _run_genre_filter(
     if excluded is not None:
         env["KINOZAL_EXCLUDED_GENRES"] = excluded
     with (
-        unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_html", side_effect=_fetch),
+        unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=_pages(_fetch)
+        ),
         unittest.mock.patch.dict(os.environ, env, clear=False),
     ):
         os.environ.pop("KINOZAL_TOP_URL", None)
@@ -2063,7 +2138,7 @@ class TestKinozalFacade(unittest.TestCase):
         mirror_html = _details_html("Hidden objects")
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html",
+                "kinozal_scraper.kinozal_pipeline.fetch_page",
                 side_effect=RuntimeError("HTTP Error 522"),
             ),
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=sentinel),
@@ -2089,8 +2164,8 @@ class TestKinozalFacade(unittest.TestCase):
         session = unittest.mock.Mock()
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=stripped
-            ) as fetch_html_mock,
+                "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(stripped)
+            ) as fetch_page_mock,
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login", return_value=session),
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated", return_value=genre_html
@@ -2099,7 +2174,9 @@ class TestKinozalFacade(unittest.TestCase):
             html = Kinozal("u", "p").fetch_details(url)
         self.assertEqual(html, genre_html)
         auth_mock.assert_called_once_with(session, url)
-        fetch_html_mock.assert_not_called()  # authenticated path skips the anon GET
+        # Authenticated path skips the anon GET — and with it the gate
+        # crossing: the mirror branch is untouched by `_cross_gate`.
+        fetch_page_mock.assert_not_called()
 
     def test_fetch_details_origin_url_stays_anonymous(self) -> None:
         # Guard: a healthy kinozal.tv details URL is fetched anonymously (the .tv
@@ -2111,8 +2188,8 @@ class TestKinozalFacade(unittest.TestCase):
         page = _details_html("драма")
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_html", return_value=page
-            ) as fetch_html_mock,
+                "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(page)
+            ) as fetch_page_mock,
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as login_mock,
             unittest.mock.patch(
                 "kinozal_scraper.kinozal_pipeline.fetch_authenticated"
@@ -2120,9 +2197,168 @@ class TestKinozalFacade(unittest.TestCase):
         ):
             html = Kinozal("u", "p").fetch_details(url)
         self.assertEqual(html, page)
-        fetch_html_mock.assert_called_once()
+        fetch_page_mock.assert_called_once()
         login_mock.assert_not_called()
         auth_mock.assert_not_called()
+
+
+# ── jumpingcrab challenge gate ────────────────────────────────────────────────
+
+_KINOZAL_FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "kinozal"
+_JC_ORIGIN = "https://kinozal.jumpingcrab.com"
+_JC_TOP = f"{_JC_ORIGIN}/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0"
+_JC_DETAILS = f"{_JC_ORIGIN}/details.php?id=2152267"
+_JC_COOKIE = {"challenge1": "1"}
+
+
+def _jc_challenge() -> str:
+    """The 741-byte gate page captured from the live host (`evidence/issue-583`)."""
+    return (_KINOZAL_FIXTURES / "jumpingcrab_challenge.html").read_bytes().decode("utf-8")
+
+
+def _jc_listing() -> str:
+    # Captured bytes are windows-1251 (the site's charset) — decoded here the way
+    # curl_cffi decodes them into `Response.text`.
+    return (_KINOZAL_FIXTURES / "jumpingcrab_top_with_cookie.html").read_bytes().decode("cp1251")
+
+
+class _GatedHost:
+    """`fetch_page` double for a jumpingcrab-shaped host: a GET without `cookie`
+    lands on the challenge page (final URL under /challenge-verification, HTTP
+    200 — a false success); a GET carrying exactly `cookie` gets the
+    target page. `cookie=None` is a gate nothing clears. Records every call so
+    tests can count GETs and read the `cookies` kwarg."""
+
+    def __init__(self, challenge: str, target: str, cookie: dict[str, str] | None) -> None:
+        self.challenge = challenge
+        self.target = target
+        self.cookie = cookie
+        self.calls: list[tuple[str, dict[str, str] | None]] = []
+
+    def __call__(self, url: str, *, cookies: dict[str, str] | None = None) -> unittest.mock.Mock:
+        self.calls.append((url, cookies))
+        if self.cookie is not None and cookies == self.cookie:
+            return _page(self.target, url=url)
+        path = url.removeprefix(_JC_ORIGIN)
+        return _page(self.challenge, url=f"{_JC_ORIGIN}/challenge-verification?next={path}")
+
+
+class TestChallengeGate(unittest.TestCase):
+    """kinozal.jumpingcrab.com fronts HTML with a JS cookie gate (ADR-0012): the
+    facade must replay the cookie the page sets, and must never hand the gate
+    page on as a listing (it has zero rows → `extraction produced zero items`
+    with no evidence why). Transport is faked at the `fetch_page` boundary,
+    never the facade internals (§II); the production source config and the
+    captured pages drive the extractor for real."""
+
+    def setUp(self) -> None:
+        sources = load_sources_config()["sources"]
+        self.source = next(s for s in sources if s["id"] == "kinozal_movies")
+        self.challenge = _jc_challenge()
+        self.listing = _jc_listing()
+
+    def _fetch_and_extract(
+        self, kinozal: kp.Kinozal
+    ) -> tuple[list[NormalizedItem], list[PipelineResult]]:
+        return kp._fetch_and_extract([self.source], [_JC_TOP], kinozal)
+
+    def test_challenge_gate_replay_extracts_listing_and_rejects_bare_challenge(self) -> None:
+        with self.subTest("replay with the parsed cookie yields the listing"):
+            host = _GatedHost(self.challenge, self.listing, _JC_COOKIE)
+            with (
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host
+                ),
+                self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs,
+            ):
+                items, results = self._fetch_and_extract(kp.Kinozal("", ""))
+            self.assertEqual([r.errors for r in results], [[]])
+            self.assertIn(
+                ("Холоп 3 / 2026 / РУ / WEB-DLRip", _JC_DETAILS),
+                [(item.dedupe_key, item.url) for item in items],
+            )
+            self.assertEqual(host.calls, [(_JC_TOP, None), (_JC_TOP, _JC_COOKIE)])
+            self.assertTrue(
+                any(f"challenge gate crossed at {_JC_TOP}" in line for line in logs.output),
+                logs.output,
+            )
+
+        with self.subTest("a gate the replay does not clear is named, not zero items"):
+            # Prod shape: credentials set, kinozal.guru itself behind Cloudflare so
+            # the mirror login fails too — the error must still carry the gate.
+            host = _GatedHost(self.challenge, self.listing, cookie=None)
+            with (
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host
+                ),
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.login",
+                    side_effect=KinozalLoginError("cf managed challenge"),
+                ),
+                unittest.mock.patch(
+                    "kinozal_scraper.kinozal_pipeline.fetch_authenticated"
+                ) as mauth,
+            ):
+                items, results = self._fetch_and_extract(kp.Kinozal("u", "p"))
+            mauth.assert_not_called()
+            self.assertEqual(items, [])
+            (error,) = results[0].errors
+            for needle in (
+                f"{_JC_ORIGIN}/challenge-verification",
+                "200",
+                "len=741",
+                "title='Just a moment...'",
+                "cf managed challenge",
+            ):
+                self.assertIn(needle, error)
+            self.assertNotIn("extraction produced zero items", error)
+            self.assertEqual(len(host.calls), 2)  # one replay, no loop
+
+    def test_cookie_name_and_value_come_from_the_page(self) -> None:
+        challenge = self.challenge.replace("challenge1=1;", "gate=xyz;")
+        self.assertIn('document.cookie = "gate=xyz;', challenge)  # fixture edit took
+        host = _GatedHost(challenge, self.listing, {"gate": "xyz"})
+        with unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host):
+            html, base = kp.Kinozal("", "").fetch_listing(_JC_TOP)
+        self.assertEqual((html, base), (self.listing, _JC_ORIGIN))
+        self.assertEqual(host.calls[-1], (_JC_TOP, {"gate": "xyz"}))
+
+    def test_challenge_without_cookie_assignment_is_a_visible_error(self) -> None:
+        blank = (
+            "<html><head><title>Just a moment...</title></head>"
+            "<body><noscript>enable JavaScript</noscript></body></html>"
+        )
+        host = _GatedHost(blank, self.listing, _JC_COOKIE)
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host),
+            self.assertRaises(kp.ChallengeGateError) as ctx,
+        ):
+            kp._cross_gate(_JC_TOP)
+        self.assertIn(f"{_JC_ORIGIN}/challenge-verification", str(ctx.exception))
+        self.assertIn("title='Just a moment...'", str(ctx.exception))
+        self.assertEqual(len(host.calls), 1)  # nothing to replay with
+
+    def test_ungated_host_is_one_request_without_cookie(self) -> None:
+        with unittest.mock.patch(
+            "kinozal_scraper.kinozal_pipeline.fetch_page",
+            return_value=_page(self.listing, url=_JC_TOP),
+        ) as mfetch:
+            html, base = kp.Kinozal("", "").fetch_listing(_JC_TOP)
+        self.assertEqual((html, base), (self.listing, _JC_ORIGIN))
+        mfetch.assert_called_once_with(_JC_TOP)
+
+    def test_fetch_details_non_mirror_crosses_the_gate(self) -> None:
+        details = _details_html("боевик")
+        host = _GatedHost(self.challenge, details, _JC_COOKIE)
+        with (
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host),
+            unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as mlogin,
+        ):
+            html = kp.Kinozal("u", "p").fetch_details(_JC_DETAILS)
+        self.assertEqual(html, details)
+        self.assertIn("Жанр", html)
+        mlogin.assert_not_called()  # crossed anonymously, no mirror login
+        self.assertEqual(host.calls, [(_JC_DETAILS, None), (_JC_DETAILS, _JC_COOKIE)])
 
 
 if __name__ == "__main__":

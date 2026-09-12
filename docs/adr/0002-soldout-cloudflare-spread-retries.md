@@ -167,3 +167,7 @@ day,” and “event type `schedule` versus `workflow_dispatch`” are all dispr
 
 The operational side is in [`operations.md`](../architecture/operations.md); the code policy is
 `retry_antibot_patient` in `http_retry.py`.
+
+See also [ADR-0012](0012-cross-jumpingcrab-cookie-gate-by-replay-not-browser.md): the kinozal primary's
+gate *is* a JS challenge (a plain cookie one), and the same exclusions — no paid egress, no bypass
+service — hold there; the remedy differs because the mechanism measured differently.

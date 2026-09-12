@@ -1,7 +1,7 @@
 """Authenticated access to the kinozal.guru mirror (issue #227).
 
-kinozal.tv periodically returns HTTP 522 (Cloudflare — origin down); the
-kinozal.guru mirror stays up but gates all listing pages (top.php, browse.php,
+The anonymous primary named by `KINOZAL_URLS` periodically fails (HTTP 522, or
+its challenge gate); the kinozal.guru mirror stays up but gates all listing pages (top.php, browse.php,
 …) behind a login. This module logs in via takelogin.php and fetches pages
 through the authenticated session.
 

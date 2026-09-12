@@ -1,4 +1,4 @@
-"""kinozal.tv top extraction/normalization and trailer enrichment (run_kinozal_pipeline)."""
+"""kinozal top extraction/normalization and trailer enrichment (run_kinozal_pipeline)."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ from kinozal_scraper.generic_pipeline import (
     build_notification,
     extract_from_html,
 )
-from kinozal_scraper.http_fetch import NotAnImageError, fetch_bytes, fetch_html
+from kinozal_scraper.http_fetch import NotAnImageError, describe_block, fetch_bytes, fetch_page
 from kinozal_scraper.kinozal_auth import fetch_authenticated, login
 from kinozal_scraper.pipeline_config import load_sources_config
 from kinozal_scraper.sheets_storage import Storage
@@ -291,10 +291,17 @@ def _genre_excluded(genre_raw: str, excluded: set[str]) -> bool:
     return bool(genres & excluded)
 
 
-_ORIGIN_HOST = "kinozal.tv"
 _MIRROR_HOST = "kinozal.guru"
-_KINOZAL_HOSTS = frozenset({_ORIGIN_HOST, _MIRROR_HOST})
 _FASTPIC_HOST = "fastpic.org"
+
+
+def _is_kinozal_host(host: str) -> bool:
+    """True for any kinozal front — `kinozal.tv`, `kinozal.guru`, `kinozal.me`,
+    `kinozal.jumpingcrab.com`: the site keeps its first label across every move,
+    so the poster failover (#241) follows the primary named by `KINOZAL_URLS`
+    without a host list to update on every move. Uploader hosts (fastpic,
+    imageban) never match."""
+    return host.split(".", 1)[0] == "kinozal"
 
 
 def _is_fastpic(host: str) -> bool:
@@ -326,8 +333,8 @@ def _extract_direct_image_url(viewer_html: str, requested_url: str) -> str:
 
 
 def _mirror_url(url: str) -> str:
-    """Map a kinozal.tv page URL to its kinozal.guru mirror — host swap, the
-    path and query (top.php filters) preserved."""
+    """Map a primary kinozal page URL to its kinozal.guru mirror — host swap,
+    the path and query (top.php filters) preserved."""
     return urlunsplit(urlsplit(url)._replace(netloc=_MIRROR_HOST))
 
 
@@ -339,19 +346,67 @@ def _origin(url: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
-class Kinozal:
-    """Facade for all kinozal IO: anonymous kinozal.tv primary with a lazy
-    kinozal.guru mirror fallback. One object owns the origin-vs-mirror decision
-    so consumers (the pipeline, the notifier's poster download) stay host-agnostic
-    — no split where the listing comes from the mirror but the poster keeps
-    hitting the dead origin (#241).
+class ChallengeGateError(RuntimeError):
+    """The primary host answered with its JS cookie gate instead of the page.
 
-    HTML listings use the authenticated mirror (login at most once per run, on
-    the first fallback) — so a healthy .tv run pays no login cost and needs no
-    credentials. Posters use the mirror *anonymously* (kinozal.guru serves
-    /i/poster/ 200 without login, verified). When credentials are absent or
-    partial the HTML mirror is disabled and the primary failure propagates,
-    surfacing visibly (§IV)."""
+    Raised — never returned as HTML — so the gate page cannot pass as a listing
+    or details body: it is 741 bytes with no `details.php` row, which the
+    extractor reports as a bare `extraction produced zero items` (the false-
+    success class of #317). The message carries the final URL plus
+    `describe_block` evidence; `fetch_listing` lets it flow into the mirror
+    fallback like any other primary failure, so the operator alert names both."""
+
+
+# kinozal.jumpingcrab.com fronts every HTML request with a JS cookie gate:
+# 302 → /challenge-verification?next=…, and that page sets a cookie via
+# `document.cookie` before bouncing back (ADR-0012). Detection keys off the
+# FINAL URL only; the regex just reads which cookie the page would set — name
+# and value are whatever the page says, never a constant of ours.
+_GATE_PATH = "/challenge-verification"
+_COOKIE_RE = re.compile(r'document\.cookie\s*=\s*"([^=]+)=([^;"]+)')
+
+
+def _cross_gate(url: str) -> str:
+    """Anonymous kinozal HTML GET that crosses the jumpingcrab cookie gate.
+
+    One replay with the cookie parsed from the challenge page, no loop: a gate
+    that still answers with the challenge is a different gate (computed cookie,
+    Turnstile), and ADR-0012 says measure it first — not retry harder."""
+    page = fetch_page(url)
+    if _GATE_PATH not in page.url:
+        return page.text
+    match = _COOKIE_RE.search(page.text)
+    if not match:
+        raise ChallengeGateError(
+            f"challenge gate at {page.url} sets no cookie: "
+            f"{describe_block(page.status_code, page.headers, page.text)}"
+        )
+    page = fetch_page(url, cookies={match[1]: match[2]})
+    if _GATE_PATH in page.url:
+        raise ChallengeGateError(
+            f"challenge gate not crossed at {page.url}: "
+            f"{describe_block(page.status_code, page.headers, page.text)}"
+        )
+    logger.info("[kinozal] challenge gate crossed at %s", page.url)
+    return page.text
+
+
+class Kinozal:
+    """Facade for all kinozal IO: the anonymous primary named by `KINOZAL_URLS`
+    (kinozal.jumpingcrab.com, ADR-0012) with a lazy kinozal.guru mirror
+    fallback. One object owns the origin-vs-mirror decision so consumers (the
+    pipeline, the notifier's poster download) stay host-agnostic — no split
+    where the listing comes from the mirror but the poster keeps hitting the
+    dead origin (#241).
+
+    Primary HTML goes through `_cross_gate`, which replays the jumpingcrab
+    cookie gate. HTML listings use the authenticated mirror (login at most
+    once per run, on the first fallback) — so a healthy primary run pays no
+    login cost and needs no credentials. Posters use the mirror *anonymously*
+    (kinozal.guru serves /i/poster/ 200 without login, verified), and the
+    failover recognises any kinozal front via `_is_kinozal_host`. When
+    credentials are absent or partial the HTML mirror is disabled and the
+    primary failure propagates, surfacing visibly (§IV)."""
 
     def __init__(self, username: str, password: str) -> None:
         self._username = username
@@ -379,15 +434,18 @@ class Kinozal:
     def fetch_listing(self, url: str) -> tuple[str, str]:
         """Return (html, effective_base_url): the HTML plus the origin that
         actually served it (#247) — anonymous primary, authenticated mirror on
-        any primary failure. Primary success → the requested origin
-        (kinozal.tv); mirror fallback → kinozal.guru. The pipeline resolves the
-        listing's relative links/posters against this base, so a mirror-served
-        page yields .guru links (live for the logged-in user) instead of dead
-        .tv ones — reversing #227/#241's fixed canonical-origin choice.
+        any primary failure. Primary success → the requested origin; mirror
+        fallback → kinozal.guru. The pipeline resolves the listing's relative
+        links/posters against this base, so a mirror-served page yields .guru
+        links (live for the logged-in user) instead of dead primary ones —
+        reversing #227/#241's fixed canonical-origin choice.
 
-        `fetch_details` reuses this origin→mirror decision (#263)."""
+        The primary GET goes through `_cross_gate`: a `ChallengeGateError` is a
+        primary failure like any other, so the gate page never reaches the
+        extractor and the mirror gets its turn. `fetch_details` reuses this
+        origin→mirror decision (#263)."""
         try:
-            return fetch_html(url), _origin(url)
+            return _cross_gate(url), _origin(url)
         except Exception as primary_exc:  # noqa: BLE001 — any primary-fetch failure falls back to the mirror
             return self._from_mirror(url, primary_exc), _origin(_mirror_url(url))
 
@@ -395,11 +453,12 @@ class Kinozal:
         """Fetch a details.php page for genre filtering (#263), returning just the
         HTML — the `Genre:` field is read from it, so no base_url resolution is needed.
 
-        A healthy run serves the listing from the anonymous kinozal.tv primary, so
-        `url` is a .tv link whose details page shows `Genre:` anonymously — reuse
-        `fetch_listing`'s anonymous-primary / authenticated-mirror-on-error path.
+        A healthy run serves the listing from the anonymous primary, so `url` is
+        a primary link whose details page shows `Genre:` anonymously — reuse
+        `fetch_listing`'s anonymous-primary / authenticated-mirror-on-error path
+        (the jumpingcrab gate fronts details.php too).
 
-        But when kinozal.tv is down the listing falls back to the authenticated
+        But when the primary is down the listing falls back to the authenticated
         kinozal.guru mirror (#247), so `url` is a *mirror* link. kinozal.guru gates
         all HTML behind login (302 → login.php, `docs/architecture/pipeline.md`
         § Kinozal mirror fallback), so an anonymous GET of a mirror details page
@@ -447,7 +506,7 @@ class Kinozal:
             return fetch_bytes(direct)
         except Exception as primary_exc:  # noqa: BLE001 — mirror-retry for kinozal hosts, else propagate to §IV degrade
             host = urlsplit(url).netloc
-            if host not in _KINOZAL_HOSTS or host == _MIRROR_HOST:
+            if not _is_kinozal_host(host) or host == _MIRROR_HOST:
                 raise
             mirror_url = _mirror_url(url)
             logger.warning(
@@ -461,10 +520,13 @@ class Kinozal:
     def _from_mirror(self, url: str, primary_exc: Exception) -> str:
         if not self._mirror_enabled:
             raise RuntimeError(f"{primary_exc} (mirror fallback disabled — credentials not set)")
-        session = self._ensure_login()
         mirror_url = _mirror_url(url)
+        # Login sits inside the `try` so a dead mirror keeps the primary's
+        # evidence in the same error: `primary failed (challenge gate …);
+        # mirror … also failed (mirror login failed: …)` — the operator sees both
+        # hosts, not only the last one to fail.
         try:
-            html = fetch_authenticated(session, mirror_url)
+            html = fetch_authenticated(self._ensure_login(), mirror_url)
         except Exception as mirror_exc:
             raise RuntimeError(
                 f"primary failed ({primary_exc}); mirror {mirror_url} also failed ({mirror_exc})"
@@ -1099,9 +1161,10 @@ def run_kinozal_pipeline(
             results.append(result)
         return results
 
-    # Primary transport is anonymous kinozal.tv; the authenticated kinozal.guru
-    # mirror is a lazy fallback used only when a primary fetch fails (e.g. 522).
-    # A healthy .tv run needs no credentials and pays no login cost. Partial
+    # Primary transport is the anonymous host named by `KINOZAL_URLS`; the
+    # authenticated kinozal.guru mirror is a lazy fallback used only when a
+    # primary fetch fails (e.g. 522, or the challenge gate). A healthy
+    # primary run needs no credentials and pays no login cost. Partial
     # credentials disable the fallback with a visible WARNING rather than redden
     # an otherwise-healthy run (§IV/§VI) — see `Kinozal.from_env`. `__main__`
     # injects the same object it wires into the notifier, so the listing and its

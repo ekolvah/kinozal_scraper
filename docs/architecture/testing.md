@@ -25,7 +25,7 @@ Assert on doubles' state after the call.
 
 **Integration-first (primary level):**
 - Call production pipeline with saved HTML/JSON fixtures and Protocol doubles.
-- Fixtures: saved HTML dumps from kinozal.tv, JSON responses from GitHub/Steam.
+- Fixtures: saved HTML dumps from the kinozal fronts, JSON responses from GitHub/Steam.
   Update dumps manually when site structure changes.
 - Covers full business logic without flakiness (no network, no rate limits).
 - When: on every PR, in CI.
