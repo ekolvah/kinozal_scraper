@@ -350,6 +350,11 @@ def _is_text_gemini(name: str) -> bool:
     return not any(s in name for s in _EXCLUDED_SUFFIXES)
 
 
+def _is_rotation_family(name: str) -> bool:
+    """Return True for the flash / flash-lite families the rotation admits (#585)."""
+    raise NotImplementedError
+
+
 def get_generation_models(client: GenaiClient) -> list[str]:
     """Return text-generation Gemini model names, newer versions first.
 
