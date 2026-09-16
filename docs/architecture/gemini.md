@@ -26,8 +26,8 @@ Defined in `gemini_enricher.py`:
 
 ## Model rotation (free tier strategy)
 
-Free tier limit: ~20 requests/day/model. With ~14 text models available,
-rotation gives ~280 requests/day without upgrading.
+Free tier limit: ~20 requests/day/model. With 12 flash / flash-lite models
+available, rotation gives ~240 requests/day without upgrading.
 
 `RotatingGeminiEnricher` behavior:
 1. Try current model (skipping any marked dead this run)
@@ -57,7 +57,13 @@ returns a non-zero exit code even when rotation delivered every summary.
 `get_generation_models()` in `gemini_enricher.py`:
 1. `client.models.list()` — all available models (new `google.genai` SDK)
 2. Filter: `generateContent` in `Model.supported_actions`
-3. Filter: `_is_text_gemini()` — starts with `models/gemini-`, no suffix like `-tts`, `-image`, `-customtools`, `-computer-use`, `-robotics`
+3. Filter: `_is_rotation_family()` — an allow-list of the `gemini-*-flash` / `-flash-lite` families
+   (optional `-preview` / `-latest`). The SDK `Model` has no modality field, and the earlier suffix
+   deny-list was reactive: `gemini-3.5-transcribe` advertised `generateContent`, passed it and
+   answered 400 to a text request (#585). Every other `gemini-*` model with `generateContent` is
+   listed in one INFO line (`outside the flash/flash-lite allow-list, not rotated: …`).
+   `-pro` is excluded on purpose: its free-tier quota is reserved for the maintainer's own tasks
+   outside this project.
 4. Sort: newest version first (`_model_version_key`)
 
 ## Retry logic
