@@ -330,8 +330,6 @@ def _model_version_key(name: str) -> tuple[float, str]:
     (e.g. 'models/gemini-3-flash-preview'), which map to `<major>.0`. Without
     this, such a name fell back to (0.0, …) — mis-sorting it to the back of the
     rotation and selecting the wrong thinking request dialect."""
-    import re
-
     match = re.search(r"gemini-(\d+)(?:\.(\d+))?", name)
     if match:
         minor = match.group(2) or "0"
@@ -340,35 +338,49 @@ def _model_version_key(name: str) -> tuple[float, str]:
     return (0.0, name)
 
 
-_EXCLUDED_SUFFIXES = ("-tts", "-image", "-customtools", "-computer-use", "-robotics")
+# Allow-list, not deny-list (#585): the SDK `Model` carries no modality field, so
+# `generateContent` alone does not mean "accepts text" — `gemini-3.5-transcribe`
+# advertised it, slipped past the old suffix deny-list and answered 400 to a text
+# request. `-pro` is left out on purpose: its free-tier quota is reserved for the
+# maintainer's own tasks outside this project.
+_ROTATION_FAMILY_RE = re.compile(
+    r"^models/gemini-(?:\d+(?:\.\d+)?-)?flash(?:-lite)?(?:-preview|-latest)?$"
+)
 
 
-def _is_text_gemini(name: str) -> bool:
-    """Return True for pure text-generation Gemini models (skips non-text suffixes)."""
-    if not name.startswith("models/gemini-"):
-        return False
-    return not any(s in name for s in _EXCLUDED_SUFFIXES)
+def _is_rotation_family(name: str) -> bool:
+    """Return True for the flash / flash-lite families the rotation admits (#585)."""
+    return bool(_ROTATION_FAMILY_RE.match(name))
 
 
 def get_generation_models(client: GenaiClient) -> list[str]:
-    """Return text-generation Gemini model names, newer versions first.
+    """Return rotation-eligible Gemini model names, newer versions first.
 
-    The SDK exposes capabilities via `Model.supported_actions`.
+    Only the flash / flash-lite families are admitted (allow-list, #585); every
+    other `gemini-*` model that advertises `generateContent` is reported in one
+    INFO line so the skip stays visible. The SDK exposes capabilities via
+    `Model.supported_actions`.
     """
     try:
         names: list[str] = []
+        skipped: list[str] = []
         for m in client.models.list():
             name = m.name
-            if (
-                name is not None
-                and "generateContent" in (m.supported_actions or [])
-                and _is_text_gemini(name)
-            ):
+            if name is None or "generateContent" not in (m.supported_actions or []):
+                continue
+            if _is_rotation_family(name):
                 names.append(name)
+            elif name.startswith("models/gemini-"):
+                skipped.append(name)
     except Exception:  # noqa: BLE001 — list-models failure degrades to []; now visible via logger.exception (not silent)
         logger.exception("cannot list models")
         return []
 
+    if skipped:
+        logger.info(
+            "[gemini] outside the flash/flash-lite allow-list, not rotated: %s",
+            ", ".join(sorted(skipped)),
+        )
     names.sort(key=_model_version_key, reverse=True)
     return names
 

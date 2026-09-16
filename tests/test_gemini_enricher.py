@@ -7,6 +7,8 @@ rotation, and the observability hooks.
 
 from __future__ import annotations
 
+import json
+import pathlib
 import unittest
 import unittest.mock
 from types import SimpleNamespace
@@ -481,36 +483,140 @@ class TestModelVersionSorting(unittest.TestCase):
         )
 
 
-class TestIsTextGemini(unittest.TestCase):
-    def test_accepts_text_models(self) -> None:
-        from kinozal_scraper.gemini_enricher import _is_text_gemini
+class TestRotationFamily(unittest.TestCase):
+    """`_is_rotation_family(name)` is the allow-list that replaced the reactive
+    suffix deny-list: only the flash / flash-lite families enter rotation (#585)."""
 
-        self.assertTrue(_is_text_gemini("models/gemini-2.5-flash"))
-        self.assertTrue(_is_text_gemini("models/gemini-2.0-flash-lite"))
-        self.assertTrue(_is_text_gemini("models/gemini-3.1-pro-preview"))
-        self.assertTrue(_is_text_gemini("models/gemini-2.5-flash-lite"))
+    def test_accepts_flash_families(self) -> None:
+        from kinozal_scraper.gemini_enricher import _is_rotation_family
 
-    def test_rejects_specialized_models(self) -> None:
-        from kinozal_scraper.gemini_enricher import _is_text_gemini
+        for name in (
+            "models/gemini-2.5-flash",
+            "models/gemini-2.0-flash-lite",
+            "models/gemini-3.5-flash-lite",
+            "models/gemini-3-flash-preview",
+            "models/gemini-3.1-flash-lite-preview",
+            "models/gemini-flash-latest",
+            "models/gemini-flash-lite-latest",
+        ):
+            with self.subTest(name=name):
+                self.assertTrue(_is_rotation_family(name))
 
-        self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-tts-preview"))
-        self.assertFalse(_is_text_gemini("models/gemini-3.1-flash-image-preview"))
-        self.assertFalse(_is_text_gemini("models/gemini-3.1-pro-preview-customtools"))
-        self.assertFalse(_is_text_gemini("models/gemini-2.5-computer-use-preview-10-2025"))
-        self.assertFalse(_is_text_gemini("models/gemini-robotics-er-1.6-preview"))
+    def test_rejects_outside_allow_list(self) -> None:
+        from kinozal_scraper.gemini_enricher import _is_rotation_family
+
+        for name in (
+            "models/gemini-3.5-transcribe",
+            "models/gemini-3.1-pro-preview",
+            "models/gemini-2.5-pro",
+            "models/gemini-pro-latest",
+            "models/gemini-omni-flash-preview",
+            "models/gemini-omni-1.1-flash",
+            "models/gemini-2.5-flash-native-audio-preview-09-2025",
+            "models/gemini-3.1-flash-live-preview",
+            "models/gemini-3.1-flash-tts-preview",
+            "models/gemini-3.1-flash-image-preview",
+            "models/gemini-3.1-flash-lite-image",
+            "models/gemini-3.1-pro-preview-customtools",
+            "models/gemini-2.5-computer-use-preview-10-2025",
+            "models/gemini-robotics-er-2-preview",
+        ):
+            with self.subTest(name=name):
+                self.assertFalse(_is_rotation_family(name))
 
     def test_rejects_non_gemini(self) -> None:
-        from kinozal_scraper.gemini_enricher import _is_text_gemini
+        from kinozal_scraper.gemini_enricher import _is_rotation_family
 
-        self.assertFalse(_is_text_gemini("models/gemma-3-27b-it"))
-        self.assertFalse(_is_text_gemini("models/lyria-3-pro-preview"))
-        self.assertFalse(_is_text_gemini("models/nano-banana-pro-preview"))
+        self.assertFalse(_is_rotation_family("models/gemma-3-27b-it"))
+        self.assertFalse(_is_rotation_family("models/lyria-3-pro-preview"))
+        self.assertFalse(_is_rotation_family("models/nano-banana-pro-preview"))
+
+
+_GEMINI_FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "gemini"
+
+
+def _client_from_models_list_fixture(filename: str) -> unittest.mock.MagicMock:
+    """Build a `client.models.list()` double from a recorded discovery capture."""
+    models = json.loads((_GEMINI_FIXTURES / filename).read_text(encoding="utf-8"))
+    client = unittest.mock.MagicMock()
+    client.models.list.return_value = [
+        SimpleNamespace(name=m["name"], supported_actions=m["supported_actions"]) for m in models
+    ]
+    return client
 
 
 class TestGetGenerationModels(unittest.TestCase):
     """`get_generation_models(client)` filters `client.models.list()` by the new
     SDK `supported_actions` field (was `supported_generation_methods`), keeps
     text Gemini models, newest first (#107)."""
+
+    def test_live_models_list_fixture_keeps_flash_drops_transcribe(self) -> None:
+        """#585: the 2026-09-16 `models.list` capture — `gemini-3.5-transcribe`
+        advertises `generateContent` but rejects text requests with 400; the
+        allow-list keeps exactly the flash / flash-lite families, newest first."""
+        from kinozal_scraper.gemini_enricher import get_generation_models
+
+        client = _client_from_models_list_fixture("models_list_2026-09-16.json")
+        result = get_generation_models(client)
+        self.assertNotIn("models/gemini-3.5-transcribe", result)
+        self.assertEqual(
+            result,
+            [
+                "models/gemini-3.8-flash",
+                "models/gemini-3.7-flash",
+                "models/gemini-3.6-flash",
+                "models/gemini-3.5-flash-lite",
+                "models/gemini-3.5-flash",
+                "models/gemini-3.1-flash-lite-preview",
+                "models/gemini-3.1-flash-lite",
+                "models/gemini-3-flash-preview",
+                "models/gemini-2.5-flash-lite",
+                "models/gemini-2.5-flash",
+                "models/gemini-flash-lite-latest",
+                "models/gemini-flash-latest",
+            ],
+        )
+
+    def test_models_outside_allow_list_are_logged_once_at_info(self) -> None:
+        """#585 §IV: what discovery dropped is visible in one INFO line — gemini
+        names only, so a new family shows up in the log rather than vanishing."""
+        from kinozal_scraper.gemini_enricher import get_generation_models
+
+        client = unittest.mock.MagicMock()
+        client.models.list.return_value = [
+            SimpleNamespace(name="models/gemini-3.8-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(
+                name="models/gemini-3.5-transcribe", supported_actions=["generateContent"]
+            ),
+            SimpleNamespace(name="models/gemini-2.5-pro", supported_actions=["generateContent"]),
+            SimpleNamespace(
+                name="models/gemini-3.1-flash-tts-preview", supported_actions=["generateContent"]
+            ),
+            SimpleNamespace(name="models/gemma-3-27b-it", supported_actions=["generateContent"]),
+        ]
+        with self.assertLogs("kinozal_scraper.gemini_enricher", level="INFO") as captured:
+            result = get_generation_models(client)
+        self.assertEqual(result, ["models/gemini-3.8-flash"])
+        self.assertEqual(len(captured.records), 1)
+        line = captured.output[0]
+        self.assertIn("models/gemini-2.5-pro", line)
+        self.assertIn("models/gemini-3.1-flash-tts-preview", line)
+        self.assertIn("models/gemini-3.5-transcribe", line)
+        self.assertNotIn("gemma", line)
+
+    def test_no_info_line_when_every_gemini_model_is_rotated(self) -> None:
+        from kinozal_scraper.gemini_enricher import get_generation_models
+
+        client = unittest.mock.MagicMock()
+        client.models.list.return_value = [
+            SimpleNamespace(name="models/gemini-2.5-flash", supported_actions=["generateContent"]),
+            SimpleNamespace(
+                name="models/gemini-2.5-flash-lite", supported_actions=["generateContent"]
+            ),
+        ]
+        with self.assertNoLogs("kinozal_scraper.gemini_enricher", level="INFO"):
+            result = get_generation_models(client)
+        self.assertEqual(result, ["models/gemini-2.5-flash-lite", "models/gemini-2.5-flash"])
 
     def test_filters_and_sorts_by_supported_actions(self) -> None:
         from kinozal_scraper.gemini_enricher import get_generation_models
