@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+    <title>Just a moment...</title>
+    <script>
+              document.cookie = "challenge2=qqyi1inywn; path=/; max-age=86400; SameSite=Lax";
+              try {
+                const next = window.location.search.slice(6);
+                if (next.startsWith("/") && !next.startsWith("//")) {
+                    window.location.replace(window.location.origin + next);
+                } else {
+                    throw 0;
+                }
+              } catch (e) {
+                //alert(e);
+                window.location.href = "/";
+              }
+    </script>
+    <noscript>For this site to function correctly, you must enable JavaScript in your browser settings.</noscript>
+</html>

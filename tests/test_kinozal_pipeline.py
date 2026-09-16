@@ -2188,7 +2188,7 @@ class TestKinozalFacade(unittest.TestCase):
         page = _details_html("драма")
         with (
             unittest.mock.patch(
-                "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(page)
+                "kinozal_scraper.kinozal_pipeline.fetch_page", return_value=_page(page, url=url)
             ) as fetch_page_mock,
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.login") as login_mock,
             unittest.mock.patch(
@@ -2209,6 +2209,11 @@ _JC_ORIGIN = "https://kinozal.jumpingcrab.com"
 _JC_TOP = f"{_JC_ORIGIN}/top.php?j=&t=0&d=14&k=0&f=0&w=0&s=0"
 _JC_DETAILS = f"{_JC_ORIGIN}/details.php?id=2152267"
 _JC_COOKIE = {"challenge1": "1"}
+# Shape 2 (2026-09-16, `evidence/issue-586`): the gate moved to `/verification`
+# and hands out a random `challenge2` token — same page structure, other path.
+_JC_GATE_PATH_2 = "/verification"
+_JC_COOKIE_2 = {"challenge2": "qqyi1inywn"}
+_JC_DETAILS_2 = f"{_JC_ORIGIN}/details.php?id=2150877"
 
 
 def _jc_challenge() -> str:
@@ -2222,17 +2227,33 @@ def _jc_listing() -> str:
     return (_KINOZAL_FIXTURES / "jumpingcrab_top_with_cookie.html").read_bytes().decode("cp1251")
 
 
+def _jc_challenge_2() -> str:
+    """The 718-byte shape-2 gate page (`evidence/issue-586`)."""
+    return (_KINOZAL_FIXTURES / "jumpingcrab_challenge2.html").read_bytes().decode("utf-8")
+
+
+def _jc_listing_2() -> str:
+    return (_KINOZAL_FIXTURES / "jumpingcrab_top_with_cookie2.html").read_bytes().decode("cp1251")
+
+
 class _GatedHost:
     """`fetch_page` double for a jumpingcrab-shaped host: a GET without `cookie`
-    lands on the challenge page (final URL under /challenge-verification, HTTP
-    200 — a false success); a GET carrying exactly `cookie` gets the
-    target page. `cookie=None` is a gate nothing clears. Records every call so
-    tests can count GETs and read the `cookies` kwarg."""
+    lands on the challenge page (final URL under `gate_path`, HTTP 200 — a
+    false success); a GET carrying exactly `cookie` gets the target page.
+    `cookie=None` is a gate nothing clears. Records every call so tests can
+    count GETs and read the `cookies` kwarg."""
 
-    def __init__(self, challenge: str, target: str, cookie: dict[str, str] | None) -> None:
+    def __init__(
+        self,
+        challenge: str,
+        target: str,
+        cookie: dict[str, str] | None,
+        gate_path: str = "/challenge-verification",
+    ) -> None:
         self.challenge = challenge
         self.target = target
         self.cookie = cookie
+        self.gate_path = gate_path
         self.calls: list[tuple[str, dict[str, str] | None]] = []
 
     def __call__(self, url: str, *, cookies: dict[str, str] | None = None) -> unittest.mock.Mock:
@@ -2240,7 +2261,7 @@ class _GatedHost:
         if self.cookie is not None and cookies == self.cookie:
             return _page(self.target, url=url)
         path = url.removeprefix(_JC_ORIGIN)
-        return _page(self.challenge, url=f"{_JC_ORIGIN}/challenge-verification?next={path}")
+        return _page(self.challenge, url=f"{_JC_ORIGIN}{self.gate_path}?next={path}")
 
 
 class TestChallengeGate(unittest.TestCase):
@@ -2324,19 +2345,68 @@ class TestChallengeGate(unittest.TestCase):
         self.assertEqual(host.calls[-1], (_JC_TOP, {"gate": "xyz"}))
 
     def test_challenge_without_cookie_assignment_is_a_visible_error(self) -> None:
+        # A page that sets no cookie cannot be replayed; landing on another
+        # path than the one requested is the gate's only remaining signature
+        # (#586: the path string is not fixed — the host renamed it once).
         blank = (
             "<html><head><title>Just a moment...</title></head>"
             "<body><noscript>enable JavaScript</noscript></body></html>"
         )
-        host = _GatedHost(blank, self.listing, _JC_COOKIE)
+        for gate_path in ("/challenge-verification", "/somewhere-else"):
+            with self.subTest(gate_path=gate_path):
+                host = _GatedHost(blank, self.listing, _JC_COOKIE, gate_path=gate_path)
+                with (
+                    unittest.mock.patch(
+                        "kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host
+                    ),
+                    self.assertRaises(kp.ChallengeGateError) as ctx,
+                ):
+                    kp._cross_gate(_JC_TOP)
+                self.assertIn(f"{_JC_ORIGIN}{gate_path}", str(ctx.exception))
+                self.assertIn("title='Just a moment...'", str(ctx.exception))
+                self.assertEqual(len(host.calls), 1)  # nothing to replay with
+
+    def test_second_gate_shape_is_crossed_by_body_not_path(self) -> None:
+        # Shape 2 (2026-09-16): `/verification` + random `challenge2` token. The
+        # gate is told by the `document.cookie` assignment in the body, so the
+        # path rename must not turn the gate page back into a "listing".
+        host = _GatedHost(_jc_challenge_2(), _jc_listing_2(), _JC_COOKIE_2, _JC_GATE_PATH_2)
         with (
             unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host),
-            self.assertRaises(kp.ChallengeGateError) as ctx,
+            self.assertLogs("kinozal_scraper.kinozal_pipeline", level="INFO") as logs,
         ):
-            kp._cross_gate(_JC_TOP)
-        self.assertIn(f"{_JC_ORIGIN}/challenge-verification", str(ctx.exception))
-        self.assertIn("title='Just a moment...'", str(ctx.exception))
-        self.assertEqual(len(host.calls), 1)  # nothing to replay with
+            items, results = self._fetch_and_extract(kp.Kinozal("", ""))
+        self.assertEqual([r.errors for r in results], [[]])
+        self.assertIn(
+            (
+                "Мятеж / Mutiny / 2026 / ПМ, СТ / WEB-DLRip",
+                _JC_DETAILS_2,
+                f"{_JC_ORIGIN}/i/poster/7/7/2150877.jpg",
+            ),
+            [(item.dedupe_key, item.url, item.image_url) for item in items],
+        )
+        self.assertEqual(host.calls, [(_JC_TOP, None), (_JC_TOP, _JC_COOKIE_2)])
+        self.assertTrue(
+            any(f"challenge gate crossed at {_JC_TOP}" in line for line in logs.output),
+            logs.output,
+        )
+
+    def test_second_gate_shape_not_cleared_is_visible(self) -> None:
+        challenge = _jc_challenge_2()
+        host = _GatedHost(challenge, _jc_listing_2(), cookie=None, gate_path=_JC_GATE_PATH_2)
+        with unittest.mock.patch("kinozal_scraper.kinozal_pipeline.fetch_page", side_effect=host):
+            items, results = self._fetch_and_extract(kp.Kinozal("", ""))
+        self.assertEqual(items, [])
+        (error,) = results[0].errors
+        for needle in (
+            f"{_JC_ORIGIN}{_JC_GATE_PATH_2}",
+            "200",
+            f"len={len(challenge)}",
+            "title='Just a moment...'",
+        ):
+            self.assertIn(needle, error)
+        self.assertNotIn("extraction produced zero items", error)
+        self.assertEqual(len(host.calls), 2)  # one replay, no loop
 
     def test_ungated_host_is_one_request_without_cookie(self) -> None:
         with unittest.mock.patch(
