@@ -5,6 +5,7 @@ and notification rendering (raw-field fallbacks, newline collapse, escaped
 title/trailer links).
 """
 
+import pathlib
 import unittest
 
 from kinozal_scraper.generic_pipeline import (
@@ -174,7 +175,20 @@ class TestExtractFromHtml(unittest.TestCase):
     def test_empty_html_quality_failure(self) -> None:
         result = extract_from_html("<html></html>", _HTML_CONFIG)
         self.assertFalse(result.ok)
-        self.assertTrue(any("zero items" in e for e in result.errors))
+        (error,) = result.errors
+        self.assertIn("zero items", error)
+        self.assertIn("len=13 title=''", error)  # no <title> → empty, not a crash (#586)
+
+    def test_zero_items_error_carries_page_evidence(self) -> None:
+        # §IV (#586): a 200 page with zero rows must name what it was — the
+        # jumpingcrab gate page hid for four days behind a bare "zero items".
+        challenge = (
+            pathlib.Path(__file__).parent / "fixtures" / "kinozal" / "jumpingcrab_challenge2.html"
+        ).read_text(encoding="utf-8")
+        (error,) = extract_from_html(challenge, _HTML_CONFIG).errors
+        self.assertIn("zero items", error)
+        self.assertIn(f"len={len(challenge)}", error)
+        self.assertIn("title='Just a moment...'", error)
 
     def test_attr_extraction(self) -> None:
         html = '<table><tr class="item"><td class="key">k</td><td class="title">T</td><td><a href="https://x.com">x</a></td></tr></table>'

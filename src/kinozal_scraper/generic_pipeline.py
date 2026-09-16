@@ -253,6 +253,10 @@ def extract_from_html(
 
     Optional:
       base_url      – prefix for resolving relative url/image_url values
+
+    A page that yields no rows and no field errors is reported as «zero items»
+    with the body length and `<title>`, so the operator can tell an empty
+    listing from a challenge/foreign page (§IV).
     """
     source_id: str = source_config["id"]
     fields: dict[str, Any] = source_config.get("fields", {})
@@ -295,7 +299,13 @@ def extract_from_html(
         )
 
     if not result.items and not result.errors:
-        result.errors.append(f"[{source_id}] extraction produced zero items")
+        # Same grammar as `http_fetch.describe_block` (len + collapsed title, 120
+        # chars) so the operator can tell an empty listing from a gate/foreign
+        # page (#586) — without importing the HTTP layer into the parser.
+        page_title = " ".join(soup.title.get_text().split())[:120] if soup.title else ""
+        result.errors.append(
+            f"[{source_id}] extraction produced zero items (len={len(html)} title={page_title!r})"
+        )
 
     return result
 
