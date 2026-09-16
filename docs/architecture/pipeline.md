@@ -305,15 +305,21 @@ Login is **lazy** — performed at most once per run and only at the first fallb
 primary run does not pay for login or require credentials.
 
 **Primary cookie gate ([ADR-0012](../adr/0012-cross-jumpingcrab-cookie-gate-by-replay-not-browser.md)):**
-`kinozal.jumpingcrab.com` fronts every anonymous HTML request with a JS gate — `302 →
-/challenge-verification?next=…`, a 200 page that sets a cookie via `document.cookie` and reloads.
-`Kinozal.fetch_listing`/`fetch_details` go through `_cross_gate`: the final URL after redirects
-tells the gate apart from the page (the body alone cannot — both are `200`), the cookie name/value
-are read from the page and the request is replayed **once** with it. A gate that is still there
-after the replay, or one that sets no cookie, raises `ChallengeGateError` with `describe_block`
-evidence (`…/challenge-verification 200 len=741 title='Just a moment...'`) — it is a primary failure
-like a 522, so the mirror fallback fires and the alert names both hosts. The gate page is never handed
-to the extractor. Posters (`/i/poster/`) are not gated and keep using plain `fetch_bytes`.
+`kinozal.jumpingcrab.com` fronts every anonymous HTML request with a JS gate — a `302` to a 200 page
+that sets a cookie via `document.cookie` and reloads. Two shapes recorded so far:
+`/challenge-verification?next=…` + `challenge1=1` (2026-09-12, #583) and `/verification?next=…` +
+`challenge2=<token>` (2026-09-16, #586). `Kinozal.fetch_listing`/`fetch_details` go through
+`_cross_gate`: the `document.cookie = "…"` assignment in the **body** tells the gate apart from the
+page (the path changed between shapes; no real listing/details page carries that marker), the cookie
+name/value are read from the page and the request is replayed **once** with it. A gate that is still
+there after the replay, or a reply that landed on another path without a cookie to replay, raises
+`ChallengeGateError` with `describe_block` evidence (`…/verification 200 len=718 title='Just a
+moment...'`) — it is a primary failure like a 522, so the mirror fallback fires and the alert names
+both hosts. A side effect worth knowing: any primary redirect (a deleted torrent → `/`, the #317 login
+redirect) is now a named `ChallengeGateError` / fail-open, not a silently parsed foreign page. The gate
+page is never handed to the extractor; should one ever get through, `extract_from_html` reports
+«zero items» with `len=`/`title=` rather than bare. Posters (`/i/poster/`) are not gated and keep
+using plain `fetch_bytes`.
 
 ⚠️ **An anonymous domain swap to `.guru` does not work** (verified 2026-06-30): `kinozal.guru`
 gates all content behind login — `/top.php`, `/browse.php`, even `/` → `302 .../login.php?m=5`.

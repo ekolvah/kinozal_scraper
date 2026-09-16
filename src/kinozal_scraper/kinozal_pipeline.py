@@ -350,20 +350,35 @@ class ChallengeGateError(RuntimeError):
     """The primary host answered with its JS cookie gate instead of the page.
 
     Raised — never returned as HTML — so the gate page cannot pass as a listing
-    or details body: it is 741 bytes with no `details.php` row, which the
-    extractor reports as a bare `extraction produced zero items` (the false-
-    success class of #317). The message carries the final URL plus
-    `describe_block` evidence; `fetch_listing` lets it flow into the mirror
-    fallback like any other primary failure, so the operator alert names both."""
+    or details body: it is ~700 bytes with no `details.php` row, which the
+    extractor reports as `extraction produced zero items` (the false-success
+    class of #317). The message carries the final URL plus `describe_block`
+    evidence; `fetch_listing` lets it flow into the mirror fallback like any
+    other primary failure, so the operator alert names both."""
 
 
-# kinozal.jumpingcrab.com fronts every HTML request with a JS cookie gate:
-# 302 → /challenge-verification?next=…, and that page sets a cookie via
-# `document.cookie` before bouncing back (ADR-0012). Detection keys off the
-# FINAL URL only; the regex just reads which cookie the page would set — name
-# and value are whatever the page says, never a constant of ours.
-_GATE_PATH = "/challenge-verification"
+# kinozal.jumpingcrab.com fronts every HTML request with a JS cookie gate: a
+# 302 to a challenge page that sets a cookie via `document.cookie` before
+# bouncing back (ADR-0012). Two shapes recorded so far:
+#   2026-09-12 (#583): /challenge-verification?next=…, `challenge1=1`, max-age 300
+#   2026-09-16 (#586): /verification?next=…, `challenge2=<token>`, max-age 86400
+# The path, cookie name and value all changed between them; the one invariant
+# is the `document.cookie = "name=value"` assignment in the body, absent from
+# every real listing/details page — so the BODY is the detector and the regex
+# reads which cookie to replay (never a constant of ours). The final URL is the
+# secondary signal only: landing on another *path* without a cookie to replay
+# is an unknown gate / foreign page, not a listing. Host is ignored on purpose
+# — a redirect to another front at the same path passes as ungated; comparing
+# netloc would break the test doubles for no observed gain.
 _COOKIE_RE = re.compile(r'document\.cookie\s*=\s*"([^=]+)=([^;"]+)')
+
+
+def _landed_elsewhere(requested: str, final: str) -> bool:
+    """True when the response came from a different path than requested.
+
+    A crossed gate answers at the requested path with the same query, so only
+    the path is compared (see the comment block above `_COOKIE_RE`)."""
+    return urlsplit(requested).path != urlsplit(final).path
 
 
 def _cross_gate(url: str) -> str:
@@ -373,16 +388,16 @@ def _cross_gate(url: str) -> str:
     that still answers with the challenge is a different gate (computed cookie,
     Turnstile), and ADR-0012 says measure it first — not retry harder."""
     page = fetch_page(url)
-    if _GATE_PATH not in page.url:
-        return page.text
     match = _COOKIE_RE.search(page.text)
     if not match:
-        raise ChallengeGateError(
-            f"challenge gate at {page.url} sets no cookie: "
-            f"{describe_block(page.status_code, page.headers, page.text)}"
-        )
+        if _landed_elsewhere(url, page.url):
+            raise ChallengeGateError(
+                f"{url} landed on {page.url} without a cookie to replay: "
+                f"{describe_block(page.status_code, page.headers, page.text)}"
+            )
+        return page.text
     page = fetch_page(url, cookies={match[1]: match[2]})
-    if _GATE_PATH in page.url:
+    if _COOKIE_RE.search(page.text) or _landed_elsewhere(url, page.url):
         raise ChallengeGateError(
             f"challenge gate not crossed at {page.url}: "
             f"{describe_block(page.status_code, page.headers, page.text)}"
@@ -399,10 +414,11 @@ class Kinozal:
     where the listing comes from the mirror but the poster keeps hitting the
     dead origin (#241).
 
-    Primary HTML goes through `_cross_gate`, which replays the jumpingcrab
-    cookie gate. HTML listings use the authenticated mirror (login at most
-    once per run, on the first fallback) — so a healthy primary run pays no
-    login cost and needs no credentials. Posters use the mirror *anonymously*
+    Primary HTML goes through `_cross_gate`, which recognises the jumpingcrab
+    cookie gate by its body and replays the cookie it sets. HTML listings use
+    the authenticated mirror (login at most once per run, on the first
+    fallback) — so a healthy primary run pays no login cost and needs no
+    credentials. Posters use the mirror *anonymously*
     (kinozal.guru serves /i/poster/ 200 without login, verified), and the
     failover recognises any kinozal front via `_is_kinozal_host`. When
     credentials are absent or partial the HTML mirror is disabled and the

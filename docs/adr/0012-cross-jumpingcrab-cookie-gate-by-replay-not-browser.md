@@ -4,6 +4,10 @@ date: 2026-09-12
 decision-makers: ekolvah
 ---
 
+amended: 2026-09-16 (#586) — the gate changed shape (path `/verification`, cookie `challenge2=<token>`,
+max-age 86400) four days after the decision; detection moved from the final URL to the body marker. The
+decision itself (replay, not browser) is unchanged.
+
 # Cross the jumpingcrab cookie gate by replaying its cookie, not by driving a browser
 
 ## Context and Problem Statement
@@ -46,11 +50,15 @@ dependencies, while B needs a 23 s browser install (656 MB) plus 10.3 s per cros
 the cost and leaves nothing to maintain beyond one regex.
 
 Implementation (`kinozal_pipeline._cross_gate`): anonymous primary HTML is fetched through `fetch_page`
-(the `Response`-returning sibling of `fetch_html`), the gate is detected by the **final URL** containing
-`/challenge-verification` (not by body sniffing: a `200` with HTML in it is exactly what passes as a listing),
-the cookie is replayed **once**, and a second landing on the gate raises `ChallengeGateError` carrying
-`describe_block` evidence. That error is a primary failure like a timeout: `fetch_listing` falls through to
-the mirror, and the alert names both hosts.
+(the `Response`-returning sibling of `fetch_html`), the gate is detected by the **body marker**
+`document.cookie = "name=value"` (`_COOKIE_RE`) — the one thing both recorded shapes share and no real
+listing/details page contains — the cookie is replayed **once**, and a reply that still carries the marker
+raises `ChallengeGateError` with `describe_block` evidence. The final URL is the **secondary** signal: a
+reply that landed on a different *path* than requested without a cookie to replay (a gate whose script we
+do not recognise, a login or deleted-torrent redirect) is the same error, never a body handed to the
+extractor. The original detector keyed off the final URL containing `/challenge-verification`; that path
+lasted four days (see the amendment). That error is a primary failure like a timeout: `fetch_listing`
+falls through to the mirror, and the alert names both hosts.
 
 ### Consequences
 
@@ -66,20 +74,27 @@ the mirror, and the alert names both hosts.
 * Bad, because a gated run with a dead mirror still pays one doomed `login()` before the alert; the evidence
   is kept (`primary failed (challenge gate …); mirror … also failed (mirror login failed: …)`), the cost is
   one request.
-* Bad, because the replay is tied to the current gate shape (static cookie set from `document.cookie`). If the
-  cookie becomes computed, or the host adds Turnstile, `_COOKIE_RE` finds nothing (or the second landing is
-  the gate again) and the run fails with evidence — this ADR says **measure first with the probe workflow,
-  do not retry harder or add a loop**; a changed gate is a new decision, not a tuning of this one.
+* Bad, because the replay is tied to the current gate **mechanism** (a static cookie assigned in
+  `document.cookie`). Two kinds of change, two exits. A **shape** change — path, cookie name/value, max-age —
+  is a detector correction inside this ADR, exercised once on 2026-09-16 (#586: `/challenge-verification`
+  + `challenge1=1` → `/verification` + `challenge2=<token>`); the detector now reads the body marker so the
+  shape can move again without code. A **mechanism** change — computed cookie, Turnstile — leaves
+  `_COOKIE_RE` empty (or the replay lands on the gate again) and the run fails with evidence; this ADR says
+  **measure first with the probe workflow, do not retry harder or add a loop**; that is a new decision, not
+  a tuning of this one.
 
 ### Confirmation
 
-`tests/test_kinozal_pipeline.py::TestChallengeGate` (crossing, no-cookie gate, gate after replay, final-URL
-detection against the recorded `tests/fixtures/kinozal/jumpingcrab_*.html`) and
-`tests/test_http_fetch.py::test_fetch_page_*` (shared request kwargs, cookies forwarded only when given).
+`tests/test_kinozal_pipeline.py::TestChallengeGate` (crossing, no-cookie gate at any path, gate after
+replay, body-marker detection against both recorded shapes — `tests/fixtures/kinozal/jumpingcrab_*.html`
+for 2026-09-12 and `jumpingcrab_*2.html` for 2026-09-16) and `tests/test_http_fetch.py::test_fetch_page_*`
+(shared request kwargs, cookies forwarded only when given). `tests/test_generic_pipeline.py::
+TestExtractFromHtml::test_zero_items_error_carries_page_evidence` pins the second line of defence: a gate
+page that does reach the extractor is reported with `len=`/`title=`, not as a bare "zero items".
 The live check is `scripts/capture_kinozal_fixture.py` against the top URL from the runner — it goes
 through `Kinozal.fetch_details`, so it crosses the gate or fails with the same evidence. Note that it writes
-the decoded page re-encoded as UTF-8, while the committed listing fixture is the raw cp1251 bytes recorded by
-the probe run; re-recording the fixture through the script needs the test's decode changed to match.
+the decoded page re-encoded as UTF-8, while the shape-1 listing fixture is the raw cp1251 bytes recorded by
+the probe run (the shape-2 one is UTF-8 text); the test helpers decode each the way it was saved.
 
 ## Pros and Cons of the Options
 

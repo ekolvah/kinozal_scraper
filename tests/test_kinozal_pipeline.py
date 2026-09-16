@@ -70,9 +70,11 @@ _SOURCES_CONFIG = {"version": 1, "sources": [_KINOZAL_SOURCE]}
 
 
 # ── `fetch_page` doubles ──────────────────────────────────────────────────────
-# The facade reads a curl_cffi Response at the `fetch_page` boundary: `.url` is
-# the FINAL url after redirects (how the jumpingcrab challenge gate is detected),
-# the rest is `describe_block` evidence. Same shape `tests/test_http_fetch.py` builds.
+# The facade reads a curl_cffi Response at the `fetch_page` boundary: `.text` is
+# where the jumpingcrab challenge gate is detected (`document.cookie` marker),
+# `.url` is the FINAL url after redirects (a landing off the requested path is
+# the secondary signal), the rest is `describe_block` evidence. Same shape
+# `tests/test_http_fetch.py` builds.
 
 
 def _page(
@@ -2233,7 +2235,9 @@ def _jc_challenge_2() -> str:
 
 
 def _jc_listing_2() -> str:
-    return (_KINOZAL_FIXTURES / "jumpingcrab_top_with_cookie2.html").read_bytes().decode("cp1251")
+    # Unlike the shape-1 capture this one was saved from `Response.text` (already
+    # decoded from windows-1251), so on disk it is UTF-8 despite the charset meta.
+    return (_KINOZAL_FIXTURES / "jumpingcrab_top_with_cookie2.html").read_text(encoding="utf-8")
 
 
 class _GatedHost:
