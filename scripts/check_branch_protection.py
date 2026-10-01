@@ -51,7 +51,18 @@ REQUIRED_CONTEXTS: tuple[str, ...] = ("quality", "pr-link", REVIEW_CONTEXT)
 
 # PR jobs deliberately NOT required, with reasons. An empty reason is a forgotten decision,
 # not an accepted one, so the guard rejects it.
-NOT_REQUIRED: dict[str, str] = {}
+NOT_REQUIRED: dict[str, str] = {
+    "agent-process / *": (
+        "managed v2 quality caller (ADR-0013 step B); it becomes required in the plugin "
+        "ruleset (#599), not classic protection. A prefix-keyed caller matches no job when "
+        "listed in REQUIRED_CONTEXTS, so it is never declarable there"
+    ),
+    "agent-review / *": (
+        "managed v2 review caller (ADR-0013 step B); it becomes required in the plugin "
+        "ruleset (#599), not classic protection. A prefix-keyed caller matches no job when "
+        "listed in REQUIRED_CONTEXTS, so it is never declarable there"
+    ),
+}
 
 BRANCH = "main"
 # `gh` substitutes `{owner}`/`{repo}` placeholders; no leading slash, or Windows MSYS

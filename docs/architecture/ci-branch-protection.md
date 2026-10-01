@@ -92,6 +92,12 @@ contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
 a docs-only PR against a `paths:`-filtered `ci.yml` is the realistic case).
 
+A job that calls a reusable workflow (job-level `uses:`) never reports under its own name:
+GitHub names each called job's check run `<caller> / <called job>`. The guard therefore keys such a
+caller `<caller> / *`, which is why the managed `agent-process / *` and `agent-review / *` callers
+sit in `NOT_REQUIRED` rather than in `REQUIRED_CONTEXTS`: a prefix key matches no declarable
+context, so they become required through the plugin ruleset (#599), never through this list.
+
 With `strict: true` the "Update branch" button creates a new head SHA, so all required contexts re-run —
 an expected extra minute, not a malfunction.
 
