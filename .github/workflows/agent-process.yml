@@ -1,0 +1,15 @@
+# agent-process:managed
+# Rendered by the agent-process installer (init.py); rerun it instead of editing this file.
+name: agent-process
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: read
+  issues: read
+
+jobs:
+  agent-process:
+    uses: ekolvah/agent-process-distribution/.github/workflows/quality.yml@v3.2.8
