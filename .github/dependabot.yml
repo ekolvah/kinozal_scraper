@@ -1,0 +1,10 @@
+version: 2
+updates:
+  # agent-process:begin
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: "ekolvah/agent-process-distribution*"
+  # agent-process:end

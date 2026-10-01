@@ -1,0 +1,20 @@
+# agent-process:managed
+# Rendered by the agent-process installer (init.py); rerun it instead of editing this file.
+name: agent-review
+
+on:
+  # Pushes alone: a run started by a review event would leave the `pull_request` context as
+  # it was (ADR 0027).
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: write
+
+jobs:
+  agent-review:
+    uses: ekolvah/agent-process-distribution/.github/workflows/reusable-agent-review.yml@v3.2.8
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

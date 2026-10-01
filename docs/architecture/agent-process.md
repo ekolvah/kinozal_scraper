@@ -526,6 +526,20 @@ the summary identifies the reviewed SHA. Comments have no merge authority and
 there is no repair invocation. An unavailable live context, quota, transport,
 or malformed output is red until re-run.
 
+## OpenSpec route (agent-process plugin v2)
+
+From [ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md) step B (#598) the installed
+agent-process plugin offers a second route next to the v1 flow above:
+`/opsx:propose` → architect review (`architect-review.json`) → `/opsx:apply` →
+`archive_change` → `gh pr create`, from the branch `start_change` creates. Its steps and
+gates are the plugin skill's, not this document's; the plan is the OpenSpec change, not the
+issue body. A change carried by this route is therefore exempt from the v1
+`issue_branch.py`, the issue section contract, `check_red.py` and `open_pr.py`. Its PR still
+passes both gate sets on the same head while v1 protection stands (#599), and the rules of
+§Deterministic delivery flow that are not v1 scripts (no push to `main`, no self-merge, no
+hook bypass) apply unchanged. Which route an issue takes is the maintainer's choice until
+step D (#600) retires v1.
+
 ## Governance conventions
 1. Create issue branches only with `python scripts/issue_branch.py <N>`; it
    starts from fresh `origin/main`. Never create a branch directly.

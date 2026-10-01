@@ -317,6 +317,35 @@ class TestDeclarationMatchesWorkflows:
         problems = declaration_problems(workflows, ("gate",), {})
         assert any("более чем одному" in p for p in problems)
 
+    def test_reusable_caller_does_not_report_its_bare_name(self) -> None:
+        """A job-level `uses:` reports as `<caller> / <called job>`, never as the bare name."""
+        workflows = {
+            "a.yml": {
+                "on": {"pull_request": None},
+                "jobs": {"agent-review": {"runs-on": "ubuntu-latest"}},
+            },
+            "b.yml": {
+                "on": {"pull_request": None},
+                "jobs": {"agent-review": {"uses": "owner/repo/.github/workflows/x.yml@v1"}},
+            },
+        }
+        problems = declaration_problems(
+            workflows, ("agent-review",), {"agent-review / *": "reason"}
+        )
+        assert problems == []
+
+    def test_undecided_reusable_caller_is_named_by_its_prefix(self) -> None:
+        """An undecided caller is reported under the prefix its check runs actually carry."""
+        workflows = {
+            "a.yml": {
+                "on": {"pull_request": None},
+                "jobs": {"agent-process": {"uses": "owner/repo/.github/workflows/x.yml@v1"}},
+            },
+        }
+        problems = declaration_problems(workflows, (), {})
+        assert len(problems) == 1
+        assert "'agent-process / *'" in problems[0]
+
     def test_yaml_extension_workflow_is_loaded(self, tmp_path: Path) -> None:
         """GitHub accepts `.yaml`; a guard blind to it would be vacuously green."""
         (tmp_path / "a.yml").write_text(

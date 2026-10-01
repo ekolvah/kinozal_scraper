@@ -27,6 +27,14 @@
             "timeout": 20
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/agent-process-check.py\" https://github.com/ekolvah/agent-process-distribution/blob/v3.2.8/skills/agent-process/SKILL.md#install"
+          }
+        ]
       }
     ],
     "PreToolUse": [
@@ -62,5 +70,15 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "agent-process-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "ekolvah/agent-process-distribution",
+        "ref": "stable"
+      },
+      "autoUpdate": true
+    }
   }
 }

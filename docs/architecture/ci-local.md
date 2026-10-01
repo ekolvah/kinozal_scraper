@@ -6,9 +6,17 @@
 
 ```bash
 pip install -r requirements.txt -r requirements-dev.txt
-git config core.hooksPath .githooks   # activates .githooks/pre-push
+git config --unset-all core.hooksPath   # a clone set up for the retired .githooks
+pre-commit install --hook-type pre-push # activates the agent-process quality hook
 python scripts/ci_check.py
 ```
+
+The hook comes from `.pre-commit-config.yaml`, which the agent-process installer manages
+(ADR-0013). With `core.hooksPath` set, `pre-commit install` refuses and no hook runs, so the
+unset comes first. Run `git push` from a shell with the repository venv activated: the hook
+resolves `python` and `bash` through the pusher's `PATH` (it removes only its own pre-commit
+environment). On Windows, `bash` must be Git Bash (`usr\bin\bash.exe`), not WSL's
+`System32\bash.exe`.
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
 ruff format → ruff lint → language → detect-secrets → pytest → pip-audit (runtime) →
@@ -42,26 +50,21 @@ ever crosses the Bash tool's 10-minute ceiling, the derived constant
 `timeout: 600000` in the implementer adapter stops working and
 needs revisiting together with this number.
 
-**`pre-push` runs two gates, not one.** Ahead of `ci_check.py` it runs
-`scripts/check_branch_protection.py` — a single `gh` call (seconds, 30 s timeout) that compares
-the declared required status checks against GitHub's actual config. It is deliberately first: a
-mismatch aborts the push immediately instead of costing the eight minutes below, which also
-leaves its message as the last thing on screen rather than scrolled away. Both non-zero codes
-stop the push and the hook propagates them unchanged (`1` drift, `2` the tool itself failed), so
-the two stay distinguishable. A drift you introduced on purpose (a check removed by hand for a
-one-off merge) is declared with `--allow-drift "<reason>"`, never worked around with
-`--no-verify`. Details and the reasoning are in
-[§Required status checks](ci-branch-protection.md#required-status-checks-branch-protection).
+**`pre-push` runs one gate: the declared `test`.** The hook runs `python scripts/ci_check.py`,
+the `test` named in `.github/agent-process-quality.json`, exactly as the plugin's CI job does.
+The branch-protection drift check no longer runs on push; run
+`python scripts/check_branch_protection.py` on demand (details in
+[§Required status checks](ci-branch-protection.md#required-status-checks-branch-protection)).
+The first push after `pre-commit install` is slower still: pre-commit clones the plugin
+repository at the pinned `rev` and builds its hook environment before `ci_check` starts. That
+pause is network, like the `pip-audit` tail above, not a hang.
 
-Before probing an interpreter or starting either gate, the hook asks
-`git rev-parse --local-env-vars` for Git's repository-local environment names
-and unsets exactly those names. Git exports values such as `GIT_DIR` while
-running a hook; without this boundary, a child launched after changing into an
-unrelated temporary directory can still address the source repository,
-especially from a linked worktree. Failure or empty output from the discovery
-command is an infrastructure failure (exit `2`), not permission to continue
-with inherited repository state. `BRANCH_PROTECTION_ALLOW_DRIFT` is not a
-Git-local name and continues to reach the protection probe unchanged.
+Before starting the gate, the hook asks `git rev-parse --local-env-vars` for Git's
+repository-local environment names and unsets exactly those names. Git exports values such as
+`GIT_DIR` while running a hook; without this boundary, a child launched after changing into an
+unrelated temporary directory can still address the source repository, especially from a
+linked worktree. Failure or empty output from the discovery command stops the push with exit
+`2`, not permission to continue with inherited repository state.
 
 **Single source of truth.** The registry is the *only* place the check set is
 defined. `ci.yml` does not re-list checks — each CI step runs
@@ -75,9 +78,10 @@ and `ci_check.py` for `test`. Its `setup` duplicates the `ci.yml` install
 block; `TestStepParity` holds both equal (#597).
 
 > **Disambiguation:** this section's title "Local pre-commit" names the
-> pre-commit *moment* (the git-hook that runs before a push), **not** the
-> [`pre-commit`](https://pre-commit.com) framework — which this repo
-> deliberately does **not** use ([§Consciously not adopted](ci-tooling-decisions.md#consciously-not-adopted)).
+> pre-commit *moment* (the git-hook that runs before a push). The
+> [`pre-commit`](https://pre-commit.com) framework only installs and launches that hook; it
+> runs no file linters of its own, and `CHECKS` stays the single check registry
+> ([`ci-tooling-decisions.md`](ci-tooling-decisions.md#consciously-not-adopted)).
 
 ### Gate CLI exit codes
 
@@ -181,6 +185,6 @@ repository whole. Same failure mode as the Bash branch — anything unmeasurable
 directory, non-UTF-8 bytes, a format where slicing is meaningless) yields no decision.
 
 This is instant feedback that **complements, never replaces** `ci_check.py` (the
-canonical pre-push gate), and is unrelated to the `pre-commit`/`tox` *framework*
-([consciously declined](ci-tooling-decisions.md#consciously-not-adopted)) — that no-go is about a PR-time
-tool-registry framework, this is a session-time editor hook.
+canonical pre-push gate), and is unrelated to the `pre-commit` framework that launches
+that gate ([`ci-tooling-decisions.md`](ci-tooling-decisions.md#consciously-not-adopted)) — the framework
+is a push-time hook launcher, this is a session-time editor hook.
