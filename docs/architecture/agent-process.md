@@ -502,7 +502,7 @@ together with its cause. The trust model behind the fix is recorded in
 
 The review still executes code from the PR head, so a controller PR verifies
 itself; the agent review reports, it does not authorise the merge. Keep such a
-PR limited to `.github/workflows/agent-review.yml`,
+PR limited to `.github/workflows/agent-review-v1.yml`,
 `scripts/check_branch_protection.py`, `scripts/check_agent_review_outcome.py`,
 `scripts/request_codex_review.py`, their direct tests, and documentation; do not
 mix application changes into it. That keeps the diff a maintainer reads before

@@ -68,7 +68,11 @@ defined. `ci.yml` does not re-list checks — each CI step runs
 `python scripts/ci_check.py --only <name>`, so local and CI cannot drift. If
 `ci_check.py` is green locally, CI runs the identical checks. Adding or removing
 a check in the registry without updating `ci.yml` fails
-`tests/test_ci_check.py::TestStepParity` (#153).
+`tests/test_ci_check.py::TestStepParity` (#153). The agent-process plugin's
+quality workflow reads the same registry: `.github/agent-process-quality.json`
+names `ci_check.py --list-checks` (the registry as a JSON array) for `checks`
+and `ci_check.py` for `test`. Its `setup` duplicates the `ci.yml` install
+block; `TestStepParity` holds both equal (#597).
 
 > **Disambiguation:** this section's title "Local pre-commit" names the
 > pre-commit *moment* (the git-hook that runs before a push), **not** the

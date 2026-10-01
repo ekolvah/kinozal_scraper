@@ -51,7 +51,7 @@ from urllib.parse import quote
 from scripts.agent_orchestrator import load_catalog
 from scripts.check_branch_protection import REQUIRED_CONTEXTS, REVIEW_CONTEXT
 
-REVIEW_WORKFLOW_FILE = "agent-review.yml"
+REVIEW_WORKFLOW_FILE = "agent-review-v1.yml"
 VERDICT_EXIT_CODES: dict[str, int] = {
     "ready-for-human": 0,
     "fix-blocking": 10,

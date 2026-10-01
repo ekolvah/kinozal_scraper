@@ -5,7 +5,7 @@
 ## Required status checks (branch protection)
 
 Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
-**`agent-review`** (`agent-review.yml`).
+**`agent-review`** (`agent-review-v1.yml`).
 (`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
 issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
 `scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is

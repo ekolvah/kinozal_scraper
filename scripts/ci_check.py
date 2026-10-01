@@ -3,14 +3,19 @@
 
     python scripts/ci_check.py            # run every check (pre-commit / pre-push)
     python scripts/ci_check.py --only X   # run one check by name (used by ci.yml)
+    python scripts/ci_check.py --list-checks  # registry names as a JSON array
 
 `ci.yml` references checks by name via --only, so the check list cannot drift
-between local and CI: there is exactly one registry (CHECKS) below.
+between local and CI: there is exactly one registry (CHECKS) below. The plugin's
+quality workflow reads the same registry through `--list-checks`, declared in
+`.github/agent-process-quality.json`; it runs before any install, so this module
+imports the stdlib only at module level.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -266,13 +271,22 @@ def run_selected(only: str | None = None) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run quality checks (or one via --only).")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--only",
         metavar="NAME",
         choices=sorted(CHECKS),
         help="run a single named check; default runs all",
     )
+    mode.add_argument(
+        "--list-checks",
+        action="store_true",
+        help="print the registry's check names as a JSON array and exit",
+    )
     args = parser.parse_args()
+    if args.list_checks:
+        print(json.dumps(list(CHECKS)))
+        return
     run_selected(args.only)
 
 

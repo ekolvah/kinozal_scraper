@@ -8,6 +8,8 @@ markdown-it-py
 mypy
 pip-audit
 pip-tools
+# Carries the agent-process plugin's pre-push hook (ADR-0013, #597).
+pre-commit
 pytest
 pytest-cov
 # The role catalogue is read directly by scripts/agent_orchestrator.py and by the

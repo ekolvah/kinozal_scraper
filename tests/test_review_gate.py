@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from scripts.agent_orchestrator import load_catalog
 from scripts.check_branch_protection import (
@@ -21,6 +23,7 @@ from scripts.check_branch_protection import (
 )
 from scripts.review_gate import (
     REVIEW_CONTEXT,
+    REVIEW_WORKFLOW_FILE,
     VERDICT_EXIT_CODES,
     CheckRun,
     ReviewEvidence,
@@ -151,6 +154,17 @@ class TestContracts:
 
         assert fixer_budget(catalogue) == catalogue["roles"]["fixer"]["max_runs"]
 
+    def test_review_workflow_file_is_the_v1_workflow(self) -> None:
+        # The plugin install (ADR-0013) owns `agent-review.yml`; the gate must read
+        # the in-repo v1 workflow, which carries the `agent-review` job and no
+        # plugin-managed marker (#597).
+        assert REVIEW_WORKFLOW_FILE != "agent-review.yml"
+        workflow = Path(".github/workflows") / REVIEW_WORKFLOW_FILE
+        assert workflow.is_file()
+        text = workflow.read_text(encoding="utf-8")
+        assert text.splitlines()[0] != "# agent-process:managed"
+        assert "agent-review" in yaml.safe_load(text)["jobs"]
+
 
 def _gh_double(pr_payload: dict[str, Any], runs_payload: dict[str, Any]) -> Any:
     """A `subprocess.run` double answering the gate's two `gh` reads."""
@@ -230,7 +244,7 @@ class TestEvidence:
         Now that review works, keeping the exception would yield `escalate` on
         every agent-process PR.
         """
-        payload = _pr_payload(files=[{"path": ".github/workflows/agent-review.yml"}])
+        payload = _pr_payload(files=[{"path": ".github/workflows/agent-review-v1.yml"}])
         monkeypatch.setattr(subprocess, "run", _gh_double(payload, _runs_payload(_ROUND_2)))
 
         verdict = evaluate(collect_evidence("465"), fixer_budget=3)

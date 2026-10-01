@@ -2,7 +2,7 @@
 
 There is one policy (`docs/architecture/ci-agent-review.md` §Model pinning) and two surfaces:
 the `--model` CLI flag inside `claude_args` in
-`.github/workflows/agent-review.yml`, and subagent frontmatter in
+`.github/workflows/agent-review-v1.yml`, and subagent frontmatter in
 `.claude/agents/*.md`.
 
 **Why one set rather than two.** This is a **deny-list**, not an allow-list: its
