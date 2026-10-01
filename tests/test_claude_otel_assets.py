@@ -171,9 +171,7 @@ class TestGrafanaDashboard:
         catalogue = _load_json(SIGNAL_CATALOGUE)
         dashboard = _load_json(GRAFANA_DASHBOARD)
         known_refs = _catalogue_refs(catalogue)
-        targets = [
-            target for target in _dashboard_targets(dashboard) if target.get("source") != "codex"
-        ]
+        targets = _dashboard_targets(dashboard)
 
         assert targets
         assert all(target["catalogueRef"] in known_refs for target in targets)
@@ -190,7 +188,7 @@ class TestGrafanaDashboard:
         used_attributes: set[str] = set()
 
         for target in _dashboard_targets(dashboard):
-            if target.get("source") == "codex" or "expr" not in target:
+            if "expr" not in target:
                 continue
             expr = target["expr"]
             attributes = _stream_selector_labels(expr) | set(

@@ -2,14 +2,14 @@
 """Single source of truth for quality checks. Run before every commit:
 
     python scripts/ci_check.py            # run every check (pre-commit / pre-push)
-    python scripts/ci_check.py --only X   # run one check by name (used by ci.yml)
+    python scripts/ci_check.py --only X   # run one check by name
     python scripts/ci_check.py --list-checks  # registry names as a JSON array
 
-`ci.yml` references checks by name via --only, so the check list cannot drift
-between local and CI: there is exactly one registry (CHECKS) below. The plugin's
-quality workflow reads the same registry through `--list-checks`, declared in
-`.github/agent-process-quality.json`; it runs before any install, so this module
-imports the stdlib only at module level.
+There is exactly one registry (CHECKS) below, so the check list cannot drift
+between local and CI: the plugin's quality workflow reads it through
+`--list-checks`, declared in `.github/agent-process-quality.json`, and runs each
+name via --only. That listing runs before any install, so this module imports
+the stdlib only at module level.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ import sys
 from collections.abc import Callable, Iterable
 from pathlib import Path, PurePosixPath
 
-_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude", "templates"}
+_EXCLUDE_DIRS = {".venv", ".git", "__pycache__", ".audit-tmp", ".claude"}
 
 
 def _run(cmd: list[str]) -> None:
@@ -74,10 +74,10 @@ def check_secrets() -> None:
     """Block a secret from reaching a commit (#389).
 
     The pre-commit hook config that used to declare this gate was never on any
-    execution path (`core.hooksPath` points at `.githooks`, which has only
-    `pre-push`), and the baseline it carried had an empty `plugins_used`, so the
-    hook exited 0 on a planted key. Both layers were silent; the gate now runs
-    here, in the one registry that `pre-push` and `ci.yml` both execute.
+    execution path (only a `pre-push` hook was installed), and the baseline it
+    carried had an empty `plugins_used`, so the hook exited 0 on a planted key.
+    Both layers were silent; the gate now runs here, in the one registry that the
+    local pre-push hook and CI both execute.
     """
     print("==> detect-secrets")
     targets = _secrets_targets(_tracked_files())
@@ -240,7 +240,7 @@ def check_imports() -> None:
 
 
 # Registry — the single source of truth for the quality check set. Order is the
-# run order for a full pre-commit pass. ci.yml references these names via --only.
+# run order for a full pre-commit pass. CI runs these names via --only.
 CHECKS: dict[str, Callable[[], None]] = {
     "format": check_format,
     "lint": check_lint,

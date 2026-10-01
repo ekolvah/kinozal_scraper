@@ -81,7 +81,6 @@ _CODE_SPAN_REF = re.compile(r"^[\w./-]+\.md#\S+$", re.UNICODE)
 # check” would become indistinguishable from “everything is fine” (§IV, as in
 # `test_doc_headers.py::test_every_scoped_directory_contributes`).
 _EXPECTED_SCOPE_DIRS = ("docs/architecture", "docs/adr", ".claude/rules", ".claude/commands")
-_TEMPLATE_PREFIX = "templates/"
 
 
 def slugify(heading_text: str) -> str:
@@ -192,11 +191,7 @@ def _tracked_paths() -> frozenset[str]:
 
 
 def _tracked_docs() -> list[str]:
-    return [
-        name
-        for name in _tracked_files()
-        if name.endswith(".md") and not name.startswith(_TEMPLATE_PREFIX)
-    ]
+    return [name for name in _tracked_files() if name.endswith(".md")]
 
 
 @cache
@@ -216,9 +211,6 @@ def _problems(docs: Iterable[str]) -> list[str]:
 
 
 class TestDocLinks:
-    def test_copier_payload_docs_are_checked_after_rendering(self) -> None:
-        assert not [name for name in _tracked_docs() if name.startswith(_TEMPLATE_PREFIX)]
-
     @pytest.mark.parametrize("directory", _EXPECTED_SCOPE_DIRS)
     def test_scope_covers_expected_dirs(self, directory: str) -> None:
         assert any(name.startswith(f"{directory}/") for name in _tracked_docs()), (

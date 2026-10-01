@@ -1,13 +1,12 @@
 """Tests for `scripts/ci_check.py` — the pre-commit gate runner.
 
-Covers `CHECKS` ↔ `ci.yml` step parity, module-discovery exclusions, runner exit
-codes, and the capture-failure path that must name its real cause.
+Covers the quality declaration ↔ `CHECKS` parity, module-discovery exclusions, runner
+exit codes, and the capture-failure path that must name its real cause.
 """
 
 from __future__ import annotations
 
 import json
-import re
 import shlex
 import subprocess
 import sys
@@ -15,24 +14,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 
 from scripts.ci_check import CHECKS, _find_modules, _run, _tracked_files, run_selected
 
-_CI_YML = Path(".github/workflows/ci.yml")
 _QUALITY_DECLARATION = Path(".github/agent-process-quality.json")
-_ONLY_RE = re.compile(r"scripts/ci_check\.py\s+--only\s+(\S+)")
-
-
-def _ci_yml_check_names() -> set[str]:
-    """Names passed to `ci_check.py --only X` in the ci.yml quality job."""
-    spec = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
-    steps = spec["jobs"]["quality"]["steps"]
-    names: set[str] = set()
-    for step in steps:
-        run = step.get("run", "")
-        names.update(_ONLY_RE.findall(run))
-    return names
 
 
 def _quality_declaration() -> dict[str, str]:
@@ -40,37 +25,16 @@ def _quality_declaration() -> dict[str, str]:
     return data
 
 
-def _ci_yml_install_lines() -> list[str]:
-    """Commands of the ci.yml `Install dependencies` step, comments stripped."""
-    spec = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
-    (step,) = [
-        s for s in spec["jobs"]["quality"]["steps"] if s.get("name") == "Install dependencies"
-    ]
-    lines = (line.split("#", 1)[0].strip() for line in step["run"].splitlines())
-    return [line for line in lines if line]
-
-
 class TestStepParity:
-    """The core defect (#153): ci.yml duplicated the check list by hand and drifted —
-    some registry checks were silently missing in CI. After the registry refactor,
-    ci.yml references check *names* only, so parity is enforceable."""
-
-    def test_ci_yml_runs_every_registered_check(self) -> None:
-        assert _ci_yml_check_names() == set(CHECKS), (
-            "ci.yml --only steps must cover exactly the ci_check registry — "
-            "any divergence is the drift this issue fixes"
-        )
-
-    # The plugin's quality workflow reads `.github/agent-process-quality.json`
-    # (ADR-0013, #597): it must run the same registry and install the same way.
+    """The core defect (#153): CI duplicated the check list by hand and drifted — some
+    registry checks were silently missing. The plugin's quality workflow reads
+    `.github/agent-process-quality.json` (ADR-0013), which runs the registry itself,
+    so the declaration must point at the registry rather than list checks."""
 
     def test_quality_declaration_runs_the_registry(self) -> None:
         declaration = _quality_declaration()
         assert shlex.split(declaration["checks"])[1:] == ["scripts/ci_check.py", "--list-checks"]
         assert shlex.split(declaration["test"])[1:] == ["scripts/ci_check.py"]
-
-    def test_quality_declaration_setup_matches_ci_yml_install(self) -> None:
-        assert _quality_declaration()["setup"] == " && ".join(_ci_yml_install_lines())
 
 
 class TestListChecks:
@@ -122,18 +86,6 @@ class TestFindModules:
 
         modules = {name.replace("\\", "/") for name in _find_modules()}
         assert "evidence/planning_probe.py" not in modules
-
-    def test_copier_payload_is_out_of_scope(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._repository_with_mypy_candidates(tmp_path)
-        payload = tmp_path / "templates" / "agent-process"
-        payload.mkdir(parents=True)
-        (payload / "copied_test.py").write_text("payload = True\n", encoding="utf-8")
-        monkeypatch.chdir(tmp_path)
-
-        modules = {name.replace("\\", "/") for name in _find_modules()}
-        assert "templates/agent-process/copied_test.py" not in modules
 
     def test_tracked_python_files_remain_in_scope(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
