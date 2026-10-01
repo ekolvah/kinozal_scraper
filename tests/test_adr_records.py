@@ -34,8 +34,7 @@ from pathlib import Path
 
 import pytest
 import yaml
-
-from scripts.validate_issue_sections import find_gaps
+from markdown_it import MarkdownIt
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _ADR_DIR = _REPO_ROOT / "docs" / "adr"
@@ -51,6 +50,11 @@ _SUPERSEDED_BY = re.compile(r"^superseded by ADR-(\d{4})$")
 # Minimal MADR 4.0.0 h2 sections. `Consequences` and `Confirmation` are h3
 # subsections of `Decision Outcome`, so the h2 parser must not require them.
 _REQUIRED_SECTIONS = ("Context and Problem Statement", "Considered Options", "Decision Outcome")
+
+# A section shorter than this is a placeholder, not content.
+_MIN_CONTENT_CHARS = 5
+
+_MD = MarkdownIt("commonmark")
 
 
 def _record_files() -> list[Path]:
@@ -130,9 +134,36 @@ def _dangling_superseded(status: str | None, known_numbers: frozenset[str]) -> s
     return target
 
 
+def _split_by_h2(text: str) -> dict[str, str]:
+    """Sections headed by `## `, parsed by CommonMark rather than by line.
+
+    Whether `## X` is a heading depends on context (a fenced code block, an indented or
+    HTML block). A line parser once turned `## <section>` inside a fence into a second
+    section that overwrote the real one, so a filled section read as empty (#426).
+    """
+    lines = text.splitlines()
+    tokens = _MD.parse(text)
+    # (heading, heading-start line, content-start line)
+    heads: list[tuple[str, int, int]] = [
+        (tokens[i + 1].content.strip(), token.map[0], token.map[1])
+        for i, token in enumerate(tokens)
+        if token.type == "heading_open" and token.tag == "h2" and token.map
+    ]
+    sections: dict[str, str] = {}
+    for index, (title, _, content_start) in enumerate(heads):
+        content_end = heads[index + 1][1] if index + 1 < len(heads) else len(lines)
+        sections[title.lower()] = "\n".join(lines[content_start:content_end]).strip()
+    return sections
+
+
 def _missing_sections(text: str) -> list[str]:
     """Return required MADR sections that are absent or empty."""
-    return find_gaps(text, required=_REQUIRED_SECTIONS)
+    sections = _split_by_h2(text)
+    return [
+        name
+        for name in _REQUIRED_SECTIONS
+        if len(sections.get(name.lower(), "")) < _MIN_CONTENT_CHARS
+    ]
 
 
 def _duplicate_numbers(names: Sequence[str]) -> list[str]:
@@ -266,6 +297,17 @@ class TestRecordPredicates:
             f"## {s}\n\nСодержательный текст секции {s}.\n" for s in _REQUIRED_SECTIONS
         )
         assert _missing_sections(text) == []
+
+    def test_heading_inside_fence_is_not_a_section(self) -> None:
+        """#426: `## Decision Outcome` inside a fence must not overwrite the real section."""
+        text = "\n".join(
+            f"## {s}\n\nСодержательный текст секции {s}.\n" for s in _REQUIRED_SECTIONS[:2]
+        ) + (
+            "\n## Decision Outcome\n\nВыбран вариант A, пример:\n\n"
+            "```markdown\n## Decision Outcome\n```\n"
+        )
+        assert _missing_sections(text) == []
+        assert "Выбран вариант A" in _split_by_h2(text)["decision outcome"]
 
     def test_duplicate_numbers_reported(self) -> None:
         names = ["0001-a.md", "0002-b.md", "0002-c.md"]

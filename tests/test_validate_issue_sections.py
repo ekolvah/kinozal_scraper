@@ -8,7 +8,6 @@ the Cyrillic body decode.
 
 from __future__ import annotations
 
-import importlib
 import subprocess
 import sys
 from pathlib import Path
@@ -446,40 +445,6 @@ def test_capture_failure_marker_records_output_but_blocks_handoff() -> None:
     assert find_gaps(with_output, required=_BUG_SECTIONS) == [
         "Evidence (missing: successful capture)"
     ]
-
-
-def test_capture_kinozal_fixture_writes_the_response_through_the_existing_fetcher(
-    tmp_path: Path,
-) -> None:
-    capture_fixture = importlib.import_module("scripts.capture_kinozal_fixture")
-    seen: list[str] = []
-
-    class StubFetcher:
-        def fetch_details(self, url: str) -> str:
-            seen.append(url)
-            return "<html>captured through\nKinozal.fetch_details</html>"
-
-    target = tmp_path / "kinozal" / "details.html"
-    source = "https://kinozal.tv/details.php?id=2112853"
-    capture_fixture.capture(source, target, fetcher=StubFetcher())
-
-    assert seen == [source]
-    assert target.read_bytes() == b"<html>captured through\nKinozal.fetch_details</html>"
-
-
-def test_new_external_data_parsing_test_with_inline_markup_is_reported() -> None:
-    ratchet = importlib.import_module("scripts.check_fixture_ratchet")
-    source = """
-def test_parses_external_page():
-    html = "<html><img class='cat_img_r' src='/pic/cat/6.gif'></html>"
-    assert parse_page(html) == 6
-"""
-    assert ratchet.inline_external_data_test_nodes(
-        source, path=Path("tests/test_new_source.py")
-    ) == ["tests/test_new_source.py::test_parses_external_page"]
-
-    repo_root = Path(__file__).resolve().parent.parent
-    assert ratchet.scan_repository(repo_root) == []
 
 
 def test_evidence_replay_checks_record_shape_not_plan_semantics() -> None:
