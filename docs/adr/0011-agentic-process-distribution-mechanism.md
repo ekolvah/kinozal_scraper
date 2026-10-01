@@ -169,6 +169,9 @@ its Copier channel instead; the plugin channel is limited to commands and agents
 
 ## More Information
 
+* Superseded for this repository by [ADR-0013](0013-adopt-agent-process-plugin-v2.md):
+  the plugin's v2 dropped the copier mirror, and this repository now consumes the
+  plugin instead of exporting it. This record stays `accepted` as the export decision.
 * Issue: [#560](https://github.com/ekolvah/kinozal_scraper/issues/560).
 * Overlaps with #550 (audit replacing bespoke repository scripts with
   market tools) on domain, not on question: #550 decides whether a given
