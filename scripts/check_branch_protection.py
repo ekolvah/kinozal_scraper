@@ -155,6 +155,11 @@ def _pull_request_jobs(
     when `name:` is added, leaving a required context “Expected” forever and locking merges
     under `enforce_admins: true`. Return name collisions separately: which job reports is
     uncertainty, not a detail.
+
+    A job with a job-level `uses:` calls a reusable workflow and reports no check run under
+    its own name: GitHub names each called job's run `<caller> / <called job>`. Such a job is
+    keyed `<caller> / *`, so it neither collides with a plain job of the same name nor can be
+    declared required by its bare name (#598).
     """
     jobs: dict[str, _Job] = {}
     duplicates: list[str] = []
@@ -165,6 +170,8 @@ def _pull_request_jobs(
         filters = _pull_request_filters(triggers)
         for job_key, job in (doc.get("jobs") or {}).items():
             context = (job or {}).get("name") or job_key
+            if "uses" in (job or {}):
+                context = f"{context} / *"
             if context in jobs:
                 duplicates.append(context)
             jobs[context] = _Job(job or {}, filters)
