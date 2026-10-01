@@ -452,10 +452,11 @@ instruction to shorten its own output.
    (#458), and how another spent two of its four rounds fixing defects its own
    previous fix had introduced (#465). Stated as a condition, the rule was
    skipped both times, so it became an exit code (#467). A PR is ready once the
-   current head has
-   no blocking finding and every required check passes — that is what
-   `ready-for-human` reports, and a `rework` outcome with its warning is a ready
-   PR, not an unfinished one.
+   current head has no blocking finding and every required check passes.
+   `ready-for-human` reports that over the v1 contexts; the ruleset's
+   `agent-process / quality` and `agent-review / agent-review`, which the gate
+   does not read, are confirmed green with `gh pr checks <PR>`. A `rework` outcome with its warning is a ready PR, not an
+   unfinished one.
 
 One PR is one logical unit. Do not bypass hooks, push to `main`, force-push,
 reset hard, delete branches forcefully, self-merge, or replace these gates with
@@ -472,9 +473,9 @@ credential infrastructure.
 `python -m scripts.review_gate <PR>` reads the live PR — the v1 contexts
 (`REQUIRED_CONTEXTS`) on the current head and how many distinct heads
 `agent-review` has already reviewed. It changes nothing and posts nothing.
-From step C (#599) those contexts are no longer the ones the ruleset requires;
-the gate keeps reading them until step D (#600) retires it, so confirm the
-ruleset's two checks with `gh pr checks <PR>` before reporting a PR ready.
+Those are not the contexts the ruleset requires, so the ruleset's two checks
+are confirmed separately with `gh pr checks <PR>` before a PR is reported ready
+(#599; the gate's retirement is #600).
 
 | Verdict | Exit code | Meaning |
 | --- | --- | --- |
@@ -538,8 +539,8 @@ agent-process plugin offers a second route next to the v1 flow above:
 gates are the plugin skill's, not this document's; the plan is the OpenSpec change, not the
 issue body. A change carried by this route is therefore exempt from the v1
 `issue_branch.py`, the issue section contract, `check_red.py` and `open_pr.py`. Its PR is
-gated by the ruleset's two checks like any other (#599); the v1 jobs still run on it until
-step D but do not block. The rules of
+gated by the ruleset's two checks like any other (#599); the v1 jobs run on it and do not
+block. The rules of
 §Deterministic delivery flow that are not v1 scripts (no push to `main`, no self-merge, no
 hook bypass) apply unchanged. Which route an issue takes is the maintainer's choice until
 step D (#600) retires v1.

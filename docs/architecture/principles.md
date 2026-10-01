@@ -249,8 +249,9 @@ A PR MAY merge only when:
 - A newly *rejected* coverage decision (a consciously-accepted gap, a scope-/cost-skip)
   is recorded in [coverage-gaps.md](coverage-gaps.md) so it isn't
   silently re-litigated — there is no auto-generated coverage inventory to update.
-- Non-blocking review findings are answered in PR comments before merge; they
-  do not red the check, so this stays the maintainer's call.
+- Unaddressed review concerns are answered in PR comments before merge
+  (non-blocking findings do not red the review check, so this one is held by
+  the maintainer, not by the ruleset).
 - For PRs that touch HTML extraction or external API contracts, an E2E
   smoke test (real HTTP) has been run at least once on the branch — the
   daily cron run on `run-script.yml` counts.

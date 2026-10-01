@@ -7,7 +7,7 @@
 The plugin-managed `agent-review.yml` (check run `agent-review / agent-review`) runs on the same
 events next to this workflow from ADR-0013 step B; it is the plugin's reusable review, documented
 upstream, and the ruleset requires it from step C ([`ci.md`](ci.md), #599). This section covers
-the v1 workflow only, which still runs until step D (#600) but no longer blocks a merge.
+the v1 workflow only; it runs on every PR and blocks nothing (its removal is #600).
 
 Triggers: every `pull_request: opened/synchronize`. Uses
 `anthropics/claude-code-action@v1` to run an automated code review on every PR push: inline
