@@ -7,8 +7,9 @@ runtime guidance and reference implementation detail — where they conflict wit
 document, this document wins.
 
 **Not here.** The *procedural* half of the workflow (branch creation, PR discipline,
-labels, role hand-offs, the architect-review gate) is delegated to
-[the agent process](agent-process.md) — see §Governance. How
+labels, role hand-offs, the architect-review gate) is delegated to the agent-process
+plugin's `agent-process` skill and the repository-owned
+[agent process](agent-process.md) — see §Governance. How
 each gate is implemented and configured → [`ci.md`](ci.md). Which coverage gaps are
 consciously accepted → [`coverage-gaps.md`](coverage-gaps.md).
 
@@ -28,8 +29,8 @@ different directions, the higher goal decides.
    pays for itself. Watch for work for work.
 3. **Preserve predictability and user control.** One PR is one logical unit;
    risky or shared-state actions are confirmed with the user even when they are
-   technically permitted. The procedural half of this goal lives in
-   [the agent process](agent-process.md).
+   technically permitted. The procedural half of this goal lives in the
+   plugin's `agent-process` skill and [the agent process](agent-process.md).
 
 ### Scripts over instructions
 
@@ -153,13 +154,13 @@ mode MUST be reproduced and located. Instrument before patching: inspect logs,
 inputs, and the failure point before proposing a change. When the behaviour to
 be designed is how an external system is read or classified, observation of
 that live system is part of locating the failure; repository reasoning alone is
-not evidence. Preserve the response under `evidence/issue-<N>/` with a
+not evidence. Preserve the response under `evidence/<change>/` with a
 reproducible command appropriate to that source. This is working-tree-only
 planning evidence, ignored by Git and kept locally only until merge. A verified,
-safe, compressed observation record in the public issue is the durable review
+safe, compressed observation record in the change's proposal is the durable review
 artifact; the full payload is not copied there. Kinozal capture uses
 `python scripts/capture_kinozal_fixture.py <url> <path>`; the source routing
-table in [`agent-process.md`](agent-process.md#issue-contract) gives read-only
+table in [`agent-process.md`](agent-process.md#evidence-block) gives read-only
 commands for GitHub, Telegram, Gemini, Sheets, and an existing CLI for another
 source. Observation must include both the failing record and an exact valid
 record from the same captured response; replacing that record with a sibling
@@ -211,8 +212,8 @@ and existing repo packages.
 
 Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
 deliberately declines to script (see [`information-architecture.md`](information-architecture.md)). It is enforced at
-**plan stage** by the [architect review contract](agent-process.md#architect-review-contract),
-whose reviewer reads the [goal function](#goal-function) above; the cloud `Claude code review`
+**plan stage** by the agent-process plugin's architect review (its `architect-reviewer`, which
+reviews against §I–VII and the [goal function](#goal-function) above); the cloud `agent-review`
 workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
 
 **Rationale:** over-engineering is a systematic LLM-agent failure mode, cheapest to prevent
@@ -220,16 +221,17 @@ as a standing default than as an after-the-fact "simplify" request. More code is
 bug/support surface (goal 1) and more dev + runtime tokens (goal 2). The formulation follows official
 [Claude Code best practices](https://code.claude.com/docs/en/best-practices) and Karpathy's
 CLAUDE.md (de-facto industry canon); it is **not** adopted as a third-party plugin/skill
-because that package's own review agent and pre-commit hook would duplicate the existing
-`architect-reviewer` and `ci_check` — duplication instead of reuse (a §VII violation in itself).
+because that package's own review agent and pre-commit hook would duplicate the agent-process
+plugin's `architect-reviewer` and `ci_check` — duplication instead of reuse (a §VII violation in itself).
 
 ## Development Workflow
 
 The procedural workflow rules (branch creation, PR discipline, labels,
 plan→implement flow, pre-commit gate, dependency consistency, architect-review
-gate) are an **operational procedure**, delegated to their canonical home
-[the agent process](agent-process.md) (an agent-neutral
-operational tier — see [`information-architecture.md`](information-architecture.md) IA policy). They
+gate) are an **operational procedure**, delegated to the agent-process plugin's
+`agent-process` skill and, for what this repository adds on top of it,
+[the agent process](agent-process.md) (the operational tier — see
+[`information-architecture.md`](information-architecture.md) IA policy). They
 supplement the principles above and are **equally binding**. This file does not
 restate them — edit them there.
 
@@ -267,12 +269,14 @@ of truth on principles.
 **Delegation of operational procedures.** This constitution retains the
 **goal function**, the **principles §I–VII**, the **Quality Gates**, and this
 **Governance** section as its canon. The *operational procedural rules* (the
-former §Development Workflow) are delegated to
-[the agent process](agent-process.md) — the agent-neutral
-operational tier (see [`information-architecture.md`](information-architecture.md)). Delegation does **not** weaken their
-authority: those rules bind equally and `agent-process.md` is their
-single source of truth (other mentions are links only). Amending them happens
-in that file; amending the *delegation itself* (what is canon vs. delegated) is
+former §Development Workflow) are delegated to the agent-process plugin's
+`agent-process` skill, which this repository consumes and does not edit, and to
+[the agent process](agent-process.md) for the repository-owned additions (the
+Evidence block, discovery, governance conventions; see
+[`information-architecture.md`](information-architecture.md)). Delegation does **not** weaken their
+authority: those rules bind equally. Amending the plugin's procedure happens
+upstream; amending the additions happens in `agent-process.md` (other mentions
+are links only); amending the *delegation itself* (what is canon vs. delegated) is
 a Governance change made here.
 
 Amendments are made via PR that modifies this file. Version policy:

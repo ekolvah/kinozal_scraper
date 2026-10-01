@@ -4,7 +4,7 @@
 
 This is the stable-ID router for decisions not to add a test. Test strategy and taxonomy remain
 in [testing.md](testing.md); each focused ledger below preserves the accepted record text and its
-letter ID. Records carry stable letter IDs (`A` through `AQ`) so a state document links to a
+letter ID. Records carry stable letter IDs (`A` through `AR`) so a state document links to a
 decision without retelling its rationale.
 
 Every category in the [testing taxonomy](testing.md#bug-taxonomy) has test coverage today. The
@@ -18,7 +18,8 @@ negative-ROI decisions visible, so they are not silently reopened as work-for-wo
 
 - [Ingestion and retrieval](coverage-gaps-ingestion.md) — `A`, `C`, `K`, `L`, `M`, `M2`, `M3`.
 - [Enrichment and selection](coverage-gaps-enrichment.md) — `N` through `U`.
-- [Quality gates](coverage-gaps-quality-gates.md) — `V` through `AD`.
+- [Quality gates](coverage-gaps-quality-gates.md) — `V` through `AD`, and `AR`.
 - [Runtime behavior](coverage-gaps-runtime.md) — `AE` through `AI`.
-- [Agent tooling and observability](coverage-gaps-agent-tooling.md) — `AJ` through `AQ` and `J`.
+- [Agent tooling and observability](coverage-gaps-agent-tooling.md) — `AJ`, `AM`, `AN`, and `J`. `AK`, `AL`, `AO`, `AP`, and `AQ` are retired with the
+  machinery they described (#600); do not reuse them.
 - [Modules without dedicated tests](coverage-gaps-modules.md).

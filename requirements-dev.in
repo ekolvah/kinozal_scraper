@@ -1,8 +1,8 @@
 detect-secrets
-copier
 import-linter
-# CommonMark parsing of issue bodies / ADR records in scripts/validate_issue_sections.py.
-# Was a transitive of rich; declared explicitly because we call its API directly (#426).
+# CommonMark parsing of Markdown documents in tests/test_doc_links.py,
+# tests/test_doc_narrative.py and tests/test_adr_records.py. Was a transitive of
+# rich; declared explicitly because we call its API directly (#426).
 # Keep this file ASCII: pip-compile reads it in the OS codepage and dies on Cyrillic.
 markdown-it-py
 mypy
@@ -12,10 +12,10 @@ pip-tools
 pre-commit
 pytest
 pytest-cov
-# The role catalogue is read directly by scripts/agent_orchestrator.py and by the
-# hand-off gate in scripts/validate_issue_sections.py, so the runtime dependency is
-# declared rather than left transitive; types-PyYAML alone typed an import nothing
-# guaranteed to be installed (#474, #406).
+# Frontmatter and workflow YAML are read directly by tests/test_adr_records.py,
+# tests/test_agent_frontmatter.py and tests/test_workflow_isolation.py, so the
+# dependency is declared rather than left transitive; types-PyYAML alone typed an
+# import nothing guaranteed to be installed (#474, #406).
 PyYAML
 ragas
 ruff

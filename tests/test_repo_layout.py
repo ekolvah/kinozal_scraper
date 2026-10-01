@@ -63,7 +63,7 @@ class TestLayout:
 # between "spread the retries" and "buy a different egress". The choice is made and
 # recorded in docs/adr/0002; the instrument's own hard-expiry would have reddened it
 # anyway. Pinned by path, never by the word "probe" — that word lives in
-# kinozal_auth.py and test_branch_protection.py in unrelated senses.
+# kinozal_auth.py in an unrelated sense.
 _REMOVED_PROBE_PATHS = (
     "scripts/probe.py",
     ".github/workflows/soldout-probe.yml",

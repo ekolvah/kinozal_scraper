@@ -81,18 +81,3 @@ Claude transcripts are plaintext. Use a stack-scoped ingest policy with only
 `metrics:write` and `logs:write`; use a separate short-lived service account for
 dashboard API work. Rotation and rollback are in
 [`operations.md`](operations.md#rollback-and-rotation).
-
-Codex crosses the same external metadata boundary through a local Grafana Alloy
-process. Codex sends only metrics to `127.0.0.1:4318`; `log_user_prompt` is
-false, and log and trace exporters are `none` because Codex tool-result log
-events can carry output snippets. Alloy converts metric temporality and is not
-permission to collect content.
-
-The loopback receiver is a second trust boundary on the workstation. It must
-not bind to all interfaces. Codex receives no Grafana credential: Alloy reads a
-stack-scoped `metrics:write` username/token pair from the Windows user
-environment and owns the authenticated cloud connection. The separate Grafana
-dashboard service-account token is not an Alloy input. Repository templates,
-the name-only catalogue, dashboard, issue, PR, and logs must contain neither
-credential nor observed label values. Setup, validation, and rollback are in
-[`operations.md`](operations.md#codex-development-telemetry-through-alloy).

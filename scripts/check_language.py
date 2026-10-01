@@ -35,9 +35,7 @@ _FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
 _DOCSTRING_OWNERS = (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)
 _EXPECTED_AREAS = {
     "root Markdown": lambda path: path.suffix == ".md" and len(path.parts) == 1,
-    ".agents Markdown": lambda path: path.suffix == ".md" and path.parts[0] == ".agents",
     ".claude Markdown": lambda path: path.suffix == ".md" and path.parts[0] == ".claude",
-    ".github Markdown": lambda path: path.suffix == ".md" and path.parts[0] == ".github",
     "docs Markdown": lambda path: path.suffix == ".md" and path.parts[0] == "docs",
     "scripts Python": lambda path: path.suffix == ".py" and path.parts[0] == "scripts",
     "src Python": lambda path: path.suffix == ".py" and path.parts[0] == "src",

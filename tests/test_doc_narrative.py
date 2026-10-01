@@ -48,7 +48,7 @@ fix—only an exception list would remain.
 **Guard boundaries, honestly.** What is gated is **form**, not genre: `Closed by #88.` → `Completed
 (#88).` will pass without becoming better. Measurement when the guard was introduced: of 266 `#N` mentions
 in scope, 23 fell under it; the rest are allowed—and there is real narrative among the allowed cases
-(`.claude/commands/implement.md` has two in parentheses). The guard makes recurrence **visible
+(the v1 `/implement` command had two in parentheses). The guard makes recurrence **visible
 in review** in the form where it is cheapest; it does not make it impossible. The semantic question
 “normative or archaeology” remains for a person, the same class as the detector of semantic
 duplicates (`project-map.md`).

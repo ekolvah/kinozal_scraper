@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "superseded by ADR-0013"
 date: 2026-08-15
 decision-makers: ekolvah
 ---
@@ -143,7 +143,7 @@ fabrication limit above, and it is not testable from inside the repository.
 * Issue: [#517](https://github.com/ekolvah/kinozal_scraper/issues/517).
 * The `## Evidence` contract itself: [#509](https://github.com/ekolvah/kinozal_scraper/issues/509);
   the runbook, the field set, and the capture table are in
-  [`agent-process.md`](../architecture/agent-process.md#issue-contract).
+  [`agent-process.md`](../architecture/agent-process.md#evidence-block).
 * Precedent for a second carrier of a required artifact and for the `carrier_selection` field:
   [ADR-0003](0003-second-carrier-for-the-required-review-gate.md).
 * Naming: the catalogue key stays `discovery` rather than `discoverer`/`observer`, so it matches the

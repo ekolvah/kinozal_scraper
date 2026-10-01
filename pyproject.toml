@@ -23,7 +23,6 @@ extend-exclude = [
     ".idea",
     ".ruff_cache",
     ".claude",
-    "templates",
     ".venv",
     "__pycache__",
     "pytest-cache-files-*",
@@ -90,7 +89,7 @@ line-ending = "auto"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 # `-q` is here, not inside ci_check's pytest step, because the agent also runs bare
-# `python -m pytest tests/test_x.py` during /implement, and only the global setting
+# `python -m pytest tests/test_x.py` during /opsx:apply, and only the global setting
 # covers those runs. It removes the per-file progress map (measured on a green suite:
 # 8 090 → 2 368 characters), while a failing run keeps its traceback, `E ` lines and
 # short summary unchanged (1 430 → 1 003). Do not narrow it to one call site (#533).

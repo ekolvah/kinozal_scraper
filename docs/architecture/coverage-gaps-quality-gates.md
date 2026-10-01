@@ -20,29 +20,21 @@
   not reopened as a coverage gap: it is conscious non-scope, a separate unit
   (`agent-process.md`, Governance conventions).
 
-- **W. Reviewer prompts: form is guarded, semantics are not (#374, #392).** Neither reviewer —
-  cloud (`.github/workflows/agent-review-v1.yml`) nor local
-  (`.claude/agents/architect-reviewer.md`) — contains a severity filter *at the discovery stage*:
-  the model follows such a filter literally and a finding silently never reaches the PR. Guards
-  catch **known forms**, and the two guards keep different shapes:
-  `tests/test_agent_review_workflow.py` checks a suppression imperative at line
-  start, presence of `severity` **and** `confidence`, and absence of the gag line
-  `no blocking issues`; `tests/test_agent_frontmatter.py` denies removed wording verbatim —
-  `do not inflate` / `ruthless` / `brevity by default` — and requires `confidence` and `blocking`.
+- **W. Reviewer prompts are upstream; the local guard is a verbatim denylist (#374, #392, #600).**
+  Both reviewers — the cloud `agent-review` and the plan-stage `architect-reviewer` — belong to the
+  agent-process plugin, so whether their prompts carry a severity filter *at the discovery stage*
+  (the model follows one literally and a finding silently never reaches the PR) is not scannable
+  from this repository. What stays local: `tests/test_agent_frontmatter.py` denies removed wording
+  verbatim — `do not inflate` / `ruthless` / `brevity by default` — over `.claude/agents/*.md`.
   **The verbatim denylist covers only the English return path** (#470): the phrasings actually
   removed were Russian, and they are now kept out transitively by `check_language.py`, which
   covers `.claude/**` Markdown prose. Narrowing or dropping the language gate therefore silently
-  reopens that hole — the dependency is recorded here because it is invisible in either test.
-  The frontmatter guard
-  applies **only** to agents declaring the findings contract (#407); other agents do not need these
-  tokens. **Semantic paraphrase is consciously NOT covered** ("be selective", "only report what
+  reopens that hole — the dependency is recorded here because it is invisible in the test.
+  **Semantic paraphrase is consciously NOT covered** ("be selective", "only report what
   matters"): checking prompt meaning would require an LLM call for every suite run, therefore cost
   more and be less deterministic than the subject under test; while a regex over an open set of
-  phrasings creates a change detector tailored to current text (the carve-out "allowed if `ruff` is
-  nearby" is exactly such a detector, rejected for architect review, #374). Residual protection is
-  the prose in [`ci-agent-review.md`](ci-agent-review.md#coverage-first-prompt-no-filtering-at-the-search-stage) and the plan
-  reviewer itself. Recorded so "why is there no prompt test?" is not reopened: the test exists;
-  only its semantic half was rejected.
+  phrasings creates a change detector tailored to current text (#374). Recorded so "why is there no
+  prompt test?" is not reopened: the test exists; only its semantic half was rejected.
 
 - **X. Subprocess encoding: the guard protects the parent side, not the child (#364).**
   `tests/test_subprocess_encoding.py` (AST over `scripts/**`, `src/**`, `tests/**`) requires explicit
@@ -55,11 +47,10 @@
   **every** Python launch would create false positives where output is known ASCII. A shared
   `run_text()` helper was **rejected, not deferred (#410)** for a technical reason: the repository
   root is **never on `sys.path`** under documented CLI `python scripts/foo.py`
-  (`sys.path[0]` = `scripts/`; editable install adds only `src/`) — mechanics already documented in
-  `scripts/issue_branch.py`. Every script would need an importlib bootstrap (~8 lines), more
+  (`sys.path[0]` = `scripts/`; editable install adds only `src/`). Every script would need an importlib bootstrap (~8 lines), more
   boilerplate than removed code, while `python -m scripts.foo` would break the CLI, `settings.json`,
-  pre-push, and documentation. In addition, three call sites cannot use a helper in principle:
-  `ci_check._run` and `new_branch._run(capture=False)` deliberately **do not** capture output, while
+  pre-push, and documentation. In addition, some call sites cannot use a helper in principle:
+  `ci_check._run` deliberately **does not** capture output, while
   `ci_check._tracked_files` is deliberately **binary**. Instead of a helper, the invariant is held
   by a **rule in the guard itself** — unlike a helper, it also prevents reintroducing the default.
   `PYTHONUTF8=1` as the **sole remedy was also rejected**: it fixes both halves at once, but lives in
@@ -78,22 +69,20 @@
   ("any `or ""`") would flag legitimate defaults (`os.environ.get(...) or ""`) and would have to be
   weakened — a pytest assertion has no `noqa` with which to silence it.
 
-  **Not every new branch is covered — consciously (#410).** Tests pin three **distinguishing**
-  decisions where confusing outcomes is costly: `check_red` → code 2 ("gate broken"), not 1
-  ("tests are not red") — `/implement` step 3 treats them differently; `hooks._run_ruff` →
+  **Not every new branch is covered — consciously (#410).** Tests pin the **distinguishing**
+  decisions where confusing outcomes is costly: `hooks._run_ruff` →
   `setup_broken` signal, not exception (otherwise stderr reaches the user but not the agent);
   `ci_check._tracked_files` → "file set is unknown", not misleading "no files to scan". Branches
-  in `open_pr`/`set_issue_priority`/`issue_branch`/`validate_issue_sections`/`verify_pr_link` remain
+  in `set_issue_priority` remain
   **without dedicated tests**: they have the same outcome ("visible error instead of emptiness"),
-  no distinguishing decision, and five copies of one test would be change detectors. The guard rule
+  no distinguishing decision, and a copy of one test per branch would be a change detector. The guard rule
   protects them: the default cannot return without making `test_no_output_defaults` red. Recorded so
   the omission is a decision, not forgetfulness.
 
 - **Z. Relative-link integrity between `.md` files is not guarded (#418).** Moving the runtime half
   of `ci.md` to `operations.md` retargeted eight incoming pointers, half of which were prose and
   code comments rather than Markdown links. There is **no** "file exists + anchor resolves" gate,
-  and it is consciously not introduced here: it is a separate logical unit (a `CHECKS` entry +
-  parity row in `ci.yml` + tests + cost on every run), not an add-on to a documentation PR. More
+  and it is consciously not introduced here: it is a separate logical unit (a `CHECKS` entry + tests + cost on every run), not an add-on to a documentation PR. More
   importantly, **it would not have caught the discovered incident**: a comment in
   `test_kinozal_pipeline.py` linked to `ci.md:435`, i.e. **by line number**; the file existed, there
   was no anchor at all, and the link silently went stale. The root cause for that class is line-number
@@ -135,18 +124,29 @@
   Recorded so the branch is not reopened as forgotten: revisit when there is a **measured** recurrence
   and a date rule in the canon, not vice versa.
 
-- **AD. The network half of branch-protection verification is not run in CI.**
-  `scripts/check_branch_protection.py` compares the declared composition of required contexts with
-  the actual one. Unit tests cover everything except one step — real `gh api` for configuration:
-  `GITHUB_TOKEN` lacks `administration` scope, and classic branch protection is not visible through
-  the ruleset endpoint (it returns `[]`), so a CI run would require a separate admin token in
-  secrets. **Rejected for cost, not impossibility:** a long-lived secret requires rotation, while an
+- **AD. The merge-gate drift check runs on demand only (ADR-0013, #600).** The merge gate is the
+  plugin's ruleset, and `agent-process activate_protection --pr <N> --dry-run` is the only
+  comparison of the live ruleset with the plugin's template; neither the pre-push hook nor CI runs
+  it. **Accepted loss, not an oversight.** A CI probe would need an admin token in secrets
+  (`GITHUB_TOKEN` lacks `administration` scope): a long-lived secret requires rotation, while an
   expired token turns the job red without real drift and teaches people to ignore the detector.
-  The agent-process pre-commit hook does not run the probe, so it runs on demand only, a loss
-  ADR-0013 accepts. The offline guard `tests/test_branch_protection.py` keeps the in-repository
-  half (declaration ↔ workflow jobs) in CI. **The merge gate is a ruleset, and it has no CI probe
-  either**, for its own reasons. The required context names come from the upstream managed
-  workflows, so the repository declares nothing a probe could compare against;
-  `agent-process activate_protection --pr <N> --dry-run` already is the on-demand comparison with
-  the plugin's template; and a lockout (a check that never reports) is recovered by a manual
-  ruleset edit, which a CI job inside the locked repository could not perform anyway.
+  The required context names come from the upstream managed workflows, so the repository
+  declares nothing of its own a probe could compare against; and a lockout (a check that never
+  reports) is recovered by a manual ruleset edit, which a CI job inside the locked repository
+  could not perform anyway ([`ci-branch-protection.md`](ci-branch-protection.md)). The v1
+  in-repository half — a declared context set guarded against the workflow jobs — left with the
+  v1 workflows it described.
+
+- **AR. The Evidence block has no shape check, and discovery has no gate trigger (#600).** The v1
+  issue validator checked a bug's `## Evidence` block (provenance line, capture command naming
+  its path, record fields, explicit failed-capture output) and the repository-owned `/plan`
+  chained the `discovery` subagent. The plugin owns `/opsx:propose` and has neither: the block
+  now lives in the change's `proposal.md`, its shape is held by the prose in
+  [`agent-process.md`](agent-process.md#evidence-block) and by the architect review, and §V's
+  live observation is invoked by instruction
+  ([`.claude/rules/workflow.md`](../../.claude/rules/workflow.md)), not by an exit code.
+  **Accepted by the maintainer (2026-10-01)** rather than rebuilt locally: a repository-owned
+  validator over plugin-owned artifacts would be the duplicated control plane ADR-0013 retires.
+  The cost is visible, not silent: a bug proposal without the block reaches the architect review
+  as a missing section. **Revisit trigger:** a design about external data ships without an
+  observation, or the plugin gains a discovery role or Evidence check upstream.

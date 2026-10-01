@@ -6,8 +6,8 @@ but nobody had to run it. Here the metric becomes a gate: the committed baseline
 with a real run on every `pytest`.
 
 The gate has one carrier—`TestBaselineGate::test_committed_baseline_matches_main`
-(there is no separate entry in `CHECKS`/`ci.yml`: `ci_check` already runs `pytest`, and
-`.githooks/pre-push` runs `ci_check`).
+(there is no separate entry in `CHECKS`: `ci_check` already runs `pytest`, and both the
+plugin's pre-push hook and its CI quality workflow run `ci_check`).
 """
 
 from __future__ import annotations

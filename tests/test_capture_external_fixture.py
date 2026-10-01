@@ -203,3 +203,22 @@ def test_cli_dispatches_sheets_route(tmp_path: Path, monkeypatch: pytest.MonkeyP
     )
 
     assert seen == [("https://docs.google.com/spreadsheets/d/example", "kinozal", target)]
+
+
+def test_capture_kinozal_fixture_writes_the_response_through_the_existing_fetcher(
+    tmp_path: Path,
+) -> None:
+    capture_fixture = importlib.import_module("scripts.capture_kinozal_fixture")
+    seen: list[str] = []
+
+    class StubFetcher:
+        def fetch_details(self, url: str) -> str:
+            seen.append(url)
+            return "<html>captured through\nKinozal.fetch_details</html>"
+
+    target = tmp_path / "kinozal" / "details.html"
+    source = "https://kinozal.tv/details.php?id=2112853"
+    capture_fixture.capture(source, target, fetcher=StubFetcher())
+
+    assert seen == [source]
+    assert target.read_bytes() == b"<html>captured through\nKinozal.fetch_details</html>"

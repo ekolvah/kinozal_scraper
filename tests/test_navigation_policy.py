@@ -225,7 +225,7 @@ class TestClaudeAdapter:
         assert pre_bash_response({"tool_input": {"command": "git status"}}) is None
 
     def test_malformed_payload_is_a_no_op(self) -> None:
-        """Fail-open, unlike the Codex security adapter: a payload bug must not brick Bash."""
+        """Fail-open: a payload bug must not brick Bash."""
         assert pre_bash_response({}) is None
         assert pre_bash_response({"tool_input": {"command": None}}) is None
 

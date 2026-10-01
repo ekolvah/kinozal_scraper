@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "superseded by ADR-0013"
 date: 2026-08-08
 decision-makers: ekolvah
 ---
@@ -133,7 +133,7 @@ add the missing scope in the same PR.
   meaning successful completion without work.
 * Defect observation: run [31242341386](https://github.com/ekolvah/kinozal_scraper/actions/runs/31242341386) on PR #481.
 * State-document consequences: [`ci-branch-protection.md`](../architecture/ci-branch-protection.md#required-status-checks-branch-protection)
-  and [`agent-process.md`](../architecture/agent-process.md#review-outcome-enforcement).
+  and `agent-process.md` §Review outcome enforcement (removed by [ADR-0013](0013-adopt-agent-process-plugin-v2.md)).
 * Revisit the record if the repository gains a second maintainer or external contributors with permission to push
   repository branches: then the residual self-verification assumption will become unacceptable and require a reviewer
   not taken from head.

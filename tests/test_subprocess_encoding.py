@@ -50,7 +50,7 @@ _TEXT_MODE_KWARGS = frozenset({"text", "universal_newlines", "encoding", "errors
 
 # `CompletedProcess` attributes whose defaults replace capture failure with an empty value (#410).
 # The invariant’s home is here: a shared seam helper is impossible (repository root is not on `sys.path`
-# for `python scripts/foo.py`; see `scripts/issue_branch.py`), while unlike a helper, the guard also
+# for `python scripts/foo.py`), while unlike a helper, the guard also
 # prevents adding the default again.
 _OUTPUT_ATTRS = frozenset({"stdout", "stderr"})
 
@@ -98,7 +98,7 @@ def _captures_output(func_name: str, kwargs: dict[str, ast.expr]) -> bool:
     """Whether a call captures child output (and therefore decodes it).
 
     Everywhere use **fail closed**: treat an unknown (non-literal) value as capture.
-    `capture_output=capture` exists in the repository today (`new_branch.py:29`); treating
+    `capture_output=capture` has existed in the repository (#410); treating
     a variable as “does not capture” would skip a broken call site—a falsely green guard is worse than none.
 
     `check_output` captures stdout **by definition** (it returns it) and does not accept
@@ -195,7 +195,7 @@ class TestAnalyzer:
         assert find_violations(source, "sample.py") == []
 
     def test_non_literal_capture_flag_counts_as_capturing(self) -> None:
-        # This form exists today: `scripts/new_branch.py:29` passes a variable.
+        # This form has existed in the repository: a v1 script passed a variable.
         # Treat everything except the literal False as capturing.
         source = "import subprocess\nsubprocess.run(cmd, text=True, capture_output=capture)\n"
         assert find_violations(source, "sample.py")
@@ -248,7 +248,7 @@ class TestOutputDefaultAnalyzer:
     safeguard. #364 showed it was a symptom of a reader stream that died during
     decoding and fixed the cause — after which the default replaced a **real
     capture failure** with an empty value, including in scripts that are gates
-    themselves (`check_red`, `validate_issue_sections`, secret scan)."""
+    themselves (the v1 RED and issue-section gates, secret scan)."""
 
     def test_output_default_is_flagged(self) -> None:
         source = 'x = result.stdout or ""\n'
@@ -260,7 +260,7 @@ class TestOutputDefaultAnalyzer:
 
     def test_non_empty_literal_default_is_flagged(self) -> None:
         # A form the first inventory version missed completely: grep searched for
-        # `or ""`, while `or "{}"` / `or "[]"` occur in open_pr and verify_pr_link.
+        # `or ""`, while `or "{}"` / `or "[]"` occurred in two v1 PR scripts.
         source = 'data = json.loads(result.stdout or "[]")\n'
         assert find_output_defaults(source, "sample.py")
 

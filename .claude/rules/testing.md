@@ -12,14 +12,14 @@ It is an **operational checklist**, not a design document: principle wording is 
 (levels, bug taxonomy, and what to mock) is in [`docs/architecture/testing.md`](../../docs/architecture/testing.md).
 **Do not paraphrase a principle here—link to it only** (path-scoped: loaded only when working with `tests/**`).
 
-1. **RED first** — write the failing test from the issue `## Test plan` before code
+1. **RED first** — write the failing test from the change's scenario-to-test map before code
    (rule and exceptions: [`principles.md §I`](../../docs/architecture/principles.md)).
-   `scripts/check_red.py` takes the result **per test** from the junit report, so `unittest.subTest`
+   `agent-process check_red` takes the result **per test** from the junit report, so `unittest.subTest`
    does not break it and a parameterized test need not be split for the gate (#400). One
    RED commit shape requirement remains: a suite that **did not run** (failed to collect or failed
    in a fixture) does not count as RED—it proves only that the file cannot be imported (#402). Therefore,
    a test for a symbol that does not exist yet includes a **signature stub** (`raise NotImplementedError`),
-   so the failure occurs in the test body; the contract is [`agent-process.md`](../../docs/architecture/agent-process.md).
+   so the failure occurs in the test body; the contract is the plugin's `agent-process` skill.
    First ask **whether the test should be written at all**: does a regression break correctness/security
    (→ test), or only consume CI-minute/token resources (→ forcing function, not guard test)? The canonical rule
    is in [`testing.md`](../../docs/architecture/testing.md#rule-when-a-test-is-not-worth-writing).

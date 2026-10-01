@@ -1,4 +1,9 @@
-"""Anti-drift checks for the shared agent command policy."""
+"""Anti-drift check for the Claude command deny list in `.claude/settings.json`.
+
+GitHub branch protection is the authoritative barrier; `permissions.deny` is defense in depth.
+The expected entries live here, so dropping one from the settings is a red test rather than a
+silent loss.
+"""
 
 from __future__ import annotations
 
@@ -6,12 +11,23 @@ import json
 import re
 from pathlib import Path
 
-import pytest
-
-from scripts.agent_policy import FORBIDDEN_COMMANDS, denied_reason
-
 _REPO = Path(__file__).resolve().parents[1]
 _CLAUDE_SETTINGS = _REPO / ".claude" / "settings.json"
+
+FORBIDDEN_COMMANDS: tuple[str, ...] = (
+    "git push origin main",
+    "git push origin HEAD:main",
+    "git push --force",
+    "git push --force-with-lease",
+    "git push -f",
+    "git push --no-verify",
+    "git commit --no-verify",
+    "git branch -D",
+    "git reset --hard",
+    "gh pr merge",
+    "gh repo delete",
+    "sleep",
+)
 
 
 def _claude_deny_patterns() -> list[str]:
@@ -19,12 +35,7 @@ def _claude_deny_patterns() -> list[str]:
     return [str(pattern) for pattern in data["permissions"]["deny"]]
 
 
-@pytest.mark.parametrize("command", FORBIDDEN_COMMANDS)
-def test_shared_policy_rejects_each_declared_command(command: str) -> None:
-    assert denied_reason(command) is not None
-
-
-def test_claude_defense_in_depth_covers_shared_policy() -> None:
+def test_claude_deny_list_covers_every_forbidden_command() -> None:
     patterns = _claude_deny_patterns()
     assert patterns, "Claude settings must retain a non-empty defense-in-depth deny list"
     values: list[str] = []
@@ -35,17 +46,4 @@ def test_claude_defense_in_depth_covers_shared_policy() -> None:
     missing = [
         command for command in FORBIDDEN_COMMANDS if not any(command in value for value in values)
     ]
-    assert not missing, f"Claude deny list drifted from shared policy: {missing}"
-
-
-@pytest.mark.parametrize(
-    "command",
-    (
-        "git push origin issue-443-fix",
-        "git branch -d old-branch",
-        "gh pr view 444",
-        'git commit -m "sleep on it"',
-    ),
-)
-def test_shared_policy_allows_safe_commands(command: str) -> None:
-    assert denied_reason(command) is None
+    assert not missing, f"Claude deny list is missing forbidden commands: {missing}"

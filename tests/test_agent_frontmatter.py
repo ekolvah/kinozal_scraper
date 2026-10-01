@@ -1,7 +1,6 @@
 """Anti-drift guards for the local agent surface (`.claude/agents/*.md`, #392).
 
-A static guard without network or credentials—of the same genre as `tests/test_agent_review_workflow.py`
-(#374, the cloud half of the same defect) and `tests/test_settings_deny.py`.
+A static guard without network or credentials—of the same genre as `tests/test_settings_deny.py`.
 
 **What is guarded.** `model: opus` is an ALIAS, not an ID: according to Claude Code documentation
 (https://code.claude.com/docs/en/sub-agents, §Choose a model), the field accepts an alias
@@ -13,29 +12,18 @@ another model without a line in the diff—§IV: the change is indistinguishable
 the plan gate depends on the session in which it was invoked—non-reproducible across
 contributors.
 
-**The denylist is shared with the cloud guard**—`tests/_model_pin_policy.py`. Keeping copies in
-two files was an error in the first version: the sets had already diverged (`fable` was here and
-absent there). This is a denylist, so their union is strictly more conservative—it can
-only reject too much, not allow too much.
-
-**Guard boundaries, honestly.** Frontmatter is guarded in full; the prompt body follows the
-same form as the cloud half (`TestCoverageFirstPrompt` below): presence of a
-coverage-first contract + absence of removed suppression wording. What is NOT caught is a
-**semantic paraphrase** of the filter (“be selective”, “write only about important things”): no exit code
-checks it here or in #374. This residual gap is recorded in the ledger
+**Guard boundaries, honestly.** Frontmatter is guarded in full; the prompt body only for the
+absence of removed suppression wording (`TestNoSuppressionPhrasing` below). What is NOT caught
+is a **semantic paraphrase** of the filter (“be selective”, “write only about important things”).
+This residual gap is recorded in the ledger
 [`coverage-gaps.md`](../docs/architecture/coverage-gaps.md),
-so the rejection is not reopened as work-for-work.
+so the rejection is not reopened as work-for-work. The findings-grading contract
+(`confidence`/`blocking`) belongs to the `agent-process` plugin's reviewer, outside this
+repository, so it is not checked here.
 
-**Two different scopes are not carelessness (#407).** Frontmatter invariants
-(`model`, `effort`) apply to **every** agent: every one needs a pin, and deriving the set from a glob is
-precisely so the next agent enters the rule automatically rather than through a manual list someone will forget
-to extend. The prompt contract (`TestCoverageFirstPrompt`), by contrast, applies only to those that
-**return findings**: requiring `confidence`/`blocking` from an agent that does not return them
-guarantees a contributor will weaken the test rather than add a meaningful contract. Enrollment is by
-file property, not name: #372 plans `code-critic`, and the `*-reviewer` suffix would silently NOT
-enroll a real reviewer—trading a visible trap for a silent one.
-
-Today the repository has exactly one agent, so both scopes are preventive.
+Both invariants run over **every** file under `.claude/agents/`, derived from a glob, so the next
+agent enters the rule automatically rather than through a manual list someone will forget to extend.
+Today that is `discovery.md` alone.
 """
 
 from __future__ import annotations
@@ -45,13 +33,17 @@ from typing import Any, cast
 
 import pytest
 import yaml
-from _model_pin_policy import UNPINNED_MODEL_VALUES
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _AGENTS_DIR = _REPO_ROOT / ".claude" / "agents"
 
-# Since #452, the provider-neutral process document is the findings-contract home.
-_CANONICAL_FINDINGS_HOME = _REPO_ROOT / "docs" / "architecture" / "agent-process.md"
+# Anything the repository does NOT resolve: aliases move to a new generation
+# with upstream, floating pointers move with its default, and `inherit` moves
+# with the session model. Each lets the agent's quality change without a line in
+# the diff (§IV: a change becomes indistinguishable from no change).
+UNPINNED_MODEL_VALUES = frozenset(
+    {"opus", "sonnet", "haiku", "fable", "default", "latest", "inherit"}
+)
 
 # Known suppression phrases removed in #392; this denylist is intentionally exact.
 _REMOVED_SUPPRESSION = ("do not inflate", "ruthless", "brevity by default")
@@ -61,44 +53,14 @@ _REMOVED_SUPPRESSION = ("do not inflate", "ruthless", "brevity by default")
 _EFFORT_LEVELS = frozenset({"low", "medium", "high", "xhigh", "max"})
 
 
-# A findings-format section enrolls a file in the grading contract by property.
-_FINDINGS_SECTIONS = ("### Findings format",)
-
-
-def declares_findings_contract(body: str) -> bool:
-    """Whether a file declares, and is bound by, the findings contract."""
-    return any(section in body for section in _FINDINGS_SECTIONS)
-
-
 def _agent_files() -> list[Path]:
     # Claude Code scans recursively, so the invariant must use `rglob` as well.
     return sorted(_AGENTS_DIR.rglob("*.md"))
 
 
 def _body(path: Path) -> str:
-    """Return prompt content without frontmatter, or the full file if absent.
-
-    The canonical process document has no frontmatter and must not collapse to an
-    empty body through unconditional partitioning (§IV).
-    """
-    text = path.read_text(encoding="utf-8")
-    if not text.startswith("---"):
-        return text
-    return text.partition("---")[2].partition("\n---")[2]
-
-
-def _suppression_scope() -> list[Path]:
-    """Apply the suppression denylist to every prompt plus the canonical home.
-
-    The broader scope is conservative and prevents wording from returning to an
-    executable prompt after the contract itself moved in #452.
-    """
-    return [*_agent_files(), _CANONICAL_FINDINGS_HOME]
-
-
-def _findings_agents() -> list[Path]:
-    """Return the subset of files bound by the findings contract (#407)."""
-    return [path for path in _suppression_scope() if declares_findings_contract(_body(path))]
+    """Return prompt content without frontmatter."""
+    return path.read_text(encoding="utf-8").partition("---")[2].partition("\n---")[2]
 
 
 def _frontmatter(path: Path) -> dict[str, Any]:
@@ -147,65 +109,13 @@ class TestAgentModelPinned:
         )
 
 
-class TestFindingsContractScope:
-    """Enroll files under the prompt contract by file property, not filename (#407).
+class TestNoSuppressionPhrasing:
+    """Prompt body: removed “be brief” wording stays out (#392).
 
-    A name (`*-reviewer`) would be the worse signal: #372 plans the `code-critic` agent,
-    so a real reviewer would NOT enter the contract and remain silently
-    unprotected. The property “declares a findings-format section” follows what
-    makes the contract meaningful.
-    """
+    An instruction to be “shorter” converts a weak finding into no finding rather than
+    low severity. The denylist can only reject excess, so it runs over every agent."""
 
-    def test_body_without_findings_section_is_not_enrolled(self) -> None:
-        body = "You find repository files and return paths.\n\n## Invocation\n\nAlways.\n"
-        assert not declares_findings_contract(body)
-
-    def test_body_with_findings_section_is_enrolled(self) -> None:
-        body = "You review a plan.\n\n### Findings format\n\n- **BLOCKING** — ...\n"
-        assert declares_findings_contract(body)
-
-
-class TestCoverageFirstPrompt:
-    """Prompt body: the “grade rather than filter” contract (#392, acceptance #4).
-
-    Mirrors `TestCoverageFirstPrompt` in `tests/test_agent_review_workflow.py`:
-    there it is a cloud reviewer and here a local plan reviewer; the defect is the same—
-    an instruction to be “shorter” converts a weak finding into no finding rather than
-    low severity (confirmed by the reviewer when directly asked, #392).
-
-    **Substance guard, not cosmetics:** the model pin is one line, while the change’s
-    substance is the rewritten prompt; without these tests the behavior change has no coverage.
-
-    **Two scopes within the class** (#452). The grading contract (`confidence`/`blocking`) applies
-    to the file that **declares** it: requiring it of a prompt that does not describe findings forces
-    a contributor to weaken the test. The denylist of removed phrases applies to `_suppression_scope()`,
-    i.e. all executed prompts plus canonical source: it can only reject excess, and narrowing it to
-    declarers would release “be brief” back into the subagent prompt."""
-
-    def test_scope_is_not_empty(self) -> None:
-        """§IV on a narrowed list: narrowing does not permit silently collapsing it to zero.
-        Without this, renaming the format section empties the class and “we check nobody”
-        becomes indistinguishable from “everyone passed.”"""
-        assert _findings_agents(), (
-            "nothing declares a findings contract — either a section header "
-            f"({_FINDINGS_SECTIONS}) drifted or the scope collapsed silently (#407)"
-        )
-
-    def test_findings_contract_scope_covers_the_canonical_home(self) -> None:
-        """The guard follows the canonical source rather than guarding an emptied prompt (#452).
-
-        After moving the contract to `agent-process.md`, the executed subagent prompt stopped
-        declaring it. If the denylist ran only over declarers, the removed phrase would silently
-        return to the prompt while `test_scope_is_not_empty` stayed green because of a document—
-        a hole beneath a checkmark."""
-        assert _CANONICAL_FINDINGS_HOME in _findings_agents(), (
-            f"{_CANONICAL_FINDINGS_HOME.name} no longer declares the findings contract"
-        )
-        assert set(_agent_files()) <= set(_suppression_scope()), (
-            "an executed agent prompt dropped out of the suppression denylist"
-        )
-
-    @pytest.mark.parametrize("path", _suppression_scope(), ids=lambda p: p.name)
+    @pytest.mark.parametrize("path", _agent_files(), ids=lambda p: p.name)
     def test_removed_suppression_phrases_stay_out(self, path: Path) -> None:
         body = _body(path).lower()
         present = [phrase for phrase in _REMOVED_SUPPRESSION if phrase in body]
@@ -214,14 +124,4 @@ class TestCoverageFirstPrompt:
             "it converts a weak finding into no finding at all instead of a low "
             "severity, and a filtered finding is indistinguishable from a review that "
             "never ran (§IV, #392)"
-        )
-
-    @pytest.mark.parametrize("path", _findings_agents(), ids=lambda p: p.name)
-    def test_findings_are_graded_not_filtered(self, path: Path) -> None:
-        body = _body(path).lower()
-        missing = [word for word in ("confidence", "blocking") if word not in body]
-        assert not missing, (
-            f"{path.name}: the grading contract is incomplete, missing {missing}; "
-            "every finding must be reported with a severity bucket and a confidence, "
-            "so that filtering happens at the reporting stage, not the search stage (#392)"
         )

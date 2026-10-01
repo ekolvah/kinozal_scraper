@@ -9,10 +9,8 @@ the rule had lived in prose since #164 and was followed less than half the time.
 the `principles.md` §Scripts over instructions case—the deterministic step “ensure that a header
 exists” becomes an exit code.
 
-**Why a test, not an entry in `CHECKS`.** `tests/test_ci_check.py::TestStepParity` requires
-`_ci_yml_check_names() == set(CHECKS)`, so a new registry entry would also require an
-`--only` step in `ci.yml`—an extra parity element for a static check already run by
-`check_pytest`. Its genre is `test_repo_layout.py` / `test_agent_frontmatter.py`.
+**Why a test, not an entry in `CHECKS`.** Every registry entry becomes its own CI step,
+so a new one would be an extra step for a static check already run by `check_pytest`. Its genre is `test_repo_layout.py` / `test_agent_frontmatter.py`.
 
 **Scope is the glob itself, with no second filter over it.** The first version
 filtered out files with frontmatter `description:` to “admit them by property rather than by

@@ -1,6 +1,6 @@
 """Anti-drift: every scraper __main__ must gate sys.exit(1) on report_failures (#310).
 
-Mirrors tests/test_settings_hooks.py — a static source scan, no imports/network.
+A static source scan, no imports/network.
 A bare substring check on `report_failures(` would pass even if a scraper called it
 but dropped the `sys.exit(1)`, silently regressing the §IV non-zero-exit invariant;
 so we assert one of two shapes (architect S2):

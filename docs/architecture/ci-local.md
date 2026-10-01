@@ -21,7 +21,7 @@ environment). On Windows, `bash` must be Git Bash (`usr\bin\bash.exe`), not WSL'
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
 ruff format → ruff lint → language → detect-secrets → pytest → pip-audit (runtime) →
 pip-audit (dev) → requirements consistency → mypy → import contracts. The `language`
-check runs `scripts/check_language.py` locally and in the matching `ci.yml` step; it enforces
+check runs `scripts/check_language.py` locally and in its own CI job; it enforces
 English-only tracked Markdown prose and Python commentary. Its exit `0` is compliant text, `1`
 is a policy violation, and `2` means trustworthy evidence could not be obtained. (Module-docstring presence
 is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
@@ -67,15 +67,13 @@ linked worktree. Failure or empty output from the discovery command stops the pu
 `2`, not permission to continue with inherited repository state.
 
 **Single source of truth.** The registry is the *only* place the check set is
-defined. `ci.yml` does not re-list checks — each CI step runs
-`python scripts/ci_check.py --only <name>`, so local and CI cannot drift. If
-`ci_check.py` is green locally, CI runs the identical checks. Adding or removing
-a check in the registry without updating `ci.yml` fails
-`tests/test_ci_check.py::TestStepParity` (#153). The agent-process plugin's
-quality workflow reads the same registry: `.github/agent-process-quality.json`
-names `ci_check.py --list-checks` (the registry as a JSON array) for `checks`
-and `ci_check.py` for `test`. Its `setup` duplicates the `ci.yml` install
-block; `TestStepParity` holds both equal (#597).
+defined. CI does not re-list checks: the agent-process plugin's quality
+workflow reads `.github/agent-process-quality.json`, which names
+`ci_check.py --list-checks` (the registry as a JSON array) for `checks` and
+`ci_check.py` for `test`, and runs `python scripts/ci_check.py --only <name>`
+per listed name, so local and CI cannot drift (#153). If `ci_check.py` is green
+locally, CI runs the identical checks. `tests/test_ci_check.py::TestStepParity`
+pins the declaration to the registry (#597).
 
 > **Disambiguation:** this section's title "Local pre-commit" names the
 > pre-commit *moment* (the git-hook that runs before a push). The
@@ -89,9 +87,9 @@ Developer-flow gates whose caller distinguishes a domain verdict from missing
 evidence use one contract: `0` means the gate passed, `1` means it computed an
 explicit negative verdict, and `2` means usage was invalid or the gate could
 not compute (tool invocation, output capture, or payload decoding failed).
-`validate_issue_sections.py`, for example, reserves `1` for a successfully read
-issue whose required sections are missing; an unreadable issue is `2`, so the
-implementer is not sent back to rewrite a valid plan (#413).
+`check_language.py`, for example, reserves `1` for successfully read text that
+violates the policy; an unreadable file or an unknown scope is `2`, so a broken
+input is not reported as non-English prose (#413).
 
 `ci_check.py` remains deliberately narrower at the child-tool boundary: any
 non-zero result from ruff, pytest, pip-audit, mypy, or import-linter means the
@@ -143,13 +141,12 @@ semantics shift with the OS path separator. For a false positive **inside** our 
 code the escape hatch is an inline `# pragma: allowlist secret` at the site (see
 `tests/test_secrets_gate.py`), never a blanket exclusion.
 
-### Session hooks (`scripts/hooks.py` and `.codex/hooks.json`)
+### Session hooks (`scripts/hooks.py`)
 
 A separate, *earlier* feedback layer that runs **during** an agent session, not
-at push (#281). The Codex adapter declares a `PostToolUse` hook in
-`.codex/hooks.json` (matcher `Edit|Write`) invoking `scripts/codex_hooks.py on-edit`.
-It delegates to `scripts/hooks.py`, which dispatches two cheap checks in one process
-right after each file edit:
+at push (#281). `.claude/settings.json` declares a `PostToolUse` hook (matcher
+`Edit|Write`) invoking `python -m scripts.hooks on-edit`, which dispatches two cheap
+checks in one process right after each file edit:
 
 - `*.py` → ruff **check-only** (`ruff format --check` + `ruff check`, **no
   `--fix`/format mutation** — the harness tracks file contents, so rewriting
@@ -162,15 +159,13 @@ right after each file edit:
 failure (not installed / bad config) is a **visible, distinct** marker — a
 silently-broken hook must not masquerade as "lint clean". Decision logic is pure
 functions (`plan_checks`/`classify_ruff_result`) with unit tests
-(`tests/test_hooks.py`); wiring is anti-drift-guarded by
-`tests/test_settings_hooks.py` (mirrors `test_settings_deny.py`).
+(`tests/test_hooks.py`).
 
-Claude adds a second event on the same entry point: a `PreToolUse` hook (matcher `Bash`)
+A second event uses the same entry point: a `PreToolUse` hook (matcher `Bash`)
 invoking `python -m scripts.hooks pre-bash`, which asks `scripts/navigation_policy.py`
 whether a stage reads the filesystem and, if so, denies it **with the replacement call named**
 (#485). This is the token-economy carrier, deliberately distinct from the security carrier
-`scripts/agent_policy.py`, and the two differ in failure mode: security denies on a malformed
-payload, navigation fails **open**, because a policy that only claims "a cheaper route exists"
+(`permissions.deny`, guarded by `tests/test_settings_deny.py`), and it fails **open**, because a policy that only claims "a cheaper route exists"
 must never brick `Bash`. It is also why the navigation entries are *not* in `permissions.deny`
 — a matching deny rule blocks before the hook runs and would swallow the message
 (`tests/test_navigation_policy.py` guards that).
