@@ -42,6 +42,8 @@ certifi==2026.4.22
     #   httpcore
     #   httpx
     #   requests
+cfgv==3.5.0
+    # via pre-commit
 charset-normalizer==3.4.7
     # via
     #   -c requirements.txt
@@ -76,6 +78,8 @@ dill==0.4.1
     #   multiprocess
 diskcache==5.6.3
     # via ragas
+distlib==0.4.3
+    # via virtualenv
 distro==1.9.0
     # via
     #   -c requirements.txt
@@ -90,6 +94,8 @@ filelock==3.29.0
     #   cachecontrol
     #   datasets
     #   huggingface-hub
+    #   python-discovery
+    #   virtualenv
 frozenlist==1.8.0
     # via
     #   aiohttp
@@ -126,6 +132,8 @@ httpx-sse==0.4.3
     # via langchain-community
 huggingface-hub==1.13.0
     # via datasets
+identify==2.6.20
+    # via pre-commit
 idna==3.15
     # via
     #   -c requirements.txt
@@ -223,6 +231,8 @@ nest-asyncio==1.6.0
     # via ragas
 networkx==3.6.1
     # via ragas
+nodeenv==1.11.0
+    # via pre-commit
 numpy==2.4.4
     # via
     #   -c requirements.txt
@@ -257,6 +267,7 @@ packaging==26.2
     #   pip-audit
     #   pip-requirements-parser
     #   pytest
+    #   virtualenv
     #   wheel
 pandas==3.0.2
     # via
@@ -280,12 +291,15 @@ platformdirs==4.9.6
     # via
     #   copier
     #   pip-audit
+    #   virtualenv
 pluggy==1.6.0
     # via
     #   pytest
     #   pytest-cov
 plumbum==2.0.2
     # via copier
+pre-commit==4.6.2
+    # via -r requirements-dev.in
 prompt-toolkit==3.0.53
     # via questionary
 propcache==0.5.2
@@ -339,6 +353,8 @@ python-dateutil==2.9.0.post0
     # via
     #   -c requirements.txt
     #   pandas
+python-discovery==1.6.1
+    # via virtualenv
 python-dotenv==1.2.2
     # via pydantic-settings
 pyyaml==6.0.3
@@ -352,6 +368,7 @@ pyyaml==6.0.3
     #   langchain-classic
     #   langchain-community
     #   langchain-core
+    #   pre-commit
 questionary==2.1.1
     # via copier
 ragas==0.4.3
@@ -468,6 +485,8 @@ uuid-utils==0.17.0
     # via
     #   langchain-core
     #   langsmith
+virtualenv==21.14.2
+    # via pre-commit
 wcwidth==0.8.2
     # via prompt-toolkit
 websockets==15.0.1
