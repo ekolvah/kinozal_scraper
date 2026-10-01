@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Session-level Claude hook adapter, plus the shared post-edit checks (#281, #485, #534).
 
-Three events, one entry point (mirroring `scripts/codex_hooks.py`):
+Three events, one entry point:
 
   - `pre-bash` (PreToolUse, matcher `Bash`) → `scripts.navigation_policy`, which denies a
     shell route into the filesystem *with the replacement call named* (#485). It replaced a
@@ -227,11 +227,9 @@ def run_on_paths(
     paths: list[str],
     ruff_runner: Callable[[str], tuple[int, str]] = _run_ruff,
 ) -> tuple[int, str]:
-    """Execute edit checks for paths supplied by any agent adapter.
+    """Execute edit checks for the edited paths.
 
-    The Claude hook supplies one ``tool_input.file_path`` while the Codex hook
-    supplies the paths parsed from an ``apply_patch`` command.  Keep the policy
-    here so adapters only translate their platform payloads.
+    Keep the policy here so a hook adapter only translates its platform payload.
     """
     signals: list[Signal] = []
     for path in dict.fromkeys(paths):
@@ -261,8 +259,7 @@ def run_on_edit(
 def pre_bash_response(payload: dict) -> dict | None:
     """Return Claude's PreToolUse denial shape when a Bash command reads the filesystem.
 
-    Fail-open, unlike the Codex security adapter, which denies on a malformed payload: this
-    policy only claims a cheaper route exists (#485), so a payload bug must degrade to
+    Fail-open: this policy only claims a cheaper route exists (#485), so a payload bug must degrade to
     "no opinion" rather than block every `Bash` call in the session.
     """
     tool_input = payload.get("tool_input")

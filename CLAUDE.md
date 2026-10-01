@@ -33,7 +33,7 @@ Current work: [GitHub Issues](https://github.com/ekolvah/kinozal_scraper/issues)
 
 ## PR Workflow
 
-Workflow procedural rules (roles, branch, PR discipline, labels, gates) are canonical in **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Claude runs planner/reviewer through `/plan #N` and implementer/fixer through `/implement #N`; the repository default for the latter is Codex `$implement-issue #N`, and the user chooses the route. Do not duplicate them here.
+The process is the agent-process plugin's `agent-process` skill: `/opsx:propose` → `/opsx:apply` → archive → PR. Repository-owned additions (Evidence block, discovery, governance conventions) are in **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Do not duplicate either here.
 
 ## Dependencies
 
@@ -44,7 +44,7 @@ in `.txt`.
 ## Before every commit
 
 `python scripts/ci_check.py` — see the [CI doc](docs/architecture/ci.md) for details.
-The pre-push hook runs ci_check automatically before push—do not duplicate it manually.
+The plugin's pre-push hook (`.pre-commit-config.yaml`) runs ci_check automatically before push—do not duplicate it manually.
 
 ## Architecture decisions
 

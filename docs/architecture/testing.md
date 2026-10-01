@@ -41,10 +41,10 @@ Assert on doubles' state after the call.
   command reuses `Kinozal.fetch_details`, including the tested anonymous-origin
   to authenticated-mirror fallback, and writes UTF-8 without platform newline
   conversion. For another external source, use the read-only route in the
-  [`agent-process.md` Evidence table](agent-process.md#issue-contract) and
-  record that command plus its fixture path in the issue's `## Evidence`
+  [`agent-process.md` Evidence table](agent-process.md#evidence-block) and
+  record that command plus its fixture path in the change's `## Evidence`
   section.
-- `scripts/check_fixture_ratchet.py` is exercised by the validator test suite.
+- `scripts/check_fixture_ratchet.py` is exercised by `tests/test_fixture_ratchet.py`.
   It reports a new inline-HTML parser test by pytest node ID. The fixture keeps
   network access out of CI while preserving the observed external shape.
 - An incident regression pairs the invalid record with an exact valid record

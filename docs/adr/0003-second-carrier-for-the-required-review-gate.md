@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "superseded by ADR-0013"
 date: 2026-08-07
 decision-makers: ekolvah
 ---
@@ -157,7 +157,7 @@ record has unverified execution
 * Gate mechanics and step order —
   [`ci-branch-protection.md`](../architecture/ci-branch-protection.md#required-status-checks-branch-protection);
   the `carrier_selection` field in the role catalog —
-  [`agent-process.md`](../architecture/agent-process.md#roles-and-hand-offs).
+  `agent-process.md` §Roles and hand-offs (removed by [ADR-0013](0013-adopt-agent-process-plugin-v2.md)).
 * Provider-neutral names (`check_agent_review_outcome.py`, `agent-review` context) —
   [#480](https://github.com/ekolvah/kinozal_scraper/issues/480); renaming a required context requires a PATCH
   migration of branch protection and is therefore outside this record.

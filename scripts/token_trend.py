@@ -16,7 +16,7 @@ is appended to a nearby local ledger or comparison baseline silently vanishes af
 possible driver, more turns per task; it is visible only in report `turns`. Turn cost also
 mechanically rises with session length because full context is reread, so a long branch
 looks costlier than a short one under equal discipline. `grown` prompts breakdown review,
-not judgment of a branch. Codex use (`~/.codex/sessions`) is excluded.
+not judgment of a branch. Sessions of other agents (Codex) are excluded.
 """
 
 from __future__ import annotations

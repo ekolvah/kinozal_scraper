@@ -5,7 +5,7 @@ process: ruff (check-only) on `*.py`, and a pip-compile reminder on
 `requirements*.in`. The deterministic decision logic lives in pure functions
 (`plan_checks`, `classify_ruff_result`, `pipcompile_signal`, `exit_code`) so it
 can be tested without spawning real ruff — the subprocess call is a thin I/O
-wrapper (mirrors the `scripts/check_red.py` pure-function + thin-`main` split).
+wrapper (a pure-function + thin-`main` split).
 
 §IV note: a malformed/empty payload is a silent no-op (do not red every edit on
 a payload bug), but a *ruff exec failure* (not installed / internal error) must

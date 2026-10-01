@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "superseded by ADR-0013"
 date: 2026-08-12
 decision-makers: ekolvah
 ---

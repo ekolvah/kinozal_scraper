@@ -128,7 +128,7 @@ class TestMypyManifest:
 
 class TestRunner:
     def test_unknown_check_name_exits_nonzero(self) -> None:
-        # Fail-fast on a typo'd --only name (so a bad ci.yml reference is loud, not silent).
+        # Fail-fast on a typo'd --only name (so a bad CI reference is loud, not silent).
         with pytest.raises(SystemExit) as exc:
             run_selected("definitely-not-a-real-check")
         assert exc.value.code != 0

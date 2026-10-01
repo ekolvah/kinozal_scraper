@@ -5,7 +5,7 @@ Issue priority lives as the Priority single-select field in GitHub Project 1. Th
 `principles.md` §Scripts over instructions, is extracted into a script with an exit code rather than prose or memory.
 
 `gh` is the only external boundary and is mocked through the `subprocess.run` seam (§II—not a mock
-of internal logic), like `scripts/open_pr.py`. Hard-coded option IDs are the main
+of internal logic). Hard-coded option IDs are the main
 source of drift, so any nonzero `gh` exit must be a visible anomaly
 (§IV), not a false confirmation (`test_edit_failure_exits_nonzero`).
 """

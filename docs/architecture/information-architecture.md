@@ -17,7 +17,7 @@ layers; merging them into one picture creates the false impression of a star:
 - **Reference (canonical-home links)** — which consumer links to which canonical fact (`§II`,
   `#bug-taxonomy`, `permissions.deny`). This layer is **deliberately not a tree**: one fact is needed
   in multiple contexts (e.g. `principles.md §II` from `testing.md`, `.claude/rules/testing.md`,
-  `architect-reviewer.md`, and `.importlinter`), so keyed links go upward and sideways. It cannot be
+  and `.importlinter`), so keyed links go upward and sideways. It cannot be
   made a tree without either duplicating the fact in each branch (paraphrase drift; a canonical-home
   violation) or denying a consumer its pointer to the canon.
 
@@ -34,7 +34,7 @@ nothing to rename) but the **hierarchy of knowledge carriers**:
 |---|---|---|
 | `CLAUDE.md` (root) | Thin router: what app this is, environment pitfalls, and pointers. **Target: < 200 lines** | Every session, in full |
 | `.claude/rules/*.md` | Operational instructions, **one file = one topic**; can be path-scoped with frontmatter `paths:` | Every session (or only when working on matching paths) |
-| `AGENTS.md`, `.agents/skills/`, `.agents/orchestration/`, `.claude/`, `.codex/` | Agent adapters and the provider-neutral catalogues (roles **and** change classes): Codex and Claude adapters for planner/implementer/fixer, the Claude reviewer subagent, control plane, and local hook policies | On invocation / at start |
+| `.claude/` | Local agents, hooks, and permissions, plus the plugin-installed `/opsx:*` commands and skills | On invocation / at start |
 | `docs/architecture/*.md` | Reference: how the code works (runtime/pipeline/storage/gemini/…) plus this project map and `principles.md` | On demand |
 | `docs/adr/*.md` | Explanation: why the decision was made this way and which alternatives were rejected (MADR 4.0.0, append-only) | Linked from a state document |
 | `~/.claude/projects/<repo>/memory/` | Auto-memory: **machine- or process-specific only** (see below) | `MEMORY.md` index every session |
@@ -57,15 +57,11 @@ measures observed raw-token consumption (#464, #565), from Claude Code transcrip
 
 > **Every fact has exactly one home. Other mentions are links only, never paraphrases.**
 
-- **Shared agent rules** (procedure, role contracts, objective function, gates) →
-  `docs/architecture/`, because every adapter reads them, not only the adapter whose directory
-  contains it. A provider-specific file (`.claude/**`, `.agents/skills/**`, `AGENTS.md`) carries
-  **only the interface and permissions**: how an issue number arrives, how a subagent is called,
-  and how a body is written. The guard is
-  `tests/test_agent_process.py::test_provider_specific_adapter_files_do_not_define_shared_gates`
-  (a denylist of definitions: severity taxonomy, runbook limits, objective-function priorities).
-  Script and command names in an adapter are legitimate; defining rather than pointing is forbidden
-  (#452).
+- **Agent procedure** → the agent-process plugin's `agent-process` skill; the repository-owned
+  additions (Evidence block, discovery runbook, governance conventions) and the objective function
+  → `docs/architecture/`. A `.claude/**` file carries **only the interface and permissions**: how
+  a subagent is called and what it hands back. Script and command names there are legitimate;
+  defining rather than pointing is forbidden (#452), and a human enforces it in review.
 - **Operational procedural rules** (workflow) remain **whole — rule and rationale together**;
   they are not split (splitting recreates the duplicate). The former location becomes a pointer.
   **Rationale ≠ narrative** (#375): retain the decision plus one sentence explaining why it is
@@ -92,13 +88,10 @@ measures observed raw-token consumption (#464, #565), from Claude Code transcrip
   but append-only discipline cannot be expressed without a closed set); an **accepted record is
   not rewritten** — correct typos and broken links, and express a changed decision in a new record
   that the old one links to forward. The size guide is up to ~200 lines: a longer file displaces
-  the context for which it was opened. `tests/test_adr_records.py` holds the structure. The `## ADR`
-  issue section (part of the base `REQUIRED_SECTIONS`, kept by every change class) gates whether a
-  record was considered: a link or explicit `none: <reason>`. The gate does not judge whether the
-  decision merits a record — that is a cost-of-change judgement; it guarantees the question was
-  **asked**, just as `## Architect review` guarantees awareness rather than review quality (#150).
+  the context for which it was opened. `tests/test_adr_records.py` holds the structure. Whether a
+  decision merits a record is a cost-of-change judgement made in the change's design, not a gate.
 - **Wording of principles §I–VII** → canonical in [`principles.md`](principles.md), referenced by
-  number (`architect-reviewer.md`, `mindset.md`); **do not change the numbering**.
+  number (the plugin's architect review, `mindset.md`); **do not change the numbering**.
 - **Enforcement facts** (git prohibitions) → canonical in `.claude/settings.json`
   `permissions.deny` (+ synchronisation test `tests/test_settings_deny.py`). **Do not create mirror
   files** — that is a duplicate by definition.
@@ -129,7 +122,7 @@ single English marker; adding an alternative is a policy change, not a per-file 
 commentary; code spans and fenced code/data are deliberately outside its prose scope.
 
 **The policy's carriers are `.md` and `.py` — nothing else, and that is a decision, not an
-oversight.** Comments in workflow YAML, `.githooks/`, and `.gitattributes` stay as written: each
+oversight.** Comments in workflow YAML, `.pre-commit-config.yaml`, and `.gitattributes` stay as written: each
 would need its own comment syntax in the gate, and an unenforced rule over them would be exactly
 the invisible-cost shape ADR-0005 exists to remove. Python **string literals** are outside too, so
 operator-facing Russian diagnostics in `scripts/` are legal here; ADR-0005 records what that costs.
@@ -171,8 +164,8 @@ failure mode "a test landed in the wrong directory". Test navigation remains `gr
 meaningful docstring.
 
 For `.md`, `tests/test_doc_headers.py` (#421) gates the same presence by test rather than an entry
-in `CHECKS`: `test_ci_check.py::TestStepParity` requires registry parity with `ci.yml`, so an entry
-would require an additional `--only` step for a static check that `pytest` already runs. Scope is
+in `CHECKS`: CI runs every registry entry as its own `--only` job, so an entry would add a CI job
+for a static check that `pytest` already runs. Scope is
 derived from a glob so the next architecture document enters the rule automatically. `tests/test_doc_links.py`
 (#427) guards pointer integrity (an ID is an address): every internal link and code span of the form
 `` `file.md#anchor` `` must resolve, otherwise a renamed section silently breaks all incoming anchors.
@@ -251,10 +244,8 @@ An instance of ["What documentation describes"](#what-documentation-describes-cu
 `docs/`, scripts, templates), not in private out-of-repository Claude memory. Out-of-repository
 memory is **only** for machine/environment-specific material or a working style with a particular
 operator; otherwise a clone on another machine cannot see project knowledge and the source of truth
-splits. This is **active policy, not backlog**: the `architect-review` persona formerly lived in
-memory, moved to the repository (`.claude/agents/architect-reviewer.md` +
-`validate_issue_sections.py` gate + `principles.md §Governance`), and its memory was deleted (#150).
-The issue-priority mechanism made the same memory→repository move (Priority field in GitHub Project
+splits. This is **active policy, not backlog**: the issue-priority mechanism made the
+memory→repository move (Priority field in GitHub Project
 1): from private memory to `scripts/set_issue_priority.py` (embedded Project/field/option IDs + unit
 tests) + the [`agent-process.md`](agent-process.md) rule (the agent asks the user for priority →
 script); the memory was deleted (#351).

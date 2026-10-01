@@ -5,10 +5,9 @@ Two routes, one policy. A shell command that reads a file has a tool that replac
 form of itself — a `Grep` or a slice (`read_budget_hint`, #534). Both refusals name the
 replacement, and both are advisory about cost, never about safety.
 
-Deliberately separate from `scripts/agent_policy.py`. That module is the *security*
-policy shared with Codex, and its `denied_reason()` asserts danger; this one asserts only
-that a cheaper route exists. Routing token economy through the security carrier would emit
-a false reason in Codex's PreToolUse hook.
+Deliberately not a security policy. The security barrier is `permissions.deny` in
+`.claude/settings.json`, whose entries assert danger; this module asserts only that a cheaper
+route exists, so mixing the two would give a cost refusal a false reason.
 
 Why a parser and not a `permissions.deny` pattern. One utility lives in two roles — reading
 the filesystem (a tool replaces it) and trimming another command's output in a pipe (nothing
@@ -218,7 +217,7 @@ def navigation_hint(command: str) -> str | None:
 # Derived from a measurement over the 203 tracked files on 2026-08-15, not from taste. The
 # text corpus ran p50/p75/p90/p95 = 6457 / 13311 / 25694 / 41000 bytes; `principles.md` (16108)
 # and `testing.md` (24113) are the two documents this repository orders read *whole*, and the
-# smallest driver of the incident below was `tests/test_agent_orchestrator.py` (31410). 28000
+# smallest driver of the incident below was a since-deleted 31410-byte v1 test module. 28000
 # is the corridor between them: above everything prescribed whole, below every driver. A
 # 16000 threshold was rejected for missing `principles.md` by 108 bytes — pure friction on the
 # hottest agent route, saving nothing, since that content is prescribed in full.
