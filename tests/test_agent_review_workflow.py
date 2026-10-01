@@ -1,4 +1,4 @@
-"""Anti-drift guards for the cloud review gate (`.github/workflows/agent-review.yml`, #374).
+"""Anti-drift guards for the cloud review gate (`.github/workflows/agent-review-v1.yml`, #374).
 
 Static YAML guard: no network or credentials — the style of `tests/test_workflow_isolation.py`
 and `tests/test_settings_deny.py`.
@@ -35,7 +35,7 @@ import pytest
 import yaml
 from _model_pin_policy import UNPINNED_MODEL_VALUES
 
-_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review.yml"
+_WORKFLOW = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-v1.yml"
 _REMOVED_GATE_WORKFLOW = (
     Path(__file__).resolve().parent.parent / ".github" / "workflows" / "agent-review-gate.yml"
 )

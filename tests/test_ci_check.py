@@ -6,8 +6,11 @@ codes, and the capture-failure path that must name its real cause.
 
 from __future__ import annotations
 
+import json
 import re
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,7 @@ import yaml
 from scripts.ci_check import CHECKS, _find_modules, _run, _tracked_files, run_selected
 
 _CI_YML = Path(".github/workflows/ci.yml")
+_QUALITY_DECLARATION = Path(".github/agent-process-quality.json")
 _ONLY_RE = re.compile(r"scripts/ci_check\.py\s+--only\s+(\S+)")
 
 
@@ -31,6 +35,21 @@ def _ci_yml_check_names() -> set[str]:
     return names
 
 
+def _quality_declaration() -> dict[str, str]:
+    data: dict[str, str] = json.loads(_QUALITY_DECLARATION.read_text(encoding="utf-8"))
+    return data
+
+
+def _ci_yml_install_lines() -> list[str]:
+    """Commands of the ci.yml `Install dependencies` step, comments stripped."""
+    spec = yaml.safe_load(_CI_YML.read_text(encoding="utf-8"))
+    (step,) = [
+        s for s in spec["jobs"]["quality"]["steps"] if s.get("name") == "Install dependencies"
+    ]
+    lines = (line.split("#", 1)[0].strip() for line in step["run"].splitlines())
+    return [line for line in lines if line]
+
+
 class TestStepParity:
     """The core defect (#153): ci.yml duplicated the check list by hand and drifted —
     some registry checks were silently missing in CI. After the registry refactor,
@@ -41,6 +60,30 @@ class TestStepParity:
             "ci.yml --only steps must cover exactly the ci_check registry — "
             "any divergence is the drift this issue fixes"
         )
+
+    # The plugin's quality workflow reads `.github/agent-process-quality.json`
+    # (ADR-0013, #597): it must run the same registry and install the same way.
+
+    def test_quality_declaration_runs_the_registry(self) -> None:
+        declaration = _quality_declaration()
+        assert shlex.split(declaration["checks"])[1:] == ["scripts/ci_check.py", "--list-checks"]
+        assert shlex.split(declaration["test"])[1:] == ["scripts/ci_check.py"]
+
+    def test_quality_declaration_setup_matches_ci_yml_install(self) -> None:
+        assert _quality_declaration()["setup"] == " && ".join(_ci_yml_install_lines())
+
+
+class TestListChecks:
+    def test_prints_registry_as_json_array_without_site_packages(self) -> None:
+        # The plugin's `plan` job runs `checks` before any `setup`: stdlib only.
+        result = subprocess.run(
+            [sys.executable, "-I", "-S", "scripts/ci_check.py", "--list-checks"],
+            capture_output=True,
+            encoding="utf-8",
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == list(CHECKS)
 
 
 class TestFindModules:
