@@ -4,12 +4,28 @@
 
 ## Required status checks (branch protection)
 
-Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
-**`agent-review`** (`agent-review-v1.yml`).
-(`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
-issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
-`scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
-compared against GitHub and against the workflow files.
+The merge gate is the repository ruleset **`agent-process default branch`** (ADR-0013 step C,
+#599), created by `agent-process activate_protection` from the plugin's template. It applies to
+the default branch with no bypass actors, so it binds administrators too, and carries four
+rules: no deletion, no force-push, a pull request is required (no approval count), and two
+required status checks, strict (the PR must be up to date with `main`):
+**`agent-process / quality`** (the managed `agent-process.yml` running the `ci_check.py`
+registry) and **`agent-review / agent-review`** (the managed `agent-review.yml`), both bound to
+the GitHub Actions app. Classic branch protection stays in place but carries **no** required
+contexts; its other settings are untouched.
+
+The ruleset is owned by the plugin, not by this repository: `agent-process activate_protection
+--pr <N> --dry-run` is the drift check — `unchanged <id>` means the live ruleset matches the
+template — and the same command with `--confirm` is the only writer. Rolling back restores the
+classic contexts first and deletes the ruleset second, so `main` is never left without a gate.
+
+**`REQUIRED_CONTEXTS` is now the v1 job set, not the merge gate.** The constant in
+`scripts/check_branch_protection.py` still names `quality` (`ci.yml`), `pr-link`
+(`pr-link.yml` → `scripts/verify_pr_link.py`) and `agent-review` (`agent-review-v1.yml`): the
+offline guard checks them against the workflow files and `scripts/review_gate.py` reads them on
+the PR head. Those jobs still run on every PR until step D (#600) removes them, but none blocks a
+merge. The sections below describe how the v1 jobs behave; where they say "required", read "as
+it was under classic protection".
 
 The ordinary `agent-review` job is required because its deterministic final step reads the action's
 schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a visible
@@ -80,8 +96,8 @@ an unavailable review on every path. The trust model and what it costs are in
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
-maintainer approval, disabled Actions, or a renamed workflow on the PR branch. `enforce_admins:
-true` leaves no override. The cheap recovery is that `pr-link.yml` also triggers on `edited`, so
+maintainer approval, disabled Actions, or a renamed workflow on the PR branch. The ruleset has
+no bypass actors, so there is no override short of editing the ruleset itself. The cheap recovery is that `pr-link.yml` also triggers on `edited`, so
 editing the PR title/description re-runs it; pushing a commit works too. The same lockout risk
 that disqualifies `review` applies to `pr-link` and is **accepted** here: its trigger set covers
 every PR event and it runs on `github.token` alone, so it has no secret to lose. Three ways to
@@ -96,14 +112,19 @@ A job that calls a reusable workflow (job-level `uses:`) never reports under its
 GitHub names each called job's check run `<caller> / <called job>`. The guard therefore keys such a
 caller `<caller> / *`, which is why the managed `agent-process / *` and `agent-review / *` callers
 sit in `NOT_REQUIRED` rather than in `REQUIRED_CONTEXTS`: a prefix key matches no declarable
-context, so they become required through the plugin ruleset (#599), never through this list.
+context, so they are required through the plugin ruleset (#599), never through this list.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so all required contexts re-run —
 an expected extra minute, not a malfunction.
 
-**Drift detection.** `python scripts/check_branch_protection.py` prints the actual contexts and
-exits `1` on drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable
-response) — a tool failure must not read as "no drift". It runs **on demand**: since the
+**Drift detection.** For the merge gate, run `agent-process activate_protection --pr <N>
+--dry-run` (see above). The v1 probe `python scripts/check_branch_protection.py` compares
+classic protection with `REQUIRED_CONTEXTS`, so from step C it **reports drift by design**:
+classic carries no contexts, the probe exits `1` and suggests restoring the v1 set. Do not act
+on that suggestion; the window is accepted until the probe leaves with step D (#600), and
+rolling back step B through `.githooks` then needs `--allow-drift`. Its exit codes: `1` on
+drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable response) — a tool
+failure must not read as "no drift". It runs **on demand**: since the
 agent-process pre-commit hook replaced `.githooks/pre-push` (ADR-0013 step B, #598), no push runs
 it, which is the loss ADR-0013 records. The probe assumes the caller holds admin rights on the
 repository — true while this is a single-maintainer repo, and the first thing to revisit if that

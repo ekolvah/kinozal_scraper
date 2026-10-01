@@ -145,5 +145,10 @@
   Compensation was `.githooks/pre-push` on every push; since the agent-process hook replaced it
   (ADR-0013 step B, #598) the probe runs on demand only, a loss ADR-0013 accepts until step D.
   What remains is the offline guard `tests/test_branch_protection.py`, which keeps the in-repository half
-  (declaration ↔ workflow jobs) in CI. Revisit when enforcement moves to rulesets that make the
-  configuration readable with ordinary repository read access.
+  (declaration ↔ workflow jobs) in CI. **The revisit condition is met (#599): enforcement moved to
+  a ruleset, and still no CI probe is added**, now for different reasons. The required context
+  names come from the upstream managed workflows, so the repository declares nothing a probe
+  could compare against; `agent-process activate_protection --pr <N> --dry-run` already is the
+  on-demand comparison with the plugin's template; a lockout (a check that never reports) is
+  recovered by a manual ruleset edit, which a CI job inside the locked repository could not
+  perform anyway; and the v1 probe leaves with step D (#600).

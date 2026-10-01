@@ -52,8 +52,8 @@ needs revisiting together with this number.
 
 **`pre-push` runs one gate: the declared `test`.** The hook runs `python scripts/ci_check.py`,
 the `test` named in `.github/agent-process-quality.json`, exactly as the plugin's CI job does.
-The branch-protection drift check no longer runs on push; run
-`python scripts/check_branch_protection.py` on demand (details in
+The branch-protection drift check does not run on push; run
+`agent-process activate_protection --pr <N> --dry-run` on demand (details in
 [§Required status checks](ci-branch-protection.md#required-status-checks-branch-protection)).
 The first push after `pre-commit install` is slower still: pre-commit clones the plugin
 repository at the pinned `rev` and builds its hook environment before `ci_check` starts. That

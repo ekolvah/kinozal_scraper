@@ -469,9 +469,12 @@ credential infrastructure.
 
 ### Review-gate verdicts
 
-`python -m scripts.review_gate <PR>` reads the live PR — the required contexts
-on the current head and how many distinct heads `agent-review` has already
-reviewed. It changes nothing and posts nothing.
+`python -m scripts.review_gate <PR>` reads the live PR — the v1 contexts
+(`REQUIRED_CONTEXTS`) on the current head and how many distinct heads
+`agent-review` has already reviewed. It changes nothing and posts nothing.
+From step C (#599) those contexts are no longer the ones the ruleset requires;
+the gate keeps reading them until step D (#600) retires it, so confirm the
+ruleset's two checks with `gh pr checks <PR>` before reporting a PR ready.
 
 | Verdict | Exit code | Meaning |
 | --- | --- | --- |
@@ -534,8 +537,9 @@ agent-process plugin offers a second route next to the v1 flow above:
 `archive_change` → `gh pr create`, from the branch `start_change` creates. Its steps and
 gates are the plugin skill's, not this document's; the plan is the OpenSpec change, not the
 issue body. A change carried by this route is therefore exempt from the v1
-`issue_branch.py`, the issue section contract, `check_red.py` and `open_pr.py`. Its PR still
-passes both gate sets on the same head while v1 protection stands (#599), and the rules of
+`issue_branch.py`, the issue section contract, `check_red.py` and `open_pr.py`. Its PR is
+gated by the ruleset's two checks like any other (#599); the v1 jobs still run on it until
+step D but do not block. The rules of
 §Deterministic delivery flow that are not v1 scripts (no push to `main`, no self-merge, no
 hook bypass) apply unchanged. Which route an issue takes is the maintainer's choice until
 step D (#600) retires v1.

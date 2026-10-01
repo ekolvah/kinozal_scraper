@@ -135,7 +135,10 @@ PRs carries its own §Governance approval.
    recorded as an issue comment. C's PR rewrites the Quality Gates of `principles.md` and
    `ci-branch-protection.md` to the ruleset, and is the first PR merged under it. A
    throwaway PR from a branch with no linked issue confirms that `agent-process / quality`
-   fails on it.
+   fails on it. Deviations at execution (#599): the maintainer cancelled the pilot on
+   2026-10-01, so C followed B without it; and the unlinked-PR fact was taken from the
+   open dependabot PRs #606–#608, which already have no linked issue, instead of a
+   throwaway PR.
 4. **D — decommission v1.** RED first: a guard that every path D deletes is absent and
    referenced by no tracked file outside `docs/adr/`, whose records keep naming what they
    decided. Then delete those paths, rewrite the remaining docs outside `docs/adr/` to the
@@ -147,8 +150,9 @@ PRs carries its own §Governance approval.
    project-scope plugin installs of the sandbox repositories are uninstalled by hand.
 
 Rollback: this record, A and D are reverted as PRs. B: revert, `claude plugin disable
-agent-process@agent-process-marketplace`, `git config core.hooksPath .githooks`. C: delete
-the ruleset and restore the classic contexts from the recorded "before".
+agent-process@agent-process-marketplace`, `git config core.hooksPath .githooks`. C: restore
+the classic contexts from the recorded "before" first, then delete the ruleset, so `main` is
+never left without required checks.
 
 ### v1 → v2 mapping
 
