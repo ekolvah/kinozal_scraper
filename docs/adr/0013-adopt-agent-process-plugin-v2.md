@@ -78,7 +78,9 @@ single source of the check set:
 * `checks` — `python scripts/ci_check.py --list-checks`, a new flag printing the `CHECKS`
   registry as a JSON array; the reusable workflow runs each name as `test --only <name>` in
   its own job, which keeps the per-check parallelism of `ci.yml`.
-  `tests/test_ci_check.py::TestStepParity` is re-pointed from `ci.yml` to this declaration.
+  `tests/test_ci_check.py::TestStepParity` gains a parity against this declaration in A and
+  keeps its `ci.yml` parity until `ci.yml` is deleted: until C, `ci.yml` still carries the
+  required `quality` context, and a check added to `ci_check.py` meanwhile must reach both.
 
 ### Protection end state
 
@@ -120,7 +122,10 @@ Each step is its own issue and PR; this record is PR 1 of #592.
    recorded as an issue comment.
 4. **D — decommission v1.** RED first: a guard that every path marked *deleted* below is
    absent and referenced by no tracked file; then delete those paths and rewrite the docs
-   marked *rewritten*. The guard is removed in D's last commit, since
+   marked *rewritten*, including the `deprecated` status of ADR-0003, ADR-0004 and ADR-0007
+   and the "until / after the cut-over" clauses of `principles.md`, which collapse to the
+   end state. The fixture-ratchet scan moves out of the validator tests in the same commit
+   that deletes them. The guard is removed in D's last commit, since
    `tests/test_doc_links.py` already catches dangling doc links afterwards. Stale
    project-scope plugin installs of the sandbox repositories are uninstalled by hand.
 
@@ -141,14 +146,14 @@ Verdicts: **replaced** (the plugin provides it), **kept** (consumer-owned, survi
 | `.claude/agents/architect-reviewer.md` | replaced | `agent-process:architect-reviewer` writing `architect-review.json` |
 | `.claude/agents/discovery.md`, `tests/test_agent_frontmatter.py` | gap → kept | v2 has no discovery role; §V still requires a live observation when a design depends on external behaviour. The subagent stays and is invoked from a proposal; the gap is filed upstream |
 | `scripts/capture_external_fixture.py`, `scripts/capture_kinozal_fixture.py`, `tests/test_capture_external_fixture.py` | kept | Evidence capture against this repository's external systems |
-| `scripts/check_fixture_ratchet.py` | gap → kept | Its only caller is the issue validator; D re-wires it as a `ci_check.py` check |
+| `scripts/check_fixture_ratchet.py` | gap → kept | No production caller: its repository scan runs only inside `tests/test_validate_issue_sections.py`, which D deletes. D moves that test into its own file in the same commit, so the ratchet never stops running |
 | `scripts/check_orphan_scope.py`, `tests/test_check_orphan_scope.py` | replaced | Tracked deferrals in the PR report (plugin ADR 0020) |
 | `scripts/check_red.py`, `tests/test_check_red.py` | replaced | `agent-process check_red` |
 | `scripts/agent_orchestrator.py`, `tests/test_agent_orchestrator.py`, `.agents/orchestration/state.example.json` | replaced | `start_change` and the OpenSpec task groups |
 | `scripts/issue_branch.py`, `scripts/new_branch.py`, `tests/test_issue_branch.py`, `tests/test_new_branch.py` | replaced | `start_change` (branch from `origin/main` in its own worktree, Status In Progress) |
 | `scripts/set_issue_status.py`, `tests/test_set_issue_status.py` | replaced | `agent-process set_status` |
 | `scripts/set_issue_priority.py`, `tests/test_set_issue_priority.py` | gap → kept | v2 sets Status and Area, not Priority; the `Project 1` Priority field stays ours |
-| `scripts/open_pr.py`, `scripts/update_pr_body.py`, `scripts/verify_pr_link.py`, their tests, `.github/workflows/pr-link.yml` | replaced | `archive_change` + `gh pr create`, and the `link` job of the managed quality workflow |
+| `scripts/open_pr.py`, `scripts/update_pr_body.py`, `scripts/verify_pr_link.py`, their tests, `.github/workflows/pr-link.yml` | replaced | `archive_change` + `gh pr create`, and the `link` job of the managed quality workflow. It reports as `agent-process / link`, which the ruleset does not list; the required `agent-process / quality` job `needs` it and passes only when every needed job succeeded, so an unlinked PR stays blocked as it is under `pr-link` today |
 | `scripts/review_gate.py`, `scripts/gh_io.py`, `tests/test_review_gate.py` | replaced | `wait_for_pr` and the three-round limit; `resolve_review_thread` |
 | `.github/workflows/agent-review.yml` (→ `agent-review-v1.yml` in A), `tests/test_agent_review_workflow.py`, `tests/_model_pin_policy.py` | replaced | managed `agent-review.yml` calling `reusable-agent-review.yml@v<version>` |
 | `scripts/check_agent_review_outcome.py`, `scripts/request_codex_review.py`, their tests | deleted | Codex review carrier removed; the managed review job reports itself |
@@ -158,6 +163,7 @@ Verdicts: **replaced** (the plugin provides it), **kept** (consumer-owned, survi
 | `scripts/check_branch_protection.py`, `tests/test_branch_protection.py`, `BRANCH_PROTECTION_ALLOW_DRIFT` | gap → accepted loss | The local pre-push drift check goes with `.githooks`. GitHub enforces the ruleset regardless, and `activate_protection --dry-run` shows the expected state on demand |
 | `.agents/orchestration/roles.yaml`, `.agents/skills/**`, `.codex/hooks.json`, `scripts/codex_hooks.py`, `tests/test_codex_hooks.py`, `AGENTS.md` | deleted | Codex route removed (plugin ADR 0033) |
 | `scripts/check_codex_otel_config.py`, `observability/codex/`, `tests/test_codex_otel_assets.py` | deleted | Codex telemetry; ADR-0007 becomes `deprecated` in D |
+| `docs/architecture/operations.md`, `docs/architecture/llm-security.md` | rewritten | Drop the Codex telemetry section and the v1 review and `review_gate` mentions; the product's operations and LLM-security content stays |
 | `scripts/agent_policy.py`, `tests/test_settings_deny.py` | kept | The deny-list source `.claude/settings.json` is checked against; its Codex caller goes |
 | `scripts/hooks.py`, `scripts/navigation_policy.py`, `scripts/token_trend.py`, their tests, `tests/test_settings_hooks.py` | kept | This repository's `PreToolUse`/`PostToolUse` hooks; the plugin owns only its marker block in `settings.json` |
 | `.claude/settings.json` | kept | The installer adds its marker block; permissions and hooks stay ours |
@@ -170,13 +176,33 @@ Verdicts: **replaced** (the plugin provides it), **kept** (consumer-owned, survi
 | `docs/architecture/agent-process.md`, `tests/test_agent_process.py` | rewritten | Reduced to the consumer-owned parts (Priority, discovery, Evidence capture) and a pointer to the plugin skill |
 | `docs/architecture/{ci,ci-local,ci-workflow,ci-agent-review,ci-branch-protection}.md`, `docs/architecture/coverage-gaps-{agent-tooling,quality-gates}.md`, `docs/architecture/project-map.md`, `docs/architecture/information-architecture.md` | rewritten | Describe the managed workflows, the ruleset and the pre-commit hook |
 | `tests/test_doc_{headers,links,narrative}.py`, `tests/test_adr_records.py`, `tests/test_subprocess_encoding.py` | kept | Documentation and subprocess guards of this repository |
-| `docs/adr/0003`, `0004`, `0009`, `0011` | kept | Append-only history; each gains a cross-link to this record when D touches it |
-| `docs/architecture/principles.md` | rewritten | Amended in PR 1 (this record) |
+| `docs/adr/0003`, `0004` | rewritten | Status `deprecated` in D, as ADR-0007: the review failover carrier and the controller-PR token rule they decide leave with v1 review |
+| `docs/adr/0009`, `0011` | kept | Append-only history; each gains a cross-link to this record when D touches it |
+| `docs/architecture/ci-tooling-decisions.md` | rewritten | Its `pre-commit` no-go (#255) and Spec Kit removal (#114) entries gain the revision recorded in "Earlier tooling decisions" below |
+| `docs/architecture/principles.md` | rewritten | Amended in PR 1 (this record); D collapses its "until / after the cut-over" clauses to the end state |
 | `.github/workflows/run-script.yml`, product tests and docs | kept | Out of the process; unaffected throughout |
 
 v2 conventions that do not apply here: release-please (plugin ADRs 0030, 0031) is the
 publisher's own release flow, not installed in consumers; telemetry left the v2 migration
 (plugin ADR 0029), so ADR-0006 stays as is.
+
+### Earlier tooling decisions
+
+[`ci-tooling-decisions.md`](../architecture/ci-tooling-decisions.md) records two decisions
+this record revisits; D adds a pointer here to both entries.
+
+* **`pre-commit` no-go (#255).** Its root reason was a second source of tool versions: each
+  hook pinned through `rev:` runs its linter in an isolated venv, so local and CI versions
+  drift (#153), and a partial move would need a three-way parity between the hook config,
+  `CHECKS` and `ci.yml`. Neither applies to the plugin's hook. It is a single `quality` hook
+  whose `rev:` pins only the plugin's wrapper; the wrapper runs the declared `test`,
+  `python scripts/ci_check.py`, against the repository venv (B verifies this on this
+  machine), so ruff and mypy still come from `requirements-dev.txt`. `ci_check.py` stays the
+  only list of checks, and `pre-commit` is the trigger, not a second registry.
+* **Spec Kit removal (#114).** It was removed because the in-repository `/plan` already
+  covered specification → plan → tasks. This record retires that in-repository flow itself;
+  OpenSpec arrives as part of the process this repository adopts, not as a second framework
+  next to its own.
 
 ### Consequences
 
