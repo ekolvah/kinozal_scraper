@@ -64,7 +64,8 @@ Maintainer decisions (2026-10-01):
   `openspec/config.yaml` and blocks `start_change` until `/agent-process:init` is re-run,
   which produces an upgrade PR. The plugin's `dependabot.yml` ignores
   `ekolvah/agent-process-distribution*`, so dependabot does **not** carry plugin releases.
-* **#579, #564 and #572 are closed as superseded** once this record merges.
+* **#579, #564 and #572 are closed as superseded** by hand, with a link to this record,
+  once it merges.
 
 ### Quality declaration
 
@@ -77,7 +78,8 @@ single source of the check set:
 * `test` — `python scripts/ci_check.py`.
 * `checks` — `python scripts/ci_check.py --list-checks`, a new flag printing the `CHECKS`
   registry as a JSON array; the reusable workflow runs each name as `test --only <name>` in
-  its own job, which keeps the per-check parallelism of `ci.yml`.
+  its own matrix job, each with its own `setup`. `ci.yml` runs the checks as sequential
+  steps of one job with one install, so this trades CI minutes for per-check parallelism.
   `tests/test_ci_check.py::TestStepParity` gains a parity against this declaration in A and
   keeps its `ci.yml` parity until `ci.yml` is deleted: until C, `ci.yml` still carries the
   required `quality` context, and a check added to `ci_check.py` meanwhile must reach both.
@@ -136,8 +138,9 @@ PRs carries its own §Governance approval.
    fails on it.
 4. **D — decommission v1.** RED first: a guard that every path D deletes is absent and
    referenced by no tracked file outside `docs/adr/`, whose records keep naming what they
-   decided. Then delete those paths, rewrite the remaining docs to the implemented state and
-   set ADR-0003, ADR-0004 and ADR-0007 to `deprecated`. The fixture-ratchet
+   decided. Then delete those paths, rewrite the remaining docs outside `docs/adr/` to the
+   implemented state and set ADR-0003, ADR-0004, ADR-0007 and ADR-0009 to `superseded by
+   ADR-0013`. The fixture-ratchet
    scan moves out of the validator tests in the same commit that deletes them. The guard is
    removed in D's last commit, since
    `tests/test_doc_links.py` already catches dangling doc links afterwards. Stale
@@ -152,29 +155,30 @@ the ruleset and restore the classic contexts from the recorded "before".
 The verdict per v1 area; the files behind each row are listed in the step issue named in
 the Step column. Verdicts: **replaced** (the plugin provides it), **kept** (consumer-owned,
 survives the migration), **deleted** (no replacement needed), **rewritten** (kept, rewritten
-to the implemented state by the step that changes what it describes), **gap** (a v1
+to the implemented state by the step that changes what it describes), **status change**
+(an append-only ADR record whose decision leaves; only its status changes), **gap** (a v1
 guarantee v2 lacks, with its resolution).
 
 | v1 area | Verdict | Step | Replacement or reason |
 | --- | --- | --- | --- |
 | Issue-section contract, `/plan`, `/implement`, local `architect-reviewer` | replaced | D | OpenSpec `validate --strict` over proposal/specs/design/tasks; `/opsx:propose`, `/opsx:apply`, `/opsx:archive`; `agent-process:architect-reviewer` writing `architect-review.json` |
 | Control-plane scripts: orchestrator, branch, Status, `check_red`, orphan scope, PR opening, review gate | replaced | D | `start_change`, `set_status`, `agent-process check_red`, tracked deferrals (plugin ADR 0020), `archive_change` + `gh pr create`, `wait_for_pr` with the three-round limit |
-| PR-link check (`pr-link.yml`) | replaced | C, D | The `link` job of the managed quality workflow. It reports as `agent-process / link`, which the ruleset does not list; the required `agent-process / quality` job `needs` it and passes only when every needed job succeeded, so an unlinked PR stays blocked |
+| PR-link check (`pr-link.yml`) | replaced | C, D | The `link` job of the managed quality workflow. It reports as `agent-process / link`, which the ruleset does not list. The required `agent-process / quality` job `needs` it, runs `if: always()` and fails unless every needed job's `result` is `success` (plugin 3.2.8 `quality.yml`), so a failed `link` fails the required check instead of skipping it. C's throwaway unlinked PR confirms this live |
 | `ci.yml` | replaced | B, D | Managed `agent-process.yml` calling `quality.yml@v<version>` with the declaration above |
 | v1 review workflow | replaced | A renames, D deletes | Managed `agent-review.yml` calling `reusable-agent-review.yml@v<version>` |
 | `.githooks/pre-push` | replaced | B | `pre-commit` pre-push hook running the declared `test` |
 | `scripts/ci_check.py` | kept | A | The declared `test`; gains `--list-checks` |
-| Codex route: roles, skills, hooks, `AGENTS.md`, review carrier, telemetry | deleted | D | Plugin ADR 0033; ADR-0007 becomes `deprecated` |
+| Codex route: roles, skills, hooks, `AGENTS.md`, review carrier, telemetry | deleted | D | Plugin ADR 0033 |
 | Export machinery: plugin build, copier mirror, export manifest, PR template | deleted | D | The plugin is published from its own repository; v2 removed the copier mirror; the delivery report is the PR body |
 | `discovery` subagent and Evidence capture | gap → kept | — | v2 has no discovery role; §V still requires a live observation when a design depends on external behaviour. The subagent is invoked from a proposal; the gap is filed upstream |
 | `Project 1` Priority field | gap → kept | — | v2 sets Status and Area, not Priority |
 | Fixture ratchet | gap → kept | D | Its repository scan runs only inside the validator tests D deletes; it moves to its own test in the same commit |
-| Local branch-protection drift check | gap → accepted loss | D | GitHub enforces the ruleset regardless, and `activate_protection --dry-run` shows the expected state on demand |
+| Local branch-protection drift check | gap → accepted loss | D | It guards against a required context that never reports and locks every PR, including the fix ([ci-branch-protection](../architecture/ci-branch-protection.md)). The required context names now come from upstream workflows, so a plugin release that renames a job or adds a matrix or trigger filter can cause that lockout, and its own upgrade PR is blocked too. Recovery does not need a PR: the maintainer edits the ruleset directly. `activate_protection --dry-run` shows the expected state on demand |
 | Repository harness: deny-list, tool hooks, `.claude/settings.json`, test rules, language policy, doc and subprocess guards | kept | — | Consumer-owned; the plugin owns only its marker block in `settings.json` |
 | Process documentation, `CLAUDE.md`, `.claude/rules/` | rewritten | A–D | `agent-process.md` is reduced to the consumer-owned parts and a pointer to the plugin skill |
 | `principles.md` | rewritten | C, D | Quality Gates in C; the v1 reviewer references and the Governance delegation in D |
-| ADR-0003, ADR-0004 | rewritten | D | Status `deprecated`, as ADR-0007: the review failover carrier and the controller-PR token rule they decide leave with v1 review |
-| ADR-0009, ADR-0011 | kept | — | Append-only history; ADR-0011 links to this record |
+| ADR-0003, ADR-0004, ADR-0007, ADR-0009 | status change | D | `superseded by ADR-0013`; bodies stay as decided. The review failover carrier, the controller-PR token rule, the Codex telemetry bridge and discovery chained inside `/plan` all leave with v1 |
+| ADR-0011 | kept | this record | Stays `accepted` as the export decision and links to this record |
 | Product: `run-script.yml`, product code, tests and docs | kept | — | Out of the process; unaffected throughout |
 
 v2 conventions that do not apply here: release-please (plugin ADRs 0030, 0031) is the
@@ -190,7 +194,9 @@ this record.
 * **`pre-commit` no-go (#255).** Its root reason was a second source of tool versions: each
   hook pinned through `rev:` runs its linter in an isolated venv, so local and CI versions
   drift (#153), and a partial move would need a three-way parity between the hook config,
-  `CHECKS` and `ci.yml`. Neither applies to the plugin's hook. It is a single `quality` hook
+  `CHECKS` and `ci.yml`. The first does not apply to the plugin's hook, and the second only
+  until D deletes `ci.yml`: `TestStepParity` holds the declaration and `ci.yml` together
+  for that window, by construction. The hook is a single `quality` hook
   whose `rev:` pins only the plugin's wrapper; the wrapper runs the declared `test`,
   `python scripts/ci_check.py`, against the repository venv (B verifies this on this
   machine), so ruff and mypy still come from `requirements-dev.txt`. `ci_check.py` stays the
@@ -213,6 +219,11 @@ this record.
   right after the pilot.
 * Bad, because `pre-commit` becomes a new dev dependency and the local branch-protection
   drift check is lost.
+* Bad, because each check becomes its own CI job with its own install, which costs more CI
+  minutes than the single `ci.yml` job.
+* Bad, because the managed caller triggers on the default `pull_request` types, without
+  `edited`: unlike `pr-link.yml`, fixing a PR body's issue link no longer re-runs the link
+  check, so a push or a manual re-run is needed.
 * Bad, because a plugin defect now blocks this repository's delivery. Mitigated by the
   per-step rollback and by filing gaps upstream rather than patching locally.
 
