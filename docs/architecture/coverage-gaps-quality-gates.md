@@ -19,7 +19,7 @@
   (`agent-process.md`, Governance conventions).
 
 - **W. Reviewer prompts: form is guarded, semantics are not (#374, #392).** Neither reviewer —
-  cloud (`.github/workflows/agent-review.yml`) nor local
+  cloud (`.github/workflows/agent-review-v1.yml`) nor local
   (`.claude/agents/architect-reviewer.md`) — contains a severity filter *at the discovery stage*:
   the model follows such a filter literally and a finding silently never reaches the PR. Guards
   catch **known forms**, and the two guards keep different shapes:

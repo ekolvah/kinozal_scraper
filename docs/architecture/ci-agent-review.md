@@ -2,7 +2,7 @@
 
 **Question this document answers:** How the required agent-review workflow produces and validates review evidence.
 
-## Agent review workflow (`agent-review.yml`)
+## Agent review workflow (`agent-review-v1.yml`)
 
 Triggers: every `pull_request: opened/synchronize`. Uses
 `anthropics/claude-code-action@v1` to run an automated code review on every PR push: inline
@@ -78,7 +78,7 @@ files themselves (the workflow's `claude_args`, the agent's frontmatter); there 
 **no registry document listing which agent runs on which model**, because a copy of the config is
 exactly the thing that drifts away from it.
 
-`agent-review.yml` contains `claude_args: |` / `--model claude-opus-5`; the agent frontmatter has
+`agent-review-v1.yml` contains `claude_args: |` / `--model claude-opus-5`; the agent frontmatter has
 `model: claude-opus-5` + `effort: high`.
 
 Four facts without which the pin is fixed incorrectly:
@@ -90,7 +90,7 @@ Four facts without which the pin is fixed incorrectly:
 2. **`effort` defaults to inheriting the session level** — not `high`. Without a pin, the same
    plan-stage review is stricter or looser depending on whose session starts it; the pin makes gate
    strictness a repository decision.
-3. **A PR changing `agent-review.yml` itself checks outcome only when it has one.** An empty
+3. **A PR changing `agent-review-v1.yml` itself checks outcome only when it has one.** An empty
    outcome produces a visible warning; `clean` and `rework` pass, while `blocking` turns red.
    Prompt contract and permitted model are checked on the next unrelated PR.
 4. **The guard rejects only short aliases** (`opus`/`sonnet`/`haiku`/`fable`) — any full ID passes.
