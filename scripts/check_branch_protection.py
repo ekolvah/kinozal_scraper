@@ -13,7 +13,7 @@ against GitHub by this script and repository workflows by
 `tests/test_branch_protection.py`; prose cannot be checked, so docs reference rather
 than repeat `REQUIRED_CONTEXTS`, as in `scripts/set_issue_priority.py`.
 
-This is a `.githooks/pre-push` developer script, not CI. `GITHUB_TOKEN` lacks
+This is an on-demand developer script, not CI. `GITHUB_TOKEN` lacks
 `administration`, while reading `branches/*/protection` needs admin rights. CI would
 need a separate long-lived admin secret; its rotation burden and stale-token false reds
 would teach operators to ignore the detector. `ci.yml` also mirrors `ci_check.py`
@@ -21,16 +21,12 @@ would teach operators to ignore the detector. `ci.yml` also mirrors `ci_check.py
 The ordinary repo-read ruleset endpoint is irrelevant here because enforcement uses
 classic branch protection. Reconsider on migration to rulesets or a second contributor.
 
-This is local enforcement, not mere surfacing (#458). Optional `core.hooksPath` means
-the server's branch protection remains the only authoritative `main` barrier, but this
-hook is invoked through `|| exit $?` and deliberately blocks push. A printing-only
-detector would vanish in push output and leave drift as the §IV silent skip it prevents.
-Intentional temporary drift uses `--allow-drift "<reason>"`, not `--no-verify` (which
-also silences `ci_check`); the reason is printed in push output.
-
-There is no branch-specific trigger: checking only pushes to `main` sounds sensible,
-but repository policy prohibits direct pushes to `main` (always PR), so it would mean
-never checking. This rejected option is recorded to prevent reopening it.
+No push runs it any more: `.githooks/pre-push`, which ran it before `ci_check` to block a
+drifted push (#458), was replaced by the agent-process pre-commit hook (ADR-0013 step B,
+#598), and the loss of push-time detection is the one ADR-0013 records until this script
+leaves with step D. Server-side branch protection stays the authoritative `main` barrier.
+`--allow-drift "<reason>"` exits 0 and prints the reason; it existed so that the push hook
+never had to be bypassed with `--no-verify`.
 """
 
 from __future__ import annotations
