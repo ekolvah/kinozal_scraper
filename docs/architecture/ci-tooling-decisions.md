@@ -8,7 +8,12 @@
 without its own gate section above (otherwise, a line at the gate's location). The other branches of the
 “where the decision goes” route are in [`project-map.md`](project-map.md) §Canonical-home, its canon.
 
-- **`pre-commit` (#255)—no-go.** **Root reason:** every hook pins a tool version through `rev:` and
+- **`pre-commit` as a linter registry (#255)—no-go; as the hook launcher—adopted
+  ([ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md), #598).** The agent-process plugin's
+  `.pre-commit-config.yaml` declares one hook, `quality`, which runs the declared `test`
+  (`ci_check.py`) in the pusher's environment, so no tool version gets a second source and
+  `CHECKS` stays the only registry. What stays rejected is moving the checks themselves into
+  `pre-commit` hooks. **Root reason:** every hook pins a tool version through `rev:` and
   runs it in an **isolated venv**—a second source of the tool version besides
   `requirements-dev.txt` (today `python -m ruff`/`mypy` use the single locked version),
   meaning a systematic return of the same local↔CI drift class (#153). A sharp illustration is

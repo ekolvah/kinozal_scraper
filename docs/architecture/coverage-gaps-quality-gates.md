@@ -13,8 +13,10 @@
   **inside** such a fixture is not caught by this gate; the server-side layer remains (GitHub push
   protection). **The second item is not a gap but absent code:**
   `check-yaml`/`check-toml`/`check-json`/`trailing-whitespace`/`end-of-file-fixer` left with
-  `.pre-commit-config.yaml`; they ran **zero times** (`core.hooksPath` = `.githooks`), so there is
-  no regression and this PR does not add replacements. Recorded so "where is YAML validation?" is
+  the original `.pre-commit-config.yaml`; they ran **zero times** (`core.hooksPath` was
+  `.githooks` then), so there is no regression and this PR does not add replacements. The
+  plugin's `.pre-commit-config.yaml` (ADR-0013, #598) brings none of them back: its one hook
+  runs `ci_check.py`. Recorded so "where is YAML validation?" is
   not reopened as a coverage gap: it is conscious non-scope, a separate unit
   (`agent-process.md`, Governance conventions).
 
@@ -140,7 +142,8 @@
   the ruleset endpoint (it returns `[]`), so a CI run would require a separate admin token in
   secrets. **Rejected for cost, not impossibility:** a long-lived secret requires rotation, while an
   expired token turns the job red without real drift and teaches people to ignore the detector.
-  Compensation is `.githooks/pre-push` on every push (more frequent than a plausible cron), plus
-  offline guard `tests/test_branch_protection.py`, which keeps the in-repository half
+  Compensation was `.githooks/pre-push` on every push; since the agent-process hook replaced it
+  (ADR-0013 step B, #598) the probe runs on demand only, a loss ADR-0013 accepts until step D.
+  What remains is the offline guard `tests/test_branch_protection.py`, which keeps the in-repository half
   (declaration ↔ workflow jobs) in CI. Revisit when enforcement moves to rulesets that make the
   configuration readable with ordinary repository read access.

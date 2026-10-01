@@ -44,7 +44,7 @@ in `.txt`.
 ## Before every commit
 
 `python scripts/ci_check.py` — see the [CI doc](docs/architecture/ci.md) for details.
-`.githooks/pre-push` runs ci_check automatically before push—do not duplicate it manually.
+The pre-push hook runs ci_check automatically before push—do not duplicate it manually.
 
 ## Architecture decisions
 

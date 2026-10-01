@@ -3,8 +3,8 @@
 **Question this document answers:** Which workflow roles Claude adapts in this
 repository, without becoming the source of the workflow contract.
 
-The canonical development workflow, roles, issue contract, delivery gates, and
-agent provenance are in
+The canonical development workflow, roles, issue contract, delivery gates,
+agent provenance, and the plugin's `/opsx:*` route are in
 [`docs/architecture/agent-process.md`](../../docs/architecture/agent-process.md).
 Do not duplicate them here.
 

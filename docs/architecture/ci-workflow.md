@@ -11,8 +11,8 @@ push would otherwise fire the `quality` job twice (once per event) for the
 same commit. `quality` is one of the branch's required status checks — a bare,
 event-agnostic context, so the `pull_request` run satisfies branch protection on
 its own and dropping `issue-*` orphans nothing (#206). Do not re-add `issue-*` to
-`push` to "get CI on a branch" — the `.githooks/pre-push` hook already runs the
-identical `ci_check.py` locally before every push.
+`push` to "get CI on a branch" — the pre-push hook (`.pre-commit-config.yaml`)
+already runs the identical `ci_check.py` locally before every push.
 
 Steps: checkout → Python 3.12 → install deps → then one
 `python scripts/ci_check.py --only <name>` step per registry check (format,

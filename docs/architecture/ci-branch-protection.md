@@ -103,20 +103,21 @@ an expected extra minute, not a malfunction.
 
 **Drift detection.** `python scripts/check_branch_protection.py` prints the actual contexts and
 exits `1` on drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable
-response) — a tool failure must not read as "no drift". `.githooks/pre-push` runs it before
-`ci_check.py`, so drift costs seconds rather than a full gate run, and both non-zero codes stop
-the push. Two consequences are deliberate and worth knowing: the hook is **local enforcement**
-— server-side it decides nothing (`.githooks` is opt-in via `git config core.hooksPath`, and the
-authoritative barrier stays branch protection itself), but wired through `|| exit $?` it blocks
-the push, and that is intended: a detector that only printed would scroll past while the drift
-survived. And the probe assumes the pusher holds admin rights on
-the repository — true while this is a single-maintainer repo, and the first thing to revisit if
-that changes. Why this is not a CI job — GitHub's `GITHUB_TOKEN` has no `administration` scope,
-so a CI form needs a stored admin-scoped token whose rotation cost buys nothing here; the full
+response) — a tool failure must not read as "no drift". It runs **on demand**: since the
+agent-process pre-commit hook replaced `.githooks/pre-push` (ADR-0013 step B, #598), no push runs
+it, which is the loss ADR-0013 records. The probe assumes the caller holds admin rights on the
+repository — true while this is a single-maintainer repo, and the first thing to revisit if that
+changes. Why this is not a CI job — GitHub's `GITHUB_TOKEN` has no `administration` scope, so a
+CI form needs a stored admin-scoped token whose rotation cost buys nothing here; the full
 reasoning lives in the script's docstring.
 
-**Declaring an intentional drift.** `--allow-drift "<reason>"` exits `0` and prints the reason
-into the push output. It exists because the alternative was `--no-verify`, which also swallows
-`ci_check` — a gate that regularly demands bypassing teaches bypassing, and the next bypass eats
-a genuine red (#458). Scoping the check to pushes to `main` was considered and rejected: pushing
-to `main` is forbidden by process, so that trigger would mean never checking at all.
+A second loss comes with the prefix keying of reusable callers above: the matrix and trigger
+filter checks cannot see a caller's called jobs, so they no longer guard `agent-process / *` or
+`agent-review / *`. ADR-0013's risk that a plugin release renaming a job or adding a matrix or
+trigger filter can lock every PR therefore applies from step B, not from C. Prefix matching is
+deliberately not built: the guard leaves with step D (#600).
+
+**Declaring an intentional drift.** `--allow-drift "<reason>"` exits `0` and prints the reason.
+It existed so that the push hook never had to be bypassed with `--no-verify`, which also
+swallows `ci_check` — a gate that regularly demands bypassing teaches bypassing, and the next
+bypass eats a genuine red (#458).

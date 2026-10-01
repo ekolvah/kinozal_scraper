@@ -189,7 +189,8 @@ publisher's own release flow, not installed in consumers; telemetry left the v2 
 
 [`ci-tooling-decisions.md`](../architecture/ci-tooling-decisions.md) records two decisions
 this record revisits; D replaces both entries with the implemented state and a link to
-this record.
+this record. Deviation: the `pre-commit` entry is rewritten in B, when the hook starts
+running; the Spec Kit entry in D.
 
 * **`pre-commit` no-go (#255).** Its root reason was a second source of tool versions: each
   hook pinned through `rev:` runs its linter in an isolated venv, so local and CI versions
