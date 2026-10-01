@@ -212,8 +212,8 @@ and existing repo packages.
 Not machine-gated: "over-complicated" is a semantic judgement, the same class the repo
 deliberately declines to script (see [`information-architecture.md`](information-architecture.md)). It is enforced at
 **plan stage** by the [architect review contract](agent-process.md#architect-review-contract),
-whose reviewer reads the [goal function](#goal-function) above; the cloud `Claude code review`
-workflow (Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
+whose reviewer reads the [goal function](#goal-function) above; the required review check
+(Quality Gates) then reviews the actual diff on the PR as a second, diff-stage pass.
 
 **Rationale:** over-engineering is a systematic LLM-agent failure mode, cheapest to prevent
 as a standing default than as an after-the-fact "simplify" request. More code is more
@@ -281,7 +281,7 @@ a Governance change made here.
 **Delegation to the `agent-process` plugin.** Per
 [ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md) the procedure moves from this
 repository to the `agent-process` plugin (its `agent-process` skill and managed
-workflows) in the steps that record sets out. Until its decommission step,
+workflows) in the steps the record sets out. Until its decommission step,
 `agent-process.md` stays the binding procedure; after it, `agent-process.md` keeps only
 the consumer-owned parts and points at the plugin for the rest. The goal function,
 principles §I–VII, Quality Gates and this Governance section stay canon here either way.
