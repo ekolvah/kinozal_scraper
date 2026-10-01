@@ -4,14 +4,34 @@
 
 ## Required status checks (branch protection)
 
-Three contexts block a merge into `main`: **`quality`** (`ci.yml`), **`pr-link`**, and
-**`agent-review`** (`agent-review-v1.yml`).
-(`pr-link.yml` → `scripts/verify_pr_link.py`, a PR from an `issue-N` branch must close its
-issue). The **machine-checked canon** of that set is `REQUIRED_CONTEXTS` in
-`scripts/check_branch_protection.py` — this paragraph is prose that can rot, that constant is
-compared against GitHub and against the workflow files.
+The merge gate is the repository ruleset **`agent-process default branch`**, created by
+`agent-process activate_protection` from the plugin's template. It applies to the default
+branch with no bypass actors, so it binds administrators too, and carries four rules: no
+deletion, no force-push, a pull request is required (no approval count), and two required
+status checks, strict (the PR must be up to date with `main`): **`agent-process / quality`** and
+**`agent-review / agent-review`** (the managed `agent-process.yml` and `agent-review.yml`), both
+bound to the GitHub Actions app. `agent-process / quality` is an aggregate: each `ci_check.py`
+registry entry and the issue-link check `agent-process / link` (a PR must close its issue)
+report as their own check runs, and `quality` `needs` them all and fails unless each one
+succeeded. The issue-link requirement therefore blocks a merge through `quality`, without a
+context of its own. Classic branch protection carries **no** required contexts; its other
+settings are untouched.
 
-The ordinary `agent-review` job is required because its deterministic final step reads the action's
+The ruleset is owned by the plugin, not by this repository: `agent-process activate_protection
+--pr <N> --dry-run` is the drift check — `unchanged <id>` means the live ruleset matches the
+template; `<N>` is any PR whose head has both checks green, which the command's preflight
+requires — and the same command with `--confirm` is the only sanctioned writer. Rolling back
+restores the classic contexts first and deletes the ruleset second, so `main` is never left
+without a gate.
+
+**`REQUIRED_CONTEXTS` is the v1 job set, not the merge gate.** The constant in
+`scripts/check_branch_protection.py` names `quality` (`ci.yml`), `pr-link`
+(`pr-link.yml` → `scripts/verify_pr_link.py`) and `agent-review` (`agent-review-v1.yml`): the
+offline guard checks them against the workflow files and `scripts/review_gate.py` reads them on
+the PR head. These v1 jobs run on every PR and block nothing. The sections below describe how
+they behave.
+
+The v1 `agent-review` job's deterministic final step reads the action's
 schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a visible
 `::warning::`**, `blocking` fails, and absent or malformed output is a readable
 `review unavailable` failure.
@@ -80,13 +100,16 @@ an unavailable review on every path. The trust model and what it costs are in
 
 **A required context blocks the merge when it does not report at all, not only when it is red.**
 That happens when the head SHA never ran the job: a first-time contributor's fork PR awaiting
-maintainer approval, disabled Actions, or a renamed workflow on the PR branch. `enforce_admins:
-true` leaves no override. The cheap recovery is that `pr-link.yml` also triggers on `edited`, so
-editing the PR title/description re-runs it; pushing a commit works too. The same lockout risk
-that disqualifies `review` applies to `pr-link` and is **accepted** here: its trigger set covers
-every PR event and it runs on `github.token` alone, so it has no secret to lose. Three ways to
-manufacture that trap are guarded, because each one leaves a declared context permanently
-"Expected" and locks out even the PR that would undo it: renaming the job (a required context is
+maintainer approval, disabled Actions, or a renamed managed job. The ruleset has no bypass
+actors. When the checks merely did not run on this head, pushing a commit re-runs them. When a
+required check can never report — a plugin release renamed `quality` or `agent-review`, so the
+listed context stays "Expected" on every PR, including the one that would fix it — the recovery
+is a manual edit of the ruleset (Settings → Rules) to the new context name. The plugin command
+cannot do it: its preflight needs a PR whose head already reports both listed checks green.
+
+For the v1 jobs, which block nothing, the offline guard still keeps three ways to manufacture
+that trap out of the workflow files, because each one leaves a declared context permanently
+"Expected": renaming the job (a required context is
 the check-run name — a job's `name:`, else its key), putting a `strategy.matrix` on it (real
 contexts become `job (value)`), and adding a `paths`/`paths-ignore`/`branches`/`branches-ignore`
 filter to the workflow's `pull_request` trigger (the job then simply does not run on some PRs —
@@ -96,26 +119,30 @@ A job that calls a reusable workflow (job-level `uses:`) never reports under its
 GitHub names each called job's check run `<caller> / <called job>`. The guard therefore keys such a
 caller `<caller> / *`, which is why the managed `agent-process / *` and `agent-review / *` callers
 sit in `NOT_REQUIRED` rather than in `REQUIRED_CONTEXTS`: a prefix key matches no declarable
-context, so they become required through the plugin ruleset (#599), never through this list.
+context, so they are required through the plugin ruleset, never through this list.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so all required contexts re-run —
 an expected extra minute, not a malfunction.
 
-**Drift detection.** `python scripts/check_branch_protection.py` prints the actual contexts and
-exits `1` on drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable
-response) — a tool failure must not read as "no drift". It runs **on demand**: since the
-agent-process pre-commit hook replaced `.githooks/pre-push` (ADR-0013 step B, #598), no push runs
-it, which is the loss ADR-0013 records. The probe assumes the caller holds admin rights on the
+**Drift detection.** For the merge gate, run `agent-process activate_protection --pr <N>
+--dry-run` (see above). The v1 probe `python scripts/check_branch_protection.py` compares
+classic protection with `REQUIRED_CONTEXTS`, so it **reports drift by design**: classic carries
+no contexts, the probe exits `1` and suggests restoring the v1 set. Do not act on that
+suggestion; ADR-0013 accepts this output. Pushing through `.githooks`, the rollback hook path,
+therefore needs `--allow-drift`. Its exit codes: `1` on drift, `2` when the tool itself fails
+(no `gh`, no admin rights, unparseable response) — a tool failure must not read as "no drift".
+It runs **on demand**: the agent-process pre-commit hook does not run it, which is the loss
+ADR-0013 records. The probe assumes the caller holds admin rights on the
 repository — true while this is a single-maintainer repo, and the first thing to revisit if that
 changes. Why this is not a CI job — GitHub's `GITHUB_TOKEN` has no `administration` scope, so a
 CI form needs a stored admin-scoped token whose rotation cost buys nothing here; the full
 reasoning lives in the script's docstring.
 
 A second loss comes with the prefix keying of reusable callers above: the matrix and trigger
-filter checks cannot see a caller's called jobs, so they no longer guard `agent-process / *` or
+filter checks cannot see a caller's called jobs, so they do not guard `agent-process / *` or
 `agent-review / *`. ADR-0013's risk that a plugin release renaming a job or adding a matrix or
-trigger filter can lock every PR therefore applies from step B, not from C. Prefix matching is
-deliberately not built: the guard leaves with step D (#600).
+trigger filter can lock every PR is therefore unguarded here; the recovery is the manual
+ruleset edit above. Prefix matching is deliberately not built: ADR-0013 retires this guard.
 
 **Declaring an intentional drift.** `--allow-drift "<reason>"` exits `0` and prints the reason.
 It existed so that the push hook never had to be bypassed with `--no-verify`, which also

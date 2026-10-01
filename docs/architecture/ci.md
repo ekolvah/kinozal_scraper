@@ -19,6 +19,6 @@ in [Rejected CI tooling](ci-tooling-decisions.md) when it has no gate-specific s
 
 The agent-process plugin's managed workflows, `agent-process.yml` (quality, reading
 `.github/agent-process-quality.json`) and `agent-review.yml` (review), run on every PR next to
-the v1 jobs (ADR-0013 step B). Classic protection does not require them; the plugin ruleset does
-from step C (#599). They are rendered by the installer, so a change goes through the plugin, not
-through an edit here.
+the v1 jobs. They are the merge gate: the plugin ruleset requires them, and the v1 jobs block
+nothing. They are rendered by the installer, so a change
+goes through the plugin, not through an edit here.

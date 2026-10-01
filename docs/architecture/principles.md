@@ -237,7 +237,11 @@ restate them — edit them there.
 
 A PR MAY merge only when:
 
-- All CI checks are green: `ci.yml` (format, lint, tests, mypy, pip-audit).
+- The default-branch ruleset passes: the PR is up to date with `main` and both
+  required checks are green on its head — `agent-process / quality` (the
+  `ci_check.py` registry) and `agent-review / agent-review` (a blocking or
+  unavailable review is red). The ruleset has no bypass actors, so this binds
+  administrators too ([ci-branch-protection.md](ci-branch-protection.md)).
 - The change has tests matching its behaviour (Principle I). New extraction
   logic gets an integration test against a saved HTML/JSON fixture; new
   config rules get a unit test; new pipeline orchestration gets a
@@ -245,9 +249,9 @@ A PR MAY merge only when:
 - A newly *rejected* coverage decision (a consciously-accepted gap, a scope-/cost-skip)
   is recorded in [coverage-gaps.md](coverage-gaps.md) so it isn't
   silently re-litigated — there is no auto-generated coverage inventory to update.
-- The `Claude code review` workflow has commented on the PR (status sticky
-  comment present); a hard block on its verdict is not enforced, but
-  unaddressed concerns must be answered in PR comments before merge.
+- Unaddressed review concerns are answered in PR comments before merge
+  (non-blocking findings do not red the review check, so this one is held by
+  the maintainer, not by the ruleset).
 - For PRs that touch HTML extraction or external API contracts, an E2E
   smoke test (real HTTP) has been run at least once on the branch — the
   daily cron run on `run-script.yml` counts.

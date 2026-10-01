@@ -135,15 +135,18 @@
   Recorded so the branch is not reopened as forgotten: revisit when there is a **measured** recurrence
   and a date rule in the canon, not vice versa.
 
-- **AD. The network half of branch-protection verification is not run in CI (#436).**
+- **AD. The network half of branch-protection verification is not run in CI.**
   `scripts/check_branch_protection.py` compares the declared composition of required contexts with
   the actual one. Unit tests cover everything except one step — real `gh api` for configuration:
   `GITHUB_TOKEN` lacks `administration` scope, and classic branch protection is not visible through
   the ruleset endpoint (it returns `[]`), so a CI run would require a separate admin token in
   secrets. **Rejected for cost, not impossibility:** a long-lived secret requires rotation, while an
   expired token turns the job red without real drift and teaches people to ignore the detector.
-  Compensation was `.githooks/pre-push` on every push; since the agent-process hook replaced it
-  (ADR-0013 step B, #598) the probe runs on demand only, a loss ADR-0013 accepts until step D.
-  What remains is the offline guard `tests/test_branch_protection.py`, which keeps the in-repository half
-  (declaration ↔ workflow jobs) in CI. Revisit when enforcement moves to rulesets that make the
-  configuration readable with ordinary repository read access.
+  The agent-process pre-commit hook does not run the probe, so it runs on demand only, a loss
+  ADR-0013 accepts. The offline guard `tests/test_branch_protection.py` keeps the in-repository
+  half (declaration ↔ workflow jobs) in CI. **The merge gate is a ruleset, and it has no CI probe
+  either**, for its own reasons. The required context names come from the upstream managed
+  workflows, so the repository declares nothing a probe could compare against;
+  `agent-process activate_protection --pr <N> --dry-run` already is the on-demand comparison with
+  the plugin's template; and a lockout (a check that never reports) is recovered by a manual
+  ruleset edit, which a CI job inside the locked repository could not perform anyway.

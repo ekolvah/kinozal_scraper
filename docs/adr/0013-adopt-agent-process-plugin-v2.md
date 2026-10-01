@@ -135,7 +135,10 @@ PRs carries its own §Governance approval.
    recorded as an issue comment. C's PR rewrites the Quality Gates of `principles.md` and
    `ci-branch-protection.md` to the ruleset, and is the first PR merged under it. A
    throwaway PR from a branch with no linked issue confirms that `agent-process / quality`
-   fails on it.
+   fails on it. Deviations at execution (#599): the maintainer cancelled the pilot on
+   2026-10-01, so C followed B without it; and the unlinked-PR fact was taken from the
+   open dependabot PRs #606–#608, which already have no linked issue, instead of a
+   throwaway PR.
 4. **D — decommission v1.** RED first: a guard that every path D deletes is absent and
    referenced by no tracked file outside `docs/adr/`, whose records keep naming what they
    decided. Then delete those paths, rewrite the remaining docs outside `docs/adr/` to the
@@ -147,8 +150,9 @@ PRs carries its own §Governance approval.
    project-scope plugin installs of the sandbox repositories are uninstalled by hand.
 
 Rollback: this record, A and D are reverted as PRs. B: revert, `claude plugin disable
-agent-process@agent-process-marketplace`, `git config core.hooksPath .githooks`. C: delete
-the ruleset and restore the classic contexts from the recorded "before".
+agent-process@agent-process-marketplace`, `git config core.hooksPath .githooks`. C: restore
+the classic contexts from the recorded "before" first, then delete the ruleset, so `main` is
+never left without required checks.
 
 ### v1 → v2 mapping
 
@@ -163,7 +167,7 @@ guarantee v2 lacks, with its resolution).
 | --- | --- | --- | --- |
 | Issue-section contract, `/plan`, `/implement`, local `architect-reviewer` | replaced | D | OpenSpec `validate --strict` over proposal/specs/design/tasks; `/opsx:propose`, `/opsx:apply`, `/opsx:archive`; `agent-process:architect-reviewer` writing `architect-review.json` |
 | Control-plane scripts: orchestrator, branch, Status, `check_red`, orphan scope, PR opening, review gate | replaced | D | `start_change`, `set_status`, `agent-process check_red`, tracked deferrals (plugin ADR 0020), `archive_change` + `gh pr create`, `wait_for_pr` with the three-round limit |
-| PR-link check (`pr-link.yml`) | replaced | C, D | The `link` job of the managed quality workflow. It reports as `agent-process / link`, which the ruleset does not list. The required `agent-process / quality` job `needs` it, runs `if: always()` and fails unless every needed job's `result` is `success` (plugin 3.2.8 `quality.yml`), so a failed `link` fails the required check instead of skipping it. C's throwaway unlinked PR confirms this live |
+| PR-link check (`pr-link.yml`) | replaced | C, D | The `link` job of the managed quality workflow. It reports as `agent-process / link`, which the ruleset does not list. The required `agent-process / quality` job `needs` it, runs `if: always()` and fails unless every needed job's `result` is `success` (plugin 3.2.8 `quality.yml`), so a failed `link` fails the required check instead of skipping it. Confirmed live in C on the unlinked dependabot PR #606 (#599) |
 | `ci.yml` | replaced | B, D | Managed `agent-process.yml` calling `quality.yml@v<version>` with the declaration above |
 | v1 review workflow | replaced | A renames, D deletes | Managed `agent-review.yml` calling `reusable-agent-review.yml@v<version>` |
 | `.githooks/pre-push` | replaced | B | `pre-commit` pre-push hook running the declared `test` |
