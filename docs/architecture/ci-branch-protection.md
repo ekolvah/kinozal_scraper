@@ -4,18 +4,18 @@
 
 ## Required status checks (branch protection)
 
-The merge gate is the repository ruleset **`agent-process default branch`** (ADR-0013 step C,
-#599), created by `agent-process activate_protection` from the plugin's template. It applies to
-the default branch with no bypass actors, so it binds administrators too, and carries four
-rules: no deletion, no force-push, a pull request is required (no approval count), and two
-required status checks, strict (the PR must be up to date with `main`):
-**`agent-process / quality`** (the managed `agent-process.yml` running the `ci_check.py`
-registry) and **`agent-review / agent-review`** (the managed `agent-review.yml`), both bound to
-the GitHub Actions app. `agent-process / quality` `needs` every other managed job, including
-`agent-process / link` (a PR must close its issue), and fails unless each of them succeeded —
-so the issue-link requirement still blocks a merge, through the required `quality` aggregate
-rather than a context of its own. Classic branch protection stays in place but carries **no**
-required contexts; its other settings are untouched.
+The merge gate is the repository ruleset **`agent-process default branch`**, created by
+`agent-process activate_protection` from the plugin's template. It applies to the default
+branch with no bypass actors, so it binds administrators too, and carries four rules: no
+deletion, no force-push, a pull request is required (no approval count), and two required
+status checks, strict (the PR must be up to date with `main`): **`agent-process / quality`** and
+**`agent-review / agent-review`** (the managed `agent-process.yml` and `agent-review.yml`), both
+bound to the GitHub Actions app. `agent-process / quality` is an aggregate: each `ci_check.py`
+registry entry and the issue-link check `agent-process / link` (a PR must close its issue)
+report as their own check runs, and `quality` `needs` them all and fails unless each one
+succeeded. The issue-link requirement therefore blocks a merge through `quality`, without a
+context of its own. Classic branch protection carries **no** required contexts; its other
+settings are untouched.
 
 The ruleset is owned by the plugin, not by this repository: `agent-process activate_protection
 --pr <N> --dry-run` is the drift check — `unchanged <id>` means the live ruleset matches the
@@ -28,8 +28,8 @@ without a gate.
 `scripts/check_branch_protection.py` names `quality` (`ci.yml`), `pr-link`
 (`pr-link.yml` → `scripts/verify_pr_link.py`) and `agent-review` (`agent-review-v1.yml`): the
 offline guard checks them against the workflow files and `scripts/review_gate.py` reads them on
-the PR head. These v1 jobs run on every PR and block nothing (their removal is #600). The
-sections below describe how they behave.
+the PR head. These v1 jobs run on every PR and block nothing. The sections below describe how
+they behave.
 
 The v1 `agent-review` job's deterministic final step reads the action's
 schema-validated outcome directly: `clean` succeeds, `rework` succeeds **with a visible
@@ -119,7 +119,7 @@ A job that calls a reusable workflow (job-level `uses:`) never reports under its
 GitHub names each called job's check run `<caller> / <called job>`. The guard therefore keys such a
 caller `<caller> / *`, which is why the managed `agent-process / *` and `agent-review / *` callers
 sit in `NOT_REQUIRED` rather than in `REQUIRED_CONTEXTS`: a prefix key matches no declarable
-context, so they are required through the plugin ruleset (#599), never through this list.
+context, so they are required through the plugin ruleset, never through this list.
 
 With `strict: true` the "Update branch" button creates a new head SHA, so all required contexts re-run —
 an expected extra minute, not a malfunction.
@@ -128,22 +128,21 @@ an expected extra minute, not a malfunction.
 --dry-run` (see above). The v1 probe `python scripts/check_branch_protection.py` compares
 classic protection with `REQUIRED_CONTEXTS`, so it **reports drift by design**: classic carries
 no contexts, the probe exits `1` and suggests restoring the v1 set. Do not act on that
-suggestion; the window is accepted in ADR-0013 and closes with the probe's removal (#600).
-Rolling back step B through `.githooks` therefore needs `--allow-drift`. Its exit codes: `1` on
-drift, `2` when the tool itself fails (no `gh`, no admin rights, unparseable response) — a tool
-failure must not read as "no drift". It runs **on demand**: since the
-agent-process pre-commit hook replaced `.githooks/pre-push` (ADR-0013 step B, #598), no push runs
-it, which is the loss ADR-0013 records. The probe assumes the caller holds admin rights on the
+suggestion; ADR-0013 accepts this output. Pushing through `.githooks`, the rollback hook path,
+therefore needs `--allow-drift`. Its exit codes: `1` on drift, `2` when the tool itself fails
+(no `gh`, no admin rights, unparseable response) — a tool failure must not read as "no drift".
+It runs **on demand**: the agent-process pre-commit hook does not run it, which is the loss
+ADR-0013 records. The probe assumes the caller holds admin rights on the
 repository — true while this is a single-maintainer repo, and the first thing to revisit if that
 changes. Why this is not a CI job — GitHub's `GITHUB_TOKEN` has no `administration` scope, so a
 CI form needs a stored admin-scoped token whose rotation cost buys nothing here; the full
 reasoning lives in the script's docstring.
 
 A second loss comes with the prefix keying of reusable callers above: the matrix and trigger
-filter checks cannot see a caller's called jobs, so they no longer guard `agent-process / *` or
+filter checks cannot see a caller's called jobs, so they do not guard `agent-process / *` or
 `agent-review / *`. ADR-0013's risk that a plugin release renaming a job or adding a matrix or
-trigger filter can lock every PR therefore applies from step B, not from C. Prefix matching is
-deliberately not built: the guard leaves with step D (#600).
+trigger filter can lock every PR is therefore unguarded here; the recovery is the manual
+ruleset edit above. Prefix matching is deliberately not built: ADR-0013 retires this guard.
 
 **Declaring an intentional drift.** `--allow-drift "<reason>"` exits `0` and prints the reason.
 It existed so that the push hook never had to be bypassed with `--no-verify`, which also

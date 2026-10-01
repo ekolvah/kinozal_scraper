@@ -474,8 +474,7 @@ credential infrastructure.
 (`REQUIRED_CONTEXTS`) on the current head and how many distinct heads
 `agent-review` has already reviewed. It changes nothing and posts nothing.
 Those are not the contexts the ruleset requires, so the ruleset's two checks
-are confirmed separately with `gh pr checks <PR>` before a PR is reported ready
-(#599; the gate's retirement is #600).
+are confirmed separately with `gh pr checks <PR>` before a PR is reported ready.
 
 | Verdict | Exit code | Meaning |
 | --- | --- | --- |
@@ -532,18 +531,16 @@ or malformed output is red until re-run.
 
 ## OpenSpec route (agent-process plugin v2)
 
-From [ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md) step B (#598) the installed
-agent-process plugin offers a second route next to the v1 flow above:
+The installed agent-process plugin
+([ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md)) offers a second route next to the v1 flow above:
 `/opsx:propose` → architect review (`architect-review.json`) → `/opsx:apply` →
 `archive_change` → `gh pr create`, from the branch `start_change` creates. Its steps and
 gates are the plugin skill's, not this document's; the plan is the OpenSpec change, not the
 issue body. A change carried by this route is therefore exempt from the v1
 `issue_branch.py`, the issue section contract, `check_red.py` and `open_pr.py`. Its PR is
-gated by the ruleset's two checks like any other (#599); the v1 jobs run on it and do not
-block. The rules of
+gated by the ruleset's two checks like any other; the v1 jobs run on it and do not block. The rules of
 §Deterministic delivery flow that are not v1 scripts (no push to `main`, no self-merge, no
-hook bypass) apply unchanged. Which route an issue takes is the maintainer's choice until
-step D (#600) retires v1.
+hook bypass) apply unchanged. Which route an issue takes is the maintainer's choice.
 
 ## Governance conventions
 1. Create issue branches only with `python scripts/issue_branch.py <N>`; it
