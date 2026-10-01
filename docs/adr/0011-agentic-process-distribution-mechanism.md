@@ -184,3 +184,6 @@ its Copier channel instead; the plugin channel is limited to commands and agents
   plugin marketplace stops supporting explicit (pull-on-demand) updates.
 * Revisit the Layer 1 channel assignment if upstream ships a `rules` field for
   Claude Code plugins.
+* Superseded for this repository by [ADR-0013](0013-adopt-agent-process-plugin-v2.md):
+  the plugin's v2 dropped the copier mirror, and this repository now consumes the
+  plugin instead of exporting it. This record stays `accepted` as the export decision.
