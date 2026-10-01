@@ -99,6 +99,14 @@ an up-to-date branch.
 
 Each step is its own issue and PR; this record is PR 1 of #592.
 
+Documentation outside `docs/adr/` describes the implemented state
+([information-architecture policy](../architecture/information-architecture.md#what-documentation-describes-current-state-not-history-or-ideas)),
+so no step writes a plan or "until / after" wording into it. Each step's PR rewrites the
+documents describing the state that step changes, to that state. `principles.md` therefore
+does not change in PR 1: C rewrites its Quality Gates to the ruleset checks, D rewrites the
+§VII rationale and the Governance delegation, and each of those PRs carries its own
+§Governance approval.
+
 1. **A — pre-install unblock.** Rename `.github/workflows/agent-review.yml` to
    `agent-review-v1.yml` with its job id unchanged, so the classic `agent-review` context
    survives. RED first: `scripts/review_gate.py` `REVIEW_WORKFLOW_FILE` and every reference
@@ -112,20 +120,25 @@ Each step is its own issue and PR; this record is PR 1 of #592.
    PR merges, v2 `agent-process / quality` and `agent-review / agent-review` and v1
    `quality`, `pr-link`, `agent-review` are green on the same head. `.githooks` stays the
    active hook path until the pre-commit pre-push hook is shown to run the declared `test`
-   against the repository venv on this machine; the hook strips the venv from `PATH` and
-   resolves `bash` through `shutil.which`, so it is verified to be Git Bash, not WSL. Only
+   against the repository venv on this machine. The hook removes only its own pre-commit
+   venv from `PATH`, so `python` resolves through the pusher's `PATH`, and it resolves
+   `bash` through `shutil.which`; both are verified here (the repository venv, Git Bash rather
+   than WSL). Only
    then `core.hooksPath` is unset. Pilot: one small real backlog issue through
    `/opsx:propose → apply → archive`; plugin gaps are filed upstream, not patched here.
 3. **C — protection cut-over**, right after the pilot to keep the double-review window
    short. `agent-process activate_protection --dry-run`, then `--confirm`, then empty the
    classic contexts. Before and after of `…/branches/main/protection` and `…/rulesets` are
-   recorded as an issue comment.
+   recorded as an issue comment. C's PR rewrites the Quality Gates of `principles.md` and
+   `ci-branch-protection.md` to the ruleset, and is the first PR merged under it. A
+   throwaway PR from a branch with no linked issue confirms that `agent-process / quality`
+   fails on it.
 4. **D — decommission v1.** RED first: a guard that every path marked *deleted* below is
-   absent and referenced by no tracked file; then delete those paths and rewrite the docs
-   marked *rewritten*, including the `deprecated` status of ADR-0003, ADR-0004 and ADR-0007
-   and the "until / after the cut-over" clauses of `principles.md`, which collapse to the
-   end state. The fixture-ratchet scan moves out of the validator tests in the same commit
-   that deletes them. The guard is removed in D's last commit, since
+   absent and referenced by no tracked file outside `docs/adr/`, whose records keep naming
+   what they decided. Then delete those paths and rewrite the docs marked *rewritten*,
+   including the `deprecated` status of ADR-0003, ADR-0004 and ADR-0007. The fixture-ratchet
+   scan moves out of the validator tests in the same commit that deletes them. The guard is
+   removed in D's last commit, since
    `tests/test_doc_links.py` already catches dangling doc links afterwards. Stale
    project-scope plugin installs of the sandbox repositories are uninstalled by hand.
 
@@ -178,8 +191,9 @@ Verdicts: **replaced** (the plugin provides it), **kept** (consumer-owned, survi
 | `tests/test_doc_{headers,links,narrative}.py`, `tests/test_adr_records.py`, `tests/test_subprocess_encoding.py` | kept | Documentation and subprocess guards of this repository |
 | `docs/adr/0003`, `0004` | rewritten | Status `deprecated` in D, as ADR-0007: the review failover carrier and the controller-PR token rule they decide leave with v1 review |
 | `docs/adr/0009`, `0011` | kept | Append-only history; each gains a cross-link to this record when D touches it |
-| `docs/architecture/ci-tooling-decisions.md` | rewritten | Its `pre-commit` no-go (#255) and Spec Kit removal (#114) entries gain the revision recorded in "Earlier tooling decisions" below |
-| `docs/architecture/principles.md` | rewritten | Amended in PR 1 (this record); D collapses its "until / after the cut-over" clauses to the end state |
+| `docs/architecture/ci-tooling-decisions.md` | rewritten | Its `pre-commit` no-go (#255) and Spec Kit removal (#114) entries are replaced by the implemented state: the plugin's pre-push hook and OpenSpec, each with one sentence and a link to this record |
+| `docs/architecture/testing.md` | rewritten | Names the ratchet's own test instead of the validator suite D deletes |
+| `docs/architecture/principles.md` | rewritten | Quality Gates in C; the §VII rationale and the Governance delegation in D |
 | `.github/workflows/run-script.yml`, product tests and docs | kept | Out of the process; unaffected throughout |
 
 v2 conventions that do not apply here: release-please (plugin ADRs 0030, 0031) is the
