@@ -222,6 +222,9 @@ bug/support surface (goal 1) and more dev + runtime tokens (goal 2). The formula
 CLAUDE.md (de-facto industry canon); it is **not** adopted as a third-party plugin/skill
 because that package's own review agent and pre-commit hook would duplicate the existing
 `architect-reviewer` and `ci_check` — duplication instead of reuse (a §VII violation in itself).
+Adopting the `agent-process` plugin for the whole process is the opposite case: it
+*replaces* the in-repository reviewer, gates and control plane rather than running beside
+them ([ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md)).
 
 ## Development Workflow
 
@@ -237,7 +240,11 @@ restate them — edit them there.
 
 A PR MAY merge only when:
 
-- All CI checks are green: `ci.yml` (format, lint, tests, mypy, pip-audit).
+- Every required check on `main` is green. The quality check runs the set
+  `scripts/ci_check.py` defines (format, lint, tests, mypy, pip-audit, …): carried by
+  `ci.yml` until the protection cut-over of
+  [ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md), by the plugin's
+  `agent-process / quality` after it.
 - The change has tests matching its behaviour (Principle I). New extraction
   logic gets an integration test against a saved HTML/JSON fixture; new
   config rules get a unit test; new pipeline orchestration gets a
@@ -245,9 +252,9 @@ A PR MAY merge only when:
 - A newly *rejected* coverage decision (a consciously-accepted gap, a scope-/cost-skip)
   is recorded in [coverage-gaps.md](coverage-gaps.md) so it isn't
   silently re-litigated — there is no auto-generated coverage inventory to update.
-- The `Claude code review` workflow has commented on the PR (status sticky
-  comment present); a hard block on its verdict is not enforced, but
-  unaddressed concerns must be answered in PR comments before merge.
+- The required review check has reviewed the current head (`agent-review`
+  until the ADR-0013 cut-over, `agent-review / agent-review` after it);
+  findings that do not block are answered in PR comments before merge.
 - For PRs that touch HTML extraction or external API contracts, an E2E
   smoke test (real HTTP) has been run at least once on the branch — the
   daily cron run on `run-script.yml` counts.
@@ -270,6 +277,14 @@ authority: those rules bind equally and `agent-process.md` is their
 single source of truth (other mentions are links only). Amending them happens
 in that file; amending the *delegation itself* (what is canon vs. delegated) is
 a Governance change made here.
+
+**Delegation to the `agent-process` plugin.** Per
+[ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md) the procedure moves from this
+repository to the `agent-process` plugin (its `agent-process` skill and managed
+workflows) in the steps that record sets out. Until its decommission step,
+`agent-process.md` stays the binding procedure; after it, `agent-process.md` keeps only
+the consumer-owned parts and points at the plugin for the rest. The goal function,
+principles §I–VII, Quality Gates and this Governance section stay canon here either way.
 
 Amendments are made via PR that modifies this file. Version policy:
 
