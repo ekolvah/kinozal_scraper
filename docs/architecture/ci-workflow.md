@@ -194,7 +194,7 @@ whose entire job is visibility; the guard does not require `errors` anywhere.
 
 ### Doc guards
 
-Static guards over `.md` (plus one repository-wide branch, see below), all of the genre above—
+Static guards over `.md`, all of the genre above—
 static checks under `check_pytest`, without an entry in the `CHECKS` registry. This section's heading deliberately does not list files: its anchor
 is generated from its text, and tying an address to a volatile list is the same defect as a
 task number in a heading.
@@ -208,20 +208,8 @@ task number in a heading.
   otherwise gitignored repository copies in `.claude/worktrees/` would fail locally, and `Path.exists()` /
   `Path.resolve()` are case-insensitive on Windows and would allow `` `Pipeline.md#…` `` locally only to
   fail CI on Linux. Parsing uses `markdown-it-py`: a link inside a ``` block does not count as a
-  link, and heading text must be rendered.
-- **reference form**—`#N` is a parenthetical pointer, not a sentence member; in a section
-  heading it is forbidden even in parentheses, because the anchor is generated from heading text (#428). The `#`
-  sigil is reserved for issue/PRs: the rule is `agent-process.md`, the board is `Project 1`; the convention
-  replaces an open dictionary of exceptions in the predicate. This branch covers **all**
-  tracked files, not only `.md`: its dictionary is closed by **token** (`workflow`,
-  `Project`) in ordinary Markdown wrapping, and `.py` and `.toml` drift the same way—prose
-  could not hold it. It is a line regexp, so a code span does not suppress it: the rule's illustration
-  is written through a metavariable. The allowed zone is only a **closed**
-  `()` pair; otherwise one unclosed parenthesis silently turns the paragraph tail into an allowlist. Backtick
-  pairing and link boundaries are delegated to the parser, and `table` is enabled so a parenthesis from one cell
-  does not close with a parenthesis from another. MADR records (`docs/adr/`) are outside the scope by genre: a record is
-  the home of rationale, dated by design, and immutable after acceptance.
+  link, and heading text must be rendered. Tracked `.md` under `openspec/` are targets, not sources:
+  change artifacts are dated records written against the repository root.
 
-Each is presence / resolvability / form, **not** correctness: a pointer to a file that exists but
-has ceased to be the topic's home, like a chronicle carefully put in parentheses, is caught by a person
-in review. The boundaries of every guard are named in its docstring.
+Each is presence / resolvability, **not** correctness: a pointer to a file that exists but
+has ceased to be the topic's home is caught by a person in review. The boundaries of every guard are named in its docstring.

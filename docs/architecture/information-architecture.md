@@ -169,8 +169,7 @@ for a static check that `pytest` already runs. Scope is
 derived from a glob so the next architecture document enters the rule automatically. `tests/test_doc_links.py`
 (#427) guards pointer integrity (an ID is an address): every internal link and code span of the form
 `` `file.md#anchor` `` must resolve, otherwise a renamed section silently breaks all incoming anchors.
-`tests/test_doc_narrative.py` (#428) guards issue-link **form**: `#N` is a parenthetical pointer,
-not a sentence member, and is forbidden in a section title. The mechanics of all three are in
+The mechanics of both are in
 [`ci-workflow.md`](ci-workflow.md#doc-guards).
 
 **Presence ≠ correctness.** Lint guarantees that a docstring *exists* and is non-empty, not that it
@@ -204,32 +203,6 @@ false coverage.
   another machine just as the repository does; that is their durable home). Precedent: an attempt
   to put the trailer-initiative roadmap in `docs/initiatives/` was rejected (#188), and the scope
   itself is distributed across the initiative's issues (#138–#145).
-
-**Link form** (gated by `tests/test_doc_narrative.py`; mechanics —
-[`ci-workflow.md`](ci-workflow.md#doc-guards)):
-
-- **`#N` is a parenthetical pointer, not a sentence member.** The criterion is testable: remove the
-  parentheses — does the statement remain complete? Then the form is correct
-  (`` discriminator compares an exact literal (#385) ``). If a phrase is incomplete without
-  visiting the tracker (`` Closed by #88. ``, `` RCA #396 established that… ``), it retells an
-  event with its own home. The gate checks **form**, not genre: a chronicle neatly placed in
-  parentheses passes; a human catches it in review.
-- **`#N` is forbidden in a section title, including in parentheses.** GitHub generates an anchor
-  from title text, so `` ## Eval harness (#139) `` makes the section address `#eval-harness-139`:
-  an address tied to the number of the task that produced it.
-- **The `#` sigil is reserved for issue/PR links.** The rule is `` `agent-process.md` ``; the board
-  is `` `Project 1` ``. Otherwise the guard would need an open dictionary of left contexts that
-  grows with every new notation form. It is gated across **all** tracked files, not only `.md`:
-  in `.py`/`.toml` the same error costs more because `#N` is printed to the agent. The branch is a
-  line-by-line regexp over the raw file, so a **code span is not an escape hatch**: write the
-  negative example through a metavariable (`` `workflow #N` ``), where `#` is not followed by a
-  digit, and the rule can be illustrated without failing on its own example.
-- **Write a negative form example in a code span**; otherwise the document explaining the rule
-  fails it. This works for the two Markdown branches; the sigil branch has a different escape hatch:
-  the metavariable above.
-- **MADR records (`docs/adr/`) are outside the guard's scope by genre**: a record is the rationale
-  home, structurally dated and immutable after acceptance, so a guard failure on it would have no
-  legal fix.
 
 The existing subsections are **instances** of this umbrella, not separate rules: machine/environment-
 specific material → out-of-repository memory (["Memory ↔ repository"](#memory--repository-resolved-policy)
