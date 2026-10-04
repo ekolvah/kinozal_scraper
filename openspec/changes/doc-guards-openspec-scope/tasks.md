@@ -4,7 +4,7 @@
 
 ## 1. RED
 
-- [ ] 1.1 Add `TestDocLinks::test_openspec_records_are_out_of_scope` to `tests/test_doc_links.py` (design D1, D4): tracked `.md` exist under `openspec/`, and none is in `_tracked_docs()`; run `agent-process check_red tests/test_doc_links.py::TestDocLinks::test_openspec_records_are_out_of_scope`; verify it reports RED; commit RED
+- [x] 1.1 Add `TestDocLinks::test_openspec_records_are_out_of_scope` to `tests/test_doc_links.py` (design D1, D4): tracked `.md` exist under `openspec/`, and none is in `_tracked_docs()`; run `agent-process check_red tests/test_doc_links.py::TestDocLinks::test_openspec_records_are_out_of_scope`; verify it reports RED; commit RED
 
 ## 2. Exclude openspec/ from test_doc_links (D1)
 

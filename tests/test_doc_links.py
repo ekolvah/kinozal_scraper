@@ -219,6 +219,16 @@ class TestDocLinks:
             f"вакуум, против которого гард написан (§IV)"
         )
 
+    def test_openspec_records_are_out_of_scope(self) -> None:
+        openspec_docs = [
+            n for n in _tracked_files() if n.startswith("openspec/") and n.endswith(".md")
+        ]
+        assert openspec_docs, (
+            "под openspec/ нет ни одного tracked `.md` — проверка исключения вырождена"
+        )
+        leaked = [name for name in _tracked_docs() if name.startswith("openspec/")]
+        assert not leaked, f"OpenSpec-записи попали в скоуп гарда: {leaked}"
+
     def test_every_internal_link_resolves(self) -> None:
         problems = _problems(_tracked_docs())
         assert not problems, (
