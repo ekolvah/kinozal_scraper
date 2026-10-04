@@ -26,7 +26,9 @@ from the git index, so the next `.md` is covered by the invariant automatically.
 is also checked **against the index** and **lexically** (see `resolve_target`): any filesystem access
 — `Path.exists()`, `Path.resolve()` — is case-insensitive on Windows, and `Pipeline.md#…` would pass
 locally only to fail in CI on Linux: the same local-green/CI-red split for which `git ls-files` was
-chosen.
+chosen. Tracked `.md` under `openspec/` are link targets but not sources: change artifacts are
+dated records written against the repository root, and a later change deletes what an earlier
+plan points at.
 
 **Guard boundaries, honestly.** It catches *unresolvable* links, but not *wrong-but-resolvable*
 ones: a reference to an existing file that ceased to be a topic’s home (the pre-#427
@@ -191,7 +193,11 @@ def _tracked_paths() -> frozenset[str]:
 
 
 def _tracked_docs() -> list[str]:
-    return [name for name in _tracked_files() if name.endswith(".md")]
+    return [
+        name
+        for name in _tracked_files()
+        if name.endswith(".md") and not name.startswith("openspec/")
+    ]
 
 
 @cache

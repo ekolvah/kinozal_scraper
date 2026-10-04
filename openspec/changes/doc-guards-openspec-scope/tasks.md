@@ -8,7 +8,7 @@
 
 ## 2. Exclude openspec/ from test_doc_links (D1)
 
-- [ ] 2.1 `_tracked_docs` drops names under `openspec/`; `_tracked_paths` unchanged; add the scope sentence to the module docstring; verify `python -m pytest tests/test_doc_links.py -q` passes; commit group 2
+- [x] 2.1 `_tracked_docs` drops names under `openspec/`; `_tracked_paths` unchanged; add the scope sentence to the module docstring; verify `python -m pytest tests/test_doc_links.py -q` passes; commit group 2
 
 ## 3. Delete test_doc_narrative (D2, D3)
 
