@@ -17,12 +17,12 @@
 
 ## 4. Verify
 
-- [ ] 4.1 Run `npx -y @fission-ai/openspec@1.13.0 validate --strict --all`; verify exit 0
-- [ ] 4.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`); verify exit 0
+- [x] 4.1 Run `npx -y @fission-ai/openspec@1.13.0 validate --strict --all`; verify exit 0
+- [x] 4.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`); verify exit 0
 
 ## 5. Deliver
 
-- [ ] 5.1 Run `agent-process archive_change doc-guards-openspec-scope`, then `gh pr create --title "test: doc-guards-openspec-scope" --body-file <report>` (report: the tracking issue as a plain reference, the scenario → test map, the D2 lost-proof table); verify the PR opens on the archive head
+- [x] 5.1 Run `agent-process archive_change doc-guards-openspec-scope`, then `gh pr create --title "test: doc-guards-openspec-scope" --body-file <report>` (report: the tracking issue as a plain reference, the scenario → test map, the D2 lost-proof table); verify the PR opens on the archive head
 - [ ] 5.2 Run `agent-process wait_for_pr <PR>` after creation and after every corrective push; stop when a settled head has no open P0/P1 thread or at the three-round escalation
 
 ## Scenario → test map
