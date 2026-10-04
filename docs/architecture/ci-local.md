@@ -19,11 +19,8 @@ environment). On Windows, `bash` must be Git Bash (`usr\bin\bash.exe`), not WSL'
 `System32\bash.exe`.
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
-ruff format → ruff lint → language → detect-secrets → pytest → pip-audit (runtime) →
-pip-audit (dev) → requirements consistency → mypy → import contracts. The `language`
-check runs `scripts/check_language.py` locally and in its own CI job; it enforces
-English-only tracked Markdown prose and Python commentary. Its exit `0` is compliant text, `1`
-is a policy violation, and `2` means trustworthy evidence could not be obtained. (Module-docstring presence
+ruff format → ruff lint → detect-secrets → pytest → pip-audit (runtime) →
+pip-audit (dev) → requirements consistency → mypy → import contracts. (Module-docstring presence
 is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
 see the lint gates below.)
 
@@ -87,9 +84,6 @@ Developer-flow gates whose caller distinguishes a domain verdict from missing
 evidence use one contract: `0` means the gate passed, `1` means it computed an
 explicit negative verdict, and `2` means usage was invalid or the gate could
 not compute (tool invocation, output capture, or payload decoding failed).
-`check_language.py`, for example, reserves `1` for successfully read text that
-violates the policy; an unreadable file or an unknown scope is `2`, so a broken
-input is not reported as non-English prose (#413).
 
 `ci_check.py` remains deliberately narrower at the child-tool boundary: any
 non-zero result from ruff, pytest, pip-audit, mypy, or import-linter means the

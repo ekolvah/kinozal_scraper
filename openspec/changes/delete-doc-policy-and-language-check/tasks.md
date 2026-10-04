@@ -4,13 +4,13 @@
 
 ## 1. RED
 
-- [ ] 1.1 no RED: tooling-check and documentation deletion under `skip_specs` (design D4)
+- [x] 1.1 no RED: tooling-check and documentation deletion under `skip_specs` (design D4)
 
 ## 2. Delete the language check (D1)
 
-- [ ] 2.1 Delete `scripts/check_language.py` and `tests/test_language_policy.py`; remove `check_language()` and the `"language"` entry of `CHECKS` from `scripts/ci_check.py`; verify `python scripts/ci_check.py --list-checks` omits `language` and `python -m pytest tests/test_ci_check.py -q` passes
-- [ ] 2.2 `docs/architecture/ci-local.md`: drop `language →` from the check order and the `language`-check sentences (lines 23-26); replace the `check_language.py` exit-code example (lines 90-92) with one from a remaining gate or drop the example sentence; verify `git grep -n check_language -- docs/architecture/ci-local.md` prints nothing
-- [ ] 2.3 `docs/architecture/coverage-gaps-quality-gates.md:29-32`: rewrite the entry so the Russian return path of the `.claude/agents/*.md` denylist is a consciously accepted gap (D1 table, row 2), not "kept out transitively"; verify by reading the edited paragraph; commit group 2
+- [x] 2.1 Delete `scripts/check_language.py` and `tests/test_language_policy.py`; remove `check_language()` and the `"language"` entry of `CHECKS` from `scripts/ci_check.py`; verify `python scripts/ci_check.py --list-checks` omits `language` and `python -m pytest tests/test_ci_check.py -q` passes
+- [x] 2.2 `docs/architecture/ci-local.md`: drop `language →` from the check order and the `language`-check sentences (lines 23-26); replace the `check_language.py` exit-code example (lines 90-92) with one from a remaining gate or drop the example sentence; verify `git grep -n check_language -- docs/architecture/ci-local.md` prints nothing
+- [x] 2.3 `docs/architecture/coverage-gaps-quality-gates.md:29-32`: rewrite the entry so the Russian return path of the `.claude/agents/*.md` denylist is a consciously accepted gap (D1 table, row 2), not "kept out transitively"; verify by reading the edited paragraph; commit group 2
 
 ## 3. Cut information-architecture.md (D2)
 
