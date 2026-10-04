@@ -113,16 +113,12 @@
   text into `docs/architecture/*`, which the agent still reads on demand). Growth specifically in
   agent/command frontmatter is a reason to add a **second** counter, not extend this one.
 
-- **AC. A date in documentation is not guarded by a marker for dated material (#428).** The
-  link-form guard (`tests/test_doc_narrative.py`) took two of three branches announced in the issue;
-  the third — "`20\d\d-\d\d-\d\d` outside an explicit measurement marker" — was **not taken**.
-  There are zero violations, no recurrence precedent, and the canon (`project-map.md` §"What
-  documentation describes") says nothing about dates, so the predicate itself would be the only
-  rule definition. Its closed marker vocabulary (`замер`, `проверено`, `measured`, …) would have to
-  be inferred from seven live lines, fitting the text: the first legitimate "as of 2026-08-01" would
-  make CI red for a correct document, and maintenance would become "it turned red → add a word".
-  Recorded so the branch is not reopened as forgotten: revisit when there is a **measured** recurrence
-  and a date rule in the canon, not vice versa.
+- **AC. The form of an issue reference is not guarded (#620).** The link-form guard (`#N` only inside
+  parentheses, never in a heading, `#` before a digit reserved for issues) was deleted with its
+  rule. It gated writing style, not correctness, and it failed every OpenSpec plan, which names
+  issues in running prose. **Accepted loss:** narrative `#N` may return to docs; a `#N` in a heading
+  is caught only by its effect, when a rename dangles an inbound anchor (`tests/test_doc_links.py`).
+  Recorded so "why no link-form guard?" is not reopened as work-for-work.
 
 - **AD. The merge-gate drift check runs on demand only (ADR-0013, #600).** The merge gate is the
   plugin's ruleset, and `agent-process activate_protection --pr <N> --dry-run` is the only

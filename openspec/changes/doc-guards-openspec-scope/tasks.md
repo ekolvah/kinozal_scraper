@@ -12,8 +12,8 @@
 
 ## 3. Delete test_doc_narrative (D2, D3)
 
-- [ ] 3.1 Delete `tests/test_doc_narrative.py`; drop it from the `requirements-dev.in` comment; verify `git grep -n test_doc_narrative -- ':!docs/adr' ':!openspec'` lists only the doc lines 3.2 removes
-- [ ] 3.2 `information-architecture.md`: remove the `test_doc_narrative` sentence ("all three" → "both") and the **Link form** block; `ci-workflow.md` §Doc guards: remove the **reference form** bullet, "(plus one repository-wide branch, see below)" and the form/chronicle parts of the closing paragraph (D3); `coverage-gaps-quality-gates.md`: replace entry AC with the accepted-gap entry per D2, naming the guard by role; verify `git grep -n test_doc_narrative -- ':!docs/adr' ':!openspec'` and `git grep -n -i -e "reference form" -e sigil -e "parenthetical pointer" -e chronicle -- docs/architecture` print nothing, and `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py -q` passes; commit group 3
+- [x] 3.1 Delete `tests/test_doc_narrative.py`; drop it from the `requirements-dev.in` comment; verify `git grep -n test_doc_narrative -- ':!docs/adr' ':!openspec'` lists only the doc lines 3.2 removes
+- [x] 3.2 `information-architecture.md`: remove the `test_doc_narrative` sentence ("all three" → "both") and the **Link form** block; `ci-workflow.md` §Doc guards: remove the **reference form** bullet, "(plus one repository-wide branch, see below)" and the form/chronicle parts of the closing paragraph (D3); `coverage-gaps-quality-gates.md`: replace entry AC with the accepted-gap entry per D2, naming the guard by role; verify `git grep -n test_doc_narrative -- ':!docs/adr' ':!openspec'` and `git grep -n -i -e "reference form" -e sigil -e "parenthetical pointer" -e chronicle -- docs/architecture` print nothing, and `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py -q` passes; commit group 3
 
 ## 4. Verify
 
