@@ -32,7 +32,7 @@ schema: spec-driven
 #         - Summarize the archive outcome before finishing
 # agent-process:begin
 # openspec: 1.13.0
-# agent-process release: 3.2.8
+# agent-process release: 3.8.1
 rules:
   proposal:
     - Follow the Proposal section of the agent-process skill.
