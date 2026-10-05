@@ -23,8 +23,8 @@
 
 ## 5. Verify
 
-- [ ] 5.1 Run `npx -y @fission-ai/openspec@1.13.0 validate --strict --all`; verify exit 0
-- [ ] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`); verify exit 0
+- [x] 5.1 Run `npx -y @fission-ai/openspec@1.13.0 validate --strict --all`; verify exit 0
+- [x] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`); verify exit 0
 
 ## 6. Deliver
 
