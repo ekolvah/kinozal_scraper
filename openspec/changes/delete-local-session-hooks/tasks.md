@@ -4,26 +4,26 @@
 
 ## 1. RED
 
-- [ ] 1.1 no RED: `skip_specs` deletion-and-docs change with no delta scenario. Dangling references are caught by test collection (an import of a deleted module fails it) and by the 5.3 grep (design D5).
+- [x] 1.1 no RED: `skip_specs` deletion-and-docs change with no delta scenario. Dangling references are caught by test collection (an import of a deleted module fails it) and by the 5.3 grep (design D5).
 
 ## 2. Re-check the plugin hooks (design D1, D2)
 
-- [ ] 2.1 Re-run the observation recorded in proposal.md — Why against the plugin release installed at apply time: `navigation_policy pre-bash` denies a `cat README.md` payload naming `Read`, and `memory_checkpoint post-edit` flags a write under `.claude/projects/<slug>/memory/`. Record commands and output for the PR report. Stop and report if either no longer holds.
+- [x] 2.1 Re-run the observation recorded in proposal.md — Why against the plugin release installed at apply time: `navigation_policy pre-bash` denies a `cat README.md` payload naming `Read`, and `memory_checkpoint post-edit` flags a write under `.claude/projects/<slug>/memory/`. Record commands and output for the PR report. Stop and report if either no longer holds.
 
 ## 3. Navigation hooks (design D1, D3)
 
-- [ ] 3.1 Remove the two `PreToolUse` entries from `.claude/settings.json`; remove `pre-bash`/`pre-read` from `scripts/hooks.py` (docstring, `_PRE_TOOL_USE`, usage line, the `navigation_policy` import) and their cases from `tests/test_hooks.py`; `git rm scripts/navigation_policy.py tests/test_navigation_policy.py` (its deny-shadowing tests go with it, design D3).
-- [ ] 3.2 In `tests/test_doc_headers.py` replace the `read_budget_hint` import with a local `28_000`-byte constant compared to the file size, with a comment naming the plugin's budget as the source.
+- [x] 3.1 Remove the two `PreToolUse` entries from `.claude/settings.json`; remove `pre-bash`/`pre-read` from `scripts/hooks.py` (docstring, `_PRE_TOOL_USE`, usage line, the `navigation_policy` import) and their cases from `tests/test_hooks.py`; `git rm scripts/navigation_policy.py tests/test_navigation_policy.py` (its deny-shadowing tests go with it, design D3).
+- [x] 3.2 In `tests/test_doc_headers.py` replace the `read_budget_hint` import with a local `28_000`-byte constant compared to the file size, with a comment naming the plugin's budget as the source.
 
 ## 4. Memory checkpoint (design D2)
 
-- [ ] 4.1 From `scripts/hooks.py` remove `_MEMORY_DIR_RE`, `_is_memory_write`, `memory_write_signal`, the `memory_write` branch of `plan_checks`/`run_on_paths`, the `memory_write` signal kind, the #353 docstring paragraph, and the `re` import if nothing else uses it; remove `TestMemoryWriteGuard` and other memory cases from `tests/test_hooks.py`. Verify: `python -m pytest tests/test_hooks.py -q` passes.
+- [x] 4.1 From `scripts/hooks.py` remove `_MEMORY_DIR_RE`, `_is_memory_write`, `memory_write_signal`, the `memory_write` branch of `plan_checks`/`run_on_paths`, the `memory_write` signal kind, the #353 docstring paragraph, and the `re` import if nothing else uses it; remove `TestMemoryWriteGuard` and other memory cases from `tests/test_hooks.py`. Verify: `python -m pytest tests/test_hooks.py -q` passes.
 
 ## 5. Docs and ledger (design D3, D4)
 
-- [ ] 5.1 Point `.claude/rules/mindset.md` (the "policy is canonical in" sentence) and `docs/architecture/ci-local.md` §Session hooks at the plugin's `navigation_policy` and `memory_checkpoint` hooks; `ci-local.md` keeps the `on-edit` ruff and `pip-compile` checks and drops the sentence on why navigation entries stay out of `permissions.deny`. In `docs/architecture/project-map.md` drop the `navigation_policy.py` row and the `pre-bash`/`pre-read`/memory clauses of the `hooks.py` row.
-- [ ] 5.2 Retire `AM` in `docs/architecture/coverage-gaps-agent-tooling.md` and add `AS` there; in `docs/architecture/coverage-gaps.md` set the ID range to `A` through `AS` and list `AM` as retired with #612 in the agent-tooling bullet.
-- [ ] 5.3 Verify: `git grep -n -e 'scripts/navigation_policy' -e 'scripts\.navigation_policy' -e test_navigation_policy -e 'scripts\.hooks pre-' -e memory_write -e _MEMORY_DIR_RE -- ':!openspec' ':!docs/adr'` prints nothing, and `python -m pytest tests/test_hooks.py tests/test_doc_headers.py tests/test_doc_links.py tests/test_settings_deny.py tests/test_always_load_budget.py -q` passes; commit.
+- [x] 5.1 Point `.claude/rules/mindset.md` (the "policy is canonical in" sentence) and `docs/architecture/ci-local.md` §Session hooks at the plugin's `navigation_policy` and `memory_checkpoint` hooks; `ci-local.md` keeps the `on-edit` ruff and `pip-compile` checks and drops the sentence on why navigation entries stay out of `permissions.deny`. In `docs/architecture/project-map.md` drop the `navigation_policy.py` row and the `pre-bash`/`pre-read`/memory clauses of the `hooks.py` row.
+- [x] 5.2 Retire `AM` in `docs/architecture/coverage-gaps-agent-tooling.md` and add `AS` there; in `docs/architecture/coverage-gaps.md` set the ID range to `A` through `AS` and list `AM` as retired with #612 in the agent-tooling bullet.
+- [x] 5.3 Verify: `git grep -n -e 'scripts/navigation_policy' -e 'scripts\.navigation_policy' -e test_navigation_policy -e 'scripts\.hooks pre-' -e memory_write -e _MEMORY_DIR_RE -- ':!openspec' ':!docs/adr'` prints nothing, and `python -m pytest tests/test_hooks.py tests/test_doc_headers.py tests/test_doc_links.py tests/test_settings_deny.py tests/test_always_load_budget.py -q` passes; commit.
 
 ## 6. Verify
 
