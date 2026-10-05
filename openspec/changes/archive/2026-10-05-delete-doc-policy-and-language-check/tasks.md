@@ -28,7 +28,7 @@
 
 ## 6. Deliver
 
-- [ ] 6.1 Run `agent-process archive_change delete-doc-policy-and-language-check`, then `gh pr create --title "chore: delete-doc-policy-and-language-check" --body-file <report>` (report: `Refs #615` as a plain reference, the scenario → test map, the D1 lost-proof table); verify the PR opens on the archive head
+- [x] 6.1 Run `agent-process archive_change delete-doc-policy-and-language-check`, then `gh pr create --title "chore: delete-doc-policy-and-language-check" --body-file <report>` (report: `Refs #615` as a plain reference, the scenario → test map, the D1 lost-proof table); verify the PR opens on the archive head
 - [ ] 6.2 Run `agent-process wait_for_pr <PR>` after creation and after every corrective push; stop when a settled head has no open P0/P1 thread or at the three-round escalation
 
 ## Scenario → test map
