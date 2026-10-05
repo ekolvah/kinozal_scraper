@@ -19,7 +19,7 @@
 
 ## 4. ADR-0014 (D3)
 
-- [ ] 4.1 Write `docs/adr/0014-drop-the-documentation-language-gate.md` from `docs/adr/template.md` (status `accepted`, date 2026-10-04): English stays, the gate is dropped, evidence `ekolvah/agent-process-distribution#341` and the empty allow-list, reopen condition per D3; set ADR-0005 `status: "superseded by ADR-0014"`; retarget the `tests/test_doc_headers.py:52` comment to ADR-0014; verify `python -m pytest tests/test_adr_records.py tests/test_doc_links.py -q` passes; commit group 4
+- [x] 4.1 Write `docs/adr/0014-drop-the-documentation-language-gate.md` from `docs/adr/template.md` (status `accepted`, date 2026-10-04): English stays, the gate is dropped, evidence `ekolvah/agent-process-distribution#341` and the empty allow-list, reopen condition per D3; set ADR-0005 `status: "superseded by ADR-0014"`; retarget the `tests/test_doc_headers.py:52` comment to ADR-0014; verify `python -m pytest tests/test_adr_records.py tests/test_doc_links.py -q` passes; commit group 4
 
 ## 5. Verify
 
