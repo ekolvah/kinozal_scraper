@@ -27,9 +27,10 @@
   from this repository. What stays local: `tests/test_agent_frontmatter.py` denies removed wording
   verbatim — `do not inflate` / `ruthless` / `brevity by default` — over `.claude/agents/*.md`.
   **The verbatim denylist covers only the English return path** (#470): the phrasings actually
-  removed were Russian, and they are now kept out transitively by `check_language.py`, which
-  covers `.claude/**` Markdown prose. Narrowing or dropping the language gate therefore silently
-  reopens that hole — the dependency is recorded here because it is invisible in the test.
+  removed were Russian, and their return is **consciously not covered**: the documentation-language
+  gate that kept them out was dropped (ADR-0014), and the only local agent file is
+  `.claude/agents/discovery.md`. A merged PR that brings Cyrillic prose back is the reopen
+  condition ADR-0014 names.
   **Semantic paraphrase is consciously NOT covered** ("be selective", "only report what
   matters"): checking prompt meaning would require an LLM call for every suite run, therefore cost
   more and be less deterministic than the subject under test; while a regex over an open set of

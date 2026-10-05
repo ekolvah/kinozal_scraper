@@ -49,7 +49,7 @@ _SCOPED_DIRS = (
     _REPO_ROOT / ".claude" / "rules",
 )
 
-# English is the repository documentation language (ADR-0005); the marker set is closed.
+# English is the repository documentation language (ADR-0014); the marker set is closed.
 _MARKERS = ("**Question this document answers:**",)
 
 # Stop at any section heading; otherwise a later prose mention could count as a header.

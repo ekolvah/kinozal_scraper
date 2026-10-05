@@ -1,0 +1,40 @@
+{
+  "verdict": "approve",
+  "reviewer": "architect-reviewer",
+  "reasoning": "Both earlier findings are answered: every lost proof names a catcher that is reached or an honest none, the stale prose pointers are listed and caught by a repo-wide grep in task 3.2, every task verify can pass in its group order, and the CI/ruleset claim cites its observation.",
+  "classes": {
+    "simpler": {
+      "evidence": "design.md D1 rejects keeping the check as a repository gate (contradicts #614, a CI job per push for a finished migration); D2 rejects deleting the whole file into project-map.md (breaks its index-not-content rule and more inbound links). D3 adds one ADR because the docs/adr policy (information-architecture.md:84-92) forbids rewriting an accepted record. Issue #615 scopes the check deletion and the IA cut as one unit.",
+      "result": "ok"
+    },
+    "map": {
+      "evidence": ".openspec.yaml sets skip_specs: true and no specs/ delta exists; tasks.md ## Scenario → test map records n/a with that reason and names the doc-integrity tests.",
+      "result": "ok"
+    },
+    "red": {
+      "evidence": "tasks.md 1.1 records `no RED: tooling-check and documentation deletion under skip_specs (design D4)`; no product behaviour changes, and D4 explains why no guard pins the absence from CHECKS.",
+      "result": "ok"
+    },
+    "platform": {
+      "evidence": "proposal.md Impact, CI bullet now cites .github/agent-process-quality.json:4, the ci-local.md 'Single source of truth' paragraph (:69, a bold paragraph, not a heading), the live ruleset read (required contexts only `agent-process / quality` and `agent-review / agent-review`) and ci-branch-protection.md:9-16.",
+      "result": "ok"
+    },
+    "replaced": {
+      "evidence": "Dropped guard: scripts/check_language.py (CHECKS `language`, ci_check.py:59-61, :247). design.md D1 lists its three lost proofs with a catcher row each; no project-declared input is replaced. The memory hook and principles.md stay untouched (deferred to #612, stated in Non-Goals).",
+      "result": "ok"
+    },
+    "catcher": {
+      "evidence": "D1 row 1: none automated; the maintainer reviews before merging, which is the merge step SKILL §Delivery leaves to the person. agent-review is explicitly not counted (entry W). D1 row 2: none, accepted in ledger entry W. D1 row 3: test_doc_headers.py::_MARKERS via pytest → ci_check → agent-process / quality, so it is reached. Stale prose pointers (test_adr_records.py:13-14, :46, :112; information-architecture.md:24-26, :234-238) are listed in D2 and tasks 3.1/3.2. Task 3.2's repo-wide `git grep Canonical-home` / `check_language` (excluding docs/adr and openspec) runs after every removal; the lowercase `canonical-home` at information-architecture.md:17, :21 does not match the case-sensitive grep. Task 2.2's grep is scoped to ci-local.md, so it can pass in group 2.",
+      "result": "ok"
+    },
+    "length": {
+      "evidence": "Added or edited rule text: the moved marker sentence (~37 words, information-architecture.md:118-120), of which test_doc_headers.py::_MARKERS asserts the 4-word marker. The docs/architecture / docs/adr role sentence, three headings, two rewritten in-file sentences, ledger entry W, CLAUDE.md:52 wording and the ADR-0014 body are documentation, held only by test_adr_records structure and test_doc_links resolution. The change deletes far more rule text (~150 lines) than it adds.",
+      "result": "ok"
+    },
+    "bespoke": {
+      "evidence": "The plan adds no script or check; it removes one (scripts/check_language.py) and its test.",
+      "result": "ok"
+    }
+  },
+  "scenario_coverage": []
+}

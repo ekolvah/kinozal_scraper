@@ -21,29 +21,11 @@ layers; merging them into one picture creates the false impression of a star:
   made a tree without either duplicating the fact in each branch (paraphrase drift; a canonical-home
   violation) or denying a consumer its pointer to the canon.
 
-The `principles.md ↔ information-architecture.md` edge is **intentionally bidirectional**:
-`principles` delegates the IA policy here, and this file describes the tier for principles. It is
-not a cycle error.
+`principles.md` delegates the IA policy to this file; the edge is one-directional.
 
-### Knowledge-carrier tier model (official, Claude Code)
+### Always-load budget
 
-Claude Code specifies not the names of `docs/*` (its standard does not regulate them, so there is
-nothing to rename) but the **hierarchy of knowledge carriers**:
-
-| Tier | Purpose | When loaded |
-|---|---|---|
-| `CLAUDE.md` (root) | Thin router: what app this is, environment pitfalls, and pointers. **Target: < 200 lines** | Every session, in full |
-| `.claude/rules/*.md` | Operational instructions, **one file = one topic**; can be path-scoped with frontmatter `paths:` | Every session (or only when working on matching paths) |
-| `.claude/` | Local agents, hooks, and permissions, plus the plugin-installed `/opsx:*` commands and skills | On invocation / at start |
-| `docs/architecture/*.md` | Reference: how the code works (runtime/pipeline/storage/gemini/…) plus this project map and `principles.md` | On demand |
-| `docs/adr/*.md` | Explanation: why the decision was made this way and which alternatives were rejected (MADR 4.0.0, append-only) | Linked from a state document |
-| `~/.claude/projects/<repo>/memory/` | Auto-memory: **machine- or process-specific only** (see below) | `MEMORY.md` index every session |
-
-**Be honest about tokens.** `.claude/rules/` files *without* `paths:` load in every session just
-like `CLAUDE.md`; this is **not** immediately fewer tokens. The gain is (a) **deduplication** (a
-rule lives in one place), (b) **single responsibility**, and (c) **path scoping** (`paths:
-[tests/**]` is not loaded when tests are untouched — the only token-positive case).
-
+`CLAUDE.md` and the `.claude/rules/` files *without* `paths:` load in every session.
 `tests/test_always_load_budget.py` gates the total size of this unconditional charge (#375): the
 threshold is a ratchet so growth happens through a deliberate review change, not silent drift
 (the budget grew by ~3.8 KB in #416/#417). What the gate **does not** catch is ledger entry **AB**
@@ -53,22 +35,11 @@ in [`coverage-gaps.md`](coverage-gaps.md).
 turns through `cache_read`, and the ratchet cannot see that multiplier. `scripts/token_trend.py`
 measures observed raw-token consumption (#464, #565), from Claude Code transcripts by branch and turn.
 
-### Canonical-home rule
+### Decision records
 
-> **Every fact has exactly one home. Other mentions are links only, never paraphrases.**
+`docs/architecture/` is reference: how the code works. `docs/adr/` is explanation: why a decision
+was made this way and which alternatives were rejected (MADR 4.0.0, append-only).
 
-- **Agent procedure** → the agent-process plugin's `agent-process` skill; the repository-owned
-  additions (Evidence block, discovery runbook, governance conventions) and the objective function
-  → `docs/architecture/`. A `.claude/**` file carries **only the interface and permissions**: how
-  a subagent is called and what it hands back. Script and command names there are legitimate;
-  defining rather than pointing is forbidden (#452), and a human enforces it in review.
-- **Operational procedural rules** (workflow) remain **whole — rule and rationale together**;
-  they are not split (splitting recreates the duplicate). The former location becomes a pointer.
-  **Rationale ≠ narrative** (#375): retain the decision plus one sentence explaining why it is
-  still valid (without it, the rule looks ritualistic and the next "simplifier" will remove it);
-  move the narrative — dates, commit numbers, and what a specific review caught — to the issue/PR
-  body. The rule retains only bare `(#N)`. Before removing it, check `gh issue view N` to ensure
-  the narrative is really there; some facts are session artefacts.
 - **Decision rationale** ("why this was chosen rather than that, and why it remains valid") → a
   repository record with a **stable ID**, linked by a state document. Its destination is the
   **first match**: (1) "test X is not covered" → [`coverage-gaps.md`](coverage-gaps.md); (2) "tool
@@ -90,44 +61,14 @@ measures observed raw-token consumption (#464, #565), from Claude Code transcrip
   that the old one links to forward. The size guide is up to ~200 lines: a longer file displaces
   the context for which it was opened. `tests/test_adr_records.py` holds the structure. Whether a
   decision merits a record is a cost-of-change judgement made in the change's design, not a gate.
-- **Wording of principles §I–VII** → canonical in [`principles.md`](principles.md), referenced by
-  number (the plugin's architect review, `mindset.md`); **do not change the numbering**.
-- **Enforcement facts** (git prohibitions) → canonical in `.claude/settings.json`
-  `permissions.deny` (+ synchronisation test `tests/test_settings_deny.py`). **Do not create mirror
-  files** — that is a duplicate by definition.
-- **Navigation policy** (which shell route a `Read`/`Grep`/`Glob` call replaces, and what a
-  `Read` slice may cost) → canonical in `scripts/navigation_policy.py`, delivered as a
-  `PreToolUse` denial message on both routes (#485, #534). Separate carrier from the security
-  policy above on purpose; `.claude/rules/mindset.md` links, never restates the rule set.
-- A `.claude/rules/` file **does not** paraphrase a principle or deny line; it contains only a link
-  or a procedure that exists nowhere else.
 
-**A human enforces the boundary in review.** `grep` catches only verbatim copies, not semantic
-paraphrase; when a rule moves, the reviewer checks that the former location retains a **link, not a
-retelling**. We deliberately do **not** build a semantic-duplicate detector — it would create false
-coverage (a §IV violation: a green detector that misses paraphrase is worse than an honest "a human
-reviews it").
-
-### Documentation and commentary language policy
-
-All repository documentation prose and Python commentary are English-only. This makes the
-repository legible to every supported agent and contributor without maintaining parallel-language
-rules. The decision, alternatives, and migration rationale are in
-[ADR-0005](../adr/0005-english-repository-documentation.md).
+### Documentation guards
 
 For mapped Markdown files, the sole accepted question marker is
 `**Question this document answers:**`, before the first `## `. The `_MARKERS` expectation is this
 single English marker; adding an alternative is a policy change, not a per-file test exception.
-`scripts/check_language.py` enforces the English-only policy for tracked Markdown prose and Python
-commentary; code spans and fenced code/data are deliberately outside its prose scope.
 
-**The policy's carriers are `.md` and `.py` — nothing else, and that is a decision, not an
-oversight.** Comments in workflow YAML, `.pre-commit-config.yaml`, and `.gitattributes` stay as written: each
-would need its own comment syntax in the gate, and an unenforced rule over them would be exactly
-the invisible-cost shape ADR-0005 exists to remove. Python **string literals** are outside too, so
-operator-facing Russian diagnostics in `scripts/` are legal here; ADR-0005 records what that costs.
-
-**What counts as a mapped file** (there too, #421): **`.md` under `docs/architecture/` and
+**What counts as a mapped file** (#421): **`.md` under `docs/architecture/` and
 `.claude/rules/`**. This is the only scope rule; no second layer filters it. Two clarifications
 explain why the boundary is here rather than expanding the rule:
 
@@ -175,9 +116,9 @@ The mechanics of both are in
 **Presence ≠ correctness.** Lint guarantees that a docstring *exists* and is non-empty, not that it
 is *current*: an outdated non-empty docstring passes. The Markdown guard is the same: it guarantees
 only that there is **something to dispute** about a file boundary, not that the header matches its
-contents. A human catches docstring ↔ actual-purpose divergence in review — the same honest §IV
-position as for semantic duplicates (a green detector that provides false coverage is worse than an
-honest "a human reviews it").
+contents. A human catches docstring ↔ actual-purpose divergence in review — the honest §IV
+position (a green detector that provides false coverage is worse than an honest "a human reviews
+it").
 
 The `docs/adr/` record guard (`tests/test_adr_records.py`) has the same boundary: it holds the
 structure — name, unique number, status, `superseded by` resolution, and required sections — but
@@ -197,43 +138,13 @@ false coverage.
   document body. Two files for "before" and "after" guarantee drift.
 - **Decision rationale → a record with a stable ID, not a state-document paragraph.** Banning
   narrative without a rationale home does not work — this was measured (ADR-0001: 174 narrative
-  mentions of `#N` out of 300). The route is §Canonical-home above; the state document retains the
+  mentions of `#N` out of 300). The route is [§Decision records](#decision-records) above; the state document retains the
   decision, one sentence explaining why it remains valid, and a link.
 - **Ideas, tasks, roadmaps, and unimplemented initiatives → GitHub issues** (they survive moving to
   another machine just as the repository does; that is their durable home). Precedent: an attempt
   to put the trailer-initiative roadmap in `docs/initiatives/` was rejected (#188), and the scope
   itself is distributed across the initiative's issues (#138–#145).
 
-The existing subsections are **instances** of this umbrella, not separate rules: machine/environment-
-specific material → out-of-repository memory (["Memory ↔ repository"](#memory--repository-resolved-policy)
-below); backlog/status tracker → issues (remaining debt —
-[#177](https://github.com/ekolvah/kinozal_scraper/issues/177), see the end of the file). Each is a
-special case of "what is not currently implemented state does not live in `docs/`".
-
-### Memory ↔ repository: resolved policy
-
-An instance of ["What documentation describes"](#what-documentation-describes-current-state-not-history-or-ideas)
-(machine-specific → not `docs/`). **Project instructions live in the repository** (`.claude/`,
-`docs/`, scripts, templates), not in private out-of-repository Claude memory. Out-of-repository
-memory is **only** for machine/environment-specific material or a working style with a particular
-operator; otherwise a clone on another machine cannot see project knowledge and the source of truth
-splits. This is **active policy, not backlog**: the issue-priority mechanism made the
-memory→repository move (Priority field in GitHub Project
-1): from private memory to `scripts/set_issue_priority.py` (embedded Project/field/option IDs + unit
-tests) + the [`agent-process.md`](agent-process.md) rule (the agent asks the user for priority →
-script); the memory was deleted (#351).
-
-**Gate instead of prose (#353).** This policy was itself prose and was violated twice in one
-session (priority and open_pr link-lag process facts were put in memory instead of the repository).
-**Root cause:** a deterministic trigger (writing a file to the memory directory) was left unenforced
-despite existing hook infrastructure — a direct violation of
-[`principles.md` §Scripts over instructions](principles.md#scripts-over-instructions). It is not
-possible to fully gate "this prose must be a script" (a semantic judgement; no semantic-duplicate
-classifier), but the special case — writing to `.claude/projects/<slug>/memory/` — is trivially
-gated: `scripts/hooks.py` (`_is_memory_write` → `memory_write_signal`, PostToolUse exit 2) emits a
-**checkpoint reminder**: "is this machine/operator-specific? Otherwise move it into the repository".
-It is a forcing function (a deliberate decision point), **not** a semantic classifier and **not** a
-hard block: predicate "wrote to memory" ≠ violation "wrote process knowledge", so it signals on all
-writes (including legitimate ones) — false-positive-by-design, with low miss cost for rare memory
-writes. PreToolUse blocking, a semantic classifier, and Agent Governance Toolkit are consciously
-out of scope.
+The backlog and status tracker is an instance of this umbrella, not a separate rule: it lives in
+issues (remaining debt — [#177](https://github.com/ekolvah/kinozal_scraper/issues/177)), a special
+case of "what is not currently implemented state does not live in `docs/`".

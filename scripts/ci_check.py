@@ -56,11 +56,6 @@ def check_lint() -> None:
     _run([sys.executable, "-m", "ruff", "check", "."])
 
 
-def check_language() -> None:
-    print("==> English-only documentation")
-    _run([sys.executable, "scripts/check_language.py"])
-
-
 # Captured third-party HTML kept as test fixtures: asset digests and cache-busting
 # hashes in someone else's markup read as high-entropy strings, i.e. false positives
 # by construction. Excluded as *files* rather than whitelisted as secret hashes — a
@@ -244,7 +239,6 @@ def check_imports() -> None:
 CHECKS: dict[str, Callable[[], None]] = {
     "format": check_format,
     "lint": check_lint,
-    "language": check_language,
     # Before the slow gates on purpose: a leaked key must redden the run in seconds,
     # not after ~3 minutes of pytest + pip-audit.
     "secrets": check_secrets,
