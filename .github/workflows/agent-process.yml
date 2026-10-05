@@ -12,4 +12,4 @@ permissions:
 
 jobs:
   agent-process:
-    uses: ekolvah/agent-process-distribution/.github/workflows/quality.yml@v3.8.1
+    uses: ekolvah/agent-process-distribution/.github/workflows/quality.yml@v3.8.3
