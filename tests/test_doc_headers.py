@@ -39,7 +39,9 @@ from pathlib import Path
 
 import pytest
 
-from scripts.navigation_policy import read_budget_hint
+# Copy of the agent-process plugin's whole-file `Read` budget (its `navigation_policy`
+# hook); drift from the plugin value is accepted in coverage-gaps ledger `AS`.
+_READ_BUDGET_BYTES = 28_000
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -163,4 +165,4 @@ class TestMappedDocsCarryHeader:
 def test_read_budget_documents_fit_as_whole_files(path: Path) -> None:
     """Keep the #557 navigation documents readable through the policy's whole-file route."""
     assert path.is_file(), f"planned documentation file is missing: {path.relative_to(_REPO_ROOT)}"
-    assert read_budget_hint(str(path)) is None
+    assert path.stat().st_size <= _READ_BUDGET_BYTES

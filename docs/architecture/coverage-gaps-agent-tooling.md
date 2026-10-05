@@ -18,17 +18,19 @@
   deliberately render interaction metrics unavailable. Revisit if a
   shared development-telemetry carrier appears that CI can read.
 
-- **AM. No guard on *which commands* the navigation policy covers (#485).**
-  `scripts/navigation_policy.py` decides that a shell stage reads the filesystem and denies it
-  with the replacement call named. Its **behaviour** is tested (`tests/test_navigation_policy.py`:
-  file-operand forms denied, pipe stages allowed, `sh -c` unwrapped, unparseable input fails
-  open), and so is its **wiring** — including the negative invariant that no `permissions.deny`
-  entry shadows the hook, since a static rule matches first and would swallow the message.
-  What is deliberately *not* pinned is the membership of `_RULES`: `awk` and `wc` are outside it
-  (no tool replaces line counting; `awk` was never measured), and adding or dropping a command
-  costs tokens and nothing else, which
-  [the rule](testing.md#rule-when-a-test-is-not-worth-writing) routes to a forcing function
-  rather than a guard test. Do not reopen the membership list as an anti-drift ratchet.
+- **AS. Nothing local detects drift from the agent-process plugin's session hooks (#625).**
+  The navigation policy and memory checkpoint are the plugin's hooks, tested by the plugin's own
+  CI. Three local copies of their facts are unguarded: the 28 000-byte budget constant in
+  `tests/test_doc_headers.py`, and the hook semantics described in `CLAUDE.md` §Environment and
+  `.claude/rules/mindset.md`. A later plugin release that changes them leaves these stale, and a
+  deny entry that shadows a plugin hook only drops its "use this tool instead" message — both cost
+  tokens, not correctness ([the rule](testing.md#rule-when-a-test-is-not-worth-writing)). The
+  hooks are gated on the literal path `.github/workflows/agent-process.yml`: deleting it cannot
+  merge (the ruleset requires `agent-process / quality`, which only that workflow reports), but
+  a rename that keeps the workflow `name:` and job id still reports the check and silently turns
+  every plugin hook off. Accepted because the file is installer-rendered and the plugin says to
+  rerun the installer rather than edit it. **Revisit trigger:** a plugin release that changes the
+  navigation hooks or their gate.
 
 - **AN. Offline tests cannot prove Claude Code telemetry delivery or Grafana dashboard import
   (#471).** `tests/test_claude_otel_assets.py` guards the values-free setup template, captured
