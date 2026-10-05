@@ -155,23 +155,11 @@ silently-broken hook must not masquerade as "lint clean". Decision logic is pure
 functions (`plan_checks`/`classify_ruff_result`) with unit tests
 (`tests/test_hooks.py`).
 
-A second event uses the same entry point: a `PreToolUse` hook (matcher `Bash`)
-invoking `python -m scripts.hooks pre-bash`, which asks `scripts/navigation_policy.py`
-whether a stage reads the filesystem and, if so, denies it **with the replacement call named**
-(#485). This is the token-economy carrier, deliberately distinct from the security carrier
-(`permissions.deny`, guarded by `tests/test_settings_deny.py`), and it fails **open**, because a policy that only claims "a cheaper route exists"
-must never brick `Bash`. It is also why the navigation entries are *not* in `permissions.deny`
-— a matching deny rule blocks before the hook runs and would swallow the message
-(`tests/test_navigation_policy.py` guards that).
-
-The same policy owns a second `PreToolUse` event, matcher `Read` (`pre-read`, #534). The Bash
-branch parses a command; this one measures the **bytes of the slice `Read` will actually
-return** (`[offset, offset + limit)`, computed hook-side) against a 28 000-byte budget, and the
-denial hands back the concrete `limit` that fits, the measured size, and an approximate token
-figure. A threshold keyed on "is `limit` present" would have been a rename: `limit` counts
-lines and `Read` truncates at 2000 of them, so `limit=2000` returns every file in this
-repository whole. Same failure mode as the Bash branch — anything unmeasurable (missing file,
-directory, non-UTF-8 bytes, a format where slicing is meaningless) yields no decision.
+The navigation policy (shell file reads and over-budget `Read`, `PreToolUse`) and the
+memory checkpoint (a write under the agent's auto-memory directory, `PostToolUse`) are the
+agent-process plugin's hooks, `navigation_policy` and `memory_checkpoint`, active here because
+`.github/workflows/agent-process.yml` exists. The security carrier stays local:
+`permissions.deny`, guarded by `tests/test_settings_deny.py`.
 
 This is instant feedback that **complements, never replaces** `ci_check.py` (the
 canonical pre-push gate), and is unrelated to the `pre-commit` framework that launches

@@ -247,13 +247,6 @@ class TestClaudeAdapter:
 
 
 class TestClaudeHookWiring:
-    def test_pretooluse_hook_is_wired_for_bash(self) -> None:
-        entries = _settings()["hooks"]["PreToolUse"]
-        matching = [entry for entry in entries if entry.get("matcher") == "Bash"]
-        assert len(matching) == 1
-        commands = [hook["command"] for hook in matching[0]["hooks"]]
-        assert any(re.search(r"scripts\.hooks pre-bash", command) for command in commands)
-
     def test_no_static_deny_shadows_the_hook(self) -> None:
         """A matching `permissions.deny` rule blocks before the hook runs, so a static
         navigation entry would silently drop the replacement message."""
@@ -262,13 +255,6 @@ class TestClaudeHookWiring:
             pattern for pattern in patterns if re.match(rf"Bash\((?:{'|'.join(_OWNED)})\b", pattern)
         ]
         assert not shadowing, f"navigation deny entries shadow the hook: {shadowing}"
-
-    def test_pretooluse_hook_is_wired_for_read(self) -> None:
-        entries = _settings()["hooks"]["PreToolUse"]
-        matching = [entry for entry in entries if entry.get("matcher") == "Read"]
-        assert len(matching) == 1
-        commands = [hook["command"] for hook in matching[0]["hooks"]]
-        assert any(re.search(r"scripts\.hooks pre-read", command) for command in commands)
 
     def test_no_static_deny_shadows_the_read_hook(self) -> None:
         """A `Read(...)` deny rule would block before the hook runs and drop the budget
