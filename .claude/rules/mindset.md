@@ -22,8 +22,8 @@ Always-load (without `paths:`): the tactics are needed in every session, not onl
   `Read`. This is no longer advice on either route—a `PreToolUse` hook denies the shell route into
   the filesystem (#485) *and* a `Read` whose slice busts the byte budget (#534), and it
   **names the replacement call in the denial**, so the rule arrives at the moment it applies rather
-  than from this file. The policy is canonical in `scripts/navigation_policy.py`; do not
-  restate the rule set here.
+  than from this file. The policy is canonical in the agent-process plugin's
+  `navigation_policy` hook; do not restate the rule set here.
 
   Two consequences worth knowing before the first denial. **Trimming a pipe is not navigation**:
   `<cmd> | head -40`, `| grep`, `| sed -n` have no tool equivalent and stay allowed—the hook
