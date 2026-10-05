@@ -10,8 +10,8 @@ and the mandatory minimum set of sections.
 **The closed status set is our policy, not MADR's.** Upstream exposes `status` as
 a free-form string (“These are optional metadata elements”); without a closed set, append-only
 discipline cannot be expressed (a decision change = a new record with a forward reference,
-not an edit to the old one). The canon for the set and the rule for entering the catalogue is `project-map.md`
-§Canonical-home (**not** record `0001`: policy changes, while an accepted record does not);
+not an edit to the old one). The canon for the set and the rule for entering the catalogue is `information-architecture.md`
+§Decision records (**not** record `0001`: policy changes, while an accepted record does not);
 the constant here is subordinate to that canon.
 
 **Guard boundaries, honestly.** The checks are structural: the guard **cannot distinguish**
@@ -43,7 +43,7 @@ _TEMPLATE = _ADR_DIR / "template.md"
 # MADR uses `NNNN-slug.md`; the captured number is the record address.
 _RECORD_NAME = re.compile(r"^(\d{4})-[a-z0-9]+(?:-[a-z0-9]+)*\.md$")
 
-# Closed MADR status set; repository policy is canonical in `project-map.md`.
+# Closed MADR status set; repository policy is canonical in `information-architecture.md`.
 _STATIC_STATUSES = frozenset({"proposed", "rejected", "accepted", "deprecated"})
 _SUPERSEDED_BY = re.compile(r"^superseded by ADR-(\d{4})$")
 
@@ -109,7 +109,7 @@ def _status_problem(status: str | None) -> str | None:
         return None
     return (
         f"статус '{status}' вне закрытого набора {sorted(_STATIC_STATUSES)} и не имеет формы "
-        f"`superseded by ADR-NNNN` (канон набора — `project-map.md` §Canonical-home)"
+        f"`superseded by ADR-NNNN` (канон набора — `information-architecture.md` §Decision records)"
     )
 
 

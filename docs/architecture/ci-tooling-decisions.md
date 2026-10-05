@@ -6,7 +6,7 @@
 
 **What belongs here:** “tool or rule Y was not adopted”—and only a whole tool
 without its own gate section above (otherwise, a line at the gate's location). The other branches of the
-“where the decision goes” route are in [`project-map.md`](project-map.md) §Canonical-home, its canon.
+“where the decision goes” route are in [`information-architecture.md`](information-architecture.md#decision-records), its canon.
 
 - **`pre-commit` as a linter registry (#255)—no-go; as the hook launcher—adopted
   ([ADR-0013](../adr/0013-adopt-agent-process-plugin-v2.md), #598).** The agent-process plugin's

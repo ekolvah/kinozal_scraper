@@ -60,7 +60,7 @@ decision; a per-record map would diverge on the next record.
 
 | File | Question answered | Single-responsibility? |
 |---|---|---|
-| `docs/adr/` (whole directory) | Why this decision was made and what was rejected: MADR 4.0.0 records with stable `NNNN` IDs, append-only (a changed decision = a new record with `superseded by`). Entry is the cost-of-change filter (§Canonical-home). `template.md` is the verbatim upstream template; `tests/test_adr_records.py` is the guard | ✅ |
+| `docs/adr/` (whole directory) | Why this decision was made and what was rejected: MADR 4.0.0 records with stable `NNNN` IDs, append-only (a changed decision = a new record with `superseded by`). Entry is the cost-of-change filter ([`information-architecture.md`](information-architecture.md#decision-records)). `template.md` is the verbatim upstream template; `tests/test_adr_records.py` is the guard | ✅ |
 
 ### Process scripts and configuration
 
