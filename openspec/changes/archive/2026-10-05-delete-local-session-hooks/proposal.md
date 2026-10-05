@@ -91,6 +91,9 @@ Edited:
 - `docs/architecture/coverage-gaps-agent-tooling.md` — `AM` removed, `AS` added.
 - `docs/architecture/coverage-gaps.md` — router ID range `A` through `AS`, agent-tooling bullet.
 
+The `settings.json`, `mindset.md` and `ci-local.md` edits and the two wiring tests were delivered
+first in #630 (design D6).
+
 Outside the repository:
 
 - The tracking issue is created at the end of the propose run (`create_tracking_issue`) and

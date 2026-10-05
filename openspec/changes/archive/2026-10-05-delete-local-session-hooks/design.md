@@ -27,7 +27,8 @@ What stops being proven locally and its catcher:
 
 - Policy behaviour and rule membership (`tests/test_navigation_policy.py`) → the plugin's
   `tests/publisher/test_navigation_policy.py`, run by the plugin's CI on its release head.
-- Local wiring tests (`test_pretooluse_hook_is_wired_for_bash|read`) → go with the wiring.
+- Local wiring tests (`test_pretooluse_hook_is_wired_for_bash|read`) → went with the wiring in
+  #630 (D6).
 - The read budget used by `tests/test_doc_headers.py` → a local constant of the same 28 000 bytes
   compared to the file size; drift from the plugin value is accepted (`AS`).
 - The plugin hooks stay on → they are gated on the literal path
@@ -91,6 +92,15 @@ import of a deleted module or symbol fails test collection in `ci_check.py`; and
 `test_navigation_policy`, `scripts.hooks pre-`, `memory_write`, `_MEMORY_DIR_RE`), which the
 plugin's own names (`navigation_policy pre-bash`) do not match.
 
+### D6 — Delivery in two PRs
+
+`agent-review` checks out the PR head but restores `.claude/` from the base branch. With the
+subcommands deleted and `main` still wiring them, every reviewer `Bash`/`Read` got exit 2 from
+the missing `scripts.hooks pre-bash|pre-read`, and the check failed twice on #629. So #630
+(issue #631) removed the `PreToolUse` wiring, its two wiring tests and the `ci-local.md` /
+`mindset.md` hunks first; #629 carries the rest. Any later change deleting a wired hook command
+splits the same way.
+
 ## Risks / Trade-offs
 
 - [Plugin hook regresses in a later release] → the local copy no longer backs it up; the
@@ -100,5 +110,5 @@ plugin's own names (`navigation_policy pre-bash`) do not match.
 - [A deny entry later shadows a plugin hook] → the hook's message is lost, nothing else; accepted
   (D3).
 
-Rollback: reverting the PR restores the local hooks; both copies then fire again, which is
-harmless.
+Rollback: reverting #629 and then #630 restores the local hooks; both copies then fire again,
+which is harmless.
