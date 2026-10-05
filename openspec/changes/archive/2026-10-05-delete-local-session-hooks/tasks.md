@@ -27,12 +27,12 @@
 
 ## 6. Verify
 
-- [ ] 6.1 Run `npx -y @fission-ai/openspec@1.13.0 validate --strict --all`. Verify: exit 0.
-- [ ] 6.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 6.1 Run `npx -y @fission-ai/openspec@1.13.0 validate --strict --all`. Verify: exit 0.
+- [x] 6.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 7. Deliver
 
-- [ ] 7.1 Run `agent-process archive_change delete-local-session-hooks`, then `gh pr create --title "chore: delete-local-session-hooks" --body-file <report>`; the report closes the tracking issue, names #612 and #616 as plain references, carries the 2.1 observation and the scenario map.
+- [x] 7.1 Run `agent-process archive_change delete-local-session-hooks`, then `gh pr create --title "chore: delete-local-session-hooks" --body-file <report>`; the report closes the tracking issue, names #612 and #616 as plain references, carries the 2.1 observation and the scenario map.
 - [ ] 7.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
