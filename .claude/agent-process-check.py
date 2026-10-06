@@ -1,5 +1,5 @@
 # agent-process:managed
-"""Claude `SessionStart` check: is the agent-process skill loaded for this project? (#187)
+"""Claude `SessionStart` check: is the agent-process skill loaded for this project?
 
 Usage: python .claude/agent-process-check.py <Install URL>
 
@@ -8,7 +8,7 @@ no install of another scope applies to the project. A project-level install is r
 command that removes it; any other case, or a check that cannot decide, is `skill not loaded`.
 When the project's `.pre-commit-config.yaml` carries the agent-process block and this clone does
 not run pre-commit's pre-push hook, or the check cannot tell, it is `pre-push hook not
-installed` with the two commands that install it (#270). Any marker is printed in one hook JSON:
+installed` with the two commands that install it. Any marker is printed in one hook JSON:
 a `systemMessage` for the person, one line per marker, and an `additionalContext` for the agent.
 It always exits 0: a crashing hook is silent, and the marker is the carrier.
 """
