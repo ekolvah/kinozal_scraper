@@ -1,0 +1,40 @@
+{
+  "verdict": "approve",
+  "reviewer": "architect-reviewer",
+  "reasoning": "The deletion is scoped to #626. Every dropped rule is now moved or listed as lost with the check that catches it, and that check is named as the plugin's architect review over the plugin's own §V, with a revisit trigger for a plugin release that drops the text.",
+  "classes": {
+    "simpler": {
+      "evidence": "Design D1 rejects keeping discovery.md as a repository-owned role: it contradicts #616 and upstream #307 is closed as NOT_PLANNED. D3 keeps the capture table as product tooling (#613) instead of deleting it. D5 rejects a new ADR under the IA cost-of-change filter, the same call #629 made. The change is already one of the four PRs split by #616 step 3, and no smaller unit closes #626.",
+      "result": "ok"
+    },
+    "map": {
+      "evidence": ".openspec.yaml sets skip_specs: true, so there are no specs/ deltas. The tasks.md 'Scenario → test map' has one n/a row with its reason: no delta scenarios; test_doc_links.py catches dangling links and the task 4.4 grep catches bare mentions.",
+      "result": "ok"
+    },
+    "red": {
+      "evidence": "tasks.md 1.1 records 'no RED' for a skip_specs deletion-and-docs change, which the SKILL Tasks rule for skip_specs and principles §I exception (b) allow. Deleting tests/test_agent_frontmatter.py removes a guard whose subject, .claude/agents/*.md, the same change empties. No product behaviour changes.",
+      "result": "ok"
+    },
+    "platform": {
+      "evidence": "proposal.md Why cites gh issue view output for upstream #307 (CLOSED/NOT_PLANNED) and #317 (COMPLETED). I checked the permalink target here: eef253d resolves to eef253dbc8617845c2762e9b4197a8491ff763a9, which is HEAD and origin/main, and `git show eef253d:docs/architecture/agent-process.md` contains '## Evidence block' (line 18) and '## Discovery runbook' (line 90). tests/test_doc_links.py ignores https links (test at line 311), so the ADR-0009 permalinks fall outside its scope, as D5 assumes.",
+      "result": "ok"
+    },
+    "replaced": {
+      "evidence": "Each dropped guard is now accounted for in the design. D1 covers the discovery trigger. D2's Lost list covers the field schema, the discovery: provenance line and the status: failed + output: shape, each with its catcher. D4 covers test_agent_frontmatter.py: model/effort pins and the W denylist, each with its catcher. D3 moves the two rules nothing else holds into testing.md, with task 2.2 listing both: a dependent design stays blocked until a capture succeeds, and a missing fixture means capturing again, never hand-written bytes. The only wording change is that 'discovery runs again' becomes 'the capture runs again'.",
+      "result": "ok"
+    },
+    "catcher": {
+      "evidence": "D7: the scope of tests/test_doc_links.py is _EXPECTED_SCOPE_DIRS = docs/architecture, docs/adr, .claude/rules, .claude/commands (line 85). It runs in ci_check (task 5.2) and in the pre-push hook. The task 4.4 git grep covers CLAUDE.md, docstrings and requirements-dev.in. Every current hit of the removed names outside openspec/ and docs/adr is in Impact or in task 3.2, which now includes test_doc_headers.py line 140. D1, D2, D6/AR and Risks now name the plugin's architect-reviewer, run on every /opsx:propose. Per agents/architect-reviewer.md line 19, it reads the plugin's skills/agent-process/principles.md, whose §V (3.10.1, lines 129-137) carries the live-observation duty. AR's revisit trigger covers a plugin release that drops that text.",
+      "result": "ok"
+    },
+    "length": {
+      "evidence": "Text the plan adds or edits: the AR heading rewrite (~12 words) and its revisit trigger (~20 words), the ratchet-bullet edit (~11 words) and the coverage-gaps.md router line (~10 words). The testing.md section is a verbatim move with one changed word pair, not new rule text. No test asserts any of these words: they are ledger and pointer text whose links test_doc_links.py checks, not behavioural rules.",
+      "result": "ok"
+    },
+    "bespoke": {
+      "evidence": "The plan adds no script or check. It removes one test (tests/test_agent_frontmatter.py) and one persona file. The task 4.4 git grep is a one-off verification command, not a committed check.",
+      "result": "ok"
+    }
+  },
+  "scenario_coverage": []
+}
