@@ -15,9 +15,9 @@
 
 ## 3. Agent review doc and frontmatter guard (design D4)
 
-- [ ] 3.1 `git rm docs/architecture/ci-agent-review.md tests/test_agent_frontmatter.py`; remove the `ci-agent-review.md` line from `docs/architecture/ci.md` and from `_READ_BUDGET_DOCUMENTS` in `tests/test_doc_headers.py`.
-- [ ] 3.2 Drop the `test_agent_frontmatter.py` / `.claude/agents/*.md` mentions from the docstrings of `tests/test_doc_headers.py` (genre sentence, scope paragraph, glob paragraph, the "precedent is `test_agent_frontmatter.py`" sentence near line 140) and `tests/test_adr_records.py` (empty-catalogue sentence); in `docs/architecture/information-architecture.md` make the two `.claude/agents/` clauses name `.claude/commands/` only.
-- [ ] 3.3 Remove `tests/test_agent_frontmatter.py` from the PyYAML comment in `requirements-dev.in` (ASCII only), run `pip-compile` for `requirements-dev.txt` in the same commit. Verify: `git diff --stat requirements-dev.txt` shows no dependency change; `python -m pytest tests/test_doc_headers.py tests/test_adr_records.py tests/test_doc_links.py -q` passes; commit.
+- [x] 3.1 `git rm docs/architecture/ci-agent-review.md tests/test_agent_frontmatter.py`; remove the `ci-agent-review.md` line from `docs/architecture/ci.md` and from `_READ_BUDGET_DOCUMENTS` in `tests/test_doc_headers.py`.
+- [x] 3.2 Drop the `test_agent_frontmatter.py` / `.claude/agents/*.md` mentions from the docstrings of `tests/test_doc_headers.py` (genre sentence, scope paragraph, glob paragraph, the "precedent is `test_agent_frontmatter.py`" sentence near line 140) and `tests/test_adr_records.py` (empty-catalogue sentence); in `docs/architecture/information-architecture.md` make the two `.claude/agents/` clauses name `.claude/commands/` only.
+- [x] 3.3 Remove `tests/test_agent_frontmatter.py` from the PyYAML comment in `requirements-dev.in` (ASCII only), run `pip-compile` for `requirements-dev.txt` in the same commit. Verify: `git diff --stat requirements-dev.txt` shows no dependency change; `python -m pytest tests/test_doc_headers.py tests/test_adr_records.py tests/test_doc_links.py -q` passes; commit.
 
 ## 4. Project map, ledger, ADR links (design D5, D6)
 

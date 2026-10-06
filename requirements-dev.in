@@ -12,8 +12,8 @@ pip-tools
 pre-commit
 pytest
 pytest-cov
-# Frontmatter and workflow YAML are read directly by tests/test_adr_records.py,
-# tests/test_agent_frontmatter.py and tests/test_workflow_isolation.py, so the
+# Frontmatter and workflow YAML are read directly by tests/test_adr_records.py
+# and tests/test_workflow_isolation.py, so the
 # dependency is declared rather than left transitive; types-PyYAML alone typed an
 # import nothing guaranteed to be installed (#474, #406).
 PyYAML
