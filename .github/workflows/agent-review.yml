@@ -15,6 +15,6 @@ permissions:
 
 jobs:
   agent-review:
-    uses: ekolvah/agent-process-distribution/.github/workflows/reusable-agent-review.yml@v3.10.0
+    uses: ekolvah/agent-process-distribution/.github/workflows/reusable-agent-review.yml@v3.10.1
     secrets:
       claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
