@@ -21,10 +21,10 @@
 
 ## 4. Project map, ledger, ADR links (design D5, D6)
 
-- [ ] 4.1 In `docs/architecture/project-map.md` remove the `discovery.md` and `ci-agent-review.md` rows; reword the `agent-process.md` row (governance conventions only), the `workflow.md` row (no discovery trigger), and the `evidence/` and capture-script rows to link `principles.md#v-root-cause-before-fix` and `testing.md#external-data-capture-routes`.
-- [ ] 4.2 In `docs/architecture/coverage-gaps-quality-gates.md` remove `W` and rewrite `AR` per design D6; in `docs/architecture/coverage-gaps.md` set the quality-gates line to `V`, `X` through `AD`, and `AR`, and list `W` as retired with #626.
-- [ ] 4.3 In `docs/adr/0009-discovery-is-a-separate-role-chained-inside-the-planner-run.md` replace the `#discovery-runbook` and `#evidence-block` links with permalinks to `https://github.com/ekolvah/kinozal_scraper/blob/eef253d/docs/architecture/agent-process.md#discovery-runbook` / `#evidence-block`.
-- [ ] 4.4 Verify: `git grep -n -e 'agents/discovery' -e 'discovery runbook' -e 'Discovery runbook' -e 'evidence-block' -e 'Evidence block' -e ci-agent-review -e test_agent_frontmatter -e '\.claude/agents' -- ':!openspec' ':!docs/adr'` prints nothing, and `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py tests/test_adr_records.py tests/test_always_load_budget.py -q` passes; commit.
+- [x] 4.1 In `docs/architecture/project-map.md` remove the `discovery.md` and `ci-agent-review.md` rows; reword the `agent-process.md` row (governance conventions only), the `workflow.md` row (no discovery trigger), and the `evidence/` and capture-script rows to link `principles.md#v-root-cause-before-fix` and `testing.md#external-data-capture-routes`.
+- [x] 4.2 In `docs/architecture/coverage-gaps-quality-gates.md` remove `W` and rewrite `AR` per design D6; in `docs/architecture/coverage-gaps.md` set the quality-gates line to `V`, `X` through `AD`, and `AR`, and list `W` as retired with #626.
+- [x] 4.3 In `docs/adr/0009-discovery-is-a-separate-role-chained-inside-the-planner-run.md` replace the `#discovery-runbook` and `#evidence-block` links with permalinks to `https://github.com/ekolvah/kinozal_scraper/blob/eef253d/docs/architecture/agent-process.md#discovery-runbook` / `#evidence-block`.
+- [x] 4.4 Verify: `git grep -n -e 'agents/discovery' -e 'discovery runbook' -e 'Discovery runbook' -e 'evidence-block' -e 'Evidence block' -e ci-agent-review -e test_agent_frontmatter -e '\.claude/agents' -- ':!openspec' ':!docs/adr'` prints nothing, and `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py tests/test_adr_records.py tests/test_always_load_budget.py -q` passes; commit.
 
 ## 5. Verify
 

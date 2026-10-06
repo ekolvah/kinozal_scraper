@@ -19,12 +19,11 @@ decision; a per-record map would diverge on the next record.
 |---|---|---|
 | `~/.claude/CLAUDE.md` (global, outside the repository) | Cross-project material (generic mindset for non-repository projects). Repository mirror of the operational mindset = `.claude/rules/mindset.md` | ✅ |
 | `CLAUDE.md` (project) | Mix: what the app does + Windows pitfalls + PR-workflow summary + architecture-document index | ❌ kitchen-sink |
-| `docs/architecture/agent-process.md` | What this repository adds on top of the agent-process plugin's process: the Evidence block, the discovery runbook, governance conventions | ✅ |
+| `docs/architecture/agent-process.md` | What this repository adds on top of the agent-process plugin's process: governance conventions | ✅ |
 | `.claude/rules/testing.md` | Operational test-writing checklist (RED-first/doubles/level/ci_check) — path-scoped `tests/**`, links to §I/§II | ✅ |
 | `.claude/rules/mindset.md` | Claude-harness token tactics in the main session plus pointers to the objective function/principles/process (holds no canon) — always-load | ✅ |
-| `.claude/agents/discovery.md` | Claude `discovery` carrier persona; reads the observation bounds, capture route, and completion check **from the canon** [`agent-process.md` §Discovery runbook](agent-process.md#discovery-runbook) and retains no copy. Carries only the adapter interface: the `discovery: Claude discovery subagent` provenance line, and the rule that the `/opsx:propose` run — not this role — records the returned block in `proposal.md` (#517) | ✅ |
 | `.claude/settings.json` | Claude hooks and local deny policy (`permissions.deny`); the ruleset remains final | ✅ |
-| `.claude/rules/workflow.md` | Which workflow steps Claude carries, including the `discovery` trigger inside `/opsx:propose` | ✅ |
+| `.claude/rules/workflow.md` | Which workflow steps Claude carries | ✅ |
 | `.claude/settings.local.json` (gitignored) | Personal mode + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, personal) |
 
 ### `docs/architecture/`
@@ -49,7 +48,6 @@ decision; a per-record map would diverge on the next record.
 | `ci-local.md` | Local pre-commit quality gate | ✅ |
 | `ci-workflow.md` | `agent-process.yml` quality checks, lint ratchets, and document guards | ✅ |
 | `ci-branch-protection.md` | Required GitHub status checks | ✅ |
-| `ci-agent-review.md` | Agent-review workflow and model-pin policy | ✅ |
 | `ci-production.md` | Scheduled production workflow | ✅ |
 | `ci-tooling-decisions.md` | Consciously rejected CI tooling | ✅ |
 | `operations.md` | How the production run and maintainer-operated services are run: schedule and step order, environment variables and secrets, failure isolation (#245) and alerting (#310), operator runbooks (`TELETHON_SESSION` rotation), patient Soldout retries, and Claude Code direct OTel (#471). Took the runtime half of `ci.md` (#418) | ✅ |
@@ -66,8 +64,8 @@ decision; a per-record map would diverge on the next record.
 
 | File | Question answered |
 |---|---|
-| `evidence/` (Git-ignored) | Working-tree-only planning captures retained until merge; the durable compressed record and fixture boundary are canonical in [`agent-process.md` §Evidence block](agent-process.md#evidence-block) |
-| `scripts/capture_kinozal_fixture.py` + `scripts/capture_external_fixture.py` + `scripts/check_fixture_ratchet.py` | Reproducible Evidence capture through the Kinozal production fetcher or narrow read-only GitHub, Telegram, Gemini, Sheets, and stdin routes; the ratchet rejects new external-HTML parser tests that construct their input inline (#509). Canonical routing and repository-safety contract: [`agent-process.md` §Evidence block](agent-process.md#evidence-block) |
+| `evidence/` (Git-ignored) | Working-tree-only planning captures retained until merge; the durable compressed record is canonical in [`principles.md` §V](principles.md#v-root-cause-before-fix), the fixture boundary in [`testing.md`](testing.md#external-data-capture-routes) |
+| `scripts/capture_kinozal_fixture.py` + `scripts/capture_external_fixture.py` + `scripts/check_fixture_ratchet.py` | Reproducible fixture capture through the Kinozal production fetcher or narrow read-only GitHub, Telegram, Gemini, Sheets, and stdin routes; the ratchet rejects new external-HTML parser tests that construct their input inline (#509). Canonical routing and repository-safety contract: [`testing.md`](testing.md#external-data-capture-routes) |
 | `scripts/set_issue_priority.py` | Set issue priority (the Priority field in GitHub Project 1) through `gh project item-add`+`item-edit` with embedded Project/field/option IDs; read-only `--check` verifies the exact issue URL and non-empty High/Medium/Low. The agent invokes it under the `agent-process.md` governance conventions (asked for priority → setter). The mechanism moved memory→repository (#351) |
 | `scripts/ci_check.py` | The quality gate: the pre-push hook runs it whole, the plugin's CI runs each registry entry via `--only` |
 | `scripts/eval_trailers.py` | Trailer-selection evaluation harness with three scorecards: `TrailerStrategy` (YouTube pick), `evaluate_delivery` (production `select_trailer`, the user-visible result, #379), and `evaluate_tmdb` (TMDB source). It uses a frozen golden set with offline Hit/Wrong/Miss outcomes against `correct`, plus `--record`/`--record-tmdb`/`--update-baseline`. The **gate** is the per-film delivery result in `tests/fixtures/trailer_baseline.json`, enforced by `tests/test_eval_baseline.py` rather than a `ci_check` CHECKS entry. The dataset tests both finding an accepted trailer (`correct`) and rejecting verified wrong candidates (`trap`, #380). Deep dive: `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |

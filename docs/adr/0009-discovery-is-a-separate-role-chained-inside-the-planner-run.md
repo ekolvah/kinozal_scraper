@@ -56,7 +56,7 @@ Chosen: **a separate `discovery` role, chained inside the planner run**.
 in the route — with two carriers (`Claude discovery subagent`, `Codex $plan-issue #N self-discovery`),
 `carrier_selection: run_route`, and `max_runs: 2`. Its authority is read-only capture plus the
 fixture write, and explicitly *not* editing the issue body. The runbook is
-[§Discovery runbook](../architecture/agent-process.md#discovery-runbook); the observation bounds moved
+[§Discovery runbook](https://github.com/ekolvah/kinozal_scraper/blob/eef253d/docs/architecture/agent-process.md#discovery-runbook); the observation bounds moved
 there wholesale out of planner runbook step 2, which now only records the returned block verbatim.
 
 The role does not publish its own artifact: it returns the `## Evidence` block and the planner writes
@@ -143,7 +143,7 @@ fabrication limit above, and it is not testable from inside the repository.
 * Issue: [#517](https://github.com/ekolvah/kinozal_scraper/issues/517).
 * The `## Evidence` contract itself: [#509](https://github.com/ekolvah/kinozal_scraper/issues/509);
   the runbook, the field set, and the capture table are in
-  [`agent-process.md`](../architecture/agent-process.md#evidence-block).
+  [`agent-process.md`](https://github.com/ekolvah/kinozal_scraper/blob/eef253d/docs/architecture/agent-process.md#evidence-block).
 * Precedent for a second carrier of a required artifact and for the `carrier_selection` field:
   [ADR-0003](0003-second-carrier-for-the-required-review-gate.md).
 * Naming: the catalogue key stays `discovery` rather than `discoverer`/`observer`, so it matches the
