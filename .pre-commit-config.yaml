@@ -2,7 +2,7 @@ default_install_hook_types: [pre-push]
 repos:
   # agent-process:begin
   - repo: https://github.com/ekolvah/agent-process-distribution
-    rev: v3.10.0
+    rev: v3.10.1
     hooks:
       - id: quality
   # agent-process:end
