@@ -4,14 +4,14 @@
 
 ## 1. RED
 
-- [ ] 1.1 no RED: `skip_specs` deletion-and-docs change with no delta scenario. Dangling links are caught by `tests/test_doc_links.py`, bare mentions by the 4.4 grep (design D7).
+- [x] 1.1 no RED: `skip_specs` deletion-and-docs change with no delta scenario. Dangling links are caught by `tests/test_doc_links.py`, bare mentions by the 4.4 grep (design D7).
 
 ## 2. Discovery carrier, Evidence format, capture table (design D1–D3)
 
-- [ ] 2.1 `git rm .claude/agents/discovery.md`; remove the discovery paragraph (lines "On a bug change whose design reads…" through "…its only trigger.") from `.claude/rules/workflow.md`. Verify: Glob `.claude/agents/**` is empty.
-- [ ] 2.2 In `docs/architecture/testing.md` add `### External-data capture routes` after the fixture-ratchet bullets, moving verbatim from `agent-process.md` §Evidence block: the six-row capture table, the route-safety paragraph, the "never run a full pipeline … to collect" sentence, the "no safe read-only route → do not improvise" sentence, the fixture-placement rule, the "unsupported unavailability claim is still a gap; a dependent design stays blocked until a capture succeeds" rule and the "missing fixture → capture again, never hand-written bytes" rule (design D3). Rewrite the ratchet bullet to link `#external-data-capture-routes` and say "record that command plus its fixture path in the change's proposal".
-- [ ] 2.3 In `docs/architecture/agent-process.md` delete §Evidence block and §Discovery runbook; the intro's "This document holds only…" sentence names the governance conventions only.
-- [ ] 2.4 In `docs/architecture/principles.md` repoint the §V routing-table link to `testing.md#external-data-capture-routes` and drop "Evidence block, discovery," from the governance pointer; trim the same parenthetical in `CLAUDE.md` §PR Workflow and `.claude/rules/mindset.md`. Verify: `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py -q` passes; commit.
+- [x] 2.1 `git rm .claude/agents/discovery.md`; remove the discovery paragraph (lines "On a bug change whose design reads…" through "…its only trigger.") from `.claude/rules/workflow.md`. Verify: Glob `.claude/agents/**` is empty.
+- [x] 2.2 In `docs/architecture/testing.md` add `### External-data capture routes` after the fixture-ratchet bullets, moving verbatim from `agent-process.md` §Evidence block: the six-row capture table, the route-safety paragraph, the "never run a full pipeline … to collect" sentence, the "no safe read-only route → do not improvise" sentence, the fixture-placement rule, the "unsupported unavailability claim is still a gap; a dependent design stays blocked until a capture succeeds" rule and the "missing fixture → capture again, never hand-written bytes" rule (design D3). Rewrite the ratchet bullet to link `#external-data-capture-routes` and say "record that command plus its fixture path in the change's proposal".
+- [x] 2.3 In `docs/architecture/agent-process.md` delete §Evidence block and §Discovery runbook; the intro's "This document holds only…" sentence names the governance conventions only.
+- [x] 2.4 In `docs/architecture/principles.md` repoint the §V routing-table link to `testing.md#external-data-capture-routes` and drop "Evidence block, discovery," from the governance pointer; trim the same parenthetical in `CLAUDE.md` §PR Workflow and `.claude/rules/mindset.md`. Verify: `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py -q` passes; commit.
 
 ## 3. Agent review doc and frontmatter guard (design D4)
 

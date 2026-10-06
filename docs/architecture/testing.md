@@ -40,10 +40,9 @@ Assert on doubles' state after the call.
   `python scripts/capture_kinozal_fixture.py <url> <repo-relative-path>`. The
   command reuses `Kinozal.fetch_details`, including the tested anonymous-origin
   to authenticated-mirror fallback, and writes UTF-8 without platform newline
-  conversion. For another external source, use the read-only route in the
-  [`agent-process.md` Evidence table](agent-process.md#evidence-block) and
-  record that command plus its fixture path in the change's `## Evidence`
-  section.
+  conversion. For another external source, use the read-only route in
+  [External-data capture routes](#external-data-capture-routes) and record
+  that command plus its fixture path in the change's proposal.
 - `scripts/check_fixture_ratchet.py` is exercised by `tests/test_fixture_ratchet.py`.
   It reports a new inline-HTML parser test by pytest node ID. The fixture keeps
   network access out of CI while preserving the observed external shape.
@@ -65,6 +64,36 @@ Assert on doubles' state after the call.
 - When: before PR merge (PRs in this project are infrequent); the production
   script already runs daily on schedule and acts as an E2E smoke test itself.
 - Failure blocks merge (site structure broken → update fixture/parser).
+
+### External-data capture routes
+
+Use the narrowest read-only route below; never run a full pipeline that writes Sheets rows or
+sends Telegram notifications merely to collect evidence:
+
+| Source | Capture route |
+| --- | --- |
+| Kinozal | `python scripts/capture_kinozal_fixture.py <url> <path>` |
+| GitHub REST | `python scripts/capture_external_fixture.py github <endpoint> <path> --confirm-repository-safe` |
+| Telegram channel input | `python scripts/capture_external_fixture.py telegram <channel-url> <path> --confirm-repository-safe` |
+| Gemini summarization | `python scripts/capture_external_fixture.py gemini <saved-input> <path> <--broadcast|--chat> --confirm-repository-safe` |
+| Existing Sheets worksheet | `python scripts/capture_external_fixture.py sheets <spreadsheet-url> <worksheet> <path> --confirm-repository-safe` |
+| Another source with a read-only CLI | `<read-only command> | python scripts/capture_external_fixture.py stdin <path> --confirm-repository-safe` |
+
+The safety flag is an explicit claim, not a sanitizer: inspect the payload and never commit
+credentials, private messages, or other sensitive data. The Telegram route calls
+`TelethonReader` without Gemini or a notifier; the Gemini route replays an already saved input
+without Telegram delivery; the Sheets route only reads an existing worksheet; and the GitHub
+route permits one `gh api` GET rather than arbitrary subprocess arguments. The `stdin` route
+persists output but does not execute the upstream tool, so it adds no generic
+process-execution capability.
+
+If no safe read-only route exists, do not improvise with a side-effecting production entry
+point. An unsupported claim that the source is unavailable is still a gap: a design that
+depends on the missing fact stays blocked until a capture succeeds.
+
+Captured bytes belong in `tests/fixtures/` only when a production-behaviour regression test
+reads them in the same commit. A fixture that is missing when the implementation needs it means
+the capture runs again — never that the implementer writes the bytes by hand.
 
 ## Bug taxonomy
 

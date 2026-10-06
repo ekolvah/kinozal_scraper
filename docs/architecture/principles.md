@@ -160,7 +160,7 @@ planning evidence, ignored by Git and kept locally only until merge. A verified,
 safe, compressed observation record in the change's proposal is the durable review
 artifact; the full payload is not copied there. Kinozal capture uses
 `python scripts/capture_kinozal_fixture.py <url> <path>`; the source routing
-table in [`agent-process.md`](agent-process.md#evidence-block) gives read-only
+table in [`testing.md`](testing.md#external-data-capture-routes) gives read-only
 commands for GitHub, Telegram, Gemini, Sheets, and an existing CLI for another
 source. Observation must include both the failing record and an exact valid
 record from the same captured response; replacing that record with a sibling
@@ -272,7 +272,7 @@ of truth on principles.
 former §Development Workflow) are delegated to the agent-process plugin's
 `agent-process` skill, which this repository consumes and does not edit, and to
 [the agent process](agent-process.md) for the repository-owned additions (the
-Evidence block, discovery, governance conventions; see
+governance conventions; see
 [`information-architecture.md`](information-architecture.md)). Delegation does **not** weaken their
 authority: those rules bind equally. Amending the plugin's procedure happens
 upstream; amending the additions happens in `agent-process.md` (other mentions

@@ -33,7 +33,7 @@ Current work: [GitHub Issues](https://github.com/ekolvah/kinozal_scraper/issues)
 
 ## PR Workflow
 
-The process is the agent-process plugin's `agent-process` skill: `/opsx:propose` → `/opsx:apply` → archive → PR. Repository-owned additions (Evidence block, discovery, governance conventions) are in **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Do not duplicate either here.
+The process is the agent-process plugin's `agent-process` skill: `/opsx:propose` → `/opsx:apply` → archive → PR. Repository-owned additions (governance conventions) are in **[`docs/architecture/agent-process.md`](docs/architecture/agent-process.md)**. Do not duplicate either here.
 
 ## Dependencies
 
