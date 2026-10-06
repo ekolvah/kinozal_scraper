@@ -95,7 +95,7 @@ frozenlist==1.8.0
     # via
     #   aiohttp
     #   aiosignal
-fsspec[http]==2026.4.0
+fsspec[http]==2026.6.0
     # via
     #   datasets
     #   huggingface-hub
@@ -180,7 +180,7 @@ langgraph-checkpoint==4.1.1
     #   langgraph-prebuilt
 langgraph-prebuilt==1.1.0
     # via langgraph
-langgraph-sdk==0.4.2
+langgraph-sdk==0.4.6
     # via langgraph
 langsmith==0.10.10
     # via
@@ -202,7 +202,7 @@ mdurl==0.1.2
     #   markdown-it-py
 msgpack==1.2.1
     # via cachecontrol
-multidict==6.7.1
+multidict==6.9.1
     # via
     #   aiohttp
     #   yarl
