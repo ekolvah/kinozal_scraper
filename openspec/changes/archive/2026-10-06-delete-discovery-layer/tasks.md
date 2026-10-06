@@ -28,12 +28,12 @@
 
 ## 5. Verify
 
-- [ ] 5.1 Run `openspec validate --strict --all`. Verify: exit 0.
-- [ ] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 5.1 Run `openspec validate --strict --all`. Verify: exit 0.
+- [x] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 6. Deliver
 
-- [ ] 6.1 Run `agent-process archive_change delete-discovery-layer`, then `gh pr create --title "chore: delete-discovery-layer" --body-file <report>`; the report names #626, #612 and #616 as plain references and carries the scenario map.
+- [x] 6.1 Run `agent-process archive_change delete-discovery-layer`, then `gh pr create --title "chore: delete-discovery-layer" --body-file <report>`; the report names #626, #612 and #616 as plain references and carries the scenario map.
 - [ ] 6.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
