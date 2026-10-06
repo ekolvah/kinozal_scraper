@@ -12,7 +12,7 @@ Always-load (without `paths:`): the tactics are needed in every session, not onl
 - **Principles §I–VII** — [`principles.md`](../../docs/architecture/principles.md):
   root cause → §V, visibility → §IV, test-first → §I, simplicity/minimal-diff → §VII.
 - **Procedure** — the plugin's `agent-process` skill; repository-owned additions
-  (Evidence, discovery, governance) — [`agent-process.md`](../../docs/architecture/agent-process.md).
+  (governance) — [`agent-process.md`](../../docs/architecture/agent-process.md).
 - **Tests**: consult [`testing.md`](testing.md) **before choosing the test level**—it is
   path-scoped (`tests/**`) and may load only after the strategy has been chosen.
 

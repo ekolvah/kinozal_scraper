@@ -10,11 +10,11 @@ the `principles.md` §Scripts over instructions case—the deterministic step �
 exists” becomes an exit code.
 
 **Why a test, not an entry in `CHECKS`.** Every registry entry becomes its own CI step,
-so a new one would be an extra step for a static check already run by `check_pytest`. Its genre is `test_repo_layout.py` / `test_agent_frontmatter.py`.
+so a new one would be an extra step for a static check already run by `check_pytest`. Its genre is `test_repo_layout.py`.
 
 **Scope is the glob itself, with no second filter over it.** The first version
 filtered out files with frontmatter `description:` to “admit them by property rather than by
-directory”. There was nothing to filter out: `.claude/agents/*.md` and `.claude/commands/*.md`—the
+directory”. There was nothing to filter out: `.claude/commands/*.md`—the
 very `description:` set—are not enumerated by this glob at all, so they are excluded earlier
 and unconditionally. The filter's only live effect inside scope was a **silent
 opt-out**: add `description:` to an architecture document's preamble and it silently drops out of parameterization,
@@ -28,8 +28,7 @@ deterministic, whether it is *current* is not, and that is already recorded in `
 between the header and the actual purpose in review.
 
 **Scope is derived from the glob, not from a list** so the next architecture document enters the rule
-automatically, rather than through a manual enumeration someone will forget to extend (the same logic as
-`test_agent_frontmatter.py`, #407).
+automatically, rather than through a manual enumeration someone will forget to extend (#407).
 """
 
 from __future__ import annotations
@@ -70,7 +69,6 @@ _READ_BUDGET_DOCUMENTS = tuple(
         "docs/architecture/ci-local.md",
         "docs/architecture/ci-workflow.md",
         "docs/architecture/ci-branch-protection.md",
-        "docs/architecture/ci-agent-review.md",
         "docs/architecture/ci-production.md",
         "docs/architecture/ci-tooling-decisions.md",
         "docs/architecture/coverage-gaps.md",
@@ -137,7 +135,7 @@ class TestMappedDocsCarryHeader:
 
         Checking the union for non-emptiness is insufficient: moving one of two directories
         would leave the test green thanks to the other—“nothing to check” would become indistinguishable
-        from “everything is fine” (§IV). The precedent is `test_agent_frontmatter.py`. The assertion is
+        from “everything is fine” (§IV). The assertion is
         about the **same** list that parameterizes the checks below: a guard that looks at
         a wider set than is actually scanned would itself be a vacuum.
         """

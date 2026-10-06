@@ -72,7 +72,7 @@ single English marker; adding an alternative is a policy change, not a per-file 
 `.claude/rules/`**. This is the only scope rule; no second layer filters it. Two clarifications
 explain why the boundary is here rather than expanding the rule:
 
-- **`.claude/agents/*.md` and `.claude/commands/*.md` are outside scope not as punishment, but
+- **`.claude/commands/*.md` are outside scope not as punishment, but
   because they already have a header — frontmatter `description:`.** Requiring a marker line too
   would keep the canon in two places. The converse confirms the boundary: `.claude/rules/testing.md`
   frontmatter has `paths:` but no `description:`, so its marker line is required and the scope
@@ -82,7 +82,7 @@ explain why the boundary is here rather than expanding the rule:
   freed.
 - **`docs/adr/` lies outside `docs/architecture/` for the same reason.** A MADR record has its own
   header (frontmatter `status`/`date` + decision title), so requiring a marker line too would keep
-  the canon in two places — the same argument as for `.claude/agents/`. The directory still has an
+  the canon in two places — the same argument as for `.claude/commands/`. The directory still has an
   invariant: `tests/test_adr_records.py` guards name, unique number, status, `superseded by`
   resolution, and required sections.
 

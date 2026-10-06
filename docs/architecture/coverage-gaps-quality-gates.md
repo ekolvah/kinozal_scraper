@@ -20,23 +20,6 @@
   not reopened as a coverage gap: it is conscious non-scope, a separate unit
   (`agent-process.md`, Governance conventions).
 
-- **W. Reviewer prompts are upstream; the local guard is a verbatim denylist (#374, #392, #600).**
-  Both reviewers — the cloud `agent-review` and the plan-stage `architect-reviewer` — belong to the
-  agent-process plugin, so whether their prompts carry a severity filter *at the discovery stage*
-  (the model follows one literally and a finding silently never reaches the PR) is not scannable
-  from this repository. What stays local: `tests/test_agent_frontmatter.py` denies removed wording
-  verbatim — `do not inflate` / `ruthless` / `brevity by default` — over `.claude/agents/*.md`.
-  **The verbatim denylist covers only the English return path** (#470): the phrasings actually
-  removed were Russian, and their return is **consciously not covered**: the documentation-language
-  gate that kept them out was dropped (ADR-0014), and the only local agent file is
-  `.claude/agents/discovery.md`. A merged PR that brings Cyrillic prose back is the reopen
-  condition ADR-0014 names.
-  **Semantic paraphrase is consciously NOT covered** ("be selective", "only report what
-  matters"): checking prompt meaning would require an LLM call for every suite run, therefore cost
-  more and be less deterministic than the subject under test; while a regex over an open set of
-  phrasings creates a change detector tailored to current text (#374). Recorded so "why is there no
-  prompt test?" is not reopened: the test exists; only its semantic half was rejected.
-
 - **X. Subprocess encoding: the guard protects the parent side, not the child (#364).**
   `tests/test_subprocess_encoding.py` (AST over `scripts/**`, `src/**`, `tests/**`) requires explicit
   `encoding` on a call that captures text-mode output — without it, Windows decodes with the OS code
@@ -134,16 +117,15 @@
   in-repository half — a declared context set guarded against the workflow jobs — left with the
   v1 workflows it described.
 
-- **AR. The Evidence block has no shape check, and discovery has no gate trigger (#600).** The v1
-  issue validator checked a bug's `## Evidence` block (provenance line, capture command naming
-  its path, record fields, explicit failed-capture output) and the repository-owned `/plan`
-  chained the `discovery` subagent. The plugin owns `/opsx:propose` and has neither: the block
-  now lives in the change's `proposal.md`, its shape is held by the prose in
-  [`agent-process.md`](agent-process.md#evidence-block) and by the architect review, and §V's
-  live observation is invoked by instruction
-  ([`.claude/rules/workflow.md`](../../.claude/rules/workflow.md)), not by an exit code.
-  **Accepted by the maintainer (2026-10-01)** rather than rebuilt locally: a repository-owned
-  validator over plugin-owned artifacts would be the duplicated control plane ADR-0013 retires.
-  The cost is visible, not silent: a bug proposal without the block reaches the architect review
-  as a missing section. **Revisit trigger:** a design about external data ships without an
-  observation, or the plugin gains a discovery role or Evidence check upstream.
+- **AR. §V's live observation has no carrier and no gate (#600, #626).** The v1 issue validator
+  checked a bug's `## Evidence` block, and the repository-owned `/plan` chained a `discovery`
+  subagent. #600 kept the block as prose and the subagent behind an instruction; #626 deleted
+  both, because the plugin declined a discovery role (ekolvah/agent-process-distribution#307).
+  The duty to observe the live system before designing how its data is read or classified is
+  held only by the plugin's architect review, which reads the plugin's own
+  `skills/agent-process/principles.md` §V, not this repository's copy. Capture commands are in
+  [`testing.md`](testing.md#external-data-capture-routes). **Accepted by the maintainer
+  (2026-10-01, #616)** rather than rebuilt locally: a repository-owned carrier or validator over
+  plugin-owned artifacts would be the duplicated control plane ADR-0013 retires. **Revisit
+  trigger:** a design about external data ships without an observation, or a plugin release
+  drops the §V live-observation text.
