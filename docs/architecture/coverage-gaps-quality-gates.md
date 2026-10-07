@@ -54,9 +54,8 @@
   weakened — a pytest assertion has no `noqa` with which to silence it.
 
   **Not every new branch is covered — consciously (#410).** Tests pin the **distinguishing**
-  decisions where confusing outcomes is costly: `hooks._run_ruff` →
-  `setup_broken` signal, not exception (otherwise stderr reaches the user but not the agent);
-  `ci_check._tracked_files` → "file set is unknown", not misleading "no files to scan".
+  decisions where confusing outcomes is costly: `ci_check._tracked_files` → "file set is
+  unknown", not misleading "no files to scan".
 
 - **Z. Relative-link integrity between `.md` files is not guarded (#418).** Moving the runtime half
   of `ci.md` to `operations.md` retargeted eight incoming pointers, half of which were prose and
@@ -124,3 +123,14 @@
   plugin-owned artifacts would be the duplicated control plane ADR-0013 retires. **Revisit
   trigger:** a design about external data ships without an observation, or a plugin release
   drops the §V live-observation text.
+
+- **AT. A changed specifier of an already-pinned package has no mechanical catcher (#628).** The
+  edit-time reminder to re-run `pip-compile` after a `requirements*.in` edit left with the
+  repository's deleted post-edit hook. `check_requirements` still catches a package in an `.in` with no lockfile
+  pin and a prod/dev pin mismatch, at pre-push and in `agent-process / quality`. It cannot see
+  `foo>=2` written over a lock that holds `foo 1.x`; only `CLAUDE.md` §Dependencies states the
+  rule. A `pip-compile` hook is not the fix: the lockfiles are Windows output (`colorama` via
+  `build` and `click`), pip-tools documents per-environment output, and the `pre-commit`-stage
+  hook would rewrite `requirements-dev.txt` on every Linux CI `lint` run. **Revisit trigger
+  (wait-for-pain):** a stale lock reaches `main`; then a cross-platform lock such as
+  `uv pip compile --universal` makes a hook deterministic.

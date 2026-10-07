@@ -19,9 +19,9 @@ environment). On Windows, `bash` must be Git Bash (`usr\bin\bash.exe`), not WSL'
 `System32\bash.exe`.
 
 Runs every check in the `CHECKS` registry (`scripts/ci_check.py`), in order:
-ruff format → ruff lint → detect-secrets → pytest → pip-audit (runtime) →
+pre-commit-stage hooks (ruff check, ruff format) → detect-secrets → pytest → pip-audit (runtime) →
 pip-audit (dev) → requirements consistency → mypy → import contracts. (Module-docstring presence
-is enforced *inside* ruff lint via `D100`/`D104`/`D419`, not a separate step —
+is enforced *inside* ruff check via `D100`/`D104`/`D419`, not a separate step —
 see the lint gates below.)
 
 **Output is budgeted, and this line is the forcing function.** `addopts` in
@@ -74,9 +74,9 @@ pins the declaration to the registry (#597).
 
 > **Disambiguation:** this section's title "Local pre-commit" names the
 > pre-commit *moment* (the git-hook that runs before a push). The
-> [`pre-commit`](https://pre-commit.com) framework only installs and launches that hook; it
-> runs no file linters of its own, and `CHECKS` stays the single check registry
-> ([`ci-tooling-decisions.md`](ci-tooling-decisions.md#consciously-not-adopted)).
+> [`pre-commit`](https://pre-commit.com) framework launches that hook and, through the `lint`
+> check, the file linters declared in `.pre-commit-config.yaml`; `CHECKS` stays the single check
+> registry ([`ci-tooling-decisions.md`](ci-tooling-decisions.md#consciously-not-adopted)).
 
 ### Gate CLI exit codes
 
@@ -135,33 +135,18 @@ semantics shift with the OS path separator. For a false positive **inside** our 
 code the escape hatch is an inline `# pragma: allowlist secret` at the site (see
 `tests/test_secrets_gate.py`), never a blanket exclusion.
 
-### Session hooks (`scripts/hooks.py`)
+### Edit-time lint
 
-A separate, *earlier* feedback layer that runs **during** an agent session, not
-at push (#281). `.claude/settings.json` declares a `PostToolUse` hook (matcher
-`Edit|Write`) invoking `python -m scripts.hooks on-edit`, which dispatches two cheap
-checks in one process right after each file edit:
-
-- `*.py` → ruff **check-only** (`ruff format --check` + `ruff check`, **no
-  `--fix`/format mutation** — the harness tracks file contents, so rewriting
-  behind its back breaks the next Edit's `old_string` match). Remaining lint →
-  stderr + exit 2 (PostToolUse exit 2 feeds stderr back to the agent).
-- `requirements*.in` → a `pip-compile` reminder (the agent process is otherwise only
-  prose — this makes forgetting it a *visible* marker, not a CI-time surprise).
-
-§IV split: a malformed/empty payload is a silent no-op, but a ruff *exec*
-failure (not installed / bad config) is a **visible, distinct** marker — a
-silently-broken hook must not masquerade as "lint clean". Decision logic is pure
-functions (`plan_checks`/`classify_ruff_result`) with unit tests
-(`tests/test_hooks.py`).
+A separate, *earlier* feedback layer that runs **during** an agent session, not at push. The
+agent-process plugin's `edit_lint` hook (`PostToolUse`, `Edit|Write`) runs `pre-commit run
+--hook-stage pre-commit --files <edited file>`, so the ruff hooks of `.pre-commit-config.yaml`
+check each edited file; a finding reaches the agent with exit 2, and a missing `pre-commit` is a
+marker. `ruff-format` may rewrite the file; the harness reports the new content and the next
+`Edit` works against it. The `lint` check above runs the same stage over all tracked files, so
+edit time is a subset of the gate (#628).
 
 The navigation policy (shell file reads and over-budget `Read`, `PreToolUse`) and the
 memory checkpoint (a write under the agent's auto-memory directory, `PostToolUse`) are the
 agent-process plugin's hooks, `navigation_policy` and `memory_checkpoint`, active here because
 `.github/workflows/agent-process.yml` exists. The security carrier stays local:
 `permissions.deny`, guarded by `tests/test_settings_deny.py`.
-
-This is instant feedback that **complements, never replaces** `ci_check.py` (the
-canonical pre-push gate), and is unrelated to the `pre-commit` framework that launches
-that gate ([`ci-tooling-decisions.md`](ci-tooling-decisions.md#consciously-not-adopted)) — the framework
-is a push-time hook launcher, this is a session-time editor hook.

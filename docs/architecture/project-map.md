@@ -20,7 +20,7 @@ decision; a per-record map would diverge on the next record.
 | `~/.claude/CLAUDE.md` (global, outside the repository) | Cross-project material (generic mindset for non-repository projects) | ✅ |
 | `CLAUDE.md` (project) | Mix: what the app does + Windows pitfalls + PR-workflow summary + architecture-document index | ❌ kitchen-sink |
 | `.claude/rules/testing.md` | Operational test-writing checklist (RED-first/doubles/level/ci_check) — path-scoped `tests/**`, links to §I/§II | ✅ |
-| `.claude/settings.json` | Claude hooks and local deny policy (`permissions.deny`); the ruleset remains final | ✅ |
+| `.claude/settings.json` | `SessionStart` hooks and local deny policy (`permissions.deny`); the ruleset remains final | ✅ |
 | `.claude/settings.local.json` (gitignored) | Personal mode + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, personal) |
 
 ### `docs/architecture/`
@@ -64,18 +64,33 @@ decision; a per-record map would diverge on the next record.
 | `scripts/ci_check.py` | The quality gate: the pre-push hook runs it whole, the plugin's CI runs each registry entry via `--only` |
 | `scripts/eval_trailers.py` | Trailer-selection evaluation harness with three scorecards: `TrailerStrategy` (YouTube pick), `evaluate_delivery` (production `select_trailer`, the user-visible result, #379), and `evaluate_tmdb` (TMDB source). It uses a frozen golden set with offline Hit/Wrong/Miss outcomes against `correct`, plus `--record`/`--record-tmdb`/`--update-baseline`. The **gate** is the per-film delivery result in `tests/fixtures/trailer_baseline.json`, enforced by `tests/test_eval_baseline.py` rather than a `ci_check` CHECKS entry. The dataset tests both finding an accepted trailer (`correct`) and rejecting verified wrong candidates (`trap`, #380). Deep dive: `testing.md#eval-harness--trailer-selection` (#139, #329, #379, #380) |
 | `scripts/eval_summarizer.py` | RAGAS evaluation of `summary_ru`: faithfulness and answer relevancy against a frozen golden set instead of a `response_pattern` format vibe check. The LLM-as-judge metric is live/API-gated for development, not CI; the `_evaluate_dataset` boundary is doubled and pure seams are tested. RAGAS is a development-only dependency. Deep dive: `testing.md#eval-harness--summarizer-faithfulness` (#347) |
-| `scripts/hooks.py` | Claude session hook: post-edit ruff feedback and pip-compile reminder complement `ci_check.py` |
 | `scripts/token_trend.py` | Measures **observed raw-token** development-session use from Claude Code transcripts: input, output, cache-read and cache-creation remain separate; their sum is per-branch/per-turn trend input. Its same single pass also folds distinct tool blocks per assistant request and classifies same-session `Read` repeats by the exact window or another window. It detects rolling-window growth by median plus a measured absolute floor. A `SessionStart` hook in `.claude/settings.json` is quiet normally and **always** exits 0 so the hook does not emit its own alert; `--report` prints the table. Because transcripts are retained for only 30 days (`cleanupPeriodDays`), branch aggregates survive in local `token_ledger.jsonl`; schemas 1/2 retain reconstructible raw fields but interaction metrics, like legacy sidechain tokens, are unavailable rather than zero. Complements the static `test_always_load_budget.py` ratchet: that guards declared context, this measures observed history (#464, #565) |
 | `observability/claude-code/` | Values-free Claude Code direct-OTel template and live-captured signal/attribute catalogue. Credentials stay outside git; operation is in `operations.md`, privacy in `llm-security.md`, and the choice in ADR-0006 (#471) |
 | `observability/agent-telemetry/` | Importable Grafana dashboard over the Claude Code signal catalogue (#471) |
 | `scripts/check_otel_event_delivery.py` | Operator-invoked, read-only, thresholdless check that both halves of the Claude Code telemetry signal arrive: reads metrics and events over one window through the Grafana datasource proxy and exits non-zero when either half is missing while the other arrived. Why the repository may hold live credentials at all: ADR-0010; operation is in `operations.md#verify-and-import`; the coverage it moved is `coverage-gaps-agent-tooling.md` §AN (#542) |
 | `.github/workflows/agent-process.yml`, `.github/workflows/agent-review.yml` | Plugin-managed (installer-rendered, do not edit) quality and review callers, check runs `agent-process / *` and `agent-review / *`; the two checks the default-branch ruleset requires (`ci.md`, ADR-0013) |
 | `.github/agent-process-quality.json` | The plugin's quality declaration: `setup`, `test` (`ci_check.py`), `checks` (`ci_check.py --list-checks`); `TestStepParity` pins it to the registry (#597) |
-| `.pre-commit-config.yaml` | Plugin-managed pre-push hook: one `quality` hook that runs the declared `test`; setup in `ci-local.md` |
+| `.pre-commit-config.yaml` | Plugin-managed block: the pre-push `quality` hook that runs the declared `test`; outside the block, the repository's ruff hooks (`pre-commit` stage, the `lint` check and edit-time lint); setup in `ci-local.md` |
 | `.github/dependabot.yml` | Plugin-managed Dependabot configuration |
 | `openspec/`, `.claude/commands/opsx/`, `.claude/skills/openspec-*` | OpenSpec workspace and its `/opsx:*` commands and skills, installed by the agent-process plugin (its `agent-process` skill is the process); do not edit |
 | `.claude/agent-process-check.py` | Plugin-managed `SessionStart` check that the agent-process plugin is installed at the pinned version |
 | `.importlinter` | §II protocol boundaries as a machine contract (the `imports` gate in `ci_check`): dependency direction + adapter-no-auth; deep dive `ci-workflow.md` (#234) |
+
+### Repository-owned process files that stay
+
+After the agent-process plugin took over the shared process (#612), these process files remain
+the repository's own; each row names why or the issue that owns its future.
+
+| Files | Why they stay |
+|---|---|
+| `CLAUDE.md` | Application context and Windows pitfalls no plugin can know |
+| `.claude/rules/testing.md`, fixture capture scripts, `scripts/check_fixture_ratchet.py` | Repository test checklist and external-data capture; owned by #613 |
+| `scripts/ci_check.py`, `ci*.md` | The repository's quality gate, which the plugin runs as the declared `test` |
+| `.pre-commit-config.yaml` hooks outside the plugin block | Ruff's only pin and its config, read by the plugin's edit-time lint (#628) |
+| `SessionStart` `token_trend` hook, `scripts/token_trend.py`, `observability/*`, `scripts/check_otel_event_delivery.py` and their tests | Development telemetry; owned by #614 track 2 |
+| `permissions.deny` in `.claude/settings.json`, `tests/test_settings_deny.py` | Local security carrier until #632 |
+| `tests/test_doc_headers.py`, `tests/test_doc_links.py`, `tests/test_adr_records.py`, `tests/test_always_load_budget.py`, `tests/test_repo_layout.py`, `information-architecture.md` | Doc guards and the policy they enforce |
+| `coverage-gaps-*.md`, `docs/adr/` | Repository decision records and accepted gaps |
 
 ### Project source files
 

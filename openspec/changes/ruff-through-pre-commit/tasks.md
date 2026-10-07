@@ -23,12 +23,12 @@
 
 ## 4. Docs and the list of what stays (design D1, D2, D4, D5)
 
-- [ ] 4.1 `docs/architecture/ci-local.md`: gate order (l. ~22) reads "pre-commit-stage hooks (ruff check, ruff format) → detect-secrets → …"; §Session hooks becomes "Edit-time lint": the plugin's `edit_lint` runs the `pre-commit`-stage hooks on each edited file and a formatter may rewrite it; keep the navigation/memory and `permissions.deny` paragraph; drop the `hooks.py` text and the "unrelated to the `pre-commit` framework" sentence.
-- [ ] 4.2 `docs/architecture/ci-workflow.md`: l. ~146 "`ruff check .` recurses through the full tree from cwd" → the `lint` run passes every tracked file; delete the `scripts/hooks.py` `errors="replace"` paragraph (l. ~192).
-- [ ] 4.3 `docs/architecture/ci-tooling-decisions.md`: rewrite the `pre-commit` entry per design D2 (file linters adopted with the hook `rev` as the only pin, #628; gates with their own logic and mypy stay `CHECKS` scripts and why), linking upstream ADR 0034.
-- [ ] 4.4 `docs/architecture/coverage-gaps-quality-gates.md`: `X` keeps only the `ci_check._tracked_files` example; add `AT` per design D4. `docs/architecture/coverage-gaps.md`: ID range "`A` through `AT`", quality-gates line lists `AT`.
-- [ ] 4.5 `docs/architecture/project-map.md`: delete the `scripts/hooks.py` row; `.claude/settings.json` row says `SessionStart` hook and `permissions.deny`; `.pre-commit-config.yaml` row adds the repository's ruff hooks outside the plugin block; add the section of design D5.
-- [ ] 4.6 Verify: `git grep -n -e 'hooks\.py' -e 'scripts\.hooks' -e 'python -m ruff' -e 'check_format' -e '"-m", "ruff"' -- ':!openspec' ':!docs/adr'` prints nothing; `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py tests/test_always_load_budget.py tests/test_adr_records.py -q` passes; commit.
+- [x] 4.1 `docs/architecture/ci-local.md`: gate order (l. ~22) reads "pre-commit-stage hooks (ruff check, ruff format) → detect-secrets → …"; §Session hooks becomes "Edit-time lint": the plugin's `edit_lint` runs the `pre-commit`-stage hooks on each edited file and a formatter may rewrite it; keep the navigation/memory and `permissions.deny` paragraph; drop the `hooks.py` text and the "unrelated to the `pre-commit` framework" sentence.
+- [x] 4.2 `docs/architecture/ci-workflow.md`: l. ~146 "`ruff check .` recurses through the full tree from cwd" → the `lint` run passes every tracked file; delete the `scripts/hooks.py` `errors="replace"` paragraph (l. ~192).
+- [x] 4.3 `docs/architecture/ci-tooling-decisions.md`: rewrite the `pre-commit` entry per design D2 (file linters adopted with the hook `rev` as the only pin, #628; gates with their own logic and mypy stay `CHECKS` scripts and why), linking upstream ADR 0034.
+- [x] 4.4 `docs/architecture/coverage-gaps-quality-gates.md`: `X` keeps only the `ci_check._tracked_files` example; add `AT` per design D4. `docs/architecture/coverage-gaps.md`: ID range "`A` through `AT`", quality-gates line lists `AT`.
+- [x] 4.5 `docs/architecture/project-map.md`: delete the `scripts/hooks.py` row; `.claude/settings.json` row says `SessionStart` hook and `permissions.deny`; `.pre-commit-config.yaml` row adds the repository's ruff hooks outside the plugin block; add the section of design D5.
+- [x] 4.6 Verify: `git grep -n -e 'hooks\.py' -e 'scripts\.hooks' -e 'python -m ruff' -e 'check_format' -e '"-m", "ruff"' -- ':!openspec' ':!docs/adr'` prints nothing; `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py tests/test_always_load_budget.py tests/test_adr_records.py -q` passes; commit.
 
 ## 5. Verify
 
