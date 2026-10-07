@@ -314,8 +314,7 @@ Not every regression deserves a test. Decide by what the regression actually bre
 
 - **Correctness or safety regression → write the test.** A wrong row, a dropped item, a
   leaked secret, a broken import — the test guards a real failure mode (e.g.
-  `test_repo_layout` guards import correctness, `test_settings_deny` guards a security
-  invariant).
+  `test_repo_layout` guards import correctness).
 - **Resource-only regression (CI minutes, tokens) → no guard test; use a forcing-function
   instead** (a doc note, a deny-list, a config gate). A test here costs maintenance plus CI
   time to guard something that, if it regresses, only ever wastes CI time — net negative
