@@ -36,17 +36,6 @@
           }
         ]
       }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Edit|Write",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "cd \"$CLAUDE_PROJECT_DIR\" && python -m scripts.hooks on-edit"
-          }
-        ]
-      }
     ]
   },
   "extraKnownMarketplaces": {

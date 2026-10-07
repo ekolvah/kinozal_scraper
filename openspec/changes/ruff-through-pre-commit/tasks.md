@@ -17,9 +17,9 @@
 
 ## 3. Delete the post-edit hook (design D4)
 
-- [ ] 3.1 `git rm scripts/hooks.py tests/test_hooks.py`; delete the `PostToolUse` block of `.claude/settings.json`.
-- [ ] 3.2 Drop the `scripts/hooks.py` entry of `tests/test_subprocess_encoding.py` (l. ~284); in `scripts/token_trend.py` (l. ~687) and `tests/test_token_trend.py` (l. 8) state the rule without "mirrors `scripts/hooks.py`".
-- [ ] 3.3 Verify: `python -m pytest tests/test_subprocess_encoding.py tests/test_token_trend.py -q` passes; commit.
+- [x] 3.1 `git rm scripts/hooks.py tests/test_hooks.py`; delete the `PostToolUse` block of `.claude/settings.json`.
+- [x] 3.2 Drop the `scripts/hooks.py` entry of `tests/test_subprocess_encoding.py` (l. ~284); in `scripts/token_trend.py` (l. ~687) and `tests/test_token_trend.py` (l. 8) state the rule without "mirrors `scripts/hooks.py`".
+- [x] 3.3 Verify: `python -m pytest tests/test_subprocess_encoding.py tests/test_token_trend.py -q` passes; commit.
 
 ## 4. Docs and the list of what stays (design D1, D2, D4, D5)
 

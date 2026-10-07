@@ -5,7 +5,7 @@ more expensive” could neither be confirmed nor tied to a commit.
 
 The level follows the bug taxonomy: all deterministic logic is pure functions over JSONL lines,
 so tests use inline fixtures and do **not** read the real `~/.claude`. I/O remains a thin wrapper
-(`collect`, `run_hook`), as in `scripts/hooks.py`.
+(`collect`, `run_hook`).
 
 §IV note: the metric has two distinct “no data” states. No transcript directory in a foreign environment
 (cloud reviewer, other machine) is a normal silent no-op, otherwise error text would enter every review-session
