@@ -684,7 +684,7 @@ def format_alert(verdict: Verdict, anomalies: list[Anomaly]) -> str:
 def read_payload(stdin_text: str) -> dict:
     """Parse `SessionStart` JSON; tolerate empty/corrupt input → {}.
 
-    Mirrors `scripts/hooks.py`: nonzero hook exit would swallow its own alert
+    A nonzero hook exit would swallow its own alert
     (`SessionStart` ignores stdout at exit 2) and show the user an error every session.
     """
     stdin_text = (stdin_text or "").strip()

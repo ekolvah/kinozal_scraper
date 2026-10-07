@@ -46,14 +46,24 @@ def _find_modules() -> list[str]:
     return modules
 
 
-def check_format() -> None:
-    print("==> ruff format")
-    _run([sys.executable, "-m", "ruff", "format", "--check", "."])
-
-
 def check_lint() -> None:
-    print("==> ruff lint")
-    _run([sys.executable, "-m", "ruff", "check", "."])
+    """The `pre-commit`-stage hooks of `.pre-commit-config.yaml` (ruff check and format) over
+    all tracked files: the per-file checks the plugin also runs after each edit, declared once
+    (#628). The stage keeps the `pre-push` `quality` hook, which runs this program, out of the
+    nested run. A formatter rewrites a file it would change, and the run fails with the diff."""
+    print("==> pre-commit (pre-commit stage)")
+    _run(
+        [
+            sys.executable,
+            "-m",
+            "pre_commit",
+            "run",
+            "--hook-stage",
+            "pre-commit",
+            "--all-files",
+            "--show-diff-on-failure",
+        ]
+    )
 
 
 # Captured third-party HTML kept as test fixtures: asset digests and cache-busting
@@ -237,7 +247,6 @@ def check_imports() -> None:
 # Registry — the single source of truth for the quality check set. Order is the
 # run order for a full pre-commit pass. CI runs these names via --only.
 CHECKS: dict[str, Callable[[], None]] = {
-    "format": check_format,
     "lint": check_lint,
     # Before the slow gates on purpose: a leaked key must redden the run in seconds,
     # not after ~3 minutes of pytest + pip-audit.

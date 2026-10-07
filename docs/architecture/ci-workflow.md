@@ -143,8 +143,8 @@ per-run cost.
 
 **The §IV no-op guard from the old docstring script was not carried over — deliberately, not lost.**
 “Fail if the scan found no files” was an artefact of parameterized `root.rglob(Path("src"))` in
-bespoke `scripts/check_headers.py`; `ruff check .` recurses through the full tree from cwd and
-cannot miss the package this way. The residual “package disappeared/is empty” case is caught
+bespoke `scripts/check_headers.py`; the `lint` check passes every tracked file to the ruff hooks
+(`--all-files`) and cannot miss the package this way. The residual “package disappeared/is empty” case is caught
 **strictly more strongly** by `test_package_importable.py` (17 hardcoded `import_module` calls),
 `test_repo_layout.py`, mypy, and import-linter.
 
@@ -188,10 +188,6 @@ precedent (#237) must not be reopened against this guard. The second boundary is
 checks only the **parent** side: child Python still writes in the OS code page without
 `PYTHONUTF8=1` / `-X utf8`. Both boundaries are in the
 [accepted-gaps ledger](coverage-gaps.md); the rule itself is canon in `CLAUDE.md` §Environment.
-
-`scripts/hooks.py` additionally passes `errors="replace"` — per-call-site decision for a tool
-whose entire job is visibility; the guard does not require `errors` anywhere.
-
 ### Doc guards
 
 Static guards over `.md`, all of the genre above—

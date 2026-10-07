@@ -1,0 +1,40 @@
+{
+  "verdict": "approve",
+  "reviewer": "architect-reviewer",
+  "reasoning": "The plan removes one bespoke ruff caller and a second version pin in favour of the hook repository the plugin's edit_lint already reads. Every platform behaviour it relies on is on record (proposal §Why) or was observed during this review. Each lost proof has a catcher that can be traced to a named job or script, and the plan adds no new script.",
+  "classes": {
+    "simpler": {
+      "evidence": "Design D1 rejects `repo: local`/`language: system` (environment depends on the trigger's python) and `ruff-format --check` (manual reformat; the live observation in proposal §Why removes the reason). D2 rejects keeping the requirements-dev pin (second version source, #153). D3 rejects keeping ruff for the test and deleting the test (#440 guard lost). D4 rejects the pip-compile hook on evidence (Windows lockfiles with colorama, pip-tools per-environment sentence). A smaller plan that only deletes hooks.py would lose edit-time lint, because .pre-commit-config.yaml declares no pre-commit-stage hook today (checked: only the `quality` hook between the agent-process markers). D5 adds a section to project-map.md rather than a new document. It repeats file names that already have File-map rows (l. 21-23, 64, 73-74), but #612 acceptance 3 asks for the keep list in one place, and the section adds the keep reason the rows lack.",
+      "result": "ok"
+    },
+    "map": {
+      "evidence": "skip_specs: true, so there are no delta scenarios. The tasks.md `## Scenario → test map` row is `n/a` with its reason, and it names the tests that pin D1, D2 and D3.",
+      "result": "ok"
+    },
+    "red": {
+      "evidence": "Tasks 1.1 and 1.2 write TestLint (two tests) and rewrite the #440 guard. Task 1.3 runs check_red on all four node ids, with body-level failure stated: the D3 test reads `rev` inside the test body, so the missing hook fails in the body, not at collection. test_ruff_is_pinned_only_by_the_hook also guards against a vacuous pass. If the ruff hooks lost the pre-commit stage, `pre-commit run --hook-stage pre-commit --all-files` would run nothing and exit 0.",
+      "result": "ok"
+    },
+    "platform": {
+      "evidence": "Already on record in proposal §Why: ADR 0034 (edit_lint command), the distribution spec's byte-keeping sentence, `quality` at `stages: [pre-push]`, the live Edit-after-rewrite observation, and the pip-tools README sentence with colorama. Observed in this review: (1) the ruff-pre-commit v0.15.12 manifest in the local pre-commit cache (C:/Users/jadow/.cache/pre-commit/repoobzjjmyr/.pre-commit-hooks.yaml) has `entry: ruff check --force-exclude` AND `entry: ruff format --force-exclude`, both `types_or: [python, pyi, jupyter]`. Design D1 cites --force-exclude for ruff-check only. Both matter, because tracked `.claude/agent-process-check.py` is excluded only through `[tool.ruff] extend-exclude`. The tracked tree has no .ipynb or .pyi files and no non-.py python-shebang files, so --all-files through those types matches the set `ruff check .` saw. (2) The D3 harness works as designed. I ran `git init` in a temp directory, wrote an untracked .pre-commit-config.yaml holding only ruff-pre-commit v0.15.12 / ruff-check with `args: [--no-cache, --select, I001, --config, <repo pyproject.toml>]`, and ran `python -m pre_commit run ruff-check --files tests/test_candidate.py`. It printed `I001 [*] Import block is un-sorted` with exit=1 both before and after the leaf module existed: pre-commit does not refuse an unstaged config when --files is given. (3) Plugin quality.yml runs each `--list-checks` name as its own matrix job, `eval \"$TEST\" --only \"$CHECK\"`, and the required context is the aggregate `quality` job. Dropping `format` therefore removes no required check. The planner may copy the --force-exclude line for both hooks beside D1.",
+      "result": "ok"
+    },
+    "replaced": {
+      "evidence": "D1's table lists each lost proof with its new form: format --check becomes a rewrite that fails with the diff; untracked .py are no longer linted (tracked only); the hooks.py setup_broken marker becomes edit_lint markers; the single version comes from `rev`. D4 lists what stops proving (the edit-time pip-compile nudge) and gives a catcher for each case, with the uncatchable case recorded as ledger AT. Advisory, no change to any decision: D3's cost line says the hook environment is 'shared with lint'. That holds locally (pre-push runs lint before pytest). In CI, pytest runs in its own job (quality.yml matrix) with no pre-commit cache, so that job now clones ruff-pre-commit and installs ruff cold. That is a network dependency, and a fetch failure shows up as pre-commit's error text in the assertion message. It is visible, not silent; the planner may correct the sentence.",
+      "result": "ok"
+    },
+    "catcher": {
+      "evidence": "All traced. `agent-process / quality` job `lint`: quality.yml `check` matrix job, `python scripts/ci_check.py --only lint` on the PR head, because .github/agent-process-quality.json declares `test`/`checks` that way. Pre-push: the `quality` hook runs the whole ci_check.py, and lint runs the nested pre-commit stage, which cannot nest `quality` because that hook is pre-push only. edit_lint markers: edit_lint.py exits 2 with 'pre-commit is not on PATH' (l. 71-75) and with the pre-commit stdout/stderr on non-zero (l. 93-98). check_requirements catches a name missing from its lockfile and prod/dev pin mismatches (ci_check.py l. 182-205), at pre-push and in the CI job `requirements`. A changed specifier has no catcher; that is stated and recorded as AT. Task 2.4's 'lint exits 0 with no file rewritten' catches any difference between the hook's file set and the old `ruff check .`.",
+      "result": "ok"
+    },
+    "length": {
+      "evidence": "The plan adds or edits no rule or spec sentence. CLAUDE.md, .claude/rules/ and openspec/specs/ are untouched, and skip_specs is true. The doc edits in tasks 4.1-4.5 are descriptive reference and ledger prose, guarded structurally by test_doc_links and test_doc_headers, plus the 4.6 grep for stale hooks.py, python -m ruff and check_format references. No always-load budget is affected.",
+      "result": "ok"
+    },
+    "bespoke": {
+      "evidence": "No script or check is added. The plan deletes scripts/hooks.py and check_format and moves ruff to the standard astral-sh/ruff-pre-commit hook repository, the move upstream ADR 0034 records. The two new tests in tests/test_ci_check.py pin a command and a config; they are not gates. The rewritten #440 harness uses pre-commit's own `run --files`, and D3 gives the reason for its shape.",
+      "result": "ok"
+    }
+  },
+  "scenario_coverage": []
+}

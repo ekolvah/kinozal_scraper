@@ -278,10 +278,10 @@ class TestOutputDefaultAnalyzer:
 class TestRepoIsClean:
     def test_scan_covers_known_files(self) -> None:
         """§IV: "the set is non-empty" would pass even if the glob collapsed to one file.
-        Therefore assert specific files — both contained a violation at the time of #364."""
+        Therefore assert one capturing file from each scanned root (`scripts/`, `tests/`, `src/`)."""
         scanned = {path.relative_to(_REPO).as_posix() for path in _scanned_files()}
         for expected in (
-            "scripts/hooks.py",
+            "scripts/ci_check.py",
             "tests/test_github_trending_pipeline.py",
             "src/kinozal_scraper/alerting.py",
         ):
