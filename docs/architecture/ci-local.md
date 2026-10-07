@@ -145,8 +145,9 @@ marker. `ruff-format` may rewrite the file; the harness reports the new content 
 `Edit` works against it. The `lint` check above runs the same stage over all tracked files, so
 edit time is a subset of the gate (#628).
 
-The navigation policy (shell file reads and over-budget `Read`, `PreToolUse`) and the
-memory checkpoint (a write under the agent's auto-memory directory, `PostToolUse`) are the
-agent-process plugin's hooks, `navigation_policy` and `memory_checkpoint`, active here because
-`.github/workflows/agent-process.yml` exists. The security carrier stays local:
-`permissions.deny`, guarded by `tests/test_settings_deny.py`.
+The navigation policy (shell file reads and over-budget `Read`, `PreToolUse`), the memory
+checkpoint (a write under the agent's auto-memory directory, `PostToolUse`) and the git guard
+(risky git/`gh` commands such as `gh pr merge` or a push to `main`, `PreToolUse` `Bash`, denied
+with the alternative) are the agent-process plugin's hooks, `navigation_policy`,
+`memory_checkpoint` and `git_guard`, active here because `.github/workflows/agent-process.yml`
+exists. `permissions.deny` keeps only `Bash(sleep:*)`, which no plugin hook covers.

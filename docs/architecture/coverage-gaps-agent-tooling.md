@@ -19,17 +19,20 @@
   shared development-telemetry carrier appears that CI can read.
 
 - **AS. Nothing local detects drift from the agent-process plugin's session hooks (#625).**
-  The navigation policy and memory checkpoint are the plugin's hooks, tested by the plugin's own
-  CI. Two local copies of their facts are unguarded: the 28 000-byte budget constant in
-  `tests/test_doc_headers.py` and the hook semantics described in `CLAUDE.md` §Environment. A later plugin release that changes them leaves these stale, and a
-  deny entry that shadows a plugin hook only drops its "use this tool instead" message — both cost
-  tokens, not correctness ([the rule](testing.md#rule-when-a-test-is-not-worth-writing)). The
-  hooks are gated on the literal path `.github/workflows/agent-process.yml`: deleting it cannot
-  merge (the ruleset requires `agent-process / quality`, which only that workflow reports), but
-  a rename that keeps the workflow `name:` and job id still reports the check and silently turns
-  every plugin hook off. Accepted because the file is installer-rendered and the plugin says to
-  rerun the installer rather than edit it. **Revisit trigger:** a plugin release that changes the
-  navigation hooks or their gate.
+  The navigation policy, memory checkpoint and git guard are the plugin's hooks, tested by the
+  plugin's own CI; the git guard is the only local denial of risky git/`gh` commands
+  (the ruleset still guards `main` server-side). Two local copies of the navigation facts are
+  unguarded: the 28 000-byte budget constant in `tests/test_doc_headers.py` and the hook semantics
+  described in `CLAUDE.md` §Environment. A later plugin release that changes them leaves these
+  stale, which costs tokens, not correctness
+  ([the rule](testing.md#rule-when-a-test-is-not-worth-writing)). A plugin that is not loaded
+  takes every hook with it, which the `SessionStart` check reports as `agent-process skill not
+  loaded`. The hooks are gated on the literal path `.github/workflows/agent-process.yml`: deleting
+  it cannot merge (the ruleset requires `agent-process / quality`, which only that workflow
+  reports), but a rename that keeps the workflow `name:` and job id still reports the check and
+  silently turns every plugin hook off, the git guard included. Accepted because the file is
+  installer-rendered and the plugin says to rerun the installer rather than edit it. **Revisit
+  trigger:** a plugin release that changes the navigation hooks, the git guard or their gate.
 
 - **AN. Offline tests cannot prove Claude Code telemetry delivery or Grafana dashboard import
   (#471).** `tests/test_claude_otel_assets.py` guards the values-free setup template, captured

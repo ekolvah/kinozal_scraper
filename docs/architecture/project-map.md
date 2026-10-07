@@ -20,7 +20,7 @@ decision; a per-record map would diverge on the next record.
 | `~/.claude/CLAUDE.md` (global, outside the repository) | Cross-project material (generic mindset for non-repository projects) | ✅ |
 | `CLAUDE.md` (project) | Mix: what the app does + Windows pitfalls + PR-workflow summary + architecture-document index | ❌ kitchen-sink |
 | `.claude/rules/testing.md` | Operational test-writing checklist (RED-first/doubles/level/ci_check) — path-scoped `tests/**`, links to §I/§II | ✅ |
-| `.claude/settings.json` | `SessionStart` hooks and local deny policy (`permissions.deny`); the ruleset remains final | ✅ |
+| `.claude/settings.json` | `SessionStart` hooks, the `sleep` deny entry and the plugin marketplace; risky git/`gh` commands are denied by the plugin's git guard, the ruleset remains final | ✅ |
 | `.claude/settings.local.json` (gitignored) | Personal mode + permissions (defaultMode, allow: WebFetch/Skill) | ✅ (gitignored, personal) |
 
 ### `docs/architecture/`
@@ -88,7 +88,6 @@ the repository's own; each row names why or the issue that owns its future.
 | `scripts/ci_check.py`, `ci*.md` | The repository's quality gate, which the plugin runs as the declared `test` |
 | `.pre-commit-config.yaml` hooks outside the plugin block | Ruff's only pin and its config, read by the plugin's edit-time lint (#628) |
 | `SessionStart` `token_trend` hook, `scripts/token_trend.py`, `observability/*`, `scripts/check_otel_event_delivery.py` and their tests | Development telemetry; owned by #614 track 2 |
-| `permissions.deny` in `.claude/settings.json`, `tests/test_settings_deny.py` | Local security carrier until #632 |
 | `tests/test_doc_headers.py`, `tests/test_doc_links.py`, `tests/test_adr_records.py`, `tests/test_always_load_budget.py`, `tests/test_repo_layout.py`, `information-architecture.md` | Doc guards and the policy they enforce |
 | `coverage-gaps-*.md`, `docs/adr/` | Repository decision records and accepted gaps |
 
