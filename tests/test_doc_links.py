@@ -4,7 +4,7 @@
 (`pipeline.md#trailer-retrieval-and-selection`), while GitHub generates an anchor **from the
 heading text** — so renaming a section silently breaks every incoming reference. This is exactly
 what #427 does: it removes task numbers from 12 headings in 6 files with 17 incoming occurrences
-in 7 files. The deterministic “ensure no link dangles” step is an instance of `principles.md`
+in 7 files. The deterministic “ensure no link dangles” step is an instance of the plugin's `principles.md`
 §Scripts over instructions: an exit code, not a reviewer checklist item.
 
 **Why `markdown-it-py`, not regex.** Regex gets two things wrong. A link inside a ``` block is not
@@ -32,7 +32,7 @@ plan points at.
 
 **Guard boundaries, honestly.** It catches *unresolvable* links, but not *wrong-but-resolvable*
 ones: a reference to an existing file that ceased to be a topic’s home (the pre-#427
-`principles.md` “coverage gaps → `testing.md`” case) is indistinguishable from a correct one to the
+repository-local principles file's “coverage gaps → `testing.md`” case) is indistinguishable from a correct one to the
 guard. This is the same “presence ≠ correctness” as in `test_doc_headers.py` and
 `test_adr_records.py`; a human catches the discrepancy in review. The second boundary is **form**:
 it checks Markdown links and code spans, but neither `![](x.png)` (`image` token) nor raw

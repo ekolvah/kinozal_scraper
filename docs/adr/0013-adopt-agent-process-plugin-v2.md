@@ -13,7 +13,7 @@ issue-section contract (`scripts/validate_issue_sections.py`,
 `.agents/orchestration/change-classes.yaml`), `/plan` and `/implement`, the local
 `architect-reviewer` and `discovery` subagents, Codex as the default implementer
 (`.agents/orchestration/roles.yaml`), and a control plane of about twenty scripts behind
-[`agent-process.md`](../architecture/agent-process.md). [ADR-0011](0011-agentic-process-distribution-mechanism.md)
+[`agent-process.md`](https://github.com/ekolvah/kinozal_scraper/blob/eee5599/docs/architecture/agent-process.md). [ADR-0011](0011-agentic-process-distribution-mechanism.md)
 then chose how to export that process to other repositories, and #571 ruled that this
 repository does not install its own plugin.
 
@@ -29,12 +29,12 @@ loaded at user scope in this repository's sessions, next to v1: two processes an
 The question is whether this repository keeps maintaining v1 or adopts v2 and, if it
 adopts, how it gets there without a window in which no gate blocks a merge to `main`.
 This reverses #571 and the copier-consumer design of #579. It does not reverse the
-duplication argument of [§VII](../architecture/principles.md#vii-simplicity-first): the
+duplication argument of [§VII](https://github.com/ekolvah/kinozal_scraper/blob/eee5599/docs/architecture/principles.md#vii-simplicity-first): the
 plugin replaces the in-repository reviewer and hooks instead of running next to them.
 
 ## Decision Drivers
 
-* Goal 2 of the [goal function](../architecture/principles.md#goal-function): every v1 script, test and doc
+* Goal 2 of the [goal function](https://github.com/ekolvah/kinozal_scraper/blob/eee5599/docs/architecture/principles.md#goal-function): every v1 script, test and doc
   is support surface this repository pays for, while the same guarantees are maintained
   upstream.
 * At every point of the migration at least one required check blocks a merge to `main`;
@@ -177,7 +177,7 @@ guarantee v2 lacks, with its resolution).
 | `discovery` subagent and Evidence capture | gap → kept | — | v2 has no discovery role; §V still requires a live observation when a design depends on external behaviour. The subagent is invoked from a proposal; the gap is filed upstream. Deviation at D (#600): two checks are lost, not kept — the Evidence-shape check, which the maintainer accepted as a loss on 2026-10-01, and the discovery trigger, because v1 chained discovery inside the repository-owned `/plan` while `/opsx:propose` is plugin-owned and cannot chain it, so §V's live observation is invoked by prose (`agent-process.md`, `.claude/rules/workflow.md`) rather than by a gate |
 | `Project 1` Priority field | gap → kept | — | v2 sets Status and Area, not Priority |
 | Fixture ratchet | gap → kept | D | Its repository scan runs only inside the validator tests D deletes; it moves to its own test in the same commit |
-| Local branch-protection drift check | gap → accepted loss | D | It guards against a required context that never reports and locks every PR, including the fix ([ci-branch-protection](../architecture/ci-branch-protection.md)). The required context names now come from upstream workflows, so a plugin release that renames a job or adds a matrix or trigger filter can cause that lockout, and its own upgrade PR is blocked too. Recovery does not need a PR: the maintainer edits the ruleset directly. `activate_protection --dry-run` shows the expected state on demand |
+| Local branch-protection drift check | gap → accepted loss | D | It guards against a required context that never reports and locks every PR, including the fix ([ci-branch-protection](https://github.com/ekolvah/kinozal_scraper/blob/eee5599/docs/architecture/ci-branch-protection.md)). The required context names now come from upstream workflows, so a plugin release that renames a job or adds a matrix or trigger filter can cause that lockout, and its own upgrade PR is blocked too. Recovery does not need a PR: the maintainer edits the ruleset directly. `activate_protection --dry-run` shows the expected state on demand |
 | Repository harness: deny-list, tool hooks, `.claude/settings.json`, test rules, language policy, doc and subprocess guards | kept | — | Consumer-owned; the plugin owns only its marker block in `settings.json` |
 | Process documentation, `CLAUDE.md`, `.claude/rules/` | rewritten | A–D | `agent-process.md` is reduced to the consumer-owned parts and a pointer to the plugin skill |
 | `principles.md` | rewritten | C, D | Quality Gates in C; the v1 reviewer references and the Governance delegation in D |

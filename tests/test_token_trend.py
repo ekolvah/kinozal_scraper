@@ -244,7 +244,8 @@ class TestAggregate:
     def test_sidechain_turns_excluded_from_denominator(self) -> None:
         """Subagents are cheap turns: in the denominator, they would mask actual growth.
 
-        Spawning a subagent is a recommended tactic (`mindset.md`), so a branch with them would
+        Spawning a subagent is a recommended tactic (the `agent-process` skill's
+        Claude harness section), so a branch with them would
         dilute `per_turn` and the detector would report `steady` despite a rising cost.
         """
         records, _ = parse_lines(

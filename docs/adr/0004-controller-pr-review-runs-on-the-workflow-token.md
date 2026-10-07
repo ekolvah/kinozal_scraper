@@ -132,7 +132,7 @@ add the missing scope in the same PR.
   `isWorkflowValidationError()` recognizes exchange failure and converts it to `WorkflowValidationSkipError`,
   meaning successful completion without work.
 * Defect observation: run [31242341386](https://github.com/ekolvah/kinozal_scraper/actions/runs/31242341386) on PR #481.
-* State-document consequences: [`ci-branch-protection.md`](../architecture/ci-branch-protection.md#required-status-checks-branch-protection)
+* State-document consequences: [`ci-branch-protection.md`](https://github.com/ekolvah/kinozal_scraper/blob/eee5599/docs/architecture/ci-branch-protection.md#required-status-checks-branch-protection)
   and `agent-process.md` §Review outcome enforcement (removed by [ADR-0013](0013-adopt-agent-process-plugin-v2.md)).
 * Revisit the record if the repository gains a second maintainer or external contributors with permission to push
   repository branches: then the residual self-verification assumption will become unacceptable and require a reviewer

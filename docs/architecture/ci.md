@@ -12,7 +12,6 @@ in [Rejected CI tooling](ci-tooling-decisions.md) when it has no gate-specific s
 
 - [Local CI gate](ci-local.md) — run and interpret the local pre-commit gate.
 - [Continuous-integration workflow](ci-workflow.md) — CI job composition, lint ratchets, and document guards.
-- [Branch-protection status checks](ci-branch-protection.md) — required GitHub contexts.
 - [Production workflow](ci-production.md) — scheduled production execution.
 - [Rejected CI tooling](ci-tooling-decisions.md) — consciously not adopted tools.
 

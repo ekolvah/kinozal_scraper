@@ -9,7 +9,7 @@
 
 ## Rule: no mocks of internal functions
 
-> **Canon:** the binding statement is [principles.md §II](principles.md) (Protocol
+> **Canon:** the binding statement is [the plugin's `principles.md` §II](https://github.com/ekolvah/agent-process-distribution/blob/main/skills/agent-process/principles.md#ii-protocol-boundaries-with-dependency-injection) (Protocol
 > Boundaries with Dependency Injection). This section is the project-specific
 > elaboration: which boundaries count as external here, and the concrete pattern to follow.
 
@@ -319,7 +319,7 @@ Not every regression deserves a test. Decide by what the regression actually bre
 - **Resource-only regression (CI minutes, tokens) → no guard test; use a forcing-function
   instead** (a doc note, a deny-list, a config gate). A test here costs maintenance plus CI
   time to guard something that, if it regresses, only ever wastes CI time — net negative
-  (goal-function priority (2), [principles.md](principles.md#goal-function)).
+  (goal-function priority (2), [the plugin's `principles.md`](https://github.com/ekolvah/agent-process-distribution/blob/main/skills/agent-process/principles.md#goal-function)).
 
 **Precedent (#207):** a duplicate CI run (one `quality` job fired by both `pull_request`
 and a `push: issue-*` event for the same commit) wasted CI minutes. The fix was a one-line
@@ -351,7 +351,7 @@ Test through the public entry point (`run_*_pipeline()`) and assert on observabl
 never on which internal methods were called in which order. A test that mirrors the
 implementation is a *change-detector*: it breaks on every refactor without catching a bug —
 **negative value**. The aim is an *unchanging* test that fails only when behaviour actually
-changes. This is the positive framing of [§II no-internal-mocks](principles.md): mocking an
+changes. This is the positive framing of [§II no-internal-mocks](https://github.com/ekolvah/agent-process-distribution/blob/main/skills/agent-process/principles.md#ii-protocol-boundaries-with-dependency-injection): mocking an
 internal function is the most common way a test ends up asserting interaction instead of
 state.
 
@@ -364,7 +364,7 @@ state.
 | Bug fix | Add a case reproducing the bug, then fix |
 | Behaviour change | Change the tests deliberately (this is the signal, not noise) |
 
-The "behaviour change needs a test" half is canon in [principles.md §I](principles.md)
+The "behaviour change needs a test" half is canon in [the plugin's `principles.md` §I](https://github.com/ekolvah/agent-process-distribution/blob/main/skills/agent-process/principles.md#i-test-first-non-negotiable)
 (Test-First) — see its exceptions for what legitimately skips a test (rename/move,
 docs-only, one-line non-behavioural). This table is the refactor-vs-feature companion to §I,
 not a restatement of it.

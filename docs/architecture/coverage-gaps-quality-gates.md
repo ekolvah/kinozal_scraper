@@ -18,7 +18,7 @@
   plugin's `.pre-commit-config.yaml` (ADR-0013, #598) brings none of them back: its one hook
   runs `ci_check.py`. Recorded so "where is YAML validation?" is
   not reopened as a coverage gap: it is conscious non-scope, a separate unit
-  (`agent-process.md`, Governance conventions).
+  (one PR, one logical unit: goal 3 of [the plugin's `principles.md`](https://github.com/ekolvah/agent-process-distribution/blob/main/skills/agent-process/principles.md#goal-function)).
 
 - **X. Subprocess encoding: the guard protects the parent side, not the child (#364).**
   `tests/test_subprocess_encoding.py` (AST over `scripts/**`, `src/**`, `tests/**`) requires explicit
@@ -56,12 +56,7 @@
   **Not every new branch is covered — consciously (#410).** Tests pin the **distinguishing**
   decisions where confusing outcomes is costly: `hooks._run_ruff` →
   `setup_broken` signal, not exception (otherwise stderr reaches the user but not the agent);
-  `ci_check._tracked_files` → "file set is unknown", not misleading "no files to scan". Branches
-  in `set_issue_priority` remain
-  **without dedicated tests**: they have the same outcome ("visible error instead of emptiness"),
-  no distinguishing decision, and a copy of one test per branch would be a change detector. The guard rule
-  protects them: the default cannot return without making `test_no_output_defaults` red. Recorded so
-  the omission is a decision, not forgetfulness.
+  `ci_check._tracked_files` → "file set is unknown", not misleading "no files to scan".
 
 - **Z. Relative-link integrity between `.md` files is not guarded (#418).** Moving the runtime half
   of `ci.md` to `operations.md` retargeted eight incoming pointers, half of which were prose and
@@ -113,7 +108,7 @@
   The required context names come from the upstream managed workflows, so the repository
   declares nothing of its own a probe could compare against; and a lockout (a check that never
   reports) is recovered by a manual ruleset edit, which a CI job inside the locked repository
-  could not perform anyway ([`ci-branch-protection.md`](ci-branch-protection.md)). The v1
+  could not perform anyway (recovery is a manual ruleset edit in Settings → Rules). The v1
   in-repository half — a declared context set guarded against the workflow jobs — left with the
   v1 workflows it described.
 
@@ -123,7 +118,7 @@
   both, because the plugin declined a discovery role (ekolvah/agent-process-distribution#307).
   The duty to observe the live system before designing how its data is read or classified is
   held only by the plugin's architect review, which reads the plugin's own
-  `skills/agent-process/principles.md` §V, not this repository's copy. Capture commands are in
+  `skills/agent-process/principles.md` §V. Capture commands are in
   [`testing.md`](testing.md#external-data-capture-routes). **Accepted by the maintainer
   (2026-10-01, #616)** rather than rebuilt locally: a repository-owned carrier or validator over
   plugin-owned artifacts would be the duplicated control plane ADR-0013 retires. **Revisit

@@ -5,7 +5,7 @@ load in full into every session, before the task's first word (`project-map.md` 
 tokens”). This is an unconditional charge levied independently of a session's topic—therefore a direct
 subject of objective-function priority (2). On 2026-07-29 it was 21,135 B (~5.3k tokens),
 and it grew to that figure **silently**: #416/#417 added ~3.8 KB of tactics to
-`mindset.md`. Recurrence is observed rather than hypothetical—hence the gate.
+an always-load rules file. Recurrence is observed rather than hypothetical—hence the gate.
 
 **This is a tripwire, not a quality standard.** The test does not claim “the text is good” and cannot:
 “how much is rule and how much is rationale prose” is a semantic judgment the repository
@@ -31,25 +31,16 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-import pytest
-
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _ROOT_MEMORY = _REPO_ROOT / "CLAUDE.md"
 _RULES_DIR = _REPO_ROOT / ".claude" / "rules"
 
-# These files are intentionally in scope; see `test_expected_files_are_in_scope`.
-_EXPECTED_ALWAYS_LOAD = (
-    _ROOT_MEMORY,
-    _RULES_DIR / "mindset.md",
-    _RULES_DIR / "workflow.md",
-)
-
 # The threshold is current size plus a small allowance. It is a review ratchet,
 # not permission to spend: substantive growth should name its byte cost, while
 # narrative belongs in the issue or PR. Lowering the threshold after moving rules
 # to on-demand documents prevents banking the freed space for silent growth.
-_BUDGET_BYTES = 10_000
+_BUDGET_BYTES = 5_000
 
 _FRONTMATTER_PATHS_KEY = re.compile(r"^paths\s*:", re.MULTILINE)
 
@@ -103,22 +94,6 @@ class TestAlwaysLoadBudget:
             f"проверь, не нарратив ли добавлен: «как мы к этому пришли» живёт в теле issue/PR, "
             f"в правиле остаётся указатель `(#N)` (#375). Поднятие порога легитимно, но это "
             f"осознанное решение на ревью, а не побочный эффект правки."
-        )
-
-    @pytest.mark.parametrize("path", _EXPECTED_ALWAYS_LOAD, ids=lambda p: p.name)
-    def test_expected_files_are_in_scope(self, path: Path) -> None:
-        """Pin by name, rather than checking “the set is non-empty”.
-
-        The primary way to zero out the budget is to add `paths:` to `mindset.md` frontmatter:
-        the file leaves the set, the sum **falls**, the test turns green, and always-load rules
-        are silently disabled (§IV). A non-empty check permits this—the other two files would
-        remain in the set. Therefore the guard is written by name for the whole catalogue, not
-        for one file and not for “the set is non-empty” (#416, #375).
-        """
-        assert path in _always_load_files(), (
-            f"{path.name} выпал из always-load набора — вероятно, у него появился `paths:` "
-            f"во frontmatter. Тогда правила из него больше не грузятся в каждую сессию: "
-            f"бюджет упал, но не потому, что текст ужали (#416, #375)"
         )
 
     def test_path_scoped_rule_is_excluded(self) -> None:

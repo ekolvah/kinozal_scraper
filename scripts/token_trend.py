@@ -336,7 +336,7 @@ def counts_as_turn(record: UsageRecord) -> bool:
     """Whether record enters the `per_turn` denominator.
 
     A turn is a **main** agent-loop step. Sidechain records (subagents) are cheap and many,
-    while subagent spawning is recommended (`mindset.md`): in denominator they would dilute
+    while subagent spawning is recommended (the `agent-process` skill's Claude harness section): in denominator they would dilute
     `per_turn` and report `steady` amid rising consumption. Their raw tokens remain in a separate
     column. Service `<synthetic>` records are not turns either.
     """

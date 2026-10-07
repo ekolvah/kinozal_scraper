@@ -68,7 +68,7 @@ on Windows and would reintroduce the `subprocess stdout=None` pitfall (#109). gr
 builds the graph statically (AST), so the `__main__` wiring blocks never execute.
 `tests/test_import_contracts.py` is an anti-drift guard: it asserts the
 contracts' *load-bearing fields* (which modules are forbidden/layered), so an
-agent can't quietly gut a contract while keeping its name. `principles.md`
+agent can't quietly gut a contract while keeping its name. The plugin's `principles.md`
 is deliberately **not** edited: §II is tool-agnostic canon, so the tool mention
 lives here and in `runtime.md`, not in the constitution.
 
