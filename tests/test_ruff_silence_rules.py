@@ -4,9 +4,9 @@
 machine-enforced via ruff `BLE001` (no blind `except`) and `TRY400`
 (`logger.exception` in handlers — preserve the traceback). This guard asserts
 those codes stay *active*: present in the effective select AND not silently
-neutralised via `ignore` / `per-file-ignores`. Mirrors `test_settings_deny.py`
-— it pins *enforcement*, not mere declaration, so a future agent cannot quietly
-drop the gate through any of the disable vectors (#231 BLOCKING #1).
+neutralised via `ignore` / `per-file-ignores`. It pins *enforcement*, not mere
+declaration, so a future agent cannot quietly drop the gate through any of the
+disable vectors (#231 BLOCKING #1).
 """
 
 from __future__ import annotations

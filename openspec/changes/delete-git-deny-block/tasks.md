@@ -4,12 +4,12 @@
 
 ## 1. RED
 
-- [ ] 1.1 no RED: `skip_specs` deletion of configuration a plugin hook carries, one test and doc mentions; no delta scenario. The guard's behaviour is the plugin's (proposal §Why records it per entry).
+- [x] 1.1 no RED: `skip_specs` deletion of configuration a plugin hook carries, one test and doc mentions; no delta scenario. The guard's behaviour is the plugin's (proposal §Why records it per entry).
 
 ## 2. Delete the deny entries and their test (design D1, D2)
 
-- [ ] 2.1 In `.claude/settings.json` delete the 13 `Bash(git …)` / `Bash(gh …)` entries of `permissions.deny`, keeping `"Bash(sleep:*)"` and every other key byte-for-byte. Verify: `git grep -n -e 'Bash(git' -e 'Bash(gh' -- .claude/settings.json` prints nothing and `python -c "import json;print(json.load(open('.claude/settings.json',encoding='utf-8'))['permissions']['deny'])"` prints `['Bash(sleep:*)']`.
-- [ ] 2.2 `git rm tests/test_settings_deny.py`; in `tests/test_ruff_silence_rules.py` docstring drop "Mirrors `test_settings_deny.py` —" so the sentence starts "It pins *enforcement*…". Verify: `python -m pytest tests/test_ruff_silence_rules.py -q` passes; commit with the ticks of 2.1–2.2.
+- [x] 2.1 In `.claude/settings.json` delete the 13 `Bash(git …)` / `Bash(gh …)` entries of `permissions.deny`, keeping `"Bash(sleep:*)"` and every other key byte-for-byte. Verify: `git grep -n -e 'Bash(git' -e 'Bash(gh' -- .claude/settings.json` prints nothing and `python -c "import json;print(json.load(open('.claude/settings.json',encoding='utf-8'))['permissions']['deny'])"` prints `['Bash(sleep:*)']`.
+- [x] 2.2 `git rm tests/test_settings_deny.py`; in `tests/test_ruff_silence_rules.py` docstring drop "Mirrors `test_settings_deny.py` —" so the sentence starts "It pins *enforcement*…". Verify: `python -m pytest tests/test_ruff_silence_rules.py -q` passes; commit with the ticks of 2.1–2.2.
 
 ## 3. Docs (design D3)
 
