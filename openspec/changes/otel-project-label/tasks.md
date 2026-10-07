@@ -20,8 +20,8 @@
 
 ## 4. Verify
 
-- [ ] 4.1 Run `openspec validate --strict --all`. Verify: exit 0.
-- [ ] 4.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 4.1 Run `openspec validate --strict --all`. Verify: exit 0.
+- [x] 4.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 5. Deliver
 
