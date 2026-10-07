@@ -25,7 +25,7 @@
 
 ## 5. Deliver
 
-- [ ] 5.1 Run `agent-process archive_change otel-project-label`, then `gh pr create --title "chore: otel-project-label" --body-file <report>`; the report names #611 and #617 as plain references, carries the scenario map, the 3.1 query output, and that `agwhkq` re-sync stays with agent-process-distribution#308.
+- [x] 5.1 Run `agent-process archive_change otel-project-label`, then `gh pr create --title "chore: otel-project-label" --body-file <report>`; the report names #611 and #617 as plain references, carries the scenario map, the 3.1 query output, and that `agwhkq` re-sync stays with agent-process-distribution#308.
 - [ ] 5.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
