@@ -28,12 +28,12 @@
 
 ## 5. Verify
 
-- [ ] 5.1 Run `openspec validate --strict --all`. Verify: exit 0.
-- [ ] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 5.1 Run `openspec validate --strict --all`. Verify: exit 0.
+- [x] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 6. Deliver
 
-- [ ] 6.1 Run `agent-process archive_change delete-principles-governance-layer`, then `gh pr create --title "chore: delete-principles-governance-layer" --body-file <report>`; the report names #627, #612, #616 and #601 as plain references, carries the scenario map, and lists the post-merge follow-ups of design D5/D6 (Priority field, #601, memory file).
+- [x] 6.1 Run `agent-process archive_change delete-principles-governance-layer`, then `gh pr create --title "chore: delete-principles-governance-layer" --body-file <report>`; the report names #627, #612, #616 and #601 as plain references, carries the scenario map, and lists the post-merge follow-ups of design D5/D6 (Priority field, #601, memory file).
 - [ ] 6.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
