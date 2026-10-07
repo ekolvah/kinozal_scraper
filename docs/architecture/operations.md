@@ -345,6 +345,11 @@ successful Claude response.
    datasources. Importing through the API needs a token with Editor permission;
    the verification in step 2 does not, and ingestion needs neither.
 
+   This JSON is a temporary copy: the dashboard moves to the plugin
+   (agent-process-distribution#308, then #617 deletes it here). The live
+   `agwhkq` is intentionally not re-synced until then (#611), and the JSON has
+   no `uid`, so a plain import creates another dashboard instead of updating it.
+
 The dashboard uses only signal names and attributes captured from the real
 destination. A missing compaction, agent, or skill dimension is displayed as
 unavailable, never as zero. Claude's cost metric is estimated and must not be

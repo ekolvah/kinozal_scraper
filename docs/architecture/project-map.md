@@ -88,6 +88,7 @@ the repository's own; each row names why or the issue that owns its future.
 | `scripts/ci_check.py`, `ci*.md` | The repository's quality gate, which the plugin runs as the declared `test` |
 | `.pre-commit-config.yaml` hooks outside the plugin block | Ruff's only pin and its config, read by the plugin's edit-time lint (#628) |
 | `SessionStart` `token_trend` hook, `scripts/token_trend.py`, `observability/*`, `scripts/check_otel_event_delivery.py` and their tests | Development telemetry; owned by #614 track 2 |
+| `env.OTEL_RESOURCE_ATTRIBUTES` in `.claude/settings.json`, `tests/test_otel_project_label.py` | Project label of this repository's Claude Code telemetry; per adopter under the plugin's ADR 0026/0029, so it stays when #617 removes the stack (#611) |
 | `tests/test_doc_headers.py`, `tests/test_doc_links.py`, `tests/test_adr_records.py`, `tests/test_always_load_budget.py`, `tests/test_repo_layout.py`, `information-architecture.md` | Doc guards and the policy they enforce |
 | `coverage-gaps-*.md`, `docs/adr/` | Repository decision records and accepted gaps |
 

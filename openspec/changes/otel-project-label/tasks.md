@@ -10,8 +10,8 @@
 ## 2. Implementation
 
 - [x] 2.1 Add `"env": {"OTEL_RESOURCE_ATTRIBUTES": "vcs.repository.name=ekolvah/kinozal_scraper,vcs.repository.url.full=https://github.com/ekolvah/kinozal_scraper"}` to `.claude/settings.json` (design D1). Verify: `python -m pytest tests/test_otel_project_label.py tests/test_token_trend.py -q` passes; commit.
-- [ ] 2.2 `docs/architecture/operations.md`: "Verify and import" step 4 says the JSON is a temporary copy pending #617 / agent-process-distribution#308, `agwhkq` is intentionally not re-synced, and a plain import creates another dashboard (design D4).
-- [ ] 2.3 `docs/architecture/project-map.md`: add a row to "Repository-owned process files that stay" for `env.OTEL_RESOURCE_ATTRIBUTES` in `.claude/settings.json` and `tests/test_otel_project_label.py` — per-adopter project label, plugin ADR 0026/0029, #611 (design D4). Verify: `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py tests/test_repo_layout.py -q` passes; commit with the ticks of 2.2–2.3.
+- [x] 2.2 `docs/architecture/operations.md`: "Verify and import" step 4 says the JSON is a temporary copy pending #617 / agent-process-distribution#308, `agwhkq` is intentionally not re-synced, and a plain import creates another dashboard (design D4).
+- [x] 2.3 `docs/architecture/project-map.md`: add a row to "Repository-owned process files that stay" for `env.OTEL_RESOURCE_ATTRIBUTES` in `.claude/settings.json` and `tests/test_otel_project_label.py` — per-adopter project label, plugin ADR 0026/0029, #611 (design D4). Verify: `python -m pytest tests/test_doc_links.py tests/test_doc_headers.py tests/test_repo_layout.py -q` passes; commit with the ticks of 2.2–2.3.
 
 ## 3. Live verification
 
