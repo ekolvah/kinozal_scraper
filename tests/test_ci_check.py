@@ -7,6 +7,7 @@ exit codes, and the capture-failure path that must name its real cause.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -14,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
 from scripts.ci_check import CHECKS, _find_modules, _run, _tracked_files, run_selected
 
@@ -142,6 +144,50 @@ class TestRunner:
         with pytest.raises(SystemExit) as exc:
             _run(["any-command"])
         assert exc.value.code != 0
+
+
+class TestLint:
+    """Ruff is declared once, as `pre-commit`-stage hooks that the plugin's edit-time lint
+    also runs (#628); `lint` runs that stage, and the hook `rev` is ruff's only pin."""
+
+    def test_lint_runs_the_commit_stage_hooks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list[list[str]] = []
+
+        def fake_run(cmd: list[str], *args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        CHECKS["lint"]()
+        assert calls == [
+            [
+                sys.executable,
+                "-m",
+                "pre_commit",
+                "run",
+                "--hook-stage",
+                "pre-commit",
+                "--all-files",
+                "--show-diff-on-failure",
+            ]
+        ]
+
+    def test_ruff_is_pinned_only_by_the_hook(self) -> None:
+        config = yaml.safe_load(Path(".pre-commit-config.yaml").read_text(encoding="utf-8"))
+        ruff_repos = [
+            repo
+            for repo in config["repos"]
+            if repo["repo"] == "https://github.com/astral-sh/ruff-pre-commit"
+        ]
+        assert len(ruff_repos) == 1, "ruff must be declared once, as ruff-pre-commit hooks"
+        hooks = {hook["id"]: hook for hook in ruff_repos[0]["hooks"]}
+        assert set(hooks) == {"ruff-check", "ruff-format"}
+        assert all(hook["stages"] == ["pre-commit"] for hook in hooks.values())
+        for name in ("requirements-dev.in", "requirements-dev.txt"):
+            lines = Path(name).read_text(encoding="utf-8").splitlines()
+            assert not [line for line in lines if re.match(r"ruff\b", line)], (
+                f"{name} pins ruff a second time; the hook rev is the only pin"
+            )
 
 
 class TestTrackedFilesCaptureFailure:

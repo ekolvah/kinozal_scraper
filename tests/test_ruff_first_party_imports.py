@@ -4,18 +4,51 @@ With the top-level package already present, Ruff used to infer unresolved
 ``scripts.*`` and ``kinozal_scraper.*`` leaf imports as third-party. Creating
 the leaf module later changed the verdict for an unchanged test file, so a warm
 local cache could disagree with cold CI. These tests exercise the real Ruff
-binary and require both project namespaces to stay first-party throughout.
+binary — the ``ruff-pre-commit`` hook at the ``rev`` this repository's
+``.pre-commit-config.yaml`` pins, ruff's only pin (#628) — and require both
+project namespaces to stay first-party throughout.
 """
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
 
+import yaml
+
 _REPO = Path(__file__).resolve().parents[1]
 _PYPROJECT = _REPO / "pyproject.toml"
+_RUFF_HOOKS = "https://github.com/astral-sh/ruff-pre-commit"
 _MISSING_MODULE = "issue_440_future_module"
+
+
+def _ruff_rev() -> str:
+    config = yaml.safe_load((_REPO / ".pre-commit-config.yaml").read_text(encoding="utf-8"))
+    revs = [repo["rev"] for repo in config["repos"] if repo["repo"] == _RUFF_HOOKS]
+    assert len(revs) == 1, f"expected one {_RUFF_HOOKS} entry, found {revs}"
+    return str(revs[0])
+
+
+def _init_project(project: Path) -> None:
+    """A git repository whose config holds only the pinned ruff-check hook."""
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    config = {
+        "repos": [
+            {
+                "repo": _RUFF_HOOKS,
+                "rev": _ruff_rev(),
+                "hooks": [
+                    {
+                        "id": "ruff-check",
+                        "args": ["--no-cache", "--select", "I001", "--config", str(_PYPROJECT)],
+                    }
+                ],
+            }
+        ]
+    }
+    (project / ".pre-commit-config.yaml").write_text(yaml.safe_dump(config), encoding="utf-8")
 
 
 def _run_ruff(project: Path, candidate: Path) -> subprocess.CompletedProcess[str]:
@@ -23,23 +56,22 @@ def _run_ruff(project: Path, candidate: Path) -> subprocess.CompletedProcess[str
         [
             sys.executable,
             "-m",
-            "ruff",
-            "check",
-            "--no-cache",
-            "--select",
-            "I001",
-            "--config",
-            str(_PYPROJECT),
-            str(candidate),
+            "pre_commit",
+            "run",
+            "ruff-check",
+            "--files",
+            candidate.relative_to(project).as_posix(),
         ],
         cwd=project,
         capture_output=True,
         encoding="utf-8",
+        env={**os.environ, "PYTHONUTF8": "1"},
         check=False,
     )
 
 
 def _assert_stable_first_party(tmp_path: Path, namespace: str, package_dir: Path) -> None:
+    _init_project(tmp_path)
     package_dir.mkdir(parents=True)
     (package_dir / "__init__.py").write_text("", encoding="utf-8")
 
