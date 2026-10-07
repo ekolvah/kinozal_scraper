@@ -365,8 +365,6 @@ rich==15.0.0
     #   import-linter
     #   pip-audit
     #   ragas
-ruff==0.15.12
-    # via -r requirements-dev.in
 scikit-network==0.33.5
     # via ragas
 scipy==1.18.0

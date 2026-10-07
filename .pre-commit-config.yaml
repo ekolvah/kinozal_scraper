@@ -6,3 +6,12 @@ repos:
     hooks:
       - id: quality
   # agent-process:end
+  # Edit-time lint (the plugin's edit_lint) and `ci_check lint` run this `pre-commit` stage;
+  # the `rev` is ruff's only pin (#628).
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        stages: [pre-commit]
+      - id: ruff-format
+        stages: [pre-commit]

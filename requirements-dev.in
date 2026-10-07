@@ -18,6 +18,5 @@ pytest-cov
 # import nothing guaranteed to be installed (#474, #406).
 PyYAML
 ragas
-ruff
 types-PyYAML
 types-requests

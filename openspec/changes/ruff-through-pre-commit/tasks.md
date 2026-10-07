@@ -10,10 +10,10 @@
 
 ## 2. Ruff through pre-commit (design D1, D2)
 
-- [ ] 2.1 Add the `astral-sh/ruff-pre-commit` block of design D1 after `# agent-process:end` in `.pre-commit-config.yaml`, with a one-line comment that edit-time lint and `ci_check lint` run its `pre-commit` stage.
-- [ ] 2.2 `scripts/ci_check.py`: `check_lint` runs the design D1 command with a docstring saying why the stage (keeps the `pre-push` `quality` hook out) and that a formatter rewrite fails the run with the diff; delete `check_format` and the `format` entry; the module docstring stays accurate.
-- [ ] 2.3 Remove `ruff` from `requirements-dev.in`; run `pip-compile --constraint=requirements.txt requirements-dev.in` (the lockfile header's command). Verify: the `.txt` diff removes only the `ruff` pin and its `# via` line.
-- [ ] 2.4 Verify: `python -m pytest tests/test_ci_check.py tests/test_ruff_first_party_imports.py -q` passes and `python scripts/ci_check.py --only lint` exits 0 with no file rewritten (`git status --short` shows only this change's files); commit.
+- [x] 2.1 Add the `astral-sh/ruff-pre-commit` block of design D1 after `# agent-process:end` in `.pre-commit-config.yaml`, with a one-line comment that edit-time lint and `ci_check lint` run its `pre-commit` stage.
+- [x] 2.2 `scripts/ci_check.py`: `check_lint` runs the design D1 command with a docstring saying why the stage (keeps the `pre-push` `quality` hook out) and that a formatter rewrite fails the run with the diff; delete `check_format` and the `format` entry; the module docstring stays accurate.
+- [x] 2.3 Remove `ruff` from `requirements-dev.in`; run `pip-compile --constraint=requirements.txt requirements-dev.in` (the lockfile header's command). Verify: the `.txt` diff removes only the `ruff` pin and its `# via` line.
+- [x] 2.4 Verify: `python -m pytest tests/test_ci_check.py tests/test_ruff_first_party_imports.py -q` passes and `python scripts/ci_check.py --only lint` exits 0 with no file rewritten (`git status --short` shows only this change's files); commit.
 
 ## 3. Delete the post-edit hook (design D4)
 
