@@ -18,12 +18,12 @@
 
 ## 4. Verify
 
-- [ ] 4.1 Run `openspec validate --strict --all`. Verify: exit 0.
-- [ ] 4.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 4.1 Run `openspec validate --strict --all`. Verify: exit 0.
+- [x] 4.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 5. Deliver
 
-- [ ] 5.1 Run `agent-process archive_change delete-git-deny-block`, then `gh pr create --title "chore: delete-git-deny-block" --body-file <report>`; the report names the tracking issue and #616 as plain references, carries the scenario map, the Dropped guards table of design.md, the finding that the issue's premise does not hold (proposal §Why), and the post-merge follow-up of design D4 (close #632 quoting that observation).
+- [x] 5.1 Run `agent-process archive_change delete-git-deny-block`, then `gh pr create --title "chore: delete-git-deny-block" --body-file <report>`; the report names the tracking issue and #616 as plain references, carries the scenario map, the Dropped guards table of design.md, the finding that the issue's premise does not hold (proposal §Why), and the post-merge follow-up of design D4 (close #632 quoting that observation).
 - [ ] 5.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
