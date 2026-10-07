@@ -1,0 +1,40 @@
+{
+  "verdict": "approve",
+  "reviewer": "architect-reviewer",
+  "reasoning": "Round 2: all three round-1 findings are applied — the bare-mention grep now reaches pyproject.toml and has a satisfiable pass condition, the tautological pin is deleted with a corrected dropped-guard list, the irreversible field deletion is post-merge, and the harness claims are observed or dropped.",
+  "classes": {
+    "simpler": {
+      "evidence": "design D1 weighs keeping agent-process.md/workflow.md as pointer stubs and D2 a local 'principles delta' file; both are rejected because they answer no question of their own and PR #340 declined an extension point. Deleting whole files and moving the two homeless facts (validate_sources_config and the evidence/ rule appear only in docs/architecture/principles.md §VI/§V; boundary table, ready clients and capture routes are already in runtime.md:47-50 and testing.md:40,75) is the minimum diff. Priority deletion is in #627's own scope list.",
+      "result": "ok"
+    },
+    "map": {
+      "evidence": ".openspec.yaml skip_specs: true, no specs/ directory; tasks.md ## Scenario → test map carries one n/a row with its reason. No delta scenario exists to map.",
+      "result": "ok"
+    },
+    "red": {
+      "evidence": "tasks.md 1.1 records `no RED:` with reason (skip_specs deletion-and-docs change, no delta scenario). No product behaviour changes; the test edits (budget ratchet, deleted name pin, header list, docstrings) follow deleted subjects.",
+      "result": "ok"
+    },
+    "platform": {
+      "evidence": "Observed: plugin principles.md public at main (gh api, proposal §Why); git guard quoted from installed 3.10.1 §Install; Project 1 fields from `gh project field-list`; plugin does not read Priority (Grep over the skill); D3 anchors match headings of the installed 3.10.1 principles.md. design Risks first bullet now cites the planning-session observation (no TodoWrite in its tool list, MEMORY.md index in its context) and accepts Edit-over-heredoc as a loss with no carrier claim.",
+      "result": "ok"
+    },
+    "replaced": {
+      "evidence": "design ### Dropped guards: test_set_issue_priority.py (subject deleted); test_expected_files_are_in_scope and _EXPECTED_ALWAYS_LOAD deleted with the reason that _always_load_files() (test_always_load_budget.py:82) adds CLAUDE.md unconditionally, and a future always-load rule is caught by the byte budget and test_path_scoped_rule_is_excluded under ci_check.py pytest; test_doc_headers entry (subject deleted); principle compliance stays with architect review and agent-review. D5/Migration make the Priority field deletion, #601 closure and memory deletion post-merge follow-ups listed in the PR report (task 6.1), so a non-merged PR leaves main consistent.",
+      "result": "ok"
+    },
+    "catcher": {
+      "evidence": "tests/test_doc_links.py scans every tracked .md outside openspec/ against the git index, so after `git rm` any remaining relative link to a removed file fails under ci_check.py pytest on the PR head (task 5.2). Task 4.4's git grep now uses `[^-]workflow\\.md`, which reaches pyproject.toml:11 (retargeted in task 2.2, listed in proposal Impact) and excludes ci-workflow.md; its pass condition (no removed-name lines; every principles.md line names the plugin's file) is consistent with the prose retargets of 3.3, 3.5, 4.2 and coverage-gaps-quality-gates.md:126.",
+      "result": "ok"
+    },
+    "length": {
+      "evidence": "Rules the plan adds or edits: task 2.1 runtime.md validator sentence (~22 words, 0 asserted; semantic PR obligation); 2.1 testing.md evidence/ rule (~25 words, 0 asserted; Git-ignore enforced by .gitignore); 2.2 CLAUDE.md §Dependencies pip-compile rule (~20 words, 0 asserted in prose; ci_check.py drift check enforces it, test_hooks.py:113 asserts 'pip-compile' in the hook reminder). All are relocations shorter than the deleted originals; always-load bytes fall.",
+      "result": "ok"
+    },
+    "bespoke": {
+      "evidence": "The plan adds no script or committed check; it deletes scripts/set_issue_priority.py. The 4.4 git grep is a one-off verification command, not a new check.",
+      "result": "ok"
+    }
+  },
+  "scenario_coverage": []
+}
