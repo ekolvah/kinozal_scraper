@@ -32,12 +32,12 @@
 
 ## 5. Verify
 
-- [ ] 5.1 Run `openspec validate --strict --all`. Verify: exit 0.
-- [ ] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 5.1 Run `openspec validate --strict --all`. Verify: exit 0.
+- [x] 5.2 Run `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 6. Deliver
 
-- [ ] 6.1 Run `agent-process archive_change ruff-through-pre-commit`, then `gh pr create --title "chore: ruff-through-pre-commit" --body-file <report>`; the report names #628, #612 and #616 as plain references, carries the scenario map, and notes that #612 can be closed after merge (acceptance 3 is the new `project-map.md` section).
+- [x] 6.1 Run `agent-process archive_change ruff-through-pre-commit`, then `gh pr create --title "chore: ruff-through-pre-commit" --body-file <report>`; the report names #628, #612 and #616 as plain references, carries the scenario map, and notes that #612 can be closed after merge (acceptance 3 is the new `project-map.md` section).
 - [ ] 6.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
