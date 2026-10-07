@@ -28,6 +28,10 @@ worktree exports unlabelled). Committed `.claude/settings.json` is the carrier t
 documents and uses itself. Observed precedence (plugin doc, "Precedence is observed"): a
 settings `env` value replaces a process-environment value of the same variable; nothing sets it
 on this machine, so nothing is lost. The values are the public repository name and URL.
+Project settings may still set it on v2.1.282+: code.claude.com/docs/en/settings-reference,
+"Variables Claude Code ignores in `env`", lists the telemetry switch, the exporter selectors, the
+content variables and `OTEL_EXPORTER_OTLP_*` ending in `_ENDPOINT`, `_HEADERS`, `_PROTOCOL`,
+`_CERTIFICATE`, `_CLIENT_KEY` or `_INSECURE`; `OTEL_RESOURCE_ATTRIBUTES` is not among them.
 
 ### D2. One structural test in a new `tests/test_otel_project_label.py`
 
