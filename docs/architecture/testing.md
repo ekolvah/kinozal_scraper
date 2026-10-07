@@ -95,6 +95,10 @@ Captured bytes belong in `tests/fixtures/` only when a production-behaviour regr
 reads them in the same commit. A fixture that is missing when the implementation needs it means
 the capture runs again — never that the implementer writes the bytes by hand.
 
+A planning capture lives in `evidence/<change>/` (Git-ignored), in the working tree only until
+merge. The change's proposal carries the durable record: a safe, compressed observation with its
+reproducible command, never the full payload.
+
 ## Bug taxonomy
 
 | ID | Category | Examples |

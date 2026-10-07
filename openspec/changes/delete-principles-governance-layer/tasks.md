@@ -4,12 +4,12 @@
 
 ## 1. RED
 
-- [ ] 1.1 no RED: `skip_specs` deletion-and-docs change with no delta scenario. Dangling links are caught by `tests/test_doc_links.py`, bare mentions by the 4.4 grep (design D3).
+- [x] 1.1 no RED: `skip_specs` deletion-and-docs change with no delta scenario. Dangling links are caught by `tests/test_doc_links.py`, bare mentions by the 4.4 grep (design D3).
 
 ## 2. Product facts and convention 4 land first (design D1, D2)
 
-- [ ] 2.1 In `docs/architecture/runtime.md` §Configuration extend the `pipeline_config.py` bullet: `validate_sources_config()` is the central load-time validator; a new class of config error grows a check there in the same PR. In `docs/architecture/testing.md` §External-data capture routes add the `evidence/<change>/` rule: Git-ignored, working tree only until merge; the proposal carries the compressed observation record, never the full payload.
-- [ ] 2.2 In `CLAUDE.md` §Dependencies state the rule itself (changing `requirements*.in` → `pip-compile` its lockfile in the same commit; `ci_check.py` catches drift) instead of pointing at `agent-process.md`; in `scripts/hooks.py` point the reminder, and in `pyproject.toml` (l. ~11) the `(workflow.md §7)` comment, at `CLAUDE.md` §Dependencies. Verify: `python -m pytest tests/test_hooks.py tests/test_doc_links.py -q` passes; commit.
+- [x] 2.1 In `docs/architecture/runtime.md` §Configuration extend the `pipeline_config.py` bullet: `validate_sources_config()` is the central load-time validator; a new class of config error grows a check there in the same PR. In `docs/architecture/testing.md` §External-data capture routes add the `evidence/<change>/` rule: Git-ignored, working tree only until merge; the proposal carries the compressed observation record, never the full payload.
+- [x] 2.2 In `CLAUDE.md` §Dependencies state the rule itself (changing `requirements*.in` → `pip-compile` its lockfile in the same commit; `ci_check.py` catches drift) instead of pointing at `agent-process.md`; in `scripts/hooks.py` point the reminder, and in `pyproject.toml` (l. ~11) the `(workflow.md §7)` comment, at `CLAUDE.md` §Dependencies. Verify: `python -m pytest tests/test_hooks.py tests/test_doc_links.py -q` passes; commit.
 
 ## 3. Delete the layer (design D1, D3)
 

@@ -37,9 +37,8 @@ The process is the agent-process plugin's `agent-process` skill: `/opsx:propose`
 
 ## Dependencies
 
-The canonical rule is in [`agent-process.md`](docs/architecture/agent-process.md) (run pip-compile in the same commit when changing
-`requirements*.in`). Mechanically, `scripts/ci_check.py` catches version drift and packages in `.in` without a pin
-in `.txt`.
+When a `requirements*.in` file changes, run `pip-compile` for its lockfile in the same commit. Mechanically,
+`scripts/ci_check.py` catches version drift and packages in `.in` without a pin in `.txt`.
 
 ## Before every commit
 

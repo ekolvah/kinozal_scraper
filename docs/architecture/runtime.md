@@ -74,7 +74,9 @@ run failures instead of being collapsed into "no news." Details in
 ## Configuration
 
 - `sources.json` — declarative: URLs, CSS selectors, limits, templates, enrich prompts
-- `pipeline_config.py` — loads config, expands macros (`{{TODAY}}`, `{{GITHUB_TOP_LIMIT}}`), validates
+- `pipeline_config.py` — loads config, expands macros (`{{TODAY}}`, `{{GITHUB_TOP_LIMIT}}`), validates;
+  `validate_sources_config()` is the central load-time validator, and a new class of config error
+  grows a check there in the same PR
 - Env vars override runtime behavior — full list in [operations.md](operations.md#environment-variables)
 
 ## Telethon-direct modules
