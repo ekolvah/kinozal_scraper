@@ -20,9 +20,8 @@
 
 - **AS. Nothing local detects drift from the agent-process plugin's session hooks (#625).**
   The navigation policy and memory checkpoint are the plugin's hooks, tested by the plugin's own
-  CI. Three local copies of their facts are unguarded: the 28 000-byte budget constant in
-  `tests/test_doc_headers.py`, and the hook semantics described in `CLAUDE.md` §Environment and
-  `.claude/rules/mindset.md`. A later plugin release that changes them leaves these stale, and a
+  CI. Two local copies of their facts are unguarded: the 28 000-byte budget constant in
+  `tests/test_doc_headers.py` and the hook semantics described in `CLAUDE.md` §Environment. A later plugin release that changes them leaves these stale, and a
   deny entry that shadows a plugin hook only drops its "use this tool instead" message — both cost
   tokens, not correctness ([the rule](testing.md#rule-when-a-test-is-not-worth-writing)). The
   hooks are gated on the literal path `.github/workflows/agent-process.yml`: deleting it cannot

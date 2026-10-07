@@ -14,7 +14,7 @@ Live case on 28.07.2026: a PostToolUse hook reported “ruff found issues,” bu
 was lost with the dead stream**. A visibility tool went blind—§IV inside what §IV provides.
 
 **Why a guard instead of “add the argument.”** Seven of nine call sites remembered the flag and two
-did not; this is the third pass over the same class (#109 → #125 → #364). Per `principles.md`
+did not; this is the third pass over the same class (#109 → #125 → #364). Per the plugin's `principles.md`
 (§Scripts over instructions), correctness depending on author memory is secured by an exit code.
 
 **The guard boundaries are real, not excuses** (full rationale is in the
@@ -162,7 +162,7 @@ def _imports_subprocess_by_name(source: str) -> list[str]:
     """Names imported directly from `subprocess`—they hide calls from analysis.
 
     Close the import rather than trace aliases: a boundary removed in three lines does not
-    merit documentation prose (`principles.md`)."""
+    merit documentation prose (the plugin's `principles.md`)."""
     return [
         alias.name
         for node in ast.walk(ast.parse(source))

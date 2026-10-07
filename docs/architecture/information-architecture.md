@@ -16,12 +16,10 @@ layers; merging them into one picture creates the false impression of a star:
   duplicating.
 - **Reference (canonical-home links)** — which consumer links to which canonical fact (`§II`,
   `#bug-taxonomy`, `permissions.deny`). This layer is **deliberately not a tree**: one fact is needed
-  in multiple contexts (e.g. `principles.md §II` from `testing.md`, `.claude/rules/testing.md`,
+  in multiple contexts (e.g. the plugin's `principles.md` §II from `testing.md`, `.claude/rules/testing.md`,
   and `.importlinter`), so keyed links go upward and sideways. It cannot be
   made a tree without either duplicating the fact in each branch (paraphrase drift; a canonical-home
   violation) or denying a consumer its pointer to the canon.
-
-`principles.md` delegates the IA policy to this file; the edge is one-directional.
 
 ### Always-load budget
 

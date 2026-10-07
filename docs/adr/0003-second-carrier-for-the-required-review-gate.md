@@ -155,7 +155,7 @@ record has unverified execution
 
 * Issue: [#478](https://github.com/ekolvah/kinozal_scraper/issues/478).
 * Gate mechanics and step order —
-  [`ci-branch-protection.md`](../architecture/ci-branch-protection.md#required-status-checks-branch-protection);
+  [`ci-branch-protection.md`](https://github.com/ekolvah/kinozal_scraper/blob/eee5599/docs/architecture/ci-branch-protection.md#required-status-checks-branch-protection);
   the `carrier_selection` field in the role catalog —
   `agent-process.md` §Roles and hand-offs (removed by [ADR-0013](0013-adopt-agent-process-plugin-v2.md)).
 * Provider-neutral names (`check_agent_review_outcome.py`, `agent-review` context) —

@@ -6,7 +6,7 @@ the **canon** (“when they drift, header wins”), while the “File Map” is 
 index. Presence of this canon is already gated for `.py` by ruff `D100`/`D104`/`D419` in
 `check_lint` (#253, formerly bespoke `scripts/check_headers.py`). There was no equivalent for `.md`:
 the rule had lived in prose since #164 and was followed less than half the time. This is exactly
-the `principles.md` §Scripts over instructions case—the deterministic step “ensure that a header
+the plugin's `principles.md` §Scripts over instructions case—the deterministic step “ensure that a header
 exists” becomes an exit code.
 
 **Why a test, not an entry in `CHECKS`.** Every registry entry becomes its own CI step,
@@ -68,7 +68,6 @@ _READ_BUDGET_DOCUMENTS = tuple(
         "docs/architecture/ci.md",
         "docs/architecture/ci-local.md",
         "docs/architecture/ci-workflow.md",
-        "docs/architecture/ci-branch-protection.md",
         "docs/architecture/ci-production.md",
         "docs/architecture/ci-tooling-decisions.md",
         "docs/architecture/coverage-gaps.md",
