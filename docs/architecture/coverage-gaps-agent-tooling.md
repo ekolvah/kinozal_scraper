@@ -71,15 +71,12 @@
   that new live capture, not by hand-editing the JSON, or the `unreproduced` marker goes stale in
   the opposite direction and starts lying about a gap that has since closed.
 
-- **AU. No standing check guards the live project label on exported telemetry (#611).**
+- **AU. No standing check guards the live project label on exported telemetry.**
   `tests/test_otel_project_label.py` proves only that `.claude/settings.json` carries
   `env.OTEL_RESOURCE_ATTRIBUTES` with both `vcs.repository.*` pairs. Whether Claude Code applies
   a project-settings `env` value to its exporter is a live external contract: not reproduced as
   failing, not impossible (the settings reference lists the `env` variables Claude Code ignores,
-  and `OTEL_RESOURCE_ATTRIBUTES` is not among them). **Evidence:** on 2026-10-07 with Claude Code
-  2.1.283, a session from the change worktree exported
-  `claude_code_token_usage_tokens_total` with `vcs_repository_name="ekolvah/kinozal_scraper"`.
-  **Re-check:** `count by (vcs_repository_name) (last_over_time(claude_code_token_usage_tokens_total[1h]))`
+  and `OTEL_RESOURCE_ATTRIBUTES` is not among them). **Re-check:** `count by (vcs_repository_name) (last_over_time(claude_code_token_usage_tokens_total[1h]))`
   through `/api/datasources/proxy/uid/grafanacloud-prom/api/v1/query`, with the credential loaders
   of `scripts/check_otel_event_delivery.py`; this project's sessions must not land under `{}`.
   Accepted without an exit-code check: nobody owns a standing credentialed probe for one label.

@@ -1,7 +1,7 @@
-"""Project label of this repository's Claude Code telemetry (#611).
+"""Project label of this repository's Claude Code telemetry.
 
 Separate from `test_claude_otel_assets.py` on purpose: that file leaves with the telemetry
-stack (#617), while the label is a per-adopter setting that stays.
+stack, while the label is a per-adopter setting that stays.
 """
 
 from __future__ import annotations
