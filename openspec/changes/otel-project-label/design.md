@@ -41,8 +41,8 @@ adding it for one assertion costs a pinned dev dependency under `pip-audit`.
 Placement: not `tests/test_claude_otel_assets.py`. That file is in the Scope of
 agent-process-distribution#308, and #617 deletes it once the plugin release lands; the label
 stays, so its guard would be deleted with it. A file of its own is the only placement that
-survives #617 without a later move. `tests/test_settings_deny.py` is no better: it is the
-`permissions.deny` carrier "until #632" (`project-map.md`).
+survives #617 without a later move. No other settings test is left to host it:
+`tests/test_settings_deny.py` was deleted by #640.
 
 The test asserts only the invariant production depends on, with no helper: split on `,`, every
 entry holds exactly one `=` (the spec: "a list of key value pairs, represented as
