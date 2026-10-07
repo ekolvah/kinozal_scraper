@@ -1,0 +1,46 @@
+{
+  "verdict": "approve",
+  "reviewer": "architect-reviewer",
+  "reasoning": "All three round-1 findings are answered in the artifacts: the live check now tests that the series exists and records the observation behind that, the deferral to agent-process-distribution#308 is gone (AU is an accepted gap with an honest owner statement), and the at-risk operations.md paragraph is dropped. The other classes still hold on re-read.",
+  "classes": {
+    "simpler": {
+      "evidence": "D1 compares the committed project settings with the user environment and with `.claude/settings.local.json`. D2 compares the test with the OTel SDK parser (the Node SDK cannot be called from Python; `opentelemetry-sdk` would add a pinned dev dependency for one assertion). The test asserts only one `=` per entry and that both pairs are present, with no helper. Placement: `tests/test_claude_otel_assets.py` is in agent-process-distribution#308's Scope and #617 deletes it; `tests/test_settings_deny.py` stays only until #632 (project-map.md row 91). A separate file is therefore the smallest placement that survives #617. D4 now drops the operations.md label paragraph instead of protecting it: the plugin's `telemetry-measurement-setup.md` already gives the how-to, and the project-map row plus AU are the record. That is fewer homes for the same fact. The scenarios rule out anything simpler: without the one-`=` check, `a=b,c` passes while the SDK discards the whole value.",
+      "result": "ok"
+    },
+    "map": {
+      "evidence": "spec.md has two scenarios, and the tasks.md map has two rows. 'Settings carry the project pairs' maps to `tests/test_otel_project_label.py::test_settings_carry_project_pairs`, the node id written in task 1.1 and run by task 1.2. 'A session exports under the project label' maps to `n/a: live external state`, verified once by task 3.1 and recorded as gap `AU` by task 3.2. No scenario is unmapped, and every row has a scenario.",
+      "result": "ok"
+    },
+    "red": {
+      "evidence": "Group 1 writes the one test (1.1) and runs `agent-process check_red` on its node id (1.2) before 2.1 adds the value. There is no new symbol, so no stub is needed. `.claude/settings.json` on main has no `env` key, so the KeyError is raised in the call phase. junit records that as a failure, not an error, and `check_red.py` lines 131-177 count failures as RED. `.github/agent-process-quality.json` declares `test`, so check_red does not exit 2.",
+      "result": "ok"
+    },
+    "platform": {
+      "evidence": "Each behaviour now has an observation beside it: (1) the dotted keys arrive as `vcs_repository_name`/`vcs_repository_url_full` labels on all four token `type`s (plugin `telemetry-measurement-setup.md` 3.10.1, lines 47-51); (2) a settings `env` value replaces the process-environment value (same file, lines 80-87); (3) nothing sets the variable on this machine (proposal Why; D3, 2026-10-02 and 2026-10-07); (4) a headless run in a new folder applied the `env` block (lines 71-73); (5) the parse rule cited in D2 from opentelemetry.io. The round-1 finding is closed. D3 and task 3.1 now query `count by (vcs_repository_name) (last_over_time(claude_code_token_usage_tokens_total[1h]))`, which needs only one sample. D3 records the observation (2026-10-07, probe `probe/direct-export`: 1 sample per series, `increase` 0 series, `last_over_time` 8 series) and says why `increase()` is not used. Task 3.2 carries the same query into AU as the re-check.",
+      "result": "ok"
+    },
+    "replaced": {
+      "evidence": "Replaced input: a settings `env` value takes the place of any process-environment `OTEL_RESOURCE_ATTRIBUTES`. D1 names this, and the observation in the proposal and D3 shows nothing sets the variable here, so nothing is lost. No guard is dropped: `tests/test_settings_deny.py` reads only `permissions.deny`, `tests/test_token_trend.py` reads the SessionStart hook, and neither fixes the set of top-level keys. The plugin's `init.py` owns only the marketplace entry and the SessionStart group of this file (docstring line 31). The dropped operations.md paragraph was proposed in this change and never existed, so dropping it removes no current record.",
+      "result": "ok"
+    },
+    "catcher": {
+      "evidence": "Structural scenario: `ci_check.py`'s `check_pytest` runs `python -m pytest` (`testpaths = [\"tests\"]`), so the new file is collected by the pre-push hook (4.2) and by the `agent-process / test` check that the ruleset requires. The rename risk in design.md reaches the same check. Live scenario: task 3.1 is a one-time check with a query that can see a short session, and its output goes into the PR report. After that, D3 and task 3.2 no longer name a catcher that does not exist. AU states that the gap is accepted and that no repository owns an exit-code attribution check: #308's Scope holds none (checked with `gh issue view 308`), and ADR 0029 rules out a plugin-side check. AU also records its revisit trigger (a Claude Code upgrade, or this project reappearing under `{}`) and the re-check query. The Quality Gates rule asks for exactly this: an accepted gap recorded so it is not silently re-litigated. Task 5.1 now passes to #308 only the `agwhkq` re-sync, which #308's Scope does carry (item 1).",
+      "result": "ok"
+    },
+    "length": {
+      "evidence": "Spec: the requirement sentence has 20 words. The test asserts all of it: the two pairs and the `key=value` list form by its assertions, and 'project-scope' by the path it reads. Scenario 1 has about 35 words, all asserted by the same test. Scenario 2 has about 22 words; no test asserts them, by design (n/a, live). Added prose is now: the step-4 note in operations.md (2.2), one project-map 'stays' row (2.3), entry AU and two router edits in coverage-gaps.md (3.2), roughly 120-150 words. No test asserts any of it; the doc guards check only links and headers. That is acceptable for operator records, and no rule prose goes into CLAUDE.md or .claude/rules/. Survival is now consistent. The step-4 note is meant to leave with the stack (D4). The words that must outlive #617 sit in files #617 does not delete: the project-map row, and `coverage-gaps-*.md`, which is itself a 'stays' row (project-map.md row 93).",
+      "result": "ok"
+    },
+    "bespoke": {
+      "evidence": "The plan adds no script and no `ci_check` registry entry. Its one new check is `tests/test_otel_project_label.py::test_settings_carry_project_pairs`. D2 gives the decision in the required form. Problem: the attribution can regress silently through an `env` block dropped by a settings rewrite, or a malformed value the SDK discards; today only the person reading the query output (`{}`) notices, which is how #611 was found. Standard: the OTel SDK parser. Why it does not fit: the Node SDK cannot be called from Python, and adding `opentelemetry-sdk` would add a pinned dev dependency under pip-audit. Prior art: the plugin's `test_delivery_gate_wiring.py`. D3 decides against a new live-check script and against extending `check_otel_event_delivery.py`, which #617 deletes. The 3.1 query is one throwaway read through that script's loaders.",
+      "result": "ok"
+    }
+  },
+  "scenario_coverage": [
+    {
+      "capability": "agent-telemetry",
+      "scenario": "Project attribution / A session exports under the project label",
+      "reason": "tasks.md map: \"n/a: live external state; verified once by task 3.1 (output in the PR report), standing gap ledgered as `AU` by task 3.2\". The Bash tool's environment has no `OTEL_*` variable (design D3, observed 2026-10-02 and 2026-10-07), so the agent cannot start a session that exports. The person runs one short session, and the agent reads `count by (vcs_repository_name) (last_over_time(claude_code_token_usage_tokens_total[1h]))` through the existing datasource proxy. AU records the gap as accepted, with no owner of an exit-code check, its revisit trigger and this query as the re-check."
+    }
+  ]
+}
