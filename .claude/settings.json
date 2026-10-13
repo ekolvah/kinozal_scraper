@@ -1,4 +1,7 @@
 {
+  "env": {
+    "OTEL_RESOURCE_ATTRIBUTES": "vcs.repository.name=ekolvah/kinozal_scraper,vcs.repository.url.full=https://github.com/ekolvah/kinozal_scraper"
+  },
   "permissions": {
     "deny": [
       "Bash(sleep:*)"
