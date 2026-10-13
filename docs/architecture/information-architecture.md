@@ -30,8 +30,8 @@ threshold is a ratchet so growth happens through a deliberate review change, not
 in [`coverage-gaps.md`](coverage-gaps.md).
 
 **Declared charge ≠ paid charge.** The bytes in the always-load set multiply by the number of
-turns through `cache_read`, and the ratchet cannot see that multiplier. `scripts/token_trend.py`
-measures observed raw-token consumption (#464, #565), from Claude Code transcripts by branch and turn.
+turns through `cache_read`, and the ratchet cannot see that multiplier. The paid charge is not measured for this repository
+(coverage gap AU in [`coverage-gaps-agent-tooling.md`](coverage-gaps-agent-tooling.md)).
 
 ### Decision records
 

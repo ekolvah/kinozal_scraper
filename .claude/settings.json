@@ -13,15 +13,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/scripts/token_trend.py\" --hook",
-            "timeout": 20
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
-            "type": "command",
             "command": "python \"$CLAUDE_PROJECT_DIR/.claude/agent-process-check.py\" https://github.com/ekolvah/agent-process-distribution/blob/v3.16.0/skills/agent-process/SKILL.md#install"
           }
         ]

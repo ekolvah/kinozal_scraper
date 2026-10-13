@@ -58,26 +58,16 @@ The real, albeit already closed, risk is on the **output** side (LLM02), not the
 ## Development telemetry trust boundaries
 
 Claude Code development telemetry is exported from the maintainer workstation
-to Grafana Cloud. This is an external metadata boundary even with content
-logging disabled: the observed schema includes user email/ID, organization ID,
-session ID, model, effort, query source, token counts, estimated cost, tool name,
-duration, and success. Access to Grafana therefore reveals who used which model
-and tools, when, and at what approximate cost.
-
-The user-scope setup must not define `OTEL_LOG_USER_PROMPTS`,
-`OTEL_LOG_ASSISTANT_RESPONSES`, `OTEL_LOG_TOOL_DETAILS`,
-`OTEL_LOG_TOOL_CONTENT`, or `OTEL_LOG_RAW_API_BODIES`. The live acceptance
-capture found redacted prompt/response fields and no tool input, tool content,
-or raw API body fields (#471). This is a current implementation observation,
-not permission to weaken the deny boundary: a future Claude version or backend
-mapping change requires the same name-only privacy check before updating the
-catalogue.
+to Grafana Cloud. This is an external boundary: it carries metadata (user
+email/ID, organization ID, session ID, model, token counts, estimated cost, tool
+name, duration, success) and, by the agent-process plugin's decision, content.
+Access to Grafana therefore reveals who used which model and tools, when, at what
+approximate cost, and what was exchanged. Which signals are enabled is owned by
+the plugin; see [`operations.md`](operations.md#claude-code-development-telemetry).
 
 The OTLP authorization header and Grafana service-account token are secrets.
 They stay in the Windows user environment or another user-scope secret store,
-never in the repository setup template, signal catalogue, dashboard, issue, PR,
-or transcript. A token exposed to a Claude tool result must be revoked because
-Claude transcripts are plaintext. Use a stack-scoped ingest policy with only
-`metrics:write` and `logs:write`; use a separate short-lived service account for
-dashboard API work. Rotation and rollback are in
+never in the repository, an issue, a PR, or a transcript. A token exposed to a
+Claude tool result must be revoked because Claude transcripts are plaintext.
+Rotation and rollback are in
 [`operations.md`](operations.md#rollback-and-rotation).

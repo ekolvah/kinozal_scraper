@@ -22,8 +22,8 @@ those carriers (nor moving text into `docs/architecture/*`, which the agent stil
 Expanding the scope is a separate decision; this boundary is simply named honestly here.
 
 **It also cannot see the main thing: stated charge ≠ paid charge.** Bytes are multiplied by the number
-of turns through `cache_read`, and this multiplier is not measured here at all. Actual consumption is measured
-by `scripts/token_trend.py` (#464); its tests are `test_token_trend.py`.
+of turns through `cache_read`, and this multiplier is not measured here at all. The paid charge is
+not measured for this repository (coverage gap AU).
 """
 
 from __future__ import annotations
