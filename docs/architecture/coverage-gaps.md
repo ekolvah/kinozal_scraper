@@ -21,7 +21,7 @@ negative-ROI decisions visible, so they are not silently reopened as work-for-wo
 - [Quality gates](coverage-gaps-quality-gates.md) — `V`, `X` through `AD`, `AR`, and `AT`. `W` is
   retired with the last local agent prompt it guarded (#626); do not reuse it.
 - [Runtime behavior](coverage-gaps-runtime.md) — `AE` through `AI`.
-- [Agent tooling and observability](coverage-gaps-agent-tooling.md) — `AJ`, `AN`, `AS`, `AU`, and `J`. `AK`, `AL`, `AO`, `AP`, and `AQ` are retired with the
-  machinery they described (#600), and `AM` with its subject's move into the agent-process
-  plugin (#612); do not reuse them.
+- [Agent tooling and observability](coverage-gaps-agent-tooling.md) — `AS`, `AU`, and `J`. `AK`, `AL`, `AO`, `AP`, and `AQ` are retired with the
+  machinery they described (#600), `AM` with its subject's move into the agent-process
+  plugin (#612), and `AJ` and `AN` with the local telemetry stack (#642); do not reuse them.
 - [Modules without dedicated tests](coverage-gaps-modules.md).

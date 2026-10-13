@@ -1,5 +1,5 @@
 ---
-status: "accepted"
+status: "deprecated"
 date: 2026-08-15
 decision-makers: maintainer
 consulted: Claude architect-reviewer subagent (issue #542)
