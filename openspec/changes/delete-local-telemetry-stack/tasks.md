@@ -4,7 +4,7 @@
 
 ## 1. RED
 
-- [ ] 1.1 no RED: `skip_specs` deletion of development tooling and its docs; no delta scenario, no scraper behaviour changes. The kept project label stays guarded by `tests/test_otel_project_label.py`.
+- [x] 1.1 no RED: `skip_specs` deletion of development tooling and its docs; no delta scenario, no scraper behaviour changes. The kept project label stays guarded by `tests/test_otel_project_label.py`.
 
 ## 2. Delete the stack (design D1)
 
