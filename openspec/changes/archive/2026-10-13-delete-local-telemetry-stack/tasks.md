@@ -20,13 +20,13 @@
 
 ## 4. Verify
 
-- [ ] 4.1 Run `/simplify` without an argument and commit its edits, if any.
-- [ ] 4.2 Run `openspec validate --strict --all`. Verify: exit 0.
-- [ ] 4.3 Run the declared `test`, `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
+- [x] 4.1 Run `/simplify` without an argument and commit its edits, if any.
+- [x] 4.2 Run `openspec validate --strict --all`. Verify: exit 0.
+- [x] 4.3 Run the declared `test`, `python scripts/ci_check.py` (one foreground call, `timeout: 600000`). Verify: exit 0.
 
 ## 5. Deliver
 
-- [ ] 5.1 Run `agent-process archive_change delete-local-telemetry-stack`, then `gh pr create --title "chore: delete-local-telemetry-stack" --body-file <report>`; the report names #642 as a plain reference, carries the scenario map, and links the archived `design.md` (D1 lost proofs, D2 widened AU) for why #642's "plugin's dashboard shows it" line is recorded as gap AU rather than met.
+- [x] 5.1 Run `agent-process archive_change delete-local-telemetry-stack`, then `gh pr create --title "chore: delete-local-telemetry-stack" --body-file <report>`; the report names #642 as a plain reference, carries the scenario map, and links the archived `design.md` (D1 lost proofs, D2 widened AU) for why #642's "plugin's dashboard shows it" line is recorded as gap AU rather than met.
 - [ ] 5.2 Run `agent-process wait_for_pr <PR>` and handle review threads per the Delivery section, at most three rounds.
 
 ## Scenario → test map
